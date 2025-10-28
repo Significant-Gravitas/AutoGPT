@@ -45,8 +45,8 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
         </div>
 
         {/* Right section */}
-        <div className="hidden flex-1 items-center justify-end gap-4 md:flex">
-          {isLoggedIn ? (
+        {isLoggedIn ? (
+          <div className="hidden flex-1 items-center justify-end gap-4 md:flex">
             <div className="flex items-center gap-4">
               <AgentActivityDropdown />
               {profile && <Wallet />}
@@ -57,11 +57,13 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
                 menuItemGroups={dynamicMenuItems}
               />
             </div>
-          ) : (
+          </div>
+        ) : (
+          <div className="flex w-full items-center justify-end">
             <LoginButton />
-          )}
-          {/* <ThemeToggle /> */}
-        </div>
+          </div>
+        )}
+        {/* <ThemeToggle /> */}
       </nav>
       {/* Mobile Navbar - Adjust positioning */}
       <>

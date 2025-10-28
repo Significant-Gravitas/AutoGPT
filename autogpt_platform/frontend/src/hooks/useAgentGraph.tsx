@@ -21,17 +21,15 @@ import {
   Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import {
-  deepEquals,
-  getTypeColor,
-  removeEmptyStringsAndNulls,
-} from "@/lib/utils";
+import { deepEquals, getTypeColor, pruneEmptyValues } from "@/lib/utils";
 import { MarkerType } from "@xyflow/react";
 import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 
 export default function useAgentGraph(
   flowID?: GraphID,
@@ -44,6 +42,7 @@ export default function useAgentGraph(
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const api = useBackendAPI();
+  const queryClient = useQueryClient();
 
   const [isScheduling, setIsScheduling] = useState(false);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
@@ -598,7 +597,10 @@ export default function useAgentGraph(
         return {};
       }
 
-      return rebuildObjectUsingSchema(blockSchema, node.data.hardcodedValues);
+      return rebuildObjectUsingSchema(
+        blockSchema,
+        pruneEmptyValues(node.data.hardcodedValues),
+      );
     },
     [availableBlocks],
   );
@@ -607,6 +609,7 @@ export default function useAgentGraph(
     const links = xyEdges.map((edge): LinkCreatable => {
       let sourceName = edge.sourceHandle || "";
       const sourceNode = xyNodes.find((node) => node.id === edge.source);
+      const sinkNode = xyNodes.find((node) => node.id === edge.target);
 
       // Special case for SmartDecisionMakerBlock
       if (
@@ -616,8 +619,8 @@ export default function useAgentGraph(
         sourceName = `tools_^_${normalizeToolName(getToolFuncName(edge.target))}_~_${normalizeToolName(edge.targetHandle || "")}`;
       }
       return {
-        source_id: edge.source,
-        sink_id: edge.target,
+        source_id: sourceNode?.data.backend_id ?? edge.source,
+        sink_id: sinkNode?.data.backend_id ?? edge.target,
         source_name: sourceName,
         sink_name: edge.targetHandle || "",
       };
@@ -629,7 +632,7 @@ export default function useAgentGraph(
       recommended_schedule_cron: agentRecommendedScheduleCron || null,
       nodes: xyNodes.map(
         (node): NodeCreatable => ({
-          id: node.id,
+          id: node.data.backend_id ?? node.id,
           block_id: node.data.block_id,
           input_default: prepareNodeInputData(node),
           metadata: {
@@ -695,8 +698,9 @@ export default function useAgentGraph(
 
     // Update the node IDs on the frontend
     setSavedAgent(newSavedAgent);
-    setXYNodes((prev) => {
-      return newSavedAgent.nodes
+
+    setXYNodes((prev) =>
+      newSavedAgent.nodes
         .map((backendNode) => {
           const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
           const frontendNodeID = blockIDToNodeIDMap[key];
@@ -709,22 +713,26 @@ export default function useAgentGraph(
                 position,
                 data: {
                   ...frontendNode.data,
-                  hardcodedValues: removeEmptyStringsAndNulls(
-                    frontendNode.data.hardcodedValues,
-                  ),
-                  status: undefined,
+                  // NOTE: we don't update `node.id` because it would also require
+                  //  updating many references in other places. Instead, we keep the
+                  //  backend node ID in `node.data.backend_id`.
                   backend_id: backendNode.id,
-                  executionResults: [],
                   metadata,
+
+                  // Reset & close node output
+                  isOutputOpen: false,
+                  status: undefined,
+                  executionResults: undefined,
                 },
               } satisfies CustomNode)
             : _backendNodeToXYNode(backendNode, newSavedAgent); // fallback
         })
-        .filter((node) => node !== null);
-    });
+        .filter((node) => node !== null),
+    );
+
     // Reset bead count
-    setXYEdges((edges) => {
-      return edges.map(
+    setXYEdges((edges) =>
+      edges.map(
         (edge): CustomEdge => ({
           ...edge,
           data: {
@@ -735,8 +743,8 @@ export default function useAgentGraph(
             beadData: new Map(),
           },
         }),
-      );
-    });
+      ),
+    );
     return newSavedAgent;
   }, [
     api,
@@ -755,6 +763,11 @@ export default function useAgentGraph(
     setIsSaving(true);
     try {
       await _saveAgent();
+
+      await queryClient.invalidateQueries({
+        queryKey: getGetV2ListLibraryAgentsQueryKey(),
+      });
+
       completeStep("BUILDER_SAVE_AGENT");
     } catch (error) {
       const errorMessage =

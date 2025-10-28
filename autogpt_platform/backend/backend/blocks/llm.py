@@ -104,8 +104,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
-    CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
-    CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
     AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
@@ -224,12 +222,6 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-3-7-sonnet-20250219
-    LlmModel.CLAUDE_3_5_SONNET: ModelMetadata(
-        "anthropic", 200000, 8192
-    ),  # claude-3-5-sonnet-20241022
-    LlmModel.CLAUDE_3_5_HAIKU: ModelMetadata(
-        "anthropic", 200000, 8192
-    ),  # claude-3-5-haiku-20241022
     LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
         "anthropic", 200000, 4096
     ),  # claude-3-haiku-20240307
@@ -1562,7 +1554,9 @@ class AIConversationBlock(AIBlockBase):
                 ("prompt", list),
             ],
             test_mock={
-                "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                "llm_call": lambda *args, **kwargs: dict(
+                    response="The 2020 World Series was played at Globe Life Field in Arlington, Texas."
+                )
             },
         )
 
@@ -1591,7 +1585,7 @@ class AIConversationBlock(AIBlockBase):
             ),
             credentials=credentials,
         )
-        yield "response", response
+        yield "response", response["response"]
         yield "prompt", self.prompt
 
 
