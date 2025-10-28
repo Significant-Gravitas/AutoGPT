@@ -370,7 +370,7 @@ async def _enqueue_next_nodes(
 
             # Incomplete input data, skip queueing the execution.
             if not next_node_input:
-                log_metadata.warning(f"Skipped queueing {suffix}")
+                log_metadata.info(f"Skipped queueing {suffix}")
                 return enqueued_executions
 
             # Input is complete, enqueue the execution.

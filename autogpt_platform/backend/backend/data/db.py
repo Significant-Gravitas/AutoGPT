@@ -1,6 +1,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
@@ -82,17 +83,19 @@ async def disconnect():
         raise ConnectionError("Failed to disconnect from Prisma.")
 
 
-# Transaction timeout constant (in milliseconds)
-TRANSACTION_TIMEOUT = 30000  # 30 seconds - Increased from 15s to prevent timeout errors during graph creation under load
+# Transaction timeout constant:
+# increased from 15s to prevent timeout errors during graph creation under load.
+TRANSACTION_TIMEOUT = timedelta(seconds=30)
 
 
 @asynccontextmanager
-async def transaction(timeout: int = TRANSACTION_TIMEOUT):
+async def transaction(timeout: timedelta = TRANSACTION_TIMEOUT):
     """
     Create a database transaction with optional timeout.
 
     Args:
-        timeout: Transaction timeout in milliseconds. If None, uses TRANSACTION_TIMEOUT (15s).
+        timeout: Transaction timeout as a timedelta.
+            Defaults to `TRANSACTION_TIMEOUT` (30s).
     """
     async with prisma.tx(timeout=timeout) as tx:
         yield tx
