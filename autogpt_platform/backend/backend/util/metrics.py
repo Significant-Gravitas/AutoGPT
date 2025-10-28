@@ -4,7 +4,6 @@ from typing import Literal
 
 import sentry_sdk
 from pydantic import BaseModel, Field, SecretStr
-from pydantic import SecretStr
 from sentry_sdk.integrations import DidNotEnable
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
@@ -75,7 +74,7 @@ async def send_allquiet_alert(alert: AllQuietAlert):
 
     from backend.util.request import Requests
 
-    response = await Requests().post(hook_url, json=alert.model_dump())
+    await Requests().post(hook_url, json=alert.model_dump())
 
 
 async def discord_send_alert(
