@@ -48,12 +48,12 @@ export async function testHandleFetchError() {
     {
       status: 500,
       headers: { "content-type": "application/json" },
-    }
+    },
   );
   const error1 = await handleFetchError(jsonResponse);
   console.assert(
     error1.status === 500 && error1.response?.error === "Internal server error",
-    "Test 1 failed: JSON response"
+    "Test 1 failed: JSON response",
   );
 
   // Test 2: HTML response
@@ -66,7 +66,7 @@ export async function testHandleFetchError() {
     error2.status === 502 &&
       typeof error2.response === "string" &&
       error2.response.includes("Server Error"),
-    "Test 2 failed: HTML response"
+    "Test 2 failed: HTML response",
   );
 
   // Test 3: Mismatched content-type (claims JSON but is HTML)
@@ -76,13 +76,13 @@ export async function testHandleFetchError() {
     {
       status: 502,
       headers: { "content-type": "application/json" }, // Claims JSON but isn't
-    }
+    },
   );
   try {
     const error3 = await handleFetchError(mismatchedResponse);
     console.assert(
       error3.status === 502 && error3.response === null,
-      "Test 3 failed: Mismatched content-type should return null response"
+      "Test 3 failed: Mismatched content-type should return null response",
     );
     console.log("✓ All tests passed!");
   } catch (e) {
