@@ -415,16 +415,33 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
+        # Separate trigger inputs from regular graph inputs
+        trigger_node_id = trigger_node.id.split("-")[0]
+        trigger_params_key = f"_trigger_params_{trigger_node_id}"
+
+        # Extract trigger parameters and regular inputs
+        graph_inputs = preset.inputs.copy()
+        trigger_inputs = graph_inputs.pop(trigger_params_key, None)
+        if trigger_inputs is None:
+            # We can't run this, so log a warning and skip
+            logger.warning(
+                f"Preset #{preset.id} is missing trigger parameters for node "
+                f"#{trigger_node.id}"
+            )
+            continue
+
+        # Add webhook payload to trigger inputs
+        trigger_inputs["payload"] = payload
+
         executions.append(
             add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=preset.graph_id,
                 preset_id=preset.id,
                 graph_version=preset.graph_version,
+                inputs=graph_inputs,
                 graph_credentials_inputs=preset.credentials,
-                nodes_input_masks={
-                    trigger_node.id: {**preset.inputs, "payload": payload}
-                },
+                nodes_input_masks={trigger_node.id: trigger_inputs},
             )
         )
     asyncio.gather(*executions)

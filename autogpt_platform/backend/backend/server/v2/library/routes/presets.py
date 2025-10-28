@@ -187,6 +187,13 @@ async def setup_trigger(
             detail=f"Could not set up webhook: {feedback}",
         )
 
+    # Combine trigger config with graph inputs using the new convention
+    trigger_node_id = trigger_node.id.split("-")[0]
+    trigger_params_key = f"_trigger_params_{trigger_node_id}"
+
+    preset_inputs = params.constant_inputs.copy()
+    preset_inputs[trigger_params_key] = trigger_config_with_credentials
+
     new_preset = await db.create_preset(
         user_id=user_id,
         preset=models.LibraryAgentPresetCreatable(
@@ -194,7 +201,7 @@ async def setup_trigger(
             graph_version=params.graph_version,
             name=params.name,
             description=params.description,
-            inputs=trigger_config_with_credentials,
+            inputs=preset_inputs,
             credentials=params.agent_credentials,
             webhook_id=new_webhook.id,
             is_active=True,
@@ -246,8 +253,19 @@ async def update_preset(
     if (trigger_node := graph.webhook_input_node) and (
         preset.inputs is not None and preset.credentials is not None
     ):
+        # Extract trigger config from the special key if it exists
+        trigger_node_id = trigger_node.id.split("-")[0]
+        trigger_params_key = f"_trigger_params_{trigger_node_id}"
+
+        trigger_config = preset.inputs.get(trigger_params_key, None)
+        if trigger_config is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing trigger configuration for node {trigger_node.id}",
+            )
+
         trigger_config_with_credentials = {
-            **preset.inputs,
+            **trigger_config,
             **(
                 make_node_credentials_input_map(graph, preset.credentials).get(
                     trigger_node.id

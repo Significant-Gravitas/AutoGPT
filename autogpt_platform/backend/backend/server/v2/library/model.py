@@ -253,6 +253,9 @@ class TriggeredPresetSetupRequest(pydantic.BaseModel):
     graph_version: int
 
     trigger_config: dict[str, Any]
+    constant_inputs: dict[str, Any] = pydantic.Field(
+        default_factory=dict, description="Regular graph input values"
+    )
     agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
         default_factory=dict
     )
