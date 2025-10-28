@@ -362,7 +362,7 @@ class TestLLMStatsTracking:
         assert block.execution_stats.llm_call_count == 1
 
         # Check output
-        assert outputs["response"] == {"response": "AI response to conversation"}
+        assert outputs["response"] == "AI response to conversation"
 
     @pytest.mark.asyncio
     async def test_ai_list_generator_with_retries(self):

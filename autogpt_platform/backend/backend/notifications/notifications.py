@@ -1017,10 +1017,14 @@ class NotificationManager(AppService):
             logger.exception(f"Fatal error in consumer for {queue_name}: {e}")
             raise
 
-    @continuous_retry()
     def run_service(self):
-        self.run_and_wait(self._run_service())
+        # Queue the main _run_service task
+        asyncio.run_coroutine_threadsafe(self._run_service(), self.shared_event_loop)
 
+        # Start the main event loop
+        super().run_service()
+
+    @continuous_retry()
     async def _run_service(self):
         logger.info(f"[{self.service_name}] ⏳ Configuring RabbitMQ...")
         self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.rabbitmq_config)
@@ -1086,9 +1090,10 @@ class NotificationManager(AppService):
     def cleanup(self):
         """Cleanup service resources"""
         self.running = False
-        super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
+        logger.info("⏳ Disconnecting RabbitMQ...")
         self.run_and_wait(self.rabbitmq_service.disconnect())
+
+        super().cleanup()
 
 
 class NotificationManagerClient(AppServiceClient):

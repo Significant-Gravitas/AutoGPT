@@ -10,9 +10,9 @@ import OnboardingAgentCard from "../components/OnboardingAgentCard";
 import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
-import { finishOnboarding } from "../6-congrats/actions";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
+import { finishOnboarding } from "../6-congrats/actions";
 
 export default function Page() {
   const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
@@ -24,6 +24,7 @@ export default function Page() {
       if (agents.length < 2) {
         finishOnboarding();
       }
+
       setAgents(agents);
     });
   }, [api, setAgents]);
