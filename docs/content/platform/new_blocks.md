@@ -20,13 +20,13 @@ Follow these steps to create and test a new block:
    Every block should contain the following:
 
    ```python
-   from backend.data.block import Block, BlockSchema, BlockOutput
+   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    ```
 
    Example for the Wikipedia summary block:
 
    ```python
-   from backend.data.block import Block, BlockSchema, BlockOutput
+   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    from backend.utils.get_request import GetRequest
    import requests
 
@@ -47,7 +47,6 @@ Follow these steps to create and test a new block:
 
    class Output(BlockSchemaOutput):
        summary: str  # The summary of the topic from Wikipedia
-       error: str  # Any error message if the request fails, error field needs to be named `error`.
    ```
 
 4. **Implement the `__init__` method, including test data and mocks:**
@@ -173,7 +172,7 @@ from backend.data.model import (
     Credentials,
 )
 
-from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 

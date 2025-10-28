@@ -13,6 +13,7 @@ from typing import (
     Optional,
     Sequence,
     Type,
+    TypeAlias,
     TypeVar,
     cast,
     get_origin,
@@ -575,6 +576,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         ]
 
 
+# Type alias for any block with standard input/output schemas
+AnyBlockSchema: TypeAlias = Block[BlockSchemaInput, BlockSchemaOutput]
+
+
 # ======================= Block Helper Functions ======================= #
 
 
@@ -585,7 +590,7 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 def is_block_auth_configured(
-    block_cls: type["Block[BlockSchemaInput, BlockSchemaOutput]"],
+    block_cls: type[AnyBlockSchema],
 ) -> bool:
     """
     Check if a block has a valid authentication method configured at runtime.
@@ -746,7 +751,7 @@ async def initialize_blocks() -> None:
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
-def get_block(block_id: str) -> Block[BlockSchemaInput, BlockSchemaOutput] | None:
+def get_block(block_id: str) -> AnyBlockSchema | None:
     cls = get_blocks().get(block_id)
     return cls() if cls else None
 
