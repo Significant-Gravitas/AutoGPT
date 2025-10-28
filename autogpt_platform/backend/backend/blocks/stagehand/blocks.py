@@ -1,6 +1,7 @@
 import logging
 import signal
 import threading
+import warnings
 from contextlib import contextmanager
 from enum import Enum
 
@@ -25,6 +26,9 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+
+# Suppress false positive cleanup warning of litellm (a dependency of stagehand)
+warnings.filterwarnings("ignore", module="litellm.llms.custom_httpx")
 
 # Store the original method
 original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers
