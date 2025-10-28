@@ -1452,7 +1452,7 @@ class AITextSummarizerBlock(AIBlockBase):
         )
 
         summary = llm_response["summary"]
-        
+
         # Validate that the LLM returned a string and not a list or other type
         if not isinstance(summary, str):
             raise ValueError(
@@ -1462,7 +1462,7 @@ class AITextSummarizerBlock(AIBlockBase):
                 f"as a request for a list format instead of a single text summary. "
                 f"Received value: {summary}"
             )
-        
+
         return summary
 
     async def _combine_summaries(
@@ -1486,7 +1486,7 @@ class AITextSummarizerBlock(AIBlockBase):
             )
 
             final_summary = llm_response["final_summary"]
-            
+
             # Validate that the LLM returned a string and not a list or other type
             if not isinstance(final_summary, str):
                 raise ValueError(
@@ -1496,7 +1496,7 @@ class AITextSummarizerBlock(AIBlockBase):
                     f"as a request for a list format instead of a single text summary. "
                     f"Received value: {final_summary}"
                 )
-            
+
             return final_summary
         else:
             # If combined summaries are still too long, recursively summarize
