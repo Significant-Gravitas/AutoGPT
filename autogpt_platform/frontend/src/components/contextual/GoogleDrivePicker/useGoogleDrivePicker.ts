@@ -168,7 +168,7 @@ export function useGoogleDrivePicker(options?: UseGoogleDrivePickerOptions) {
     isReady,
     isLoading,
     isAuthInProgress,
-    openPicker,
+    handleOpenPicker: openPicker,
   };
 }
 
