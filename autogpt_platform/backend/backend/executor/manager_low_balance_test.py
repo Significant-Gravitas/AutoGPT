@@ -54,13 +54,16 @@ async def test_handle_low_balance_threshold_crossing(server: SpinTestServer):
         assert isinstance(notification_call.data, LowBalanceData)
         assert notification_call.data.current_balance == current_balance
 
-        # Verify Discord alert was sent
-        mock_client.discord_system_alert.assert_called_once()
-        discord_message = mock_client.discord_system_alert.call_args[0][0]
+        # Verify system alert was sent (includes Discord and AllQuiet)
+        mock_client.system_alert.assert_called_once()
+        alert_call = mock_client.system_alert.call_args
+        discord_message = alert_call[1]["content"]
         assert "Low Balance Alert" in discord_message
         assert "test@example.com" in discord_message
         assert "$4.00" in discord_message
         assert "$6.00" in discord_message
+        # Verify AllQuiet correlation ID is set
+        assert alert_call[1]["correlation_id"] == f"low_balance_{user_id}"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -103,7 +106,7 @@ async def test_handle_low_balance_no_notification_when_not_crossing(
 
         # Verify no notification was sent
         mock_queue_notif.assert_not_called()
-        mock_client.discord_system_alert.assert_not_called()
+        mock_client.system_alert.assert_not_called()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -146,4 +149,4 @@ async def test_handle_low_balance_no_duplicate_when_already_below(
 
         # Verify no notification was sent (user was already below threshold)
         mock_queue_notif.assert_not_called()
-        mock_client.discord_system_alert.assert_not_called()
+        mock_client.system_alert.assert_not_called()
