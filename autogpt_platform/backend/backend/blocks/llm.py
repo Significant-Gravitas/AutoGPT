@@ -1451,7 +1451,19 @@ class AITextSummarizerBlock(AIBlockBase):
             credentials=credentials,
         )
 
-        return llm_response["summary"]
+        summary = llm_response["summary"]
+        
+        # Validate that the LLM returned a string and not a list or other type
+        if not isinstance(summary, str):
+            raise ValueError(
+                f"LLM generation failed: Expected a string summary, but received {type(summary).__name__}. "
+                f"The language model incorrectly formatted its response. "
+                f"This may be due to the model interpreting the '{input_data.style}' style "
+                f"as a request for a list format instead of a single text summary. "
+                f"Received value: {summary}"
+            )
+        
+        return summary
 
     async def _combine_summaries(
         self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
@@ -1473,7 +1485,19 @@ class AITextSummarizerBlock(AIBlockBase):
                 credentials=credentials,
             )
 
-            return llm_response["final_summary"]
+            final_summary = llm_response["final_summary"]
+            
+            # Validate that the LLM returned a string and not a list or other type
+            if not isinstance(final_summary, str):
+                raise ValueError(
+                    f"LLM generation failed: Expected a string final summary, but received {type(final_summary).__name__}. "
+                    f"The language model incorrectly formatted its response. "
+                    f"This may be due to the model interpreting the '{input_data.style}' style "
+                    f"as a request for a list format instead of a single text summary. "
+                    f"Received value: {final_summary}"
+                )
+            
+            return final_summary
         else:
             # If combined summaries are still too long, recursively summarize
             block = AITextSummarizerBlock()
