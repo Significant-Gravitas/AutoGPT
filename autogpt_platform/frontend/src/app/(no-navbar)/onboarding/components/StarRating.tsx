@@ -46,7 +46,7 @@ export default function StarRating({
       )}
     >
       {/* Display numerical rating */}
-      <span className="mr-1 mt-1">{roundedRating}</span>
+      <span className="mr-1 mt-0.5">{roundedRating}</span>
 
       {/* Display stars */}
       {stars.map((starType, index) => {
