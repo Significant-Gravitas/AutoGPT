@@ -623,13 +623,15 @@ async def _get_child_executions(parent_exec_id: str) -> list["GraphExecution"]:
     Returns:
         List of child graph executions
     """
-    from backend.data import execution as execution_db_module
     from backend.data.db import prisma
 
-    if not prisma.is_connected():
+    if prisma.is_connected():
+        return await execution_db.get_child_graph_executions(parent_exec_id)
+    else:
+        # Database manager doesn't support child execution queries yet
+        # In distributed mode, cascading stop is less critical since executions
+        # are managed by the central database service
         return []
-
-    return await execution_db_module.get_child_graph_executions(parent_exec_id)
 
 
 async def stop_graph_execution(
