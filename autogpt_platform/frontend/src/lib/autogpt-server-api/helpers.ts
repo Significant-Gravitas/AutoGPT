@@ -101,7 +101,7 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
   return new ApiError(
     errorMessage || "Request failed",
     response.status,
-    responseData
+    responseData,
   );
 }
 
