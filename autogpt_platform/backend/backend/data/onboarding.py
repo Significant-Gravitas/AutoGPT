@@ -315,6 +315,11 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     agent_points.sort(key=lambda x: x[1], reverse=True)
     recommended_agents = [agent for agent, _ in agent_points[:2]]
 
+    # Only return agents if we have at least 2 as frontend expects at least 2 agents
+    # This prevents the frontend from trying to display a partial selection
+    if len(recommended_agents) < 2:
+        return []
+
     return [
         StoreAgentDetails(
             store_listing_version_id=agent.storeListingVersionId,
