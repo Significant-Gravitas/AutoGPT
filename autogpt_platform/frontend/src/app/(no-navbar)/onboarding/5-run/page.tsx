@@ -1,26 +1,25 @@
 "use client";
 
-import OnboardingButton from "../components/OnboardingButton";
-import { OnboardingHeader, OnboardingStep } from "../components/OnboardingStep";
-import { OnboardingText } from "../components/OnboardingText";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/__legacy__/ui/card";
-import type { InputValues } from "./types";
-import { Play } from "lucide-react";
-import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { isRunDisabled } from "./helpers";
-import { useOnboardingRunStep } from "./useOnboardingRunStep";
+import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
+import { Play } from "lucide-react";
+import OnboardingButton from "../components/OnboardingButton";
+import { OnboardingHeader, OnboardingStep } from "../components/OnboardingStep";
+import { OnboardingText } from "../components/OnboardingText";
+import { AgentOnboardingCredentials } from "./components/AgentOnboardingCredentials/AgentOnboardingCredentials";
 import { RunAgentHint } from "./components/RunAgentHint";
 import { SelectedAgentCard } from "./components/SelectedAgentCard";
-import { AgentOnboardingCredentials } from "./components/AgentOnboardingCredentials/AgentOnboardingCredentials";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
-import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
+import { isRunDisabled } from "./helpers";
+import type { InputValues } from "./types";
+import { useOnboardingRunStep } from "./useOnboardingRunStep";
 
 export default function Page() {
   const {
