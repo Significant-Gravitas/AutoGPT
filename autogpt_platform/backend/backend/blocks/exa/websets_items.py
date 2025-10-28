@@ -18,6 +18,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import ExaApiUrls, build_headers, yield_paginated_results
 from ._config import exa
 
 # Using type alias for flexible webset item structure
@@ -77,10 +78,8 @@ class ExaGetWebsetItemBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items/{input_data.item_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_item(input_data.webset_id, input_data.item_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().get(url, headers=headers)
         data = response.json()
@@ -181,10 +180,8 @@ class ExaListWebsetItemsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_items(input_data.webset_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         params: dict[str, Any] = {
             "limit": input_data.limit,
@@ -201,20 +198,14 @@ class ExaListWebsetItemsBlock(Block):
             response = await Requests().get(url, headers=headers, params=params)
             items_data = response.json()
 
-        items = items_data.get("data", [])
         pagination = items_data.get("pagination", {})
 
-        # Yield the full list
-        yield "items", items
+        # Yield paginated results using helper
+        for key, value in yield_paginated_results(items_data, "items", "item"):
+            yield key, value
 
-        # Also yield individual items for easier chaining
-        for item in items:
-            yield "item", item
-
-        # Pagination metadata
+        # Yield total count from pagination
         yield "total_count", pagination.get("total")
-        yield "has_more", items_data.get("hasMore", False)
-        yield "next_cursor", items_data.get("nextCursor")
 
         # Let all exceptions propagate naturally
 
@@ -287,10 +278,8 @@ class ExaDeleteWebsetItemBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items/{input_data.item_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_item(input_data.webset_id, input_data.item_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().delete(url, headers=headers)
 
@@ -371,18 +360,17 @@ class ExaBulkWebsetItemsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         all_items = []
         cursor = None
         has_more = True
         batch_size = min(100, input_data.max_items)  # API limit per request
+        data: dict[str, Any] = {}  # Initialize to handle empty websets
 
         while has_more and len(all_items) < input_data.max_items:
             # Build URL and params for this batch
-            url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
+            url = ExaApiUrls.webset_items(input_data.webset_id)
             params: dict[str, Any] = {
                 "limit": min(batch_size, input_data.max_items - len(all_items)),
             }
@@ -490,12 +478,10 @@ class ExaWebsetItemsSummaryBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         # First get webset details
-        webset_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
+        webset_url = ExaApiUrls.webset(input_data.webset_id)
         webset_response = await Requests().get(webset_url, headers=headers)
         webset_data = webset_response.json()
 
@@ -515,10 +501,9 @@ class ExaWebsetItemsSummaryBlock(Block):
 
         # Get sample items if requested
         sample_items = []
+        items_data: dict[str, Any] = {}
         if input_data.sample_size > 0:
-            items_url = (
-                f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
-            )
+            items_url = ExaApiUrls.webset_items(input_data.webset_id)
             params = {"limit": input_data.sample_size}
             items_response = await Requests().get(
                 items_url, headers=headers, params=params
@@ -527,7 +512,7 @@ class ExaWebsetItemsSummaryBlock(Block):
             sample_items = items_data.get("data", [])
 
         # Calculate verification stats from sample
-        verification_stats = {}
+        verification_stats: dict[str, int] = {}
         if sample_items:
             for item in sample_items:
                 status = item.get("verificationStatus", "unknown")

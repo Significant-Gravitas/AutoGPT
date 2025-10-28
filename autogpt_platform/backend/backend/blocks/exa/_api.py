@@ -344,8 +344,6 @@ async def poll_enrichment_until_complete(
         headers=headers,
         is_complete=lambda data: data.get("status")
         in ["completed", "failed", "cancelled"],
-        extract_result=lambda data: data.get("progress", {}).get(
-            "processedItems", 0
-        ),
+        extract_result=lambda data: data.get("progress", {}).get("processedItems", 0),
         timeout=timeout,
     )

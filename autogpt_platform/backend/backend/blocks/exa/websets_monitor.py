@@ -19,6 +19,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import ExaApiUrls, build_headers, yield_paginated_results
 from ._config import exa
 
 
@@ -186,11 +187,10 @@ class ExaCreateMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/websets/v0/monitors"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.monitors()
+        headers = build_headers(
+            credentials.api_key.get_secret_value(), include_content_type=True
+        )
 
         # Build the payload
         payload = {
@@ -316,10 +316,8 @@ class ExaGetMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/monitors/{input_data.monitor_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.monitor(input_data.monitor_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().get(url, headers=headers)
         data = response.json()
@@ -481,21 +479,14 @@ class ExaDeleteMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/monitors/{input_data.monitor_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.monitor(input_data.monitor_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
-        response = await Requests().delete(url, headers=headers)
+        await Requests().delete(url, headers=headers)
 
-        if response.status_code in [200, 204]:
-            yield "monitor_id", input_data.monitor_id
-            yield "success", "true"
-        else:
-            data = response.json()
-            yield "monitor_id", input_data.monitor_id
-            yield "success", "false"
-            yield "error", data.get("message", "Deletion failed")
+        # API returns 204 No Content on successful deletion
+        yield "monitor_id", input_data.monitor_id
+        yield "success", "true"
 
         # Let all exceptions propagate naturally
         # The API will return appropriate HTTP errors for invalid operations
@@ -559,10 +550,8 @@ class ExaListMonitorsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/websets/v0/monitors"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.monitors()
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         params: dict[str, Any] = {
             "limit": input_data.limit,
@@ -575,16 +564,8 @@ class ExaListMonitorsBlock(Block):
         response = await Requests().get(url, headers=headers, params=params)
         data = response.json()
 
-        monitors = data.get("data", [])
-
-        # Yield the full list
-        yield "monitors", monitors
-
-        # Also yield individual monitors for easier chaining
-        for monitor in monitors:
-            yield "monitor", monitor
-
-        yield "has_more", data.get("hasMore", False)
-        yield "next_cursor", data.get("nextCursor")
+        # Yield paginated results using helper
+        for key, value in yield_paginated_results(data, "monitors", "monitor"):
+            yield key, value
 
         # Let all exceptions propagate naturally

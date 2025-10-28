@@ -1,4 +1,3 @@
-import asyncio
 import time
 from datetime import datetime
 from enum import Enum
@@ -39,6 +38,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import ExaApiUrls, build_headers, get_item_count, poll_webset_until_idle
 from ._config import exa
 
 
@@ -431,10 +431,9 @@ class ExaCreateWebsetBlock(Block):
 
             # If wait_for_initial_results is True, poll for completion
             if input_data.wait_for_initial_results and search_params:
-                item_count = await self._poll_for_completion(
-                    webset_result.id,
-                    credentials.api_key.get_secret_value(),
-                    input_data.polling_timeout,
+                headers = build_headers(credentials.api_key.get_secret_value())
+                item_count = await poll_webset_until_idle(
+                    webset_result.id, headers, input_data.polling_timeout
                 )
                 completion_time = time.time() - start_time
 
@@ -448,57 +447,6 @@ class ExaCreateWebsetBlock(Block):
             # Re-raise user input validation errors
             raise ValueError(f"Invalid webset configuration: {e}") from e
         # Let all other exceptions (network, auth, rate limits) propagate naturally
-
-    async def _poll_for_completion(
-        self, webset_id: str, api_key: str, timeout: int
-    ) -> int:
-        """Poll webset status until it becomes idle or times out."""
-        start_time = time.time()
-        interval = 5  # Start with 5 second intervals
-        max_interval = 30  # Cap at 30 seconds
-
-        url = f"https://api.exa.ai/websets/v0/websets/{webset_id}"
-        headers = {
-            "x-api-key": api_key,
-        }
-
-        while time.time() - start_time < timeout:
-            try:
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
-
-                status = data.get("status", "")
-
-                # Check if status is idle (search complete)
-                if status == "idle":
-                    # Count items
-                    items_url = (
-                        f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-                    )
-                    items_response = await Requests().get(
-                        items_url, headers=headers, params={"limit": 1}
-                    )
-                    items_data = items_response.json()
-
-                    # Get total count from pagination metadata
-                    total_count = len(items_data.get("data", []))
-
-                    # If there's pagination info, use that for more accurate count
-                    if "pagination" in items_data:
-                        total_count = items_data["pagination"].get("total", total_count)
-
-                    return total_count
-
-                # Wait before next poll with exponential backoff
-                await asyncio.sleep(interval)
-                interval = min(interval * 1.5, max_interval)
-
-            except Exception:
-                # Continue polling on errors
-                await asyncio.sleep(interval)
-
-        # Timeout reached, return whatever we have
-        return 0
 
 
 class ExaUpdateWebsetBlock(Block):
@@ -693,10 +641,8 @@ class ExaGetWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset(input_data.webset_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().get(url, headers=headers)
         data = response.json()
@@ -753,10 +699,8 @@ class ExaDeleteWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset(input_data.webset_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().delete(url, headers=headers)
         data = response.json()
@@ -807,10 +751,8 @@ class ExaCancelWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/cancel"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_cancel(input_data.webset_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().post(url, headers=headers)
         data = response.json()
@@ -882,20 +824,19 @@ class ExaPreviewWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/websets/v0/websets/preview"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_preview()
+        headers = build_headers(
+            credentials.api_key.get_secret_value(), include_content_type=True
+        )
 
         # Build the payload
-        payload = {
+        payload: dict[str, Any] = {
             "query": input_data.query,
         }
 
         # Add entity configuration if provided
         if input_data.entity_type:
-            entity = {"type": input_data.entity_type.value}
+            entity: dict[str, Any] = {"type": input_data.entity_type.value}
             if (
                 input_data.entity_type == SearchEntityType.CUSTOM
                 and input_data.entity_description
@@ -1008,32 +949,18 @@ class ExaWebsetStatusBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         # Get webset details
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
+        url = ExaApiUrls.webset(input_data.webset_id)
         response = await Requests().get(url, headers=headers)
         data = response.json()
 
         status = data.get("status", "unknown")
         is_processing = status in ["running", "pending"]
 
-        # Count items
-        items_url = (
-            f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
-        )
-        items_response = await Requests().get(
-            items_url, headers=headers, params={"limit": 1}
-        )
-        items_data = items_response.json()
-
-        item_count = 0
-        if "pagination" in items_data:
-            item_count = items_data["pagination"].get("total", 0)
-        elif "data" in items_data:
-            item_count = len(items_data["data"])
+        # Count items using helper
+        item_count = await get_item_count(input_data.webset_id, headers)
 
         # Count searches, enrichments, monitors
         search_count = len(data.get("searches", []))
@@ -1134,12 +1061,10 @@ class ExaWebsetSummaryBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         # Get webset details
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
+        url = ExaApiUrls.webset(input_data.webset_id)
         response = await Requests().get(url, headers=headers)
         data = response.json()
 
@@ -1160,9 +1085,7 @@ class ExaWebsetSummaryBlock(Block):
         total_items = 0
 
         if input_data.include_sample_items and input_data.sample_size > 0:
-            items_url = (
-                f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
-            )
+            items_url = ExaApiUrls.webset_items(input_data.webset_id)
             items_response = await Requests().get(
                 items_url, headers=headers, params={"limit": input_data.sample_size}
             )

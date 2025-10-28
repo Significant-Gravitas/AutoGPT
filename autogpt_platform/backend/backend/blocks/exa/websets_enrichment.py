@@ -6,7 +6,7 @@ allowing extraction of additional structured data from existing items.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -19,6 +19,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import ExaApiUrls, build_headers, poll_enrichment_until_complete
 from ._config import exa
 
 
@@ -60,7 +61,7 @@ class ExaCreateEnrichmentBlock(Block):
         options: list[str] = SchemaField(
             default_factory=list,
             description="Available options when format is 'options'",
-            placeholder=["B2B", "B2C", "Both", "Unknown"],
+            placeholder='["B2B", "B2C", "Both", "Unknown"]',
             advanced=True,
         )
         apply_to_existing: bool = SchemaField(
@@ -127,16 +128,13 @@ class ExaCreateEnrichmentBlock(Block):
     ) -> BlockOutput:
         import time
 
-        url = (
-            f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments"
+        url = ExaApiUrls.webset_enrichments(input_data.webset_id)
+        headers = build_headers(
+            credentials.api_key.get_secret_value(), include_content_type=True
         )
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
 
         # Build the payload
-        payload = {
+        payload: dict[str, Any] = {
             "description": input_data.description,
             "format": input_data.format.value,
         }
@@ -167,10 +165,10 @@ class ExaCreateEnrichmentBlock(Block):
 
             # If wait_for_completion is True and apply_to_existing is True, poll for completion
             if input_data.wait_for_completion and input_data.apply_to_existing:
-                items_enriched = await self._poll_for_completion(
+                items_enriched = await poll_enrichment_until_complete(
                     input_data.webset_id,
                     enrichment_id,
-                    credentials.api_key.get_secret_value(),
+                    headers,
                     input_data.polling_timeout,
                 )
                 completion_time = time.time() - start_time
@@ -197,47 +195,6 @@ class ExaCreateEnrichmentBlock(Block):
             # Re-raise user input validation errors
             raise ValueError(f"Failed to create enrichment: {e}") from e
         # Let all other exceptions propagate naturally
-
-    async def _poll_for_completion(
-        self, webset_id: str, enrichment_id: str, api_key: str, timeout: int
-    ) -> int:
-        """Poll enrichment status until it completes or times out."""
-        import asyncio
-        import time
-
-        start_time = time.time()
-        interval = 5
-        max_interval = 30
-
-        url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/enrichments/{enrichment_id}"
-        headers = {"x-api-key": api_key}
-
-        while time.time() - start_time < timeout:
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
-
-            status = data.get("status", "")
-
-            if status in ["completed", "failed", "canceled"]:
-                # Try to count enriched items
-                items_url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-                items_response = await Requests().get(
-                    items_url, headers=headers, params={"limit": 100}
-                )
-                items_data = items_response.json()
-
-                enriched_count = 0
-                for item in items_data.get("data", []):
-                    enrichments = item.get("enrichments", {})
-                    if enrichment_id in enrichments:
-                        enriched_count += 1
-
-                return enriched_count
-
-            await asyncio.sleep(interval)
-            interval = min(interval * 1.5, max_interval)
-
-        return 0
 
 
 class ExaGetEnrichmentBlock(Block):
@@ -298,10 +255,10 @@ class ExaGetEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments/{input_data.enrichment_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_enrichment(
+            input_data.webset_id, input_data.enrichment_id
+        )
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().get(url, headers=headers)
         data = response.json()
@@ -464,22 +421,16 @@ class ExaDeleteEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments/{input_data.enrichment_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_enrichment(
+            input_data.webset_id, input_data.enrichment_id
+        )
+        headers = build_headers(credentials.api_key.get_secret_value())
 
-        response = await Requests().delete(url, headers=headers)
+        await Requests().delete(url, headers=headers)
 
-        # API typically returns 204 No Content on successful deletion
-        if response.status_code in [200, 204]:
-            yield "enrichment_id", input_data.enrichment_id
-            yield "success", "true"
-        else:
-            data = response.json()
-            yield "enrichment_id", input_data.enrichment_id
-            yield "success", "false"
-            yield "error", data.get("message", "Deletion failed")
+        # API returns 204 No Content on successful deletion
+        yield "enrichment_id", input_data.enrichment_id
+        yield "success", "true"
 
         # Let all exceptions propagate naturally
         # The API will return appropriate HTTP errors for invalid operations
@@ -531,19 +482,17 @@ class ExaCancelEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments/{input_data.enrichment_id}/cancel"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_enrichment_cancel(
+            input_data.webset_id, input_data.enrichment_id
+        )
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().post(url, headers=headers)
         data = response.json()
 
         # Try to estimate how many items were enriched before cancellation
         items_enriched = 0
-        items_url = (
-            f"https://api.exa.AI/websets/v0/websets/{input_data.webset_id}/items"
-        )
+        items_url = ExaApiUrls.webset_items(input_data.webset_id)
         items_response = await Requests().get(
             items_url, headers=headers, params={"limit": 100}
         )

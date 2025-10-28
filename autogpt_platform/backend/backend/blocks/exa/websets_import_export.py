@@ -22,6 +22,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import ExaApiUrls, build_headers, yield_paginated_results
 from ._config import exa
 
 
@@ -134,11 +135,10 @@ class ExaCreateImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/websets/v0/imports"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.imports()
+        headers = build_headers(
+            credentials.api_key.get_secret_value(), include_content_type=True
+        )
 
         try:
             # Parse CSV data to count rows
@@ -251,10 +251,8 @@ class ExaGetImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/imports/{input_data.import_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.import_(input_data.import_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().get(url, headers=headers)
         data = response.json()
@@ -332,10 +330,8 @@ class ExaListImportsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/websets/v0/imports"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.imports()
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         params: dict[str, Any] = {
             "limit": input_data.limit,
@@ -346,17 +342,9 @@ class ExaListImportsBlock(Block):
         response = await Requests().get(url, headers=headers, params=params)
         data = response.json()
 
-        imports = data.get("data", [])
-
-        # Yield the full list
-        yield "imports", imports
-
-        # Also yield individual imports for easier chaining
-        for import_item in imports:
-            yield "import_item", import_item
-
-        yield "has_more", data.get("hasMore", False)
-        yield "next_cursor", data.get("nextCursor")
+        # Yield paginated results using helper
+        for key, value in yield_paginated_results(data, "imports", "import_item"):
+            yield key, value
 
         # Let all exceptions propagate naturally
 
@@ -396,21 +384,14 @@ class ExaDeleteImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/imports/{input_data.import_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.import_(input_data.import_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
-        response = await Requests().delete(url, headers=headers)
+        await Requests().delete(url, headers=headers)
 
-        if response.status_code in [200, 204]:
-            yield "import_id", input_data.import_id
-            yield "success", "true"
-        else:
-            data = response.json()
-            yield "import_id", input_data.import_id
-            yield "success", "false"
-            yield "error", data.get("message", "Deletion failed")
+        # API returns 204 No Content on successful deletion
+        yield "import_id", input_data.import_id
+        yield "success", "true"
 
         # Let all exceptions propagate naturally
         # The API will return appropriate HTTP errors for invalid operations
@@ -494,19 +475,18 @@ class ExaExportWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         try:
             all_items = []
             cursor = None
             has_more = True
             batch_size = min(100, input_data.max_items)
+            data: dict[str, Any] = {}  # Initialize to handle empty websets
 
             # Fetch all items up to max_items
             while has_more and len(all_items) < input_data.max_items:
-                url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/items"
+                url = ExaApiUrls.webset_items(input_data.webset_id)
                 params: dict[str, Any] = {
                     "limit": min(batch_size, input_data.max_items - len(all_items)),
                 }

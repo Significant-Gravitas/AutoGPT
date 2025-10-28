@@ -6,7 +6,7 @@ including adding new searches, checking status, and canceling operations.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -19,6 +19,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import ExaApiUrls, build_headers, poll_search_until_complete
 from ._config import exa
 
 
@@ -182,11 +183,10 @@ class ExaCreateWebsetSearchBlock(Block):
     ) -> BlockOutput:
         import time
 
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_searches(input_data.webset_id)
+        headers = build_headers(
+            credentials.api_key.get_secret_value(), include_content_type=True
+        )
 
         # Build the payload
         payload = {
@@ -224,9 +224,9 @@ class ExaCreateWebsetSearchBlock(Block):
 
         # Add scope sources
         if input_data.scope_source_ids:
-            scope_list = []
+            scope_list: list[dict[str, Any]] = []
             for idx, src_id in enumerate(input_data.scope_source_ids):
-                scope_item = {"source": "import", "id": src_id}
+                scope_item: dict[str, Any] = {"source": "import", "id": src_id}
 
                 if input_data.scope_source_types and idx < len(
                     input_data.scope_source_types
@@ -237,7 +237,9 @@ class ExaCreateWebsetSearchBlock(Block):
                 if input_data.scope_relationships and idx < len(
                     input_data.scope_relationships
                 ):
-                    relationship = {"definition": input_data.scope_relationships[idx]}
+                    relationship: dict[str, Any] = {
+                        "definition": input_data.scope_relationships[idx]
+                    }
                     if input_data.scope_relationship_limits and idx < len(
                         input_data.scope_relationship_limits
                     ):
@@ -278,10 +280,10 @@ class ExaCreateWebsetSearchBlock(Block):
 
             # If wait_for_completion is True, poll for completion
             if input_data.wait_for_completion:
-                items_found = await self._poll_for_completion(
+                items_found = await poll_search_until_complete(
                     input_data.webset_id,
                     search_id,
-                    credentials.api_key.get_secret_value(),
+                    headers,
                     input_data.polling_timeout,
                 )
                 completion_time = time.time() - start_time
@@ -304,35 +306,6 @@ class ExaCreateWebsetSearchBlock(Block):
             # Re-raise user input validation errors
             raise ValueError(f"Failed to create search: {e}") from e
         # Let all other exceptions propagate naturally
-
-    async def _poll_for_completion(
-        self, webset_id: str, search_id: str, api_key: str, timeout: int
-    ) -> int:
-        """Poll search status until it completes or times out."""
-        import asyncio
-        import time
-
-        start_time = time.time()
-        interval = 5
-        max_interval = 30
-
-        url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/searches/{search_id}"
-        headers = {"x-api-key": api_key}
-
-        while time.time() - start_time < timeout:
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
-
-            status = data.get("status", "")
-            progress = data.get("progress", {})
-
-            if status in ["completed", "failed", "canceled"]:
-                return progress.get("found", 0)
-
-            await asyncio.sleep(interval)
-            interval = min(interval * 1.5, max_interval)
-
-        return 0
 
 
 class ExaGetWebsetSearchBlock(Block):
@@ -399,10 +372,8 @@ class ExaGetWebsetSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches/{input_data.search_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_search(input_data.webset_id, input_data.search_id)
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         response = await Requests().get(url, headers=headers)
         data = response.json()
@@ -499,16 +470,21 @@ class ExaCancelWebsetSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches/{input_data.search_id}/cancel"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        url = ExaApiUrls.webset_search_cancel(
+            input_data.webset_id, input_data.search_id
+        )
 
         # Add reason to payload if provided
         payload = {}
+        include_content_type = False
         if input_data.reason:
-            headers["Content-Type"] = "application/json"
+            include_content_type = True
             payload = {"reason": input_data.reason}
+
+        headers = build_headers(
+            credentials.api_key.get_secret_value(),
+            include_content_type=include_content_type,
+        )
 
         if payload:
             response = await Requests().post(url, headers=headers, json=payload)
@@ -522,10 +498,10 @@ class ExaCancelWebsetSearchBlock(Block):
             )
 
         # Get the search details to see how many items were found
-        search_url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches/{input_data.search_id}"
-        search_response = await Requests().get(
-            search_url, headers={"x-api-key": headers["x-api-key"]}
+        search_url = ExaApiUrls.webset_search(
+            input_data.webset_id, input_data.search_id
         )
+        search_response = await Requests().get(search_url, headers=headers)
         search_data = search_response.json()
 
         progress = search_data.get("progress", {})

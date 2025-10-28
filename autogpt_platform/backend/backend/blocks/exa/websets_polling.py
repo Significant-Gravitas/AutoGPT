@@ -20,6 +20,7 @@ from backend.sdk import (
     SchemaField,
 )
 
+from ._api import ExaApiUrls, build_headers, get_item_count
 from ._config import exa
 
 
@@ -110,14 +111,12 @@ class ExaWaitForWebsetBlock(Block):
     ) -> BlockOutput:
         start_time = time.time()
         interval = input_data.check_interval
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
 
         try:
             while time.time() - start_time < input_data.timeout:
                 # Get current webset status
-                url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
+                url = ExaApiUrls.webset(input_data.webset_id)
                 response = await Requests().get(url, headers=headers)
                 data = response.json()
 
@@ -134,9 +133,7 @@ class ExaWaitForWebsetBlock(Block):
                     # Get final counts and progress
                     search_progress = self._extract_search_progress(data)
                     enrichment_progress = self._extract_enrichment_progress(data)
-                    item_count = await self._get_item_count(
-                        input_data.webset_id, headers
-                    )
+                    item_count = await get_item_count(input_data.webset_id, headers)
 
                     elapsed = time.time() - start_time
 
@@ -159,15 +156,13 @@ class ExaWaitForWebsetBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            response = await Requests().get(
-                f"https://api.exa.AI/websets/v0/websets/{input_data.webset_id}",
-                headers=headers,
-            )
+            url = ExaApiUrls.webset(input_data.webset_id)
+            response = await Requests().get(url, headers=headers)
             data = response.json()
             final_status = data.get("status", "unknown")
             search_progress = self._extract_search_progress(data)
             enrichment_progress = self._extract_enrichment_progress(data)
-            item_count = await self._get_item_count(input_data.webset_id, headers)
+            item_count = await get_item_count(input_data.webset_id, headers)
 
             yield "webset_id", input_data.webset_id
             yield "final_status", final_status
@@ -219,22 +214,6 @@ class ExaWaitForWebsetBlock(Block):
             }
 
         return progress
-
-    async def _get_item_count(self, webset_id: str, headers: dict) -> int:
-        """Get the current item count for the webset."""
-        try:
-            url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
-            response = await Requests().get(url, headers=headers, params={"limit": 1})
-            data = response.json()
-
-            # Try to get total from pagination
-            if "pagination" in data:
-                return data["pagination"].get("total", 0)
-
-            # Fall back to counting items
-            return len(data.get("data", []))
-        except Exception:
-            return 0
 
 
 class ExaWaitForSearchBlock(Block):
@@ -310,14 +289,12 @@ class ExaWaitForSearchBlock(Block):
         start_time = time.time()
         interval = input_data.check_interval
         max_interval = 30
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
+        url = ExaApiUrls.webset_search(input_data.webset_id, input_data.search_id)
 
         try:
             while time.time() - start_time < input_data.timeout:
                 # Get current search status
-                url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/searches/{input_data.search_id}"
                 response = await Requests().get(url, headers=headers)
                 data = response.json()
 
@@ -458,14 +435,14 @@ class ExaWaitForEnrichmentBlock(Block):
         start_time = time.time()
         interval = input_data.check_interval
         max_interval = 30
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        headers = build_headers(credentials.api_key.get_secret_value())
+        url = ExaApiUrls.webset_enrichment(
+            input_data.webset_id, input_data.enrichment_id
+        )
 
         try:
             while time.time() - start_time < input_data.timeout:
                 # Get current enrichment status
-                url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/enrichments/{input_data.enrichment_id}"
                 response = await Requests().get(url, headers=headers)
                 data = response.json()
 
@@ -532,7 +509,7 @@ class ExaWaitForEnrichmentBlock(Block):
     ) -> tuple[list[dict], int]:
         """Get sample enriched data and count."""
         # Get a few items to see enrichment results
-        url = f"https://api.exa.ai/websets/v0/websets/{webset_id}/items"
+        url = ExaApiUrls.webset_items(webset_id)
         response = await Requests().get(url, headers=headers, params={"limit": 5})
         data = response.json()
 
