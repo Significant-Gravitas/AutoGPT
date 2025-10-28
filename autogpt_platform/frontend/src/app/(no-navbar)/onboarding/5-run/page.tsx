@@ -20,6 +20,7 @@ import { SelectedAgentCard } from "./components/SelectedAgentCard";
 import { AgentOnboardingCredentials } from "./components/AgentOnboardingCredentials/AgentOnboardingCredentials";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 
 export default function Page() {
   const {
@@ -30,8 +31,6 @@ export default function Page() {
     onboarding,
     storeAgent,
     runningAgent,
-    credentialsValid,
-    credentialsLoaded,
     handleSetAgentInput,
     handleRunAgent,
     handleNewRun,
@@ -46,9 +45,8 @@ export default function Page() {
 
   if (!ready) {
     return (
-      <div className="flex flex-col gap-4">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
+      <div className="flex flex-col gap-8">
+        <CircleNotchIcon className="size-10 animate-spin" />
       </div>
     );
   }
@@ -120,8 +118,6 @@ export default function Page() {
                   agentInputs:
                     (onboarding.state?.agentInput as unknown as InputValues) ||
                     null,
-                  credentialsValid,
-                  credentialsLoaded,
                 })}
                 onClick={handleRunAgent}
                 icon={<Play className="mr-2" size={18} />}
