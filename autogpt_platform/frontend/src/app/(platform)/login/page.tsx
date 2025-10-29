@@ -8,18 +8,18 @@ import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import Turnstile from "@/components/auth/Turnstile";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
-import { getBehaveAs } from "@/lib/utils";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
+import { environment } from "@/services/environment";
 
 export default function LoginPage() {
   const {
+    user,
     form,
     feedback,
     turnstile,
     captchaKey,
     isLoading,
-    isLoggedIn,
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
@@ -30,7 +30,7 @@ export default function LoginPage() {
     handleCloseNotAllowedModal,
   } = useLoginPage();
 
-  if (isUserLoading || isLoggedIn) {
+  if (isUserLoading || user) {
     return <LoadingLogin />;
   }
 
@@ -118,7 +118,7 @@ export default function LoginPage() {
             type="login"
             message={feedback}
             isError={!!feedback}
-            behaveAs={getBehaveAs()}
+            behaveAs={environment.getBehaveAs()}
           />
         </Form>
         <AuthCard.BottomText

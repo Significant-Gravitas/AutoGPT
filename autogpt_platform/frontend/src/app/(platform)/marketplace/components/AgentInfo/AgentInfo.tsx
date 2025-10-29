@@ -6,10 +6,10 @@ import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 import { useAgentInfo } from "./useAgentInfo";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 interface AgentInfoProps {
   user: User | null;
+  agentId: string;
   name: string;
   creator: string;
   shortDescription: string;
@@ -20,11 +20,12 @@ interface AgentInfoProps {
   lastUpdated: string;
   version: string;
   storeListingVersionId: string;
-  libraryAgent: LibraryAgent | undefined;
+  isAgentAddedToLibrary: boolean;
 }
 
 export const AgentInfo = ({
   user,
+  agentId,
   name,
   creator,
   shortDescription,
@@ -35,7 +36,7 @@ export const AgentInfo = ({
   lastUpdated,
   version,
   storeListingVersionId,
-  libraryAgent,
+  isAgentAddedToLibrary,
 }: AgentInfoProps) => {
   const {
     handleDownload,
@@ -82,11 +83,15 @@ export const AgentInfo = ({
               "transition-colors duration-200 hover:bg-violet-500 disabled:bg-zinc-400",
             )}
             data-testid={"agent-add-library-button"}
-            onClick={handleLibraryAction}
             disabled={isAddingAgentToLibrary}
+            onClick={() =>
+              handleLibraryAction({
+                isAddingAgentFirstTime: !isAgentAddedToLibrary,
+              })
+            }
           >
             <span className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
-              {libraryAgent ? "See runs" : "Add to library"}
+              {isAgentAddedToLibrary ? "See runs" : "Add to library"}
             </span>
           </button>
         )}
@@ -96,7 +101,7 @@ export const AgentInfo = ({
             "transition-colors duration-200 hover:bg-zinc-200/70 disabled:bg-zinc-200/40",
           )}
           data-testid={"agent-download-button"}
-          onClick={handleDownload}
+          onClick={() => handleDownload(agentId, name)}
           disabled={isDownloadingAgent}
         >
           <div className="justify-start text-center font-sans text-sm font-medium leading-snug text-zinc-800">

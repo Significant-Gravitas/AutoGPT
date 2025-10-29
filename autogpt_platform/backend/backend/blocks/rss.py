@@ -1,7 +1,5 @@
 import asyncio
 import logging
-import urllib.parse
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -10,6 +8,7 @@ import pydantic
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.request import Requests
 
 
 class RSSEntry(pydantic.BaseModel):
@@ -103,35 +102,29 @@ class ReadRSSFeedBlock(Block):
         )
 
     @staticmethod
-    def parse_feed(url: str) -> dict[str, Any]:
+    async def parse_feed(url: str) -> dict[str, Any]:
         # Security fix: Add protection against memory exhaustion attacks
         MAX_FEED_SIZE = 10 * 1024 * 1024  # 10MB limit for RSS feeds
 
-        # Validate URL
-        parsed_url = urllib.parse.urlparse(url)
-        if parsed_url.scheme not in ("http", "https"):
-            raise ValueError(f"Invalid URL scheme: {parsed_url.scheme}")
-
-        # Download with size limit
+        # Download feed content with size limit
         try:
-            with urllib.request.urlopen(url, timeout=30) as response:
-                # Check content length if available
-                content_length = response.headers.get("Content-Length")
-                if content_length and int(content_length) > MAX_FEED_SIZE:
-                    raise ValueError(
-                        f"Feed too large: {content_length} bytes exceeds {MAX_FEED_SIZE} limit"
-                    )
+            response = await Requests(raise_for_status=True).get(url)
 
-                # Read with size limit
-                content = response.read(MAX_FEED_SIZE + 1)
-                if len(content) > MAX_FEED_SIZE:
-                    raise ValueError(
-                        f"Feed too large: exceeds {MAX_FEED_SIZE} byte limit"
-                    )
+            # Check content length if available
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > MAX_FEED_SIZE:
+                raise ValueError(
+                    f"Feed too large: {content_length} bytes exceeds {MAX_FEED_SIZE} limit"
+                )
 
-                # Parse with feedparser using the validated content
-                # feedparser has built-in protection against XML attacks
-                return feedparser.parse(content)  # type: ignore
+            # Get content with size limit
+            content = response.content
+            if len(content) > MAX_FEED_SIZE:
+                raise ValueError(f"Feed too large: exceeds {MAX_FEED_SIZE} byte limit")
+
+            # Parse with feedparser using the validated content
+            # feedparser has built-in protection against XML attacks
+            return feedparser.parse(content)  # type: ignore
         except Exception as e:
             # Log error and return empty feed
             logging.warning(f"Failed to parse RSS feed from {url}: {e}")
@@ -145,7 +138,7 @@ class ReadRSSFeedBlock(Block):
         while keep_going:
             keep_going = input_data.run_continuously
 
-            feed = self.parse_feed(input_data.rss_url)
+            feed = await self.parse_feed(input_data.rss_url)
             all_entries = []
 
             for entry in feed["entries"]:

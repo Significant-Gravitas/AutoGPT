@@ -4,13 +4,13 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-import aiohttp
 import discord
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.file import store_media_file
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 from ._auth import (
@@ -114,10 +114,9 @@ class ReadDiscordMessagesBlock(Block):
             if message.attachments:
                 attachment = message.attachments[0]  # Process the first attachment
                 if attachment.filename.endswith((".txt", ".py")):
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(attachment.url) as response:
-                            file_content = response.text()
-                            self.output_data += f"\n\nFile from user: {attachment.filename}\nContent: {file_content}"
+                    response = await Requests().get(attachment.url)
+                    file_content = response.text()
+                    self.output_data += f"\n\nFile from user: {attachment.filename}\nContent: {file_content}"
 
             await client.close()
 
@@ -699,16 +698,15 @@ class SendDiscordFileBlock(Block):
 
                 elif file.startswith(("http://", "https://")):
                     # URL - download the file
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(file) as response:
-                            file_bytes = await response.read()
+                    response = await Requests().get(file)
+                    file_bytes = response.content
 
-                            # Try to get filename from URL if not provided
-                            if not filename:
-                                from urllib.parse import urlparse
+                    # Try to get filename from URL if not provided
+                    if not filename:
+                        from urllib.parse import urlparse
 
-                                path = urlparse(file).path
-                                detected_filename = Path(path).name or "download"
+                        path = urlparse(file).path
+                        detected_filename = Path(path).name or "download"
                 else:
                     # Local file path - read from stored media file
                     # This would be a path from a previous block's output

@@ -37,6 +37,7 @@ import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 import { AgentRunOutputView } from "./agent-run-output-view";
+import { analytics } from "@/services/analytics";
 
 export function AgentRunDetailsView({
   agent,
@@ -131,7 +132,13 @@ export function AgentRunDetailsView({
           run.inputs!,
           run.credential_inputs!,
         )
-        .then(({ id }) => onRun(id))
+        .then(({ id }) => {
+          analytics.sendDatafastEvent("run_agent", {
+            name: graph.name,
+            id: graph.id,
+          });
+          onRun(id);
+        })
         .catch(toastOnFail("execute agent preset"));
     }
 
@@ -142,7 +149,13 @@ export function AgentRunDetailsView({
         run.inputs!,
         run.credential_inputs!,
       )
-      .then(({ id }) => onRun(id))
+      .then(({ id }) => {
+        analytics.sendDatafastEvent("run_agent", {
+          name: graph.name,
+          id: graph.id,
+        });
+        onRun(id);
+      })
       .catch(toastOnFail("execute agent"));
   }, [api, graph, run, onRun, toastOnFail]);
 

@@ -33,8 +33,13 @@ from backend.monitoring import (
     report_block_error_rates,
     report_late_executions,
 )
+from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
-from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.exceptions import (
+    GraphNotInLibraryError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -155,12 +160,47 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
+    except GraphNotInLibraryError as e:
+        elapsed = asyncio.get_event_loop().time() - start_time
+        logger.warning(
+            f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
+            f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
+        )
+        # Clean up orphaned schedules for this graph
+        await _cleanup_orphaned_schedules_for_graph(args.graph_id, args.user_id)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
             f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> None:
+    """
+    Clean up orphaned schedules for a specific graph when execution fails with GraphNotInLibraryError.
+    This happens when an agent is deleted but schedules still exist.
+    """
+    # Use scheduler client to access the scheduler service
+    scheduler_client = get_scheduler_client()
+
+    # Find all schedules for this graph and user
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
+
+    for schedule in schedules:
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(
+                f"Cleaned up orphaned schedule {schedule.id} for deleted/archived graph {graph_id}"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to delete orphaned schedule {schedule.id} for graph {graph_id}"
+            )
 
 
 def cleanup_expired_files():
@@ -248,7 +288,7 @@ class Scheduler(AppService):
             raise UnhealthyServiceError("Scheduler is still initializing")
 
         # Check if we're in the middle of cleanup
-        if self.cleaned_up:
+        if self._shutting_down:
             return await super().health_check()
 
         # Normal operation - check if scheduler is running
@@ -375,7 +415,6 @@ class Scheduler(AppService):
         super().run_service()
 
     def cleanup(self):
-        super().cleanup()
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
             self.scheduler.shutdown(wait=True)
@@ -390,7 +429,7 @@ class Scheduler(AppService):
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
 
-        logger.info("Scheduler cleanup complete.")
+        super().cleanup()
 
     @expose
     def add_graph_execution_schedule(
