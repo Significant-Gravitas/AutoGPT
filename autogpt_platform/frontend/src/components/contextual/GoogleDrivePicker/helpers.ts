@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// Utility helpers for Google Drive Picker
+import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { loadScript } from "@/services/scripts/scripts";
 
 export async function loadGoogleAPIPicker(): Promise<void> {
@@ -7,7 +6,6 @@ export async function loadGoogleAPIPicker(): Promise<void> {
 
   await loadScript("https://apis.google.com/js/api.js");
 
-  // @ts-ignore `window.gapi` is defined by the script above
   const googleAPI = window.gapi;
   if (!googleAPI) {
     throw new Error(
@@ -31,7 +29,6 @@ export async function loadGoogleIdentityServices(): Promise<void> {
 
   await loadScript("https://accounts.google.com/gsi/client");
 
-  // @ts-ignore `window.google` is defined by the script above
   const google = window.google;
   if (!google?.accounts?.oauth2) {
     throw new Error("Google Identity Services not available");
@@ -49,7 +46,6 @@ export type GooglePickerView =
 export function mapViewId(view: GooglePickerView): any {
   validateWindow();
 
-  // @ts-ignore `window.google.picker` is defined by the script above
   const gp = window.google?.picker;
   if (!gp) {
     throw new Error("google.picker is not available");
@@ -91,7 +87,6 @@ export type NormalizedPickedFile = {
 export function normalizePickerResponse(data: any): NormalizedPickedFile[] {
   validateWindow();
 
-  // @ts-ignore `window.google.picker` should have been loaded
   const gp = window.google?.picker;
   if (!gp) return [];
   if (!data || data[gp.Response.ACTION] !== gp.Action.PICKED) return [];
@@ -105,82 +100,22 @@ export function normalizePickerResponse(data: any): NormalizedPickedFile[] {
   }));
 }
 
-export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
-  | {
-      success: true;
-      code: string;
-      state: string;
-    }
-  | {
-      success: false;
-      message: string;
-    }
-);
-
-export function startOAuthPopupFlow(
-  loginUrl: string,
-  expectedState: string,
-  timeoutMs: number = 5 * 60 * 1000,
-): { promise: Promise<{ code: string; state: string }>; abort: () => void } {
-  validateWindow();
-
-  const popup = window.open(loginUrl, "_blank", "popup=true");
-  if (!popup) {
-    throw new Error(
-      "Failed to open popup window. Please allow popups for this site.",
-    );
-  }
-
-  const controller = new AbortController();
-
-  const promise = new Promise<{ code: string; state: string }>(
-    (resolve, reject) => {
-      controller.signal.onabort = () => {
-        try {
-          popup.close();
-        } catch {}
-      };
-
-      function handleMessage(e: MessageEvent<OAuthPopupResultMessage>) {
-        const data = e.data;
-        if (
-          typeof data !== "object" ||
-          !data ||
-          !("message_type" in data) ||
-          data.message_type !== "oauth_popup_result"
-        )
-          return;
-
-        if (!data.success) {
-          controller.abort();
-          return reject(new Error(data.message));
-        }
-
-        if (data.state !== expectedState) {
-          controller.abort();
-          return reject(new Error("Invalid state token received"));
-        }
-
-        controller.abort();
-        resolve({ code: data.code, state: data.state });
-      }
-
-      window.addEventListener("message", handleMessage, {
-        signal: controller.signal,
-      });
-
-      setTimeout(() => {
-        controller.abort();
-        reject(new Error("OAuth flow timed out"));
-      }, timeoutMs);
-    },
-  );
-
-  return { promise, abort: () => controller.abort() };
-}
-
 function validateWindow() {
   if (typeof window === "undefined") {
     throw new Error("Google Picker cannot load on server");
   }
+}
+
+export function getCredentialsSchema(scopes: string[]) {
+  return {
+    type: "object",
+    title: "Google Drive",
+    description: "Google OAuth needed to access Google Drive",
+    properties: {},
+    required: [],
+    credentials_provider: ["google"],
+    credentials_types: ["oauth2"],
+    credentials_scopes: scopes,
+    secret: true,
+  } satisfies BlockIOCredentialsSubSchema;
 }

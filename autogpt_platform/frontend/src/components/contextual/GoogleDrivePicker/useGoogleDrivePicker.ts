@@ -1,19 +1,24 @@
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import useCredentials from "@/hooks/useCredentials";
 import { useMemo, useRef, useState } from "react";
 import {
+  getCredentialsSchema,
   GooglePickerView,
   loadGoogleAPIPicker,
   loadGoogleIdentityServices,
   mapViewId,
-  normalizePickerResponse,
   NormalizedPickedFile,
+  normalizePickerResponse,
   scopesIncludeDrive,
 } from "./helpers";
+
+const defaultScopes = ["https://www.googleapis.com/auth/drive.file"];
 
 type TokenClient = {
   requestAccessToken: (opts: { prompt: string }) => void;
 };
 
-export type UseGoogleDrivePickerOptions = {
+export type Props = {
   scopes?: string[];
   developerKey?: string;
   clientId?: string;
@@ -23,12 +28,14 @@ export type UseGoogleDrivePickerOptions = {
   navHidden?: boolean;
   listModeIfNoDriveScope?: boolean;
   disableThumbnails?: boolean;
-  onPicked?: (files: NormalizedPickedFile[]) => void;
-  onCanceled?: () => void;
-  onError?: (err: unknown) => void;
+  buttonText?: string;
+  disabled?: boolean;
+  onPicked: (files: NormalizedPickedFile[]) => void;
+  onCanceled: () => void;
+  onError: (err: unknown) => void;
 };
 
-export function useGoogleDrivePicker(options?: UseGoogleDrivePickerOptions) {
+export function useGoogleDrivePicker(options: Props) {
   const {
     scopes = ["https://www.googleapis.com/auth/drive.file"],
     developerKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
@@ -44,32 +51,49 @@ export function useGoogleDrivePicker(options?: UseGoogleDrivePickerOptions) {
     onError,
   } = options || {};
 
+  const requestedScopes = options?.scopes || defaultScopes;
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthInProgress, setIsAuthInProgress] = useState(false);
   const accessTokenRef = useRef<string | null>(null);
   const tokenClientRef = useRef<TokenClient | null>(null);
   const pickerReadyRef = useRef(false);
+  const credentials = useCredentials(getCredentialsSchema(requestedScopes));
+  const isReady = pickerReadyRef.current && !!tokenClientRef.current;
+  const { toast } = useToast();
 
-  const isReady = useMemo(
-    () => pickerReadyRef.current && !!tokenClientRef.current,
-    [],
-  );
+  console.log(tokenClientRef.current);
 
-  function ensureLoaded(): Promise<void> {
-    async function load(): Promise<void> {
+  const hasGoogleOAuth = useMemo(() => {
+    if (!credentials || credentials.isLoading) return false;
+    return credentials.savedCredentials?.length > 0;
+  }, [credentials]);
+
+  function ensureLoaded() {
+    async function load() {
       try {
         setIsLoading(true);
+
         await Promise.all([
           loadGoogleAPIPicker(),
           loadGoogleIdentityServices(),
         ]);
-        const googleObj = (window as any).google;
-        tokenClientRef.current = googleObj.accounts.oauth2.initTokenClient({
+
+        tokenClientRef.current = (
+          window.google as any
+        ).accounts.oauth2.initTokenClient({
           client_id: clientId,
           scope: scopes.join(" "),
-          callback: noop,
+          callback: () => {},
         });
+
         pickerReadyRef.current = true;
+      } catch (e) {
+        console.error(e);
+        toast({
+          title: "Error loading Google Drive Picker",
+          description: "Please try again later",
+          variant: "destructive",
+        });
       } finally {
         setIsLoading(false);
       }
@@ -81,8 +105,8 @@ export function useGoogleDrivePicker(options?: UseGoogleDrivePickerOptions) {
     try {
       const files = normalizePickerResponse(data);
       if (files.length) {
-        if (onPicked) onPicked(files);
-      } else if (onCanceled) {
+        onPicked(files);
+      } else {
         onCanceled();
       }
     } catch (e) {
@@ -169,7 +193,7 @@ export function useGoogleDrivePicker(options?: UseGoogleDrivePickerOptions) {
     isLoading,
     isAuthInProgress,
     handleOpenPicker: openPicker,
+    credentials,
+    hasGoogleOAuth,
   };
 }
-
-function noop() {}
