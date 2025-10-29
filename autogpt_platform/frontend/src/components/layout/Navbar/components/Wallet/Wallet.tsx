@@ -307,8 +307,6 @@ export function Wallet() {
     }, 300);
   }, [credits, prevCredits]);
 
-  console.log("credits", credits, "state", state);
-
   // Do not render until we have both credits and onboarding data
   if (credits === null || !state) return null;
 
