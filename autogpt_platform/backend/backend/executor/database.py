@@ -7,6 +7,7 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
+    get_child_graph_executions,
     get_execution_kv_data,
     get_graph_execution_meta,
     get_graph_executions,
@@ -121,6 +122,7 @@ class DatabaseManager(AppService):
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
     # Executions
+    get_child_graph_executions = _(get_child_graph_executions)
     get_graph_executions = _(get_graph_executions)
     get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution_meta = _(get_graph_execution_meta)
@@ -234,6 +236,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
         return DatabaseManager
 
     create_graph_execution = d.create_graph_execution
+    get_child_graph_executions = d.get_child_graph_executions
     get_connected_output_nodes = d.get_connected_output_nodes
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
