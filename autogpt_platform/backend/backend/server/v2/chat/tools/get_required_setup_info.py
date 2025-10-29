@@ -102,8 +102,14 @@ class GetRequiredSetupInfoTool(BaseTool):
         )
         required_credentials = []
 
+        # Check if user has credentials matching the required provider/type
         for c in agent_details.agent.credentials:
-            if c.id not in available_creds:
+            # Check if any available credential matches this provider and type
+            has_matching_cred = any(
+                cred.provider == c.provider and cred.type == c.type
+                for cred in available_creds
+            )
+            if not has_matching_cred:
                 required_credentials.append(c)
 
         required_fields = set(agent_details.agent.inputs.get("required", []))
@@ -117,10 +123,40 @@ class GetRequiredSetupInfoTool(BaseTool):
             missing_credentials=missing_credentials,
             ready_to_run=len(missing_inputs) == 0 and len(required_credentials) == 0,
         )
+        # Convert execution options to list of available modes
+        exec_opts = agent_details.agent.execution_options
+        execution_modes = []
+        if exec_opts.manual:
+            execution_modes.append("manual")
+        if exec_opts.scheduled:
+            execution_modes.append("scheduled")
+        if exec_opts.webhook:
+            execution_modes.append("webhook")
+
+        # Convert input schema to list of input field info
+        inputs_list = []
+        if (
+            isinstance(agent_details.agent.inputs, dict)
+            and "properties" in agent_details.agent.inputs
+        ):
+            for field_name, field_schema in agent_details.agent.inputs[
+                "properties"
+            ].items():
+                inputs_list.append(
+                    {
+                        "name": field_name,
+                        "title": field_schema.get("title", field_name),
+                        "type": field_schema.get("type", "string"),
+                        "description": field_schema.get("description", ""),
+                        "required": field_name
+                        in agent_details.agent.inputs.get("required", []),
+                    }
+                )
+
         requirements = {
             "credentials": agent_details.agent.credentials,
-            "inputs": agent_details.agent.inputs,
-            "execution_modes": agent_details.agent.execution_options.model_dump(),
+            "inputs": inputs_list,
+            "execution_modes": execution_modes,
         }
         return SetupRequirementsResponse(
             message="Agent details retrieved successfully",
@@ -131,4 +167,6 @@ class GetRequiredSetupInfoTool(BaseTool):
                 user_readiness=user_readiness,
                 requirements=requirements,
             ),
+            graph_id=agent_details.graph_id,
+            graph_version=agent_details.graph_version,
         )

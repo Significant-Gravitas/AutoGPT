@@ -1,8 +1,10 @@
 import uuid
 from os import getenv
+
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.firecrawl.scrape import FirecrawlScrapeBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.db import prisma
@@ -11,6 +13,7 @@ from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.server.v2.store import db as store_db
+
 
 @pytest.fixture(scope="session")
 async def setup_test_data():
@@ -129,8 +132,8 @@ async def setup_test_data():
         "graph": created_graph,
         "store_submission": store_submission,
     }
-    
-    
+
+
 @pytest.fixture(scope="session")
 async def setup_llm_test_data():
     """
@@ -143,7 +146,6 @@ async def setup_llm_test_data():
     key = getenv("OPENAI_API_KEY")
     if not key:
         return pytest.skip("OPENAI_API_KEY is not set")
-
 
     # 1. Create a test user
     user_data = {
@@ -293,5 +295,155 @@ async def setup_llm_test_data():
         "user": user,
         "graph": created_graph,
         "credentials": credentials,
+        "store_submission": store_submission,
+    }
+
+
+@pytest.fixture(scope="session")
+async def setup_firecrawl_test_data():
+    """
+    Set up test data for Firecrawl agent tests (missing credentials scenario):
+    1. Create a test user (WITHOUT Firecrawl credentials)
+    2. Create a test graph with input -> Firecrawl block -> output
+    3. Create and approve a store listing
+    """
+    # 1. Create a test user
+    user_data = {
+        "sub": f"test-user-{uuid.uuid4()}",
+        "email": f"test-{uuid.uuid4()}@example.com",
+    }
+    user = await get_or_create_user(user_data)
+
+    # 1b. Create a profile with username for the user (required for store agent lookup)
+    username = user.email.split("@")[0]
+    await prisma.profile.create(
+        data={
+            "userId": user.id,
+            "username": username,
+            "name": f"Test User {username}",
+            "description": "Test user profile for Firecrawl tests",
+            "links": [],  # Required field - empty array for test profiles
+        }
+    )
+
+    # NOTE: We deliberately do NOT create Firecrawl credentials for this user
+    # This tests the scenario where required credentials are missing
+
+    # 2. Create a test graph with input -> Firecrawl block -> output
+    graph_id = str(uuid.uuid4())
+
+    # Create input node for the URL
+    input_node_id = str(uuid.uuid4())
+    input_block = AgentInputBlock()
+    input_node = Node(
+        id=input_node_id,
+        block_id=input_block.id,
+        input_default={
+            "name": "url",
+            "title": "URL to Scrape",
+            "value": "",
+            "advanced": False,
+            "description": "URL for Firecrawl to scrape",
+            "placeholder_values": [],
+        },
+        metadata={"position": {"x": 0, "y": 0}},
+    )
+
+    # Create Firecrawl block node
+    firecrawl_node_id = str(uuid.uuid4())
+    firecrawl_block = FirecrawlScrapeBlock()
+    firecrawl_node = Node(
+        id=firecrawl_node_id,
+        block_id=firecrawl_block.id,
+        input_default={
+            "limit": 10,
+            "only_main_content": True,
+            "max_age": 3600000,
+            "wait_for": 200,
+            "formats": ["markdown"],
+            "credentials": {
+                "provider": "firecrawl",
+                "id": "test-firecrawl-id",
+                "type": "api_key",
+                "title": "Firecrawl API Key",
+            },
+        },
+        metadata={"position": {"x": 300, "y": 0}},
+    )
+
+    # Create output node
+    output_node_id = str(uuid.uuid4())
+    output_block = AgentOutputBlock()
+    output_node = Node(
+        id=output_node_id,
+        block_id=output_block.id,
+        input_default={
+            "name": "scraped_data",
+            "title": "Scraped Data",
+            "value": "",
+            "format": "",
+            "advanced": False,
+            "description": "Data scraped by Firecrawl",
+        },
+        metadata={"position": {"x": 600, "y": 0}},
+    )
+
+    # Create links
+    # Link input.result -> firecrawl.url
+    link1 = Link(
+        source_id=input_node_id,
+        sink_id=firecrawl_node_id,
+        source_name="result",
+        sink_name="url",
+        is_static=True,
+    )
+
+    # Link firecrawl.markdown -> output.value
+    link2 = Link(
+        source_id=firecrawl_node_id,
+        sink_id=output_node_id,
+        source_name="markdown",
+        sink_name="value",
+        is_static=False,
+    )
+
+    # Create the graph
+    graph = Graph(
+        id=graph_id,
+        version=1,
+        is_active=True,
+        name="Firecrawl Test Agent",
+        description="An agent that uses Firecrawl to scrape websites",
+        nodes=[input_node, firecrawl_node, output_node],
+        links=[link1, link2],
+    )
+
+    created_graph = await create_graph(graph, user.id)
+
+    # 3. Create and approve a store listing
+    unique_slug = f"firecrawl-test-agent-{str(uuid.uuid4())[:8]}"
+    store_submission = await store_db.create_store_submission(
+        user_id=user.id,
+        agent_id=created_graph.id,
+        agent_version=created_graph.version,
+        slug=unique_slug,
+        name="Firecrawl Test Agent",
+        description="An agent with Firecrawl integration (no credentials)",
+        sub_heading="Test agent requiring Firecrawl credentials",
+        categories=["testing", "scraping"],
+        image_urls=["https://example.com/image.jpg"],
+    )
+    assert store_submission.store_listing_version_id is not None
+    await store_db.review_store_submission(
+        store_listing_version_id=store_submission.store_listing_version_id,
+        is_approved=True,
+        external_comments="Approved for testing",
+        internal_comments="Test approval for Firecrawl agent",
+        reviewer_id=user.id,
+    )
+
+    return {
+        "user": user,
+        "graph": created_graph,
         "store_submission": store_submission,
     }

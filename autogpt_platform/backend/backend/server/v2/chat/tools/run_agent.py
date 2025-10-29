@@ -104,11 +104,23 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        graph = await get_graph(username_agent_slug)
+        # Get the graph using the graph_id and graph_version from the setup response
+        if not response.graph_id or not response.graph_version:
+            return ErrorResponse(
+                message=f"Graph information not available for {username_agent_slug}",
+                session_id=session_id,
+            )
+
+        graph = await get_graph(
+            graph_id=response.graph_id,
+            version=response.graph_version,
+            user_id=None,  # Public access for store graphs
+            include_subgraphs=True,
+        )
 
         if not graph:
             return ErrorResponse(
-                message=f"Graph {username_agent_slug} not found",
+                message=f"Graph {username_agent_slug} ({response.graph_id}v{response.graph_version}) not found",
                 session_id=session_id,
             )
 

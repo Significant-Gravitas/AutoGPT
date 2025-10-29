@@ -141,14 +141,43 @@ class GetAgentDetailsTool(BaseTool):
                 ].items():
                     # Extract credential metadata from the schema
                     # The schema properties contain provider info and other metadata
+
+                    # Get provider from credentials_provider array or properties.provider.const
+                    provider = "unknown"
+                    if (
+                        "credentials_provider" in cred_schema
+                        and cred_schema["credentials_provider"]
+                    ):
+                        provider = cred_schema["credentials_provider"][0]
+                    elif (
+                        "properties" in cred_schema
+                        and "provider" in cred_schema["properties"]
+                    ):
+                        provider = cred_schema["properties"]["provider"].get(
+                            "const", "unknown"
+                        )
+
+                    # Get type from credentials_types array or properties.type.const
+                    cred_type = "api_key"  # Default
+                    if (
+                        "credentials_types" in cred_schema
+                        and cred_schema["credentials_types"]
+                    ):
+                        cred_type = cred_schema["credentials_types"][0]
+                    elif (
+                        "properties" in cred_schema
+                        and "type" in cred_schema["properties"]
+                    ):
+                        cred_type = cred_schema["properties"]["type"].get(
+                            "const", "api_key"
+                        )
+
                     credentials.append(
                         CredentialsMetaInput(
                             id=cred_name,
                             title=cred_schema.get("title", cred_name),
-                            provider=cred_schema.get("provider", "unknown"),
-                            type=cred_schema.get(
-                                "credential_type", cred_schema.get("type", "unknown")
-                            ),
+                            provider=provider,  # type: ignore
+                            type=cred_type,
                         )
                     )
 

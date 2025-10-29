@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from backend.data.graph import get_graph
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
-from backend.executor import utils as execution_utils
 from backend.server.v2.chat.tools.get_required_setup_info import (
     GetRequiredSetupInfoTool,
 )
@@ -156,18 +155,27 @@ class SetupAgentTool(BaseTool):
             return library_agent
 
         # At this point we know the user is ready to run the agent
-        # So we can execute the agent
-        execution = await execution_utils.add_graph_execution(
-            graph_id=library_agent.graph_id,
-            user_id=user_id,
-            inputs=inputs,
+        # Create the schedule for the agent
+        from backend.server.v2.library import db as library_db
+
+        # Get the library agent model for scheduling
+        lib_agent = await library_db.get_library_agent_by_graph_id(
+            graph_id=library_agent.graph_id, user_id=user_id
         )
-        return ExecutionStartedResponse(
-            message="Agent execution started",
+        if not lib_agent:
+            return ErrorResponse(
+                message=f"Library agent not found for graph {library_agent.graph_id}",
+                session_id=session_id,
+            )
+
+        return await self._add_graph_execution_schedule(
+            library_agent=lib_agent,
+            user_id=user_id,
+            cron=cron,
+            name=cron_name,
+            inputs=inputs,
+            credentials=library_agent.required_credentials,
             session_id=session_id,
-            execution_id=execution.id,
-            graph_id=library_agent.graph_id,
-            graph_name=library_agent.graph_name,
         )
 
     async def _add_graph_execution_schedule(
@@ -231,15 +239,72 @@ class SetupAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        graph = await get_graph(agent_id)
+        # Get the graph using the graph_id and graph_version from the setup response
+        if not response.graph_id or not response.graph_version:
+            return ErrorResponse(
+                message=f"Graph information not available for {agent_id}",
+                session_id=session_id,
+            )
+
+        graph = await get_graph(
+            graph_id=response.graph_id,
+            version=response.graph_version,
+            user_id=None,  # Public access for store graphs
+            include_subgraphs=True,
+        )
         if not graph:
             return ErrorResponse(
-                message=f"Graph {agent_id} not found",
+                message=f"Graph {agent_id} ({response.graph_id}v{response.graph_version}) not found",
                 session_id=session_id,
             )
 
         recommended_schedule_cron = graph.recommended_schedule_cron
-        required_credentials = graph.credentials_input_schema
+
+        # Extract credentials from the JSON schema properties
+        credentials_input_schema = graph.credentials_input_schema
+        required_credentials: dict[str, CredentialsMetaInput] = {}
+        if (
+            isinstance(credentials_input_schema, dict)
+            and "properties" in credentials_input_schema
+        ):
+            for cred_name, cred_schema in credentials_input_schema[
+                "properties"
+            ].items():
+                # Get provider from credentials_provider array or properties.provider.const
+                provider = "unknown"
+                if (
+                    "credentials_provider" in cred_schema
+                    and cred_schema["credentials_provider"]
+                ):
+                    provider = cred_schema["credentials_provider"][0]
+                elif (
+                    "properties" in cred_schema
+                    and "provider" in cred_schema["properties"]
+                ):
+                    provider = cred_schema["properties"]["provider"].get(
+                        "const", "unknown"
+                    )
+
+                # Get type from credentials_types array or properties.type.const
+                cred_type = "api_key"  # Default
+                if (
+                    "credentials_types" in cred_schema
+                    and cred_schema["credentials_types"]
+                ):
+                    cred_type = cred_schema["credentials_types"][0]
+                elif (
+                    "properties" in cred_schema and "type" in cred_schema["properties"]
+                ):
+                    cred_type = cred_schema["properties"]["type"].get(
+                        "const", "api_key"
+                    )
+
+                required_credentials[cred_name] = CredentialsMetaInput(
+                    id=cred_name,
+                    title=cred_schema.get("title", cred_name),
+                    provider=provider,  # type: ignore
+                    type=cred_type,
+                )
 
         # Check if we already have a library agent for this graph
         existing_library_agent = await library_db.get_library_agent_by_graph_id(
