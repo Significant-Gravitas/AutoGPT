@@ -7,7 +7,6 @@ from backend.data.block import (
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
-    BlockSchemaOutput,
     BlockType,
 )
 from backend.data.model import SchemaField
@@ -66,7 +65,9 @@ class AgentInputBlock(Block):
                 schema["enum"] = possible_values
             return schema
 
-    class Output(BlockSchemaOutput):
+    class Output(
+        BlockSchemaInput
+    ):  # Use BlockSchemaInput to avoid automatic error field for interface definition
         result: Any = SchemaField(description="The value passed as input.")
 
     def __init__(self, **kwargs):
@@ -157,7 +158,9 @@ class AgentOutputBlock(Block):
         def generate_schema(self):
             return self.get_field_schema("value")
 
-    class Output(BlockSchemaOutput):
+    class Output(
+        BlockSchemaInput
+    ):  # Use BlockSchemaInput to avoid automatic error field for interface definition
         output: Any = SchemaField(description="The value recorded as output.")
         name: Any = SchemaField(description="The name of the value recorded as output.")
 
