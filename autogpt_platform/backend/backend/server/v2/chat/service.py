@@ -94,7 +94,9 @@ async def stream_chat_completion(
     session = await get_chat_session(session_id, user_id)
 
     if not session:
-        session = ChatSession.new(user_id)
+        raise NotFoundError(
+            f"Session {session_id} not found. Please create a new session first."
+        )
 
     session.messages.append(ChatMessage(role="user", content=user_message))
 

@@ -134,8 +134,6 @@ async def get_session(
 async def stream_chat(
     session_id: str,
     message: Annotated[str, Query(min_length=1, max_length=10000)],
-    model: Annotated[str, Query()] = "gpt-4o",
-    max_context: Annotated[int, Query(ge=1, le=100)] = 50,
     user_id: str | None = Depends(get_optional_user_id),
 ):
     """
@@ -149,8 +147,6 @@ async def stream_chat(
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         message: The user's new message to process.
-        model: The AI model to use (default: "gpt-4o").
-        max_context: The number of previous context messages to include (default: 50).
         user_id: Optional authenticated user ID.
 
     Yields:
