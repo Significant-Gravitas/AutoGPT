@@ -1335,6 +1335,9 @@ class ExecutionManager(AppProcess):
         return self._run_client
 
     def run(self):
+        logger.info(
+            f"[{self.service_name}] 🆔 Pod assigned executor_id: {self.executor_id}"
+        )
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
@@ -1498,7 +1501,7 @@ class ExecutionManager(AppProcess):
         parent_graph_exec_id = graph_exec_entry.parent_graph_exec_id
 
         logger.info(
-            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}"
+            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}, executor_id={self.executor_id}"
             + (f", parent={parent_graph_exec_id}" if parent_graph_exec_id else "")
         )
 
@@ -1573,7 +1576,7 @@ class ExecutionManager(AppProcess):
             # Either someone else has it or Redis is unavailable
             if current_owner is not None:
                 logger.warning(
-                    f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
+                    f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}, current executor_id={self.executor_id}"
                 )
                 _ack_message(reject=True, requeue=False)
             else:
@@ -1585,7 +1588,7 @@ class ExecutionManager(AppProcess):
         self._execution_locks[graph_exec_id] = cluster_lock
 
         logger.info(
-            f"[{self.service_name}] Acquired cluster lock for {graph_exec_id} with executor {self.executor_id}"
+            f"[{self.service_name}] Successfully acquired cluster lock for {graph_exec_id}, executor_id={self.executor_id}"
         )
 
         cancel_event = threading.Event()
@@ -1613,6 +1616,9 @@ class ExecutionManager(AppProcess):
             finally:
                 # Release the cluster-wide execution lock
                 if graph_exec_id in self._execution_locks:
+                    logger.info(
+                        f"[{self.service_name}] Releasing cluster lock for {graph_exec_id}, executor_id={self.executor_id}"
+                    )
                     self._execution_locks[graph_exec_id].release()
                     del self._execution_locks[graph_exec_id]
                 self._cleanup_completed_runs()
