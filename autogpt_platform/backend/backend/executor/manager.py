@@ -1561,36 +1561,55 @@ class ExecutionManager(AppProcess):
             f"[{self.service_name}] Acquired cluster lock for {graph_exec_id} with executor {self.executor_id}"
         )
 
-        cancel_event = threading.Event()
-
-        future = self.executor.submit(
-            execute_graph, graph_exec_entry, cancel_event, cluster_lock
-        )
-        self.active_graph_runs[graph_exec_id] = (future, cancel_event)
-        self._update_prompt_metrics()
-
-        def _on_run_done(f: Future):
-            logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
+        # Define cleanup function that ALWAYS releases the cluster lock
+        def _release_cluster_lock():
+            """Guaranteed cleanup of cluster lock - called on any failure path"""
             try:
-                if exec_error := f.exception():
-                    logger.error(
-                        f"[{self.service_name}] Execution for {graph_exec_id} failed: {type(exec_error)} {exec_error}"
-                    )
-                    _ack_message(reject=True, requeue=True)
-                else:
-                    _ack_message(reject=False, requeue=False)
-            except BaseException as e:
-                logger.exception(
-                    f"[{self.service_name}] Error in run completion callback: {e}"
+                cluster_lock.release()
+            except Exception as e:
+                logger.warning(
+                    f"[{self.service_name}] Error releasing cluster lock for {graph_exec_id}: {e}"
                 )
-            finally:
-                # Release the cluster-wide execution lock
-                if graph_exec_id in self._execution_locks:
-                    self._execution_locks[graph_exec_id].release()
-                    del self._execution_locks[graph_exec_id]
-                self._cleanup_completed_runs()
+            if graph_exec_id in self._execution_locks:
+                del self._execution_locks[graph_exec_id]
 
-        future.add_done_callback(_on_run_done)
+        try:
+            cancel_event = threading.Event()
+            future = self.executor.submit(
+                execute_graph, graph_exec_entry, cancel_event, cluster_lock
+            )
+            self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+
+            def _on_run_done(f: Future):
+                logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
+                try:
+                    if exec_error := f.exception():
+                        logger.error(
+                            f"[{self.service_name}] Execution for {graph_exec_id} failed: {type(exec_error)} {exec_error}"
+                        )
+                        _ack_message(reject=True, requeue=True)
+                    else:
+                        _ack_message(reject=False, requeue=False)
+                except BaseException as e:
+                    logger.exception(
+                        f"[{self.service_name}] Error in run completion callback: {e}"
+                    )
+                finally:
+                    # Release the cluster-wide execution lock
+                    _release_cluster_lock()
+                    self._cleanup_completed_runs()
+
+            future.add_done_callback(_on_run_done)
+
+        except Exception as e:
+            logger.warning(
+                f"[{self.service_name}] Failed to submit execution for {graph_exec_id}: {type(e).__name__}: {e}"
+            )
+            _release_cluster_lock()
+            _ack_message(reject=True, requeue=True)
+            return
+
+        self._update_prompt_metrics()
 
     def _cleanup_completed_runs(self) -> list[str]:
         """Remove completed futures from active_graph_runs and update metrics"""
