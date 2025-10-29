@@ -35,12 +35,12 @@ class GetAgentDetailsTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_id": {
+                "username_agent_slug": {
                     "type": "string",
                     "description": "The marketplace agent slug (e.g., 'username/agent-name')",
                 },
             },
-            "required": ["agent_id"],
+            "required": ["username_agent_slug"],
         }
 
     async def _execute(
@@ -54,14 +54,13 @@ class GetAgentDetailsTool(BaseTool):
         Args:
             user_id: User ID (may be anonymous)
             session_id: Chat session ID
-            agent_id: Agent ID or slug
-            agent_version: Optional version number
+            username_agent_slug: Agent ID or slug
 
         Returns:
             Pydantic response model
 
         """
-        agent_id = kwargs.get("agent_id", "").strip()
+        agent_id = kwargs.get("username_agent_slug", "").strip()
 
         if not agent_id or "/" not in agent_id:
             return ErrorResponse(

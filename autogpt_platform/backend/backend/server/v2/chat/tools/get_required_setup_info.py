@@ -36,7 +36,7 @@ class GetRequiredSetupInfoTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "agent_id": {
+                "username_agent_slug": {
                     "type": "string",
                     "description": "The marketplace agent slug (e.g., 'username/agent-name' or just 'agent-name' to search)",
                 },
@@ -46,7 +46,7 @@ class GetRequiredSetupInfoTool(BaseTool):
                     "additionalProperties": True,
                 },
             },
-            "required": ["agent_id"],
+            "required": ["username_agent_slug"],
         }
 
     @property
@@ -79,22 +79,23 @@ class GetRequiredSetupInfoTool(BaseTool):
                 - user readiness and missing credentials/fields,
                 - setup instructions.
         """
-        ad = await GetAgentDetailsTool().execute(user_id, session_id, **kwargs)
-
         assert (
             user_id is not None
         ), "GetRequiredSetupInfoTool - This should never happen user_id is None when auth is required"
 
-        if ad.result is None:
+        # Call _execute directly since we're calling internally from another tool
+        agent_details = await GetAgentDetailsTool()._execute(
+            user_id, session_id, **kwargs
+        )
+
+        if isinstance(agent_details, ErrorResponse):
+            return agent_details
+
+        if not isinstance(agent_details, AgentDetailsResponse):
             return ErrorResponse(
                 message="Failed to get agent details",
                 session_id=session_id,
             )
-
-        agent_details = AgentDetailsResponse.model_validate(ad.result)
-
-        if isinstance(agent_details, ErrorResponse):
-            return agent_details
 
         available_creds = await IntegrationCredentialsManager().store.get_all_creds(
             user_id
