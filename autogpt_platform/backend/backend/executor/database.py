@@ -28,6 +28,7 @@ from backend.data.graph import (
     get_graph,
     get_graph_metadata,
     get_node,
+    validate_graph_execution_permissions,
 )
 from backend.data.notifications import (
     clear_all_user_notification_batches,
@@ -174,6 +175,7 @@ class DatabaseManager(AppService):
     # Library
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
     # Store
     get_store_agents = _(get_store_agents)
@@ -217,6 +219,7 @@ class DatabaseManagerClient(AppServiceClient):
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
+    validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -272,6 +275,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # Library
     list_library_agents = d.list_library_agents
     add_store_agent_to_library = d.add_store_agent_to_library
+    validate_graph_execution_permissions = d.validate_graph_execution_permissions
 
     # Store
     get_store_agents = d.get_store_agents
