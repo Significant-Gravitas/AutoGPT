@@ -5,6 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
@@ -17,8 +18,7 @@ import { PopoverClose } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
 import * as party from "party-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
-import WalletRefill from "./components/WalletRefill";
+import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
 
 export interface Task {
