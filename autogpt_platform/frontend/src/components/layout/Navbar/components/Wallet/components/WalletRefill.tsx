@@ -134,12 +134,20 @@ export function WalletRefill() {
                 <FormField
                   control={topUpForm.control}
                   name="amount"
+                  rules={{
+                    validate: (value) => {
+                      if (value < 5) {
+                        return "Amount must be at least $5";
+                      }
+                      return true;
+                    },
+                  }}
                   render={({ field }) => (
                     <Input
                       label="Amount"
                       type="amount"
                       size="small"
-                      decimalCount={2}
+                      decimalCount={0}
                       id={field.name}
                       error={topUpForm.formState.errors.amount?.message}
                       amountPrefix="$"
@@ -164,18 +172,26 @@ export function WalletRefill() {
             <Form {...autoRefillForm}>
               <form
                 onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
-                className="my-4"
+                className="my-6"
               >
                 <FormField
                   control={autoRefillForm.control}
                   name="threshold"
+                  rules={{
+                    validate: (value) => {
+                      if (value < 5) {
+                        return "Amount must be at least $5";
+                      }
+                      return true;
+                    },
+                  }}
                   render={({ field }) => (
                     <Input
                       type="amount"
                       label="Refill when balance drops below:"
                       id={field.name}
                       size="small"
-                      decimalCount={2}
+                      decimalCount={0}
                       error={autoRefillForm.formState.errors.threshold?.message}
                       amountPrefix="$"
                       {...field}
@@ -185,12 +201,20 @@ export function WalletRefill() {
                 <FormField
                   control={autoRefillForm.control}
                   name="refillAmount"
+                  rules={{
+                    validate: (value) => {
+                      if (value <= autoRefillForm.getValues("threshold")) {
+                        return "Refill amount must be greater than the threshold";
+                      }
+                      return true;
+                    },
+                  }}
                   render={({ field }) => (
                     <Input
                       type="amount"
                       label="Add this amount:"
                       size="small"
-                      decimalCount={2}
+                      decimalCount={0}
                       id={field.name}
                       error={
                         autoRefillForm.formState.errors.refillAmount?.message
@@ -200,7 +224,12 @@ export function WalletRefill() {
                     />
                   )}
                 />
-                <Button type="submit" disabled={isLoading} size="small">
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  size="small"
+                  className="mt-5"
+                >
                   Enable Auto-refill
                 </Button>
               </form>

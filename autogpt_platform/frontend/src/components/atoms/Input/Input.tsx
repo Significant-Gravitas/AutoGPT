@@ -140,6 +140,7 @@ export function Input({
           disabled={props.disabled}
           inputMode="decimal"
           decimalsLimit={decimalCount ?? 4}
+          allowDecimals={decimalCount !== 0}
           groupSeparator=","
           decimalSeparator="."
           allowNegativeValue
