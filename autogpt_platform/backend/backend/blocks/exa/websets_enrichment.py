@@ -6,7 +6,11 @@ allowing extraction of additional structured data from existing items.
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
+
+from exa_py import AsyncExa
+from exa_py.websets.types import WebsetEnrichment as SdkWebsetEnrichment
+from pydantic import BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -19,8 +23,60 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._api import ExaApiUrls, build_headers, poll_enrichment_until_complete
 from ._config import exa
+
+
+# Mirrored model for stability
+class WebsetEnrichmentModel(BaseModel):
+    """Stable output model mirroring SDK WebsetEnrichment."""
+
+    id: str
+    webset_id: str
+    status: str
+    title: Optional[str]
+    description: str
+    format: str
+    options: List[str]
+    instructions: Optional[str]
+    metadata: Dict[str, Any]
+    created_at: str
+    updated_at: str
+
+    @classmethod
+    def from_sdk(cls, enrichment: SdkWebsetEnrichment) -> "WebsetEnrichmentModel":
+        """Convert SDK WebsetEnrichment to our stable model."""
+        # Extract options
+        options_list = []
+        if enrichment.options:
+            for option in enrichment.options:
+                option_dict = option.model_dump(by_alias=True)
+                options_list.append(option_dict.get("label", ""))
+
+        return cls(
+            id=enrichment.id,
+            webset_id=enrichment.webset_id,
+            status=(
+                enrichment.status.value
+                if hasattr(enrichment.status, "value")
+                else str(enrichment.status)
+            ),
+            title=enrichment.title,
+            description=enrichment.description,
+            format=(
+                enrichment.format.value
+                if enrichment.format and hasattr(enrichment.format, "value")
+                else "text"
+            ),
+            options=options_list,
+            instructions=enrichment.instructions,
+            metadata=enrichment.metadata if enrichment.metadata else {},
+            created_at=(
+                enrichment.created_at.isoformat() if enrichment.created_at else ""
+            ),
+            updated_at=(
+                enrichment.updated_at.isoformat() if enrichment.updated_at else ""
+            ),
+        )
 
 
 class EnrichmentFormat(str, Enum):
@@ -102,17 +158,12 @@ class ExaCreateEnrichmentBlock(Block):
             description="Generated instructions for the enrichment"
         )
         items_enriched: Optional[int] = SchemaField(
-            description="Number of items enriched (if wait_for_completion was True)",
-            default=None,
+            description="Number of items enriched (if wait_for_completion was True)"
         )
         completion_time: Optional[float] = SchemaField(
-            description="Time taken to complete in seconds (if wait_for_completion was True)",
-            default=None,
+            description="Time taken to complete in seconds (if wait_for_completion was True)"
         )
-        error: str = SchemaField(
-            description="Error message if the operation failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -127,11 +178,6 @@ class ExaCreateEnrichmentBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         import time
-
-        url = ExaApiUrls.webset_enrichments(input_data.webset_id)
-        headers = build_headers(
-            credentials.api_key.get_secret_value(), include_content_type=True
-        )
 
         # Build the payload
         payload: dict[str, Any] = {
@@ -151,50 +197,84 @@ class ExaCreateEnrichmentBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        try:
-            start_time = time.time()
+        start_time = time.time()
 
-            # Create the enrichment
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-            enrichment_id = data.get("id", "")
-            status = data.get("status", "")
-            title = data.get("title", "")
-            instructions = data.get("instructions", "")
+        # Create enrichment using SDK
+        sdk_enrichment = aexa.websets.enrichments.create(
+            webset_id=input_data.webset_id, params=payload
+        )
 
-            # If wait_for_completion is True and apply_to_existing is True, poll for completion
-            if input_data.wait_for_completion and input_data.apply_to_existing:
-                items_enriched = await poll_enrichment_until_complete(
-                    input_data.webset_id,
-                    enrichment_id,
-                    headers,
-                    input_data.polling_timeout,
+        enrichment_id = sdk_enrichment.id
+        status = (
+            sdk_enrichment.status.value
+            if hasattr(sdk_enrichment.status, "value")
+            else str(sdk_enrichment.status)
+        )
+
+        # If wait_for_completion is True and apply_to_existing is True, poll for completion
+        if input_data.wait_for_completion and input_data.apply_to_existing:
+            import asyncio
+
+            poll_interval = 5
+            max_interval = 30
+            poll_start = time.time()
+            items_enriched = 0
+
+            while time.time() - poll_start < input_data.polling_timeout:
+                current_enrich = aexa.websets.enrichments.get(
+                    webset_id=input_data.webset_id, id=enrichment_id
                 )
-                completion_time = time.time() - start_time
+                current_status = (
+                    current_enrich.status.value
+                    if hasattr(current_enrich.status, "value")
+                    else str(current_enrich.status)
+                )
 
-                yield "enrichment_id", enrichment_id
-                yield "webset_id", input_data.webset_id
-                yield "status", "completed"
-                yield "title", title
-                yield "description", input_data.description
-                yield "format", input_data.format.value
-                yield "instructions", instructions
-                yield "items_enriched", items_enriched
-                yield "completion_time", completion_time
-            else:
-                yield "enrichment_id", enrichment_id
-                yield "webset_id", input_data.webset_id
-                yield "status", status
-                yield "title", title
-                yield "description", input_data.description
-                yield "format", input_data.format.value
-                yield "instructions", instructions
+                if current_status in ["completed", "failed", "cancelled"]:
+                    # Estimate items from webset searches
+                    webset = aexa.websets.get(id=input_data.webset_id)
+                    if webset.searches:
+                        for search in webset.searches:
+                            if search.progress:
+                                items_enriched += search.progress.found
+                    completion_time = time.time() - start_time
 
-        except ValueError as e:
-            # Re-raise user input validation errors
-            raise ValueError(f"Failed to create enrichment: {e}") from e
-        # Let all other exceptions propagate naturally
+                    yield "enrichment_id", enrichment_id
+                    yield "webset_id", input_data.webset_id
+                    yield "status", current_status
+                    yield "title", sdk_enrichment.title
+                    yield "description", input_data.description
+                    yield "format", input_data.format.value
+                    yield "instructions", sdk_enrichment.instructions
+                    yield "items_enriched", items_enriched
+                    yield "completion_time", completion_time
+                    return
+
+                await asyncio.sleep(poll_interval)
+                poll_interval = min(poll_interval * 1.5, max_interval)
+
+            # Timeout
+            completion_time = time.time() - start_time
+            yield "enrichment_id", enrichment_id
+            yield "webset_id", input_data.webset_id
+            yield "status", status
+            yield "title", sdk_enrichment.title
+            yield "description", input_data.description
+            yield "format", input_data.format.value
+            yield "instructions", sdk_enrichment.instructions
+            yield "items_enriched", 0
+            yield "completion_time", completion_time
+        else:
+            yield "enrichment_id", enrichment_id
+            yield "webset_id", input_data.webset_id
+            yield "status", status
+            yield "title", sdk_enrichment.title
+            yield "description", input_data.description
+            yield "format", input_data.format.value
+            yield "instructions", sdk_enrichment.instructions
 
 
 class ExaGetEnrichmentBlock(Block):
@@ -224,8 +304,7 @@ class ExaGetEnrichmentBlock(Block):
         )
         format: str = SchemaField(description="Format of the extracted data")
         options: list[str] = SchemaField(
-            description="Available options (for 'options' format)",
-            default_factory=list,
+            description="Available options (for 'options' format)"
         )
         instructions: str = SchemaField(
             description="Generated instructions for the enrichment"
@@ -234,14 +313,8 @@ class ExaGetEnrichmentBlock(Block):
         updated_at: str = SchemaField(
             description="When the enrichment was last updated"
         )
-        metadata: dict = SchemaField(
-            description="Metadata attached to the enrichment",
-            default_factory=dict,
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        metadata: dict = SchemaField(description="Metadata attached to the enrichment")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -255,32 +328,27 @@ class ExaGetEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_enrichment(
-            input_data.webset_id, input_data.enrichment_id
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        # Get enrichment using SDK
+        sdk_enrichment = aexa.websets.enrichments.get(
+            webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
-        headers = build_headers(credentials.api_key.get_secret_value())
 
-        response = await Requests().get(url, headers=headers)
-        data = response.json()
+        # Convert to our stable model
+        enrichment = WebsetEnrichmentModel.from_sdk(sdk_enrichment)
 
-        # Extract options if present
-        options = []
-        if data.get("options"):
-            options = [opt.get("label", "") for opt in data["options"]]
-
-        yield "enrichment_id", data.get("id", "")
-        yield "status", data.get("status", "")
-        yield "title", data.get("title", "")
-        yield "description", data.get("description", "")
-        yield "format", data.get("format", "")
-        yield "options", options
-        yield "instructions", data.get("instructions", "")
-        yield "created_at", data.get("createdAt", "")
-        yield "updated_at", data.get("updatedAt", "")
-        yield "metadata", data.get("metadata", {})
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid enrichment IDs
+        yield "enrichment_id", enrichment.id
+        yield "status", enrichment.status
+        yield "title", enrichment.title
+        yield "description", enrichment.description
+        yield "format", enrichment.format
+        yield "options", enrichment.options
+        yield "instructions", enrichment.instructions
+        yield "created_at", enrichment.created_at
+        yield "updated_at", enrichment.updated_at
+        yield "metadata", enrichment.metadata
 
 
 class ExaUpdateEnrichmentBlock(Block):
@@ -323,14 +391,8 @@ class ExaUpdateEnrichmentBlock(Block):
         title: str = SchemaField(description="Title of the enrichment")
         description: str = SchemaField(description="Updated description")
         format: str = SchemaField(description="Updated format")
-        success: str = SchemaField(
-            description="Whether the update was successful",
-            default="true",
-        )
-        error: str = SchemaField(
-            description="Error message if the update failed",
-            default="",
-        )
+        success: str = SchemaField(description="Whether the update was successful")
+        error: str = SchemaField(description="Error message if the update failed")
 
     def __init__(self):
         super().__init__(
@@ -400,14 +462,8 @@ class ExaDeleteEnrichmentBlock(Block):
 
     class Output(BlockSchema):
         enrichment_id: str = SchemaField(description="The ID of the deleted enrichment")
-        success: str = SchemaField(
-            description="Whether the deletion was successful",
-            default="true",
-        )
-        error: str = SchemaField(
-            description="Error message if the deletion failed",
-            default="",
-        )
+        success: str = SchemaField(description="Whether the deletion was successful")
+        error: str = SchemaField(description="Error message if the deletion failed")
 
     def __init__(self):
         super().__init__(
@@ -421,19 +477,16 @@ class ExaDeleteEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_enrichment(
-            input_data.webset_id, input_data.enrichment_id
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        # Delete enrichment using SDK
+        deleted_enrichment = aexa.websets.enrichments.delete(
+            webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
-        headers = build_headers(credentials.api_key.get_secret_value())
 
-        await Requests().delete(url, headers=headers)
-
-        # API returns 204 No Content on successful deletion
-        yield "enrichment_id", input_data.enrichment_id
+        yield "enrichment_id", deleted_enrichment.id
         yield "success", "true"
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid operations
 
 
 class ExaCancelEnrichmentBlock(Block):
@@ -458,17 +511,12 @@ class ExaCancelEnrichmentBlock(Block):
         )
         status: str = SchemaField(description="Status after cancellation")
         items_enriched_before_cancel: int = SchemaField(
-            description="Approximate number of items enriched before cancellation",
-            default=0,
+            description="Approximate number of items enriched before cancellation"
         )
         success: str = SchemaField(
-            description="Whether the cancellation was successful",
-            default="true",
+            description="Whether the cancellation was successful"
         )
-        error: str = SchemaField(
-            description="Error message if the cancellation failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the cancellation failed")
 
     def __init__(self):
         super().__init__(
@@ -482,31 +530,34 @@ class ExaCancelEnrichmentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_enrichment_cancel(
-            input_data.webset_id, input_data.enrichment_id
-        )
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = await Requests().post(url, headers=headers)
-        data = response.json()
+        # Cancel enrichment using SDK
+        canceled_enrichment = aexa.websets.enrichments.cancel(
+            webset_id=input_data.webset_id, id=input_data.enrichment_id
+        )
 
         # Try to estimate how many items were enriched before cancellation
         items_enriched = 0
-        items_url = ExaApiUrls.webset_items(input_data.webset_id)
-        items_response = await Requests().get(
-            items_url, headers=headers, params={"limit": 100}
+        items_response = aexa.websets.items.list(
+            webset_id=input_data.webset_id, limit=100
         )
-        items_data = items_response.json()
 
-        for item in items_data.get("data", []):
-            enrichments = item.get("enrichments", {})
-            if input_data.enrichment_id in enrichments:
-                items_enriched += 1
+        for sdk_item in items_response.data:
+            # Check if this enrichment is present
+            for enrich_result in sdk_item.enrichments:
+                if enrich_result.enrichment_id == input_data.enrichment_id:
+                    items_enriched += 1
+                    break
 
-        yield "enrichment_id", input_data.enrichment_id
-        yield "status", data.get("status", "canceled")
+        status = (
+            canceled_enrichment.status.value
+            if hasattr(canceled_enrichment.status, "value")
+            else str(canceled_enrichment.status)
+        )
+
+        yield "enrichment_id", canceled_enrichment.id
+        yield "status", status
         yield "items_enriched_before_cancel", items_enriched
         yield "success", "true"
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid operations

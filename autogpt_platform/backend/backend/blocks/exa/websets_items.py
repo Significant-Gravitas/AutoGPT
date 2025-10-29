@@ -5,7 +5,11 @@ This module provides blocks for managing items within Exa websets, including
 retrieving, listing, deleting, and bulk operations on webset items.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from exa_py import AsyncExa
+from exa_py.websets.types import WebsetItem as SdkWebsetItem
+from pydantic import BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -14,15 +18,54 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
-from ._api import ExaApiUrls, build_headers, yield_paginated_results
 from ._config import exa
 
-# Using type alias for flexible webset item structure
-WebsetItem = Dict[str, Any]
+
+# Mirrored model for stability - don't use SDK types directly in block outputs
+class WebsetItemModel(BaseModel):
+    """Stable output model mirroring SDK WebsetItem."""
+
+    id: str
+    url: str
+    title: str
+    content: str
+    entity_data: Dict[str, Any]
+    enrichments: Dict[str, Any]
+    verification_status: str
+    created_at: str
+    updated_at: str
+
+    @classmethod
+    def from_sdk(cls, item: SdkWebsetItem) -> "WebsetItemModel":
+        """Convert SDK WebsetItem to our stable model."""
+        # Extract properties from the union type
+        properties_dict = {}
+        if hasattr(item, "properties") and item.properties:
+            properties_dict = item.properties.model_dump(
+                by_alias=True, exclude_none=True
+            )
+
+        # Convert enrichments from list to dict keyed by enrichment_id
+        enrichments_dict = {}
+        if hasattr(item, "enrichments") and item.enrichments:
+            for enrich in item.enrichments:
+                enrichment_data = enrich.model_dump(by_alias=True, exclude_none=True)
+                enrichments_dict[enrich.enrichment_id] = enrichment_data
+
+        return cls(
+            id=item.id,
+            url=properties_dict.get("url", ""),
+            title=properties_dict.get("title", ""),
+            content=properties_dict.get("content", ""),
+            entity_data=properties_dict,
+            enrichments=enrichments_dict,
+            verification_status="",  # Not yet exposed in SDK
+            created_at=item.created_at.isoformat() if item.created_at else "",
+            updated_at=item.updated_at.isoformat() if item.updated_at else "",
+        )
 
 
 class ExaGetWebsetItemBlock(Block):
@@ -46,14 +89,8 @@ class ExaGetWebsetItemBlock(Block):
         url: str = SchemaField(description="The URL of the original source")
         title: str = SchemaField(description="The title of the item")
         content: str = SchemaField(description="The main content of the item")
-        entity_data: dict = SchemaField(
-            description="Entity-specific structured data",
-            default_factory=dict,
-        )
-        enrichments: dict = SchemaField(
-            description="Enrichment data added to the item",
-            default_factory=dict,
-        )
+        entity_data: dict = SchemaField(description="Entity-specific structured data")
+        enrichments: dict = SchemaField(description="Enrichment data added to the item")
         verification_status: str = SchemaField(
             description="Verification status against criteria"
         )
@@ -61,10 +98,7 @@ class ExaGetWebsetItemBlock(Block):
             description="When the item was added to the webset"
         )
         updated_at: str = SchemaField(description="When the item was last updated")
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -78,33 +112,27 @@ class ExaGetWebsetItemBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_item(input_data.webset_id, input_data.item_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK (methods are sync but class is AsyncExa)
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = await Requests().get(url, headers=headers)
-        data = response.json()
+        # Get item using SDK - no await needed
+        sdk_item = aexa.websets.items.get(
+            webset_id=input_data.webset_id, id=input_data.item_id
+        )
 
-        # Extract common fields
-        yield "item_id", data.get("id", "")
-        yield "url", data.get("url", "")
-        yield "title", data.get("title", "")
-        yield "content", data.get("content", "")
+        # Convert to our stable model
+        item = WebsetItemModel.from_sdk(sdk_item)
 
-        # Entity-specific data will vary based on entity type
-        entity_data = {}
-        for key in ["company", "person", "article", "researchPaper", "custom"]:
-            if key in data:
-                entity_data = data[key]
-                break
-
-        yield "entity_data", entity_data
-        yield "enrichments", data.get("enrichments", {})
-        yield "verification_status", data.get("verificationStatus", "")
-        yield "created_at", data.get("createdAt", "")
-        yield "updated_at", data.get("updatedAt", "")
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid item IDs
+        # Yield all fields
+        yield "item_id", item.id
+        yield "url", item.url
+        yield "title", item.title
+        yield "content", item.content
+        yield "entity_data", item.entity_data
+        yield "enrichments", item.enrichments
+        yield "verification_status", item.verification_status
+        yield "created_at", item.created_at
+        yield "updated_at", item.updated_at
 
 
 class ExaListWebsetItemsBlock(Block):
@@ -143,30 +171,22 @@ class ExaListWebsetItemsBlock(Block):
         )
 
     class Output(BlockSchema):
-        items: list[WebsetItem] = SchemaField(
+        items: list[WebsetItemModel] = SchemaField(
             description="List of webset items",
-            default_factory=list,
         )
-        item: WebsetItem = SchemaField(
+        item: WebsetItemModel = SchemaField(
             description="Individual item (yielded for each item in the list)",
-            default_factory=dict,
         )
         total_count: Optional[int] = SchemaField(
             description="Total number of items in the webset",
-            default=None,
         )
         has_more: bool = SchemaField(
             description="Whether there are more items to paginate through",
-            default=False,
         )
         next_cursor: Optional[str] = SchemaField(
             description="Cursor for the next page of results",
-            default=None,
         )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -180,63 +200,59 @@ class ExaListWebsetItemsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_items(input_data.webset_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
-
-        params: dict[str, Any] = {
-            "limit": input_data.limit,
-        }
-        if input_data.cursor:
-            params["cursor"] = input_data.cursor
+        # Use AsyncExa SDK (methods are sync despite class name)
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # If wait_for_items is True, poll until items are available
         if input_data.wait_for_items:
-            items_data = await self._wait_for_items(
-                url, headers, params, input_data.wait_timeout
-            )
-        else:
-            response = await Requests().get(url, headers=headers, params=params)
-            items_data = response.json()
+            import asyncio
+            import time
 
-        pagination = items_data.get("pagination", {})
+            start_time = time.time()
+            interval = 2
+            response = None
 
-        # Yield paginated results using helper
-        for key, value in yield_paginated_results(items_data, "items", "item"):
-            yield key, value
-
-        # Yield total count from pagination
-        yield "total_count", pagination.get("total")
-
-        # Let all exceptions propagate naturally
-
-    async def _wait_for_items(
-        self, url: str, headers: dict, params: dict, timeout: int
-    ) -> dict:
-        """Poll until items are available or timeout."""
-        import asyncio
-        import time
-
-        start_time = time.time()
-        interval = 2
-
-        while time.time() - start_time < timeout:
-            try:
-                response = await Requests().get(url, headers=headers, params=params)
-                data = response.json()
+            while time.time() - start_time < input_data.wait_timeout:
+                response = aexa.websets.items.list(
+                    webset_id=input_data.webset_id,
+                    cursor=input_data.cursor,
+                    limit=input_data.limit,
+                )
 
                 # Check if we have any items
-                if data.get("data"):
-                    return data
+                if response.data:
+                    break
 
                 await asyncio.sleep(interval)
-                interval = min(interval * 1.2, 10)  # Cap at 10 seconds
+                interval = min(interval * 1.2, 10)
 
-            except Exception:
-                await asyncio.sleep(interval)
+            if not response:
+                response = aexa.websets.items.list(
+                    webset_id=input_data.webset_id,
+                    cursor=input_data.cursor,
+                    limit=input_data.limit,
+                )
+        else:
+            response = aexa.websets.items.list(
+                webset_id=input_data.webset_id,
+                cursor=input_data.cursor,
+                limit=input_data.limit,
+            )
 
-        # Return whatever we have on timeout
-        response = await Requests().get(url, headers=headers, params=params)
-        return response.json()
+        # Convert SDK items to our stable models
+        items = [WebsetItemModel.from_sdk(item) for item in response.data]
+
+        # Yield the full list
+        yield "items", items
+
+        # Yield individual items for graph chaining
+        for item in items:
+            yield "item", item
+
+        # Yield pagination metadata
+        yield "total_count", None  # SDK doesn't provide total in pagination
+        yield "has_more", response.has_more
+        yield "next_cursor", response.next_cursor
 
 
 class ExaDeleteWebsetItemBlock(Block):
@@ -257,14 +273,8 @@ class ExaDeleteWebsetItemBlock(Block):
 
     class Output(BlockSchema):
         item_id: str = SchemaField(description="The ID of the deleted item")
-        success: str = SchemaField(
-            description="Whether the deletion was successful",
-            default="true",
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        success: str = SchemaField(description="Whether the deletion was successful")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -278,22 +288,16 @@ class ExaDeleteWebsetItemBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_item(input_data.webset_id, input_data.item_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = await Requests().delete(url, headers=headers)
+        # Delete item using SDK
+        deleted_item = aexa.websets.items.delete(
+            webset_id=input_data.webset_id, id=input_data.item_id
+        )
 
-        # API typically returns 204 No Content on successful deletion
-        if response.status in [200, 204]:
-            yield "item_id", input_data.item_id
-            yield "success", "true"
-        else:
-            data = response.json()
-            yield "item_id", input_data.item_id
-            yield "success", "false"
-            yield "error", data.get("message", "Deletion failed")
-
-        # Let all exceptions propagate naturally
+        yield "item_id", deleted_item.id
+        yield "success", "true"
 
 
 class ExaBulkWebsetItemsBlock(Block):
@@ -323,30 +327,22 @@ class ExaBulkWebsetItemsBlock(Block):
         )
 
     class Output(BlockSchema):
-        items: list[WebsetItem] = SchemaField(
-            description="All items from the webset",
-            default_factory=list,
+        items: list[WebsetItemModel] = SchemaField(
+            description="All items from the webset"
         )
-        item: WebsetItem = SchemaField(
-            description="Individual item (yielded for each item)",
-            default_factory=dict,
+        item: WebsetItemModel = SchemaField(
+            description="Individual item (yielded for each item)"
         )
         total_retrieved: int = SchemaField(
-            description="Total number of items retrieved",
-            default=0,
+            description="Total number of items retrieved"
         )
         total_in_webset: Optional[int] = SchemaField(
-            description="Total number of items in the webset",
-            default=None,
+            description="Total number of items in the webset"
         )
         truncated: bool = SchemaField(
-            description="Whether results were truncated due to max_items limit",
-            default=False,
+            description="Whether results were truncated due to max_items limit"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -360,56 +356,29 @@ class ExaBulkWebsetItemsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        all_items = []
-        cursor = None
-        has_more = True
-        batch_size = min(100, input_data.max_items)  # API limit per request
-        data: dict[str, Any] = {}  # Initialize to handle empty websets
+        # Use list_all iterator to get items up to max_items
+        all_items: List[WebsetItemModel] = []
+        item_iterator = aexa.websets.items.list_all(
+            webset_id=input_data.webset_id, limit=input_data.max_items
+        )
 
-        while has_more and len(all_items) < input_data.max_items:
-            # Build URL and params for this batch
-            url = ExaApiUrls.webset_items(input_data.webset_id)
-            params: dict[str, Any] = {
-                "limit": min(batch_size, input_data.max_items - len(all_items)),
-            }
-            if cursor:
-                params["cursor"] = cursor
-
-            # Add field filters if requested
-            if not input_data.include_enrichments:
-                params["exclude"] = "enrichments"
-            if not input_data.include_content:
-                if "exclude" in params:
-                    params["exclude"] += ",content"
-                else:
-                    params["exclude"] = "content"
-
-            # Fetch this batch
-            response = await Requests().get(url, headers=headers, params=params)
-            data = response.json()
-
-            items = data.get("data", [])
-            all_items.extend(items)
-
-            # Check if there are more items
-            has_more = data.get("hasMore", False)
-            cursor = data.get("nextCursor")
-
-            # Stop if we've reached the max_items limit
+        for sdk_item in item_iterator:
             if len(all_items) >= input_data.max_items:
                 break
 
-        # Truncate if we got more than requested
-        truncated = len(all_items) > input_data.max_items
-        if truncated:
-            all_items = all_items[: input_data.max_items]
+            # Convert to our stable model
+            item = WebsetItemModel.from_sdk(sdk_item)
 
-        # Get total count if available
-        total_in_webset = None
-        if "pagination" in data:
-            total_in_webset = data["pagination"].get("total")
+            # Apply field filters by setting to empty values
+            if not input_data.include_enrichments:
+                item.enrichments = {}
+            if not input_data.include_content:
+                item.content = ""
+
+            all_items.append(item)
 
         # Yield results
         yield "items", all_items
@@ -419,10 +388,8 @@ class ExaBulkWebsetItemsBlock(Block):
             yield "item", item
 
         yield "total_retrieved", len(all_items)
-        yield "total_in_webset", total_in_webset
-        yield "truncated", truncated or has_more
-
-        # Let all exceptions propagate naturally
+        yield "total_in_webset", None  # SDK doesn't provide total count
+        yield "truncated", len(all_items) >= input_data.max_items
 
 
 class ExaWebsetItemsSummaryBlock(Block):
@@ -445,26 +412,19 @@ class ExaWebsetItemsSummaryBlock(Block):
 
     class Output(BlockSchema):
         total_items: int = SchemaField(
-            description="Total number of items in the webset",
-            default=0,
+            description="Total number of items in the webset"
         )
         entity_type: str = SchemaField(description="Type of entities in the webset")
-        sample_items: list[dict] = SchemaField(
-            description="Sample of items from the webset",
-            default_factory=list,
+        sample_items: list[WebsetItemModel] = SchemaField(
+            description="Sample of items from the webset"
         )
         enrichment_columns: list[str] = SchemaField(
-            description="List of enrichment columns available",
-            default_factory=list,
+            description="List of enrichment columns available"
         )
         verification_stats: dict = SchemaField(
-            description="Statistics about item verification status",
-            default_factory=dict,
+            description="Statistics about item verification status"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -478,55 +438,48 @@ class ExaWebsetItemsSummaryBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # First get webset details
-        webset_url = ExaApiUrls.webset(input_data.webset_id)
-        webset_response = await Requests().get(webset_url, headers=headers)
-        webset_data = webset_response.json()
+        # Get webset details
+        webset = aexa.websets.get(id=input_data.webset_id)
 
         # Get entity type from searches
         entity_type = "unknown"
-        if webset_data.get("searches"):
-            first_search = webset_data["searches"][0] if webset_data["searches"] else {}
-            entity_type = first_search.get("entity", {}).get("type", "unknown")
+        if webset.searches:
+            first_search = webset.searches[0]
+            if first_search.entity:
+                # The entity is a union type, extract type field
+                entity_dict = first_search.entity.model_dump(by_alias=True)
+                entity_type = entity_dict.get("type", "unknown")
 
         # Get enrichment columns
         enrichment_columns = []
-        if webset_data.get("enrichments"):
+        if webset.enrichments:
             enrichment_columns = [
-                e.get("title", e.get("description", ""))
-                for e in webset_data["enrichments"]
+                e.title if e.title else e.description for e in webset.enrichments
             ]
 
         # Get sample items if requested
-        sample_items = []
-        items_data: dict[str, Any] = {}
+        sample_items: List[WebsetItemModel] = []
         if input_data.sample_size > 0:
-            items_url = ExaApiUrls.webset_items(input_data.webset_id)
-            params = {"limit": input_data.sample_size}
-            items_response = await Requests().get(
-                items_url, headers=headers, params=params
+            items_response = aexa.websets.items.list(
+                webset_id=input_data.webset_id, limit=input_data.sample_size
             )
-            items_data = items_response.json()
-            sample_items = items_data.get("data", [])
+            # Convert to our stable models
+            sample_items = [
+                WebsetItemModel.from_sdk(item) for item in items_response.data
+            ]
 
-        # Calculate verification stats from sample
+        # Calculate verification stats from sample (not yet in SDK)
         verification_stats: dict[str, int] = {}
-        if sample_items:
-            for item in sample_items:
-                status = item.get("verificationStatus", "unknown")
-                verification_stats[status] = verification_stats.get(status, 0) + 1
 
-        # Get total count
+        # Get total count - estimate from search progress
         total_items = 0
-        if sample_items and "pagination" in items_data:
-            total_items = items_data["pagination"].get("total", len(sample_items))
-        else:
-            # Estimate from webset status
-            for search in webset_data.get("searches", []):
-                progress = search.get("progress", {})
-                total_items += progress.get("found", 0)
+        if webset.searches:
+            for search in webset.searches:
+                if search.progress:
+                    total_items += search.progress.found
 
         yield "total_items", total_items
         yield "entity_type", entity_type
@@ -534,4 +487,79 @@ class ExaWebsetItemsSummaryBlock(Block):
         yield "enrichment_columns", enrichment_columns
         yield "verification_stats", verification_stats
 
-        # Let all exceptions propagate naturally
+
+class ExaGetNewItemsBlock(Block):
+    """Get items added to a webset since a specific cursor (incremental processing helper)."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset",
+            placeholder="webset-id-or-external-id",
+        )
+        since_cursor: Optional[str] = SchemaField(
+            default=None,
+            description="Cursor from previous run - only items after this will be returned. Leave empty on first run.",
+            placeholder="cursor-from-previous-run",
+        )
+        max_items: int = SchemaField(
+            default=100,
+            description="Maximum number of new items to retrieve",
+            ge=1,
+            le=1000,
+        )
+
+    class Output(BlockSchema):
+        new_items: list[WebsetItemModel] = SchemaField(
+            description="Items added since the cursor"
+        )
+        item: WebsetItemModel = SchemaField(
+            description="Individual item (yielded for each new item)"
+        )
+        count: int = SchemaField(description="Number of new items found")
+        next_cursor: Optional[str] = SchemaField(
+            description="Save this cursor for the next run to get only newer items"
+        )
+        has_more: bool = SchemaField(
+            description="Whether there are more new items beyond max_items"
+        )
+        error: str = SchemaField(description="Error message if the operation failed")
+
+    def __init__(self):
+        super().__init__(
+            id="c3d4e5f6-7890-1234-5678-901234567890",
+            description="Get items added since a cursor - enables incremental processing without reprocessing",
+            categories={BlockCategory.SEARCH, BlockCategory.DATA},
+            input_schema=ExaGetNewItemsBlock.Input,
+            output_schema=ExaGetNewItemsBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        # Get items starting from cursor
+        response = aexa.websets.items.list(
+            webset_id=input_data.webset_id,
+            cursor=input_data.since_cursor,
+            limit=input_data.max_items,
+        )
+
+        # Convert SDK items to our stable models
+        new_items = [WebsetItemModel.from_sdk(item) for item in response.data]
+
+        # Yield the full list
+        yield "new_items", new_items
+
+        # Yield individual items for processing
+        for item in new_items:
+            yield "item", item
+
+        # Yield metadata for next run
+        yield "count", len(new_items)
+        yield "next_cursor", response.next_cursor
+        yield "has_more", response.has_more

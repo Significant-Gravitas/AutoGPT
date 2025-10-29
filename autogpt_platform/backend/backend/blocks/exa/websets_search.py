@@ -6,7 +6,11 @@ including adding new searches, checking status, and canceling operations.
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
+
+from exa_py import AsyncExa
+from exa_py.websets.types import WebsetSearch as SdkWebsetSearch
+from pydantic import BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -15,12 +19,77 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
-from ._api import ExaApiUrls, build_headers, poll_search_until_complete
 from ._config import exa
+
+
+# Mirrored model for stability
+class WebsetSearchModel(BaseModel):
+    """Stable output model mirroring SDK WebsetSearch."""
+
+    id: str
+    webset_id: str
+    status: str
+    query: str
+    entity_type: str
+    criteria: List[Dict[str, Any]]
+    count: int
+    behavior: str
+    progress: Dict[str, Any]
+    recall: Optional[Dict[str, Any]]
+    created_at: str
+    updated_at: str
+    canceled_at: Optional[str]
+    canceled_reason: Optional[str]
+    metadata: Dict[str, Any]
+
+    @classmethod
+    def from_sdk(cls, search: SdkWebsetSearch) -> "WebsetSearchModel":
+        """Convert SDK WebsetSearch to our stable model."""
+        # Extract entity type
+        entity_type = "auto"
+        if search.entity:
+            entity_dict = search.entity.model_dump(by_alias=True)
+            entity_type = entity_dict.get("type", "auto")
+
+        # Convert criteria
+        criteria = [c.model_dump(by_alias=True) for c in search.criteria]
+
+        # Convert progress
+        progress_dict = {}
+        if search.progress:
+            progress_dict = search.progress.model_dump(by_alias=True)
+
+        # Convert recall
+        recall_dict = None
+        if search.recall:
+            recall_dict = search.recall.model_dump(by_alias=True)
+
+        return cls(
+            id=search.id,
+            webset_id=search.webset_id,
+            status=(
+                search.status.value
+                if hasattr(search.status, "value")
+                else str(search.status)
+            ),
+            query=search.query,
+            entity_type=entity_type,
+            criteria=criteria,
+            count=search.count,
+            behavior=search.behavior.value if search.behavior else "override",
+            progress=progress_dict,
+            recall=recall_dict,
+            created_at=search.created_at.isoformat() if search.created_at else "",
+            updated_at=search.updated_at.isoformat() if search.updated_at else "",
+            canceled_at=search.canceled_at.isoformat() if search.canceled_at else None,
+            canceled_reason=(
+                search.canceled_reason.value if search.canceled_reason else None
+            ),
+            metadata=search.metadata if search.metadata else {},
+        )
 
 
 class SearchBehavior(str, Enum):
@@ -153,21 +222,15 @@ class ExaCreateWebsetSearchBlock(Block):
         status: str = SchemaField(description="Current status of the search")
         query: str = SchemaField(description="The search query")
         expected_results: dict = SchemaField(
-            description="Recall estimation of expected results",
-            default_factory=dict,
+            description="Recall estimation of expected results"
         )
         items_found: Optional[int] = SchemaField(
-            description="Number of items found (if wait_for_completion was True)",
-            default=None,
+            description="Number of items found (if wait_for_completion was True)"
         )
         completion_time: Optional[float] = SchemaField(
-            description="Time taken to complete in seconds (if wait_for_completion was True)",
-            default=None,
+            description="Time taken to complete in seconds (if wait_for_completion was True)"
         )
-        error: str = SchemaField(
-            description="Error message if the operation failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -182,11 +245,6 @@ class ExaCreateWebsetSearchBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         import time
-
-        url = ExaApiUrls.webset_searches(input_data.webset_id)
-        headers = build_headers(
-            credentials.api_key.get_secret_value(), include_content_type=True
-        )
 
         # Build the payload
         payload = {
@@ -255,57 +313,86 @@ class ExaCreateWebsetSearchBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        try:
-            start_time = time.time()
+        start_time = time.time()
 
-            # Create the search
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-            search_id = data.get("id", "")
-            status = data.get("status", "")
+        # Create the search using SDK (sync method despite AsyncExa class)
+        sdk_search = aexa.websets.searches.create(
+            webset_id=input_data.webset_id, params=payload
+        )
 
-            # Extract expected results from recall
-            expected_results = {}
-            if "recall" in data:
-                recall = data["recall"]
-                expected = recall.get("expected", {})
-                expected_results = {
-                    "total": expected.get("total", 0),
-                    "confidence": expected.get("confidence", ""),
-                    "min": expected.get("bounds", {}).get("min", 0),
-                    "max": expected.get("bounds", {}).get("max", 0),
-                    "reasoning": recall.get("reasoning", ""),
-                }
+        search_id = sdk_search.id
+        status = (
+            sdk_search.status.value
+            if hasattr(sdk_search.status, "value")
+            else str(sdk_search.status)
+        )
 
-            # If wait_for_completion is True, poll for completion
-            if input_data.wait_for_completion:
-                items_found = await poll_search_until_complete(
-                    input_data.webset_id,
-                    search_id,
-                    headers,
-                    input_data.polling_timeout,
+        # Extract expected results from recall
+        expected_results = {}
+        if sdk_search.recall:
+            recall_dict = sdk_search.recall.model_dump(by_alias=True)
+            expected = recall_dict.get("expected", {})
+            expected_results = {
+                "total": expected.get("total", 0),
+                "confidence": expected.get("confidence", ""),
+                "min": expected.get("bounds", {}).get("min", 0),
+                "max": expected.get("bounds", {}).get("max", 0),
+                "reasoning": recall_dict.get("reasoning", ""),
+            }
+
+        # If wait_for_completion is True, poll for completion
+        if input_data.wait_for_completion:
+            import asyncio
+
+            poll_interval = 5
+            max_interval = 30
+            poll_start = time.time()
+
+            while time.time() - poll_start < input_data.polling_timeout:
+                current_search = aexa.websets.searches.get(
+                    webset_id=input_data.webset_id, id=search_id
                 )
-                completion_time = time.time() - start_time
+                current_status = (
+                    current_search.status.value
+                    if hasattr(current_search.status, "value")
+                    else str(current_search.status)
+                )
 
-                yield "search_id", search_id
-                yield "webset_id", input_data.webset_id
-                yield "status", "completed"
-                yield "query", input_data.query
-                yield "expected_results", expected_results
-                yield "items_found", items_found
-                yield "completion_time", completion_time
-            else:
-                yield "search_id", search_id
-                yield "webset_id", input_data.webset_id
-                yield "status", status
-                yield "query", input_data.query
-                yield "expected_results", expected_results
+                if current_status in ["completed", "failed", "cancelled"]:
+                    items_found = 0
+                    if current_search.progress:
+                        items_found = current_search.progress.found
+                    completion_time = time.time() - start_time
 
-        except ValueError as e:
-            # Re-raise user input validation errors
-            raise ValueError(f"Failed to create search: {e}") from e
-        # Let all other exceptions propagate naturally
+                    yield "search_id", search_id
+                    yield "webset_id", input_data.webset_id
+                    yield "status", current_status
+                    yield "query", input_data.query
+                    yield "expected_results", expected_results
+                    yield "items_found", items_found
+                    yield "completion_time", completion_time
+                    return
+
+                await asyncio.sleep(poll_interval)
+                poll_interval = min(poll_interval * 1.5, max_interval)
+
+            # Timeout - yield what we have
+            yield "search_id", search_id
+            yield "webset_id", input_data.webset_id
+            yield "status", status
+            yield "query", input_data.query
+            yield "expected_results", expected_results
+            yield "items_found", 0
+            yield "completion_time", time.time() - start_time
+        else:
+            yield "search_id", search_id
+            yield "webset_id", input_data.webset_id
+            yield "status", status
+            yield "query", input_data.query
+            yield "expected_results", expected_results
 
 
 class ExaGetWebsetSearchBlock(Block):
@@ -329,36 +416,19 @@ class ExaGetWebsetSearchBlock(Block):
         status: str = SchemaField(description="Current status of the search")
         query: str = SchemaField(description="The search query")
         entity_type: str = SchemaField(description="Type of entity being searched")
-        criteria: list[dict] = SchemaField(
-            description="Criteria used for verification",
-            default_factory=list,
-        )
-        progress: dict = SchemaField(
-            description="Search progress information",
-            default_factory=dict,
-        )
-        recall: dict = SchemaField(
-            description="Recall estimation information",
-            default_factory=dict,
-        )
+        criteria: list[dict] = SchemaField(description="Criteria used for verification")
+        progress: dict = SchemaField(description="Search progress information")
+        recall: dict = SchemaField(description="Recall estimation information")
         created_at: str = SchemaField(description="When the search was created")
         updated_at: str = SchemaField(description="When the search was last updated")
         canceled_at: Optional[str] = SchemaField(
-            description="When the search was canceled (if applicable)",
-            default=None,
+            description="When the search was canceled (if applicable)"
         )
         canceled_reason: Optional[str] = SchemaField(
-            description="Reason for cancellation (if applicable)",
-            default=None,
+            description="Reason for cancellation (if applicable)"
         )
-        metadata: dict = SchemaField(
-            description="Metadata attached to the search",
-            default_factory=dict,
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        metadata: dict = SchemaField(description="Metadata attached to the search")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -372,53 +442,49 @@ class ExaGetWebsetSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_search(input_data.webset_id, input_data.search_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = await Requests().get(url, headers=headers)
-        data = response.json()
+        # Get search using SDK
+        sdk_search = aexa.websets.searches.get(
+            webset_id=input_data.webset_id, id=input_data.search_id
+        )
 
-        # Extract entity information
-        entity = data.get("entity", {})
-        entity_type = entity.get("type", "unknown")
+        # Convert to our stable model
+        search = WebsetSearchModel.from_sdk(sdk_search)
 
         # Extract progress information
-        progress = data.get("progress", {})
         progress_info = {
-            "found": progress.get("found", 0),
-            "analyzed": progress.get("analyzed", 0),
-            "completion": progress.get("completion", 0),
-            "time_left": progress.get("timeLeft", 0),
+            "found": search.progress.get("found", 0),
+            "analyzed": search.progress.get("analyzed", 0),
+            "completion": search.progress.get("completion", 0),
+            "time_left": search.progress.get("timeLeft", 0),
         }
 
         # Extract recall information
         recall_data = {}
-        if "recall" in data:
-            recall = data["recall"]
-            expected = recall.get("expected", {})
+        if search.recall:
+            expected = search.recall.get("expected", {})
             recall_data = {
                 "expected_total": expected.get("total", 0),
                 "confidence": expected.get("confidence", ""),
                 "min_expected": expected.get("bounds", {}).get("min", 0),
                 "max_expected": expected.get("bounds", {}).get("max", 0),
-                "reasoning": recall.get("reasoning", ""),
+                "reasoning": search.recall.get("reasoning", ""),
             }
 
-        yield "search_id", data.get("id", "")
-        yield "status", data.get("status", "")
-        yield "query", data.get("query", "")
-        yield "entity_type", entity_type
-        yield "criteria", data.get("criteria", [])
+        yield "search_id", search.id
+        yield "status", search.status
+        yield "query", search.query
+        yield "entity_type", search.entity_type
+        yield "criteria", search.criteria
         yield "progress", progress_info
         yield "recall", recall_data
-        yield "created_at", data.get("createdAt", "")
-        yield "updated_at", data.get("updatedAt", "")
-        yield "canceled_at", data.get("canceledAt")
-        yield "canceled_reason", data.get("canceledReason")
-        yield "metadata", data.get("metadata", {})
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid search IDs
+        yield "created_at", search.created_at
+        yield "updated_at", search.updated_at
+        yield "canceled_at", search.canceled_at
+        yield "canceled_reason", search.canceled_reason
+        yield "metadata", search.metadata
 
 
 class ExaCancelWebsetSearchBlock(Block):
@@ -446,17 +512,12 @@ class ExaCancelWebsetSearchBlock(Block):
         search_id: str = SchemaField(description="The ID of the canceled search")
         status: str = SchemaField(description="Status after cancellation")
         items_found_before_cancel: int = SchemaField(
-            description="Number of items found before cancellation",
-            default=0,
+            description="Number of items found before cancellation"
         )
         success: str = SchemaField(
-            description="Whether the cancellation was successful",
-            default="true",
+            description="Whether the cancellation was successful"
         )
-        error: str = SchemaField(
-            description="Error message if the cancellation failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the cancellation failed")
 
     def __init__(self):
         super().__init__(
@@ -470,47 +531,133 @@ class ExaCancelWebsetSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.webset_search_cancel(
-            input_data.webset_id, input_data.search_id
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        # Cancel search using SDK (doesn't accept reason param)
+        canceled_search = aexa.websets.searches.cancel(
+            webset_id=input_data.webset_id, id=input_data.search_id
         )
 
-        # Add reason to payload if provided
-        payload = {}
-        include_content_type = False
-        if input_data.reason:
-            include_content_type = True
-            payload = {"reason": input_data.reason}
+        # Extract items found before cancellation
+        items_found = 0
+        if canceled_search.progress:
+            items_found = canceled_search.progress.found
 
-        headers = build_headers(
-            credentials.api_key.get_secret_value(),
-            include_content_type=include_content_type,
+        status = (
+            canceled_search.status.value
+            if hasattr(canceled_search.status, "value")
+            else str(canceled_search.status)
         )
 
-        if payload:
-            response = await Requests().post(url, headers=headers, json=payload)
-        else:
-            response = await Requests().post(url, headers=headers)
-
-        data = response.json()
-        if not response.ok:
-            raise ValueError(
-                f"Failed to cancel search: {data.get('message', 'Unknown error')}"
-            )
-
-        # Get the search details to see how many items were found
-        search_url = ExaApiUrls.webset_search(
-            input_data.webset_id, input_data.search_id
-        )
-        search_response = await Requests().get(search_url, headers=headers)
-        search_data = search_response.json()
-
-        progress = search_data.get("progress", {})
-        items_found = progress.get("found", 0)
-
-        yield "search_id", input_data.search_id
-        yield "status", search_data.get("status", "canceled")
+        yield "search_id", canceled_search.id
+        yield "status", status
         yield "items_found_before_cancel", items_found
         yield "success", "true"
 
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid operations
+
+class ExaFindOrCreateSearchBlock(Block):
+    """Find existing search by query or create new one (prevents duplicate searches)."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset",
+            placeholder="webset-id-or-external-id",
+        )
+        query: str = SchemaField(
+            description="Search query to find or create",
+            placeholder="AI companies in San Francisco",
+        )
+        count: int = SchemaField(
+            default=10,
+            description="Number of items to find (only used if creating new search)",
+            ge=1,
+            le=1000,
+        )
+        entity_type: SearchEntityType = SchemaField(
+            default=SearchEntityType.AUTO,
+            description="Entity type (only used if creating)",
+            advanced=True,
+        )
+        behavior: SearchBehavior = SchemaField(
+            default=SearchBehavior.OVERRIDE,
+            description="Search behavior (only used if creating)",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        search_id: str = SchemaField(description="The search ID (existing or new)")
+        webset_id: str = SchemaField(description="The webset ID")
+        status: str = SchemaField(description="Current search status")
+        query: str = SchemaField(description="The search query")
+        was_created: bool = SchemaField(
+            description="True if search was newly created, False if already existed"
+        )
+        items_found: int = SchemaField(
+            description="Number of items found (0 if still running)"
+        )
+        error: str = SchemaField(description="Error message if the operation failed")
+
+    def __init__(self):
+        super().__init__(
+            id="d4e5f6a7-8901-2345-6789-012345678901",
+            description="Find existing search by query or create new - prevents duplicate searches in workflows",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaFindOrCreateSearchBlock.Input,
+            output_schema=ExaFindOrCreateSearchBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        # Get webset to check existing searches
+        webset = aexa.websets.get(id=input_data.webset_id)
+
+        # Look for existing search with same query
+        existing_search = None
+        if webset.searches:
+            for search in webset.searches:
+                if search.query.strip().lower() == input_data.query.strip().lower():
+                    existing_search = search
+                    break
+
+        if existing_search:
+            # Found existing search
+            search = WebsetSearchModel.from_sdk(existing_search)
+
+            yield "search_id", search.id
+            yield "webset_id", input_data.webset_id
+            yield "status", search.status
+            yield "query", search.query
+            yield "was_created", False
+            yield "items_found", search.progress.get("found", 0)
+        else:
+            # Create new search
+            payload: Dict[str, Any] = {
+                "query": input_data.query,
+                "count": input_data.count,
+                "behavior": input_data.behavior.value,
+            }
+
+            # Add entity if not auto
+            if input_data.entity_type != SearchEntityType.AUTO:
+                payload["entity"] = {"type": input_data.entity_type.value}
+
+            sdk_search = aexa.websets.searches.create(
+                webset_id=input_data.webset_id, params=payload
+            )
+
+            search = WebsetSearchModel.from_sdk(sdk_search)
+
+            yield "search_id", search.id
+            yield "webset_id", input_data.webset_id
+            yield "status", search.status
+            yield "query", search.query
+            yield "was_created", True
+            yield "items_found", 0  # Newly created, no items yet

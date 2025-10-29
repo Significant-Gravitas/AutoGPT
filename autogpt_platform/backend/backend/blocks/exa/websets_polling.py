@@ -9,6 +9,8 @@ import asyncio
 import time
 from enum import Enum
 
+from exa_py import AsyncExa
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -16,11 +18,9 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
-from ._api import ExaApiUrls, build_headers, get_item_count
 from ._config import exa
 
 
@@ -76,26 +76,15 @@ class ExaWaitForWebsetBlock(Block):
         webset_id: str = SchemaField(description="The webset ID that was monitored")
         final_status: str = SchemaField(description="The final status of the webset")
         elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
-        item_count: int = SchemaField(
-            description="Number of items found",
-            default=0,
-        )
+        item_count: int = SchemaField(description="Number of items found")
         search_progress: dict = SchemaField(
-            description="Detailed search progress information",
-            default_factory=dict,
+            description="Detailed search progress information"
         )
         enrichment_progress: dict = SchemaField(
-            description="Detailed enrichment progress information",
-            default_factory=dict,
+            description="Detailed enrichment progress information"
         )
-        timed_out: bool = SchemaField(
-            description="Whether the operation timed out",
-            default=False,
-        )
-        error: str = SchemaField(
-            description="Error message if the operation failed",
-            default="",
-        )
+        timed_out: bool = SchemaField(description="Whether the operation timed out")
+        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -110,75 +99,140 @@ class ExaWaitForWebsetBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         start_time = time.time()
-        interval = input_data.check_interval
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         try:
-            while time.time() - start_time < input_data.timeout:
-                # Get current webset status
-                url = ExaApiUrls.webset(input_data.webset_id)
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
+            # Use SDK's wait_until_idle if target status is IDLE or ANY_COMPLETE
+            if input_data.target_status in [
+                WebsetTargetStatus.IDLE,
+                WebsetTargetStatus.ANY_COMPLETE,
+            ]:
+                # SDK's wait_until_idle handles polling for us
+                final_webset = aexa.websets.wait_until_idle(
+                    id=input_data.webset_id,
+                    timeout=input_data.timeout,
+                    poll_interval=input_data.check_interval,
+                )
 
-                current_status = data.get("status", "")
+                elapsed = time.time() - start_time
 
-                # Check if target status reached
-                status_reached = False
-                if input_data.target_status == WebsetTargetStatus.ANY_COMPLETE:
-                    status_reached = current_status in ["idle", "completed"]
-                else:
-                    status_reached = current_status == input_data.target_status.value
+                # Extract status
+                status_str = (
+                    final_webset.status.value
+                    if hasattr(final_webset.status, "value")
+                    else str(final_webset.status)
+                )
 
-                if status_reached:
-                    # Get final counts and progress
-                    search_progress = self._extract_search_progress(data)
-                    enrichment_progress = self._extract_enrichment_progress(data)
-                    item_count = await get_item_count(input_data.webset_id, headers)
+                # Estimate item count from search progress
+                item_count = 0
+                if final_webset.searches:
+                    for search in final_webset.searches:
+                        if search.progress:
+                            item_count += search.progress.found
 
-                    elapsed = time.time() - start_time
+                # Extract progress if requested
+                search_progress = {}
+                enrichment_progress = {}
+                if input_data.include_progress:
+                    webset_dict = final_webset.model_dump(
+                        by_alias=True, exclude_none=True
+                    )
+                    search_progress = self._extract_search_progress(webset_dict)
+                    enrichment_progress = self._extract_enrichment_progress(webset_dict)
 
-                    yield "webset_id", input_data.webset_id
-                    yield "final_status", current_status
-                    yield "elapsed_time", elapsed
-                    yield "item_count", item_count
-                    if input_data.include_progress:
-                        yield "search_progress", search_progress
-                        yield "enrichment_progress", enrichment_progress
-                    yield "timed_out", False
+                yield "webset_id", input_data.webset_id
+                yield "final_status", status_str
+                yield "elapsed_time", elapsed
+                yield "item_count", item_count
+                if input_data.include_progress:
+                    yield "search_progress", search_progress
+                    yield "enrichment_progress", enrichment_progress
+                yield "timed_out", False
+            else:
+                # For other status targets, manually poll
+                interval = input_data.check_interval
+                while time.time() - start_time < input_data.timeout:
+                    # Get current webset status
+                    webset = aexa.websets.get(id=input_data.webset_id)
+                    current_status = (
+                        webset.status.value
+                        if hasattr(webset.status, "value")
+                        else str(webset.status)
+                    )
 
-                    return
+                    # Check if target status reached
+                    if current_status == input_data.target_status.value:
+                        elapsed = time.time() - start_time
 
-                # Wait before next check with exponential backoff
-                await asyncio.sleep(interval)
-                interval = min(interval * 1.5, input_data.max_interval)
+                        # Estimate item count from search progress
+                        item_count = 0
+                        if webset.searches:
+                            for search in webset.searches:
+                                if search.progress:
+                                    item_count += search.progress.found
 
-            # Timeout reached
-            elapsed = time.time() - start_time
+                        search_progress = {}
+                        enrichment_progress = {}
+                        if input_data.include_progress:
+                            webset_dict = webset.model_dump(
+                                by_alias=True, exclude_none=True
+                            )
+                            search_progress = self._extract_search_progress(webset_dict)
+                            enrichment_progress = self._extract_enrichment_progress(
+                                webset_dict
+                            )
 
-            # Get last known status
-            url = ExaApiUrls.webset(input_data.webset_id)
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
-            final_status = data.get("status", "unknown")
-            search_progress = self._extract_search_progress(data)
-            enrichment_progress = self._extract_enrichment_progress(data)
-            item_count = await get_item_count(input_data.webset_id, headers)
+                        yield "webset_id", input_data.webset_id
+                        yield "final_status", current_status
+                        yield "elapsed_time", elapsed
+                        yield "item_count", item_count
+                        if input_data.include_progress:
+                            yield "search_progress", search_progress
+                            yield "enrichment_progress", enrichment_progress
+                        yield "timed_out", False
+                        return
 
-            yield "webset_id", input_data.webset_id
-            yield "final_status", final_status
-            yield "elapsed_time", elapsed
-            yield "item_count", item_count
-            if input_data.include_progress:
-                yield "search_progress", search_progress
-                yield "enrichment_progress", enrichment_progress
-            yield "timed_out", True
+                    # Wait before next check with exponential backoff
+                    await asyncio.sleep(interval)
+                    interval = min(interval * 1.5, input_data.max_interval)
+
+                # Timeout reached
+                elapsed = time.time() - start_time
+                webset = aexa.websets.get(id=input_data.webset_id)
+                final_status = (
+                    webset.status.value
+                    if hasattr(webset.status, "value")
+                    else str(webset.status)
+                )
+
+                # Estimate item count from search progress
+                item_count = 0
+                if webset.searches:
+                    for search in webset.searches:
+                        if search.progress:
+                            item_count += search.progress.found
+
+                search_progress = {}
+                enrichment_progress = {}
+                if input_data.include_progress:
+                    webset_dict = webset.model_dump(by_alias=True, exclude_none=True)
+                    search_progress = self._extract_search_progress(webset_dict)
+                    enrichment_progress = self._extract_enrichment_progress(webset_dict)
+
+                yield "webset_id", input_data.webset_id
+                yield "final_status", final_status
+                yield "elapsed_time", elapsed
+                yield "item_count", item_count
+                if input_data.include_progress:
+                    yield "search_progress", search_progress
+                    yield "enrichment_progress", enrichment_progress
+                yield "timed_out", True
 
         except asyncio.TimeoutError:
-            # This is expected - we hit our timeout limit
             raise ValueError(
                 f"Polling timed out after {input_data.timeout} seconds"
             ) from None
-        # Let all other exceptions propagate naturally
 
     def _extract_search_progress(self, webset_data: dict) -> dict:
         """Extract search progress information from webset data."""
@@ -249,30 +303,18 @@ class ExaWaitForSearchBlock(Block):
         search_id: str = SchemaField(description="The search ID that was monitored")
         final_status: str = SchemaField(description="The final status of the search")
         items_found: int = SchemaField(
-            description="Number of items found by the search",
-            default=0,
+            description="Number of items found by the search"
         )
-        items_analyzed: int = SchemaField(
-            description="Number of items analyzed",
-            default=0,
-        )
+        items_analyzed: int = SchemaField(description="Number of items analyzed")
         completion_percentage: int = SchemaField(
-            description="Completion percentage (0-100)",
-            default=0,
+            description="Completion percentage (0-100)"
         )
         elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
         recall_info: dict = SchemaField(
-            description="Information about expected results and confidence",
-            default_factory=dict,
+            description="Information about expected results and confidence"
         )
-        timed_out: bool = SchemaField(
-            description="Whether the operation timed out",
-            default=False,
-        )
-        error: str = SchemaField(
-            description="Error message if the operation failed",
-            default="",
-        )
+        timed_out: bool = SchemaField(description="Whether the operation timed out")
+        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -289,40 +331,54 @@ class ExaWaitForSearchBlock(Block):
         start_time = time.time()
         interval = input_data.check_interval
         max_interval = 30
-        headers = build_headers(credentials.api_key.get_secret_value())
-        url = ExaApiUrls.webset_search(input_data.webset_id, input_data.search_id)
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         try:
             while time.time() - start_time < input_data.timeout:
-                # Get current search status
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
+                # Get current search status using SDK
+                search = aexa.websets.searches.get(
+                    webset_id=input_data.webset_id, id=input_data.search_id
+                )
 
-                status = data.get("status", "")
-                progress = data.get("progress", {})
+                # Extract status
+                status = (
+                    search.status.value
+                    if hasattr(search.status, "value")
+                    else str(search.status)
+                )
 
                 # Check if search is complete
                 if status in ["completed", "failed", "canceled"]:
                     elapsed = time.time() - start_time
 
+                    # Extract progress information
+                    progress_dict = {}
+                    if search.progress:
+                        progress_dict = search.progress.model_dump(
+                            by_alias=True, exclude_none=True
+                        )
+
                     # Extract recall information
                     recall_info = {}
-                    if "recall" in data:
-                        recall = data["recall"]
-                        expected = recall.get("expected", {})
+                    if search.recall:
+                        recall_dict = search.recall.model_dump(
+                            by_alias=True, exclude_none=True
+                        )
+                        expected = recall_dict.get("expected", {})
                         recall_info = {
                             "expected_total": expected.get("total", 0),
                             "confidence": expected.get("confidence", ""),
                             "min_expected": expected.get("bounds", {}).get("min", 0),
                             "max_expected": expected.get("bounds", {}).get("max", 0),
-                            "reasoning": recall.get("reasoning", ""),
+                            "reasoning": recall_dict.get("reasoning", ""),
                         }
 
                     yield "search_id", input_data.search_id
                     yield "final_status", status
-                    yield "items_found", progress.get("found", 0)
-                    yield "items_analyzed", progress.get("analyzed", 0)
-                    yield "completion_percentage", progress.get("completion", 0)
+                    yield "items_found", progress_dict.get("found", 0)
+                    yield "items_analyzed", progress_dict.get("analyzed", 0)
+                    yield "completion_percentage", progress_dict.get("completion", 0)
                     yield "elapsed_time", elapsed
                     yield "recall_info", recall_info
                     yield "timed_out", False
@@ -337,26 +393,34 @@ class ExaWaitForSearchBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
-            final_status = data.get("status", "unknown")
-            progress = data.get("progress", {})
+            search = aexa.websets.searches.get(
+                webset_id=input_data.webset_id, id=input_data.search_id
+            )
+            final_status = (
+                search.status.value
+                if hasattr(search.status, "value")
+                else str(search.status)
+            )
+
+            progress_dict = {}
+            if search.progress:
+                progress_dict = search.progress.model_dump(
+                    by_alias=True, exclude_none=True
+                )
 
             yield "search_id", input_data.search_id
             yield "final_status", final_status
-            yield "items_found", progress.get("found", 0)
-            yield "items_analyzed", progress.get("analyzed", 0)
-            yield "completion_percentage", progress.get("completion", 0)
+            yield "items_found", progress_dict.get("found", 0)
+            yield "items_analyzed", progress_dict.get("analyzed", 0)
+            yield "completion_percentage", progress_dict.get("completion", 0)
             yield "elapsed_time", elapsed
             yield "recall_info", {}
             yield "timed_out", True
 
         except asyncio.TimeoutError:
-            # This is expected - we hit our timeout limit
             raise ValueError(
                 f"Search polling timed out after {input_data.timeout} seconds"
             ) from None
-        # Let all other exceptions propagate naturally
 
 
 class ExaWaitForEnrichmentBlock(Block):
@@ -400,25 +464,17 @@ class ExaWaitForEnrichmentBlock(Block):
             description="The final status of the enrichment"
         )
         items_enriched: int = SchemaField(
-            description="Number of items successfully enriched",
-            default=0,
+            description="Number of items successfully enriched"
         )
         enrichment_title: str = SchemaField(
             description="Title/description of the enrichment"
         )
         elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
         sample_data: list[dict] = SchemaField(
-            description="Sample of enriched data (if requested)",
-            default_factory=list,
+            description="Sample of enriched data (if requested)"
         )
-        timed_out: bool = SchemaField(
-            description="Whether the operation timed out",
-            default=False,
-        )
-        error: str = SchemaField(
-            description="Error message if the operation failed",
-            default="",
-        )
+        timed_out: bool = SchemaField(description="Whether the operation timed out")
+        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -435,18 +491,22 @@ class ExaWaitForEnrichmentBlock(Block):
         start_time = time.time()
         interval = input_data.check_interval
         max_interval = 30
-        headers = build_headers(credentials.api_key.get_secret_value())
-        url = ExaApiUrls.webset_enrichment(
-            input_data.webset_id, input_data.enrichment_id
-        )
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         try:
             while time.time() - start_time < input_data.timeout:
-                # Get current enrichment status
-                response = await Requests().get(url, headers=headers)
-                data = response.json()
+                # Get current enrichment status using SDK
+                enrichment = aexa.websets.enrichments.get(
+                    webset_id=input_data.webset_id, id=input_data.enrichment_id
+                )
 
-                status = data.get("status", "")
+                # Extract status
+                status = (
+                    enrichment.status.value
+                    if hasattr(enrichment.status, "value")
+                    else str(enrichment.status)
+                )
 
                 # Check if enrichment is complete
                 if status in ["completed", "failed", "canceled"]:
@@ -459,16 +519,14 @@ class ExaWaitForEnrichmentBlock(Block):
                     if input_data.sample_results and status == "completed":
                         sample_data, items_enriched = (
                             await self._get_sample_enrichments(
-                                input_data.webset_id, input_data.enrichment_id, headers
+                                input_data.webset_id, input_data.enrichment_id, aexa
                             )
                         )
 
                     yield "enrichment_id", input_data.enrichment_id
                     yield "final_status", status
                     yield "items_enriched", items_enriched
-                    yield "enrichment_title", data.get(
-                        "title", data.get("description", "")
-                    )
+                    yield "enrichment_title", enrichment.title or enrichment.description or ""
                     yield "elapsed_time", elapsed
                     if input_data.sample_results:
                         yield "sample_data", sample_data
@@ -484,10 +542,15 @@ class ExaWaitForEnrichmentBlock(Block):
             elapsed = time.time() - start_time
 
             # Get last known status
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
-            final_status = data.get("status", "unknown")
-            title = data.get("title", data.get("description", ""))
+            enrichment = aexa.websets.enrichments.get(
+                webset_id=input_data.webset_id, id=input_data.enrichment_id
+            )
+            final_status = (
+                enrichment.status.value
+                if hasattr(enrichment.status, "value")
+                else str(enrichment.status)
+            )
+            title = enrichment.title or enrichment.description or ""
 
             yield "enrichment_id", input_data.enrichment_id
             yield "final_status", final_status
@@ -498,43 +561,46 @@ class ExaWaitForEnrichmentBlock(Block):
             yield "timed_out", True
 
         except asyncio.TimeoutError:
-            # This is expected - we hit our timeout limit
             raise ValueError(
                 f"Enrichment polling timed out after {input_data.timeout} seconds"
             ) from None
-        # Let all other exceptions propagate naturally
 
     async def _get_sample_enrichments(
-        self, webset_id: str, enrichment_id: str, headers: dict
+        self, webset_id: str, enrichment_id: str, aexa: AsyncExa
     ) -> tuple[list[dict], int]:
         """Get sample enriched data and count."""
-        # Get a few items to see enrichment results
-        url = ExaApiUrls.webset_items(webset_id)
-        response = await Requests().get(url, headers=headers, params={"limit": 5})
-        data = response.json()
+        # Get a few items to see enrichment results using SDK
+        response = aexa.websets.items.list(webset_id=webset_id, limit=5)
 
-        items = data.get("data", [])
         sample_data = []
         enriched_count = 0
 
-        for item in items:
-            enrichments = item.get("enrichments", {})
-            if enrichment_id in enrichments:
-                enriched_count += 1
-                sample_data.append(
-                    {
-                        "item_id": item.get("id"),
-                        "item_title": item.get("title", ""),
-                        "enrichment_data": enrichments[enrichment_id],
-                    }
-                )
+        for item in response.data:
+            # Check if item has this enrichment
+            if item.enrichments:
+                for enrich in item.enrichments:
+                    if enrich.enrichment_id == enrichment_id:
+                        enriched_count += 1
+                        enrich_dict = enrich.model_dump(
+                            by_alias=True, exclude_none=True
+                        )
+                        sample_data.append(
+                            {
+                                "item_id": item.id,
+                                "item_title": (
+                                    item.properties.title
+                                    if hasattr(item.properties, "title")
+                                    else ""
+                                ),
+                                "enrichment_data": enrich_dict,
+                            }
+                        )
+                        break
 
-        # Get total count if available
-        if "pagination" in data:
-            # This is an estimate - would need to check all items for accurate count
-            total_items = data["pagination"].get("total", 0)
-            if enriched_count > 0 and len(items) > 0:
-                # Estimate based on sample
-                enriched_count = int(total_items * (enriched_count / len(items)))
+        # Estimate total enriched count based on sample
+        # Note: This is an estimate - would need to check all items for accurate count
+        if enriched_count > 0 and len(response.data) > 0:
+            # For now, just return the sample count as we don't have total item count easily
+            pass
 
         return sample_data, enriched_count

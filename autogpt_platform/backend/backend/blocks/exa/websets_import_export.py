@@ -9,7 +9,11 @@ import csv
 import json
 from enum import Enum
 from io import StringIO
-from typing import Any, Optional
+from typing import Optional
+
+from exa_py import AsyncExa
+from exa_py.websets.types import Import as SdkImport
+from pydantic import BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -18,12 +22,68 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
-from ._api import ExaApiUrls, build_headers, yield_paginated_results
 from ._config import exa
+
+
+# Mirrored model for stability - don't use SDK types directly in block outputs
+class ImportModel(BaseModel):
+    """Stable output model mirroring SDK Import."""
+
+    id: str
+    status: str
+    title: str
+    format: str
+    entity_type: str
+    count: int
+    size: int
+    failed_reason: str
+    failed_message: str
+    metadata: dict
+    created_at: str
+    updated_at: str
+
+    @classmethod
+    def from_sdk(cls, import_obj: SdkImport) -> "ImportModel":
+        """Convert SDK Import to our stable model."""
+        # Extract entity type from union
+        entity_dict = import_obj.entity.model_dump(by_alias=True, exclude_none=True)
+        entity_type = entity_dict.get("type", "unknown")
+
+        # Handle status enum
+        status_str = (
+            import_obj.status.value
+            if hasattr(import_obj.status, "value")
+            else str(import_obj.status)
+        )
+
+        # Handle format enum
+        format_str = (
+            import_obj.format.value
+            if hasattr(import_obj.format, "value")
+            else str(import_obj.format)
+        )
+
+        return cls(
+            id=import_obj.id,
+            status=status_str,
+            title=import_obj.title or "",
+            format=format_str,
+            entity_type=entity_type,
+            count=import_obj.count or 0,
+            size=import_obj.size or 0,
+            failed_reason=import_obj.failed_reason or "",
+            failed_message=import_obj.failed_message or "",
+            metadata=import_obj.metadata or {},
+            created_at=(
+                import_obj.created_at.isoformat() if import_obj.created_at else ""
+            ),
+            updated_at=(
+                import_obj.updated_at.isoformat() if import_obj.updated_at else ""
+            ),
+        )
 
 
 class ImportFormat(str, Enum):
@@ -98,16 +158,10 @@ class ExaCreateImportBlock(Block):
         )
         status: str = SchemaField(description="Current status of the import")
         title: str = SchemaField(description="Title of the import")
-        count: int = SchemaField(
-            description="Number of items in the import",
-            default=0,
-        )
+        count: int = SchemaField(description="Number of items in the import")
         entity_type: str = SchemaField(description="Type of entities imported")
         created_at: str = SchemaField(description="When the import was created")
-        error: str = SchemaField(
-            description="Error message if the import failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the import failed")
 
     def __init__(self):
         super().__init__(
@@ -135,67 +189,61 @@ class ExaCreateImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.imports()
-        headers = build_headers(
-            credentials.api_key.get_secret_value(), include_content_type=True
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        # Parse CSV data to count rows
+        csv_reader = csv.reader(StringIO(input_data.csv_data))
+        rows = list(csv_reader)
+        count = len(rows) - 1 if len(rows) > 1 else 0  # Subtract header row
+
+        # Calculate size in bytes
+        size = len(input_data.csv_data.encode("utf-8"))
+
+        # Build the payload
+        payload = {
+            "title": input_data.title,
+            "format": ImportFormat.CSV.value,
+            "count": count,
+            "size": size,
+            "csv": {
+                "identifier": input_data.identifier_column,
+            },
+        }
+
+        # Add URL column if specified
+        if input_data.url_column is not None:
+            payload["csv"]["url"] = input_data.url_column
+
+        # Add entity configuration
+        entity = {"type": input_data.entity_type.value}
+        if (
+            input_data.entity_type == ImportEntityType.CUSTOM
+            and input_data.entity_description
+        ):
+            entity["description"] = input_data.entity_description
+        payload["entity"] = entity
+
+        # Add metadata if provided
+        if input_data.metadata:
+            payload["metadata"] = input_data.metadata
+
+        # Create import using SDK - no await needed
+        # Pass CSV data as string
+        sdk_import = aexa.websets.imports.create(
+            params=payload, csv_data=input_data.csv_data
         )
 
-        try:
-            # Parse CSV data to count rows
-            csv_reader = csv.reader(StringIO(input_data.csv_data))
-            rows = list(csv_reader)
-            count = len(rows) - 1 if len(rows) > 1 else 0  # Subtract header row
+        # Convert to our stable model
+        import_obj = ImportModel.from_sdk(sdk_import)
 
-            # Calculate size in bytes
-            size = len(input_data.csv_data.encode("utf-8"))
-
-            # Build the payload
-            payload = {
-                "title": input_data.title,
-                "format": ImportFormat.CSV.value,
-                "count": count,
-                "size": size,
-                "csv": {
-                    "identifier": input_data.identifier_column,
-                },
-            }
-
-            # Add URL column if specified
-            if input_data.url_column is not None:
-                payload["csv"]["url"] = input_data.url_column
-
-            # Add entity configuration
-            entity = {"type": input_data.entity_type.value}
-            if (
-                input_data.entity_type == ImportEntityType.CUSTOM
-                and input_data.entity_description
-            ):
-                entity["description"] = input_data.entity_description
-            payload["entity"] = entity
-
-            # Add metadata if provided
-            if input_data.metadata:
-                payload["metadata"] = input_data.metadata
-
-            # Note: The actual CSV data would need to be uploaded separately
-            # This is a placeholder for the API structure
-            # In a real implementation, you'd need to handle file upload
-
-            # Create the import
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
-
-            yield "import_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "title", data.get("title", "")
-            yield "count", data.get("count", count)
-            yield "entity_type", input_data.entity_type.value
-            yield "created_at", data.get("createdAt", "")
-
-        except ValueError as e:
-            # Re-raise user input validation errors
-            raise ValueError(f"Failed to create import: {e}") from e
-        # Let all other exceptions propagate naturally
+        # Yield fields
+        yield "import_id", import_obj.id
+        yield "status", import_obj.status
+        yield "title", import_obj.title
+        yield "count", import_obj.count
+        yield "entity_type", import_obj.entity_type
+        yield "created_at", import_obj.created_at
 
 
 class ExaGetImportBlock(Block):
@@ -216,28 +264,17 @@ class ExaGetImportBlock(Block):
         title: str = SchemaField(description="Title of the import")
         format: str = SchemaField(description="Format of the imported data")
         entity_type: str = SchemaField(description="Type of entities imported")
-        count: int = SchemaField(
-            description="Number of items imported",
-            default=0,
-        )
+        count: int = SchemaField(description="Number of items imported")
         failed_reason: Optional[str] = SchemaField(
-            description="Reason for failure (if applicable)",
-            default=None,
+            description="Reason for failure (if applicable)"
         )
         failed_message: Optional[str] = SchemaField(
-            description="Detailed failure message (if applicable)",
-            default=None,
+            description="Detailed failure message (if applicable)"
         )
         created_at: str = SchemaField(description="When the import was created")
         updated_at: str = SchemaField(description="When the import was last updated")
-        metadata: dict = SchemaField(
-            description="Metadata attached to the import",
-            default_factory=dict,
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        metadata: dict = SchemaField(description="Metadata attached to the import")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -251,30 +288,27 @@ class ExaGetImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.import_(input_data.import_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = await Requests().get(url, headers=headers)
-        data = response.json()
+        # Get import using SDK - no await needed
+        sdk_import = aexa.websets.imports.get(import_id=input_data.import_id)
 
-        # Extract entity type
-        entity = data.get("entity", {})
-        entity_type = entity.get("type", "unknown")
+        # Convert to our stable model
+        import_obj = ImportModel.from_sdk(sdk_import)
 
-        yield "import_id", data.get("id", "")
-        yield "status", data.get("status", "")
-        yield "title", data.get("title", "")
-        yield "format", data.get("format", "")
-        yield "entity_type", entity_type
-        yield "count", data.get("count", 0)
-        yield "failed_reason", data.get("failedReason")
-        yield "failed_message", data.get("failedMessage")
-        yield "created_at", data.get("createdAt", "")
-        yield "updated_at", data.get("updatedAt", "")
-        yield "metadata", data.get("metadata", {})
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid import IDs
+        # Yield all fields
+        yield "import_id", import_obj.id
+        yield "status", import_obj.status
+        yield "title", import_obj.title
+        yield "format", import_obj.format
+        yield "entity_type", import_obj.entity_type
+        yield "count", import_obj.count
+        yield "failed_reason", import_obj.failed_reason
+        yield "failed_message", import_obj.failed_message
+        yield "created_at", import_obj.created_at
+        yield "updated_at", import_obj.updated_at
+        yield "metadata", import_obj.metadata
 
 
 class ExaListImportsBlock(Block):
@@ -297,26 +331,17 @@ class ExaListImportsBlock(Block):
         )
 
     class Output(BlockSchema):
-        imports: list[dict] = SchemaField(
-            description="List of imports",
-            default_factory=list,
-        )
+        imports: list[dict] = SchemaField(description="List of imports")
         import_item: dict = SchemaField(
-            description="Individual import (yielded for each import)",
-            default_factory=dict,
+            description="Individual import (yielded for each import)"
         )
         has_more: bool = SchemaField(
-            description="Whether there are more imports to paginate through",
-            default=False,
+            description="Whether there are more imports to paginate through"
         )
         next_cursor: Optional[str] = SchemaField(
-            description="Cursor for the next page of results",
-            default=None,
+            description="Cursor for the next page of results"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -330,23 +355,28 @@ class ExaListImportsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.imports()
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        params: dict[str, Any] = {
-            "limit": input_data.limit,
-        }
-        if input_data.cursor:
-            params["cursor"] = input_data.cursor
+        # List imports using SDK - no await needed
+        response = aexa.websets.imports.list(
+            cursor=input_data.cursor,
+            limit=input_data.limit,
+        )
 
-        response = await Requests().get(url, headers=headers, params=params)
-        data = response.json()
+        # Convert SDK imports to our stable models
+        imports = [ImportModel.from_sdk(i) for i in response.data]
 
-        # Yield paginated results using helper
-        for key, value in yield_paginated_results(data, "imports", "import_item"):
-            yield key, value
+        # Yield the full list
+        yield "imports", [i.model_dump() for i in imports]
 
-        # Let all exceptions propagate naturally
+        # Yield individual imports for graph chaining
+        for import_obj in imports:
+            yield "import_item", import_obj.model_dump()
+
+        # Yield pagination metadata
+        yield "has_more", response.has_more
+        yield "next_cursor", response.next_cursor
 
 
 class ExaDeleteImportBlock(Block):
@@ -363,14 +393,8 @@ class ExaDeleteImportBlock(Block):
 
     class Output(BlockSchema):
         import_id: str = SchemaField(description="The ID of the deleted import")
-        success: str = SchemaField(
-            description="Whether the deletion was successful",
-            default="true",
-        )
-        error: str = SchemaField(
-            description="Error message if the deletion failed",
-            default="",
-        )
+        success: str = SchemaField(description="Whether the deletion was successful")
+        error: str = SchemaField(description="Error message if the deletion failed")
 
     def __init__(self):
         super().__init__(
@@ -384,17 +408,14 @@ class ExaDeleteImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.import_(input_data.import_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        await Requests().delete(url, headers=headers)
+        # Delete import using SDK - no await needed
+        deleted_import = aexa.websets.imports.delete(import_id=input_data.import_id)
 
-        # API returns 204 No Content on successful deletion
-        yield "import_id", input_data.import_id
+        yield "import_id", deleted_import.id
         yield "success", "true"
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid operations
 
 
 class ExaExportWebsetBlock(Block):
@@ -431,23 +452,15 @@ class ExaExportWebsetBlock(Block):
         export_data: str = SchemaField(
             description="Exported data in the requested format"
         )
-        item_count: int = SchemaField(
-            description="Number of items exported",
-            default=0,
-        )
+        item_count: int = SchemaField(description="Number of items exported")
         total_items: int = SchemaField(
-            description="Total number of items in the webset",
-            default=0,
+            description="Total number of items in the webset"
         )
         truncated: bool = SchemaField(
-            description="Whether the export was truncated due to max_items limit",
-            default=False,
+            description="Whether the export was truncated due to max_items limit"
         )
         format: str = SchemaField(description="Format of the exported data")
-        error: str = SchemaField(
-            description="Error message if the export failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the export failed")
 
     def __init__(self):
         super().__init__(
@@ -475,42 +488,28 @@ class ExaExportWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         try:
             all_items = []
-            cursor = None
-            has_more = True
-            batch_size = min(100, input_data.max_items)
-            data: dict[str, Any] = {}  # Initialize to handle empty websets
 
-            # Fetch all items up to max_items
-            while has_more and len(all_items) < input_data.max_items:
-                url = ExaApiUrls.webset_items(input_data.webset_id)
-                params: dict[str, Any] = {
-                    "limit": min(batch_size, input_data.max_items - len(all_items)),
-                }
-                if cursor:
-                    params["cursor"] = cursor
+            # Use SDK's list_all iterator to fetch items
+            item_iterator = aexa.websets.items.list_all(
+                webset_id=input_data.webset_id, limit=input_data.max_items
+            )
 
-                response = await Requests().get(url, headers=headers, params=params)
-                data = response.json()
-
-                items = data.get("data", [])
-                all_items.extend(items)
-
-                has_more = data.get("hasMore", False)
-                cursor = data.get("nextCursor")
-
+            for sdk_item in item_iterator:
                 if len(all_items) >= input_data.max_items:
                     break
 
-            # Get total count
-            total_items = len(all_items)
-            if "pagination" in data:
-                total_items = data["pagination"].get("total", total_items)
+                # Convert to dict for export
+                item_dict = sdk_item.model_dump(by_alias=True, exclude_none=True)
+                all_items.append(item_dict)
 
-            truncated = len(all_items) >= input_data.max_items and has_more
+            # Calculate total and truncated
+            total_items = len(all_items)  # SDK doesn't provide total count
+            truncated = len(all_items) >= input_data.max_items
 
             # Process items based on include flags
             if not input_data.include_content:

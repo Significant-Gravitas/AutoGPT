@@ -6,7 +6,11 @@ keep websets updated with fresh data on a schedule.
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
+
+from exa_py import AsyncExa
+from exa_py.websets.types import Monitor as SdkMonitor
+from pydantic import BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -15,12 +19,70 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
-from ._api import ExaApiUrls, build_headers, yield_paginated_results
 from ._config import exa
+
+
+# Mirrored model for stability - don't use SDK types directly in block outputs
+class MonitorModel(BaseModel):
+    """Stable output model mirroring SDK Monitor."""
+
+    id: str
+    status: str
+    webset_id: str
+    behavior_type: str
+    behavior_config: dict
+    cron_expression: str
+    timezone: str
+    next_run_at: str
+    last_run: dict
+    metadata: dict
+    created_at: str
+    updated_at: str
+
+    @classmethod
+    def from_sdk(cls, monitor: SdkMonitor) -> "MonitorModel":
+        """Convert SDK Monitor to our stable model."""
+        # Extract behavior information
+        behavior_dict = monitor.behavior.model_dump(by_alias=True, exclude_none=True)
+        behavior_type = behavior_dict.get("type", "unknown")
+        behavior_config = behavior_dict.get("config", {})
+
+        # Extract cadence information
+        cadence_dict = monitor.cadence.model_dump(by_alias=True, exclude_none=True)
+        cron_expr = cadence_dict.get("cron", "")
+        timezone = cadence_dict.get("timezone", "Etc/UTC")
+
+        # Extract last run information
+        last_run_dict = {}
+        if monitor.last_run:
+            last_run_dict = monitor.last_run.model_dump(
+                by_alias=True, exclude_none=True
+            )
+
+        # Handle status enum
+        status_str = (
+            monitor.status.value
+            if hasattr(monitor.status, "value")
+            else str(monitor.status)
+        )
+
+        return cls(
+            id=monitor.id,
+            status=status_str,
+            webset_id=monitor.webset_id,
+            behavior_type=behavior_type,
+            behavior_config=behavior_config,
+            cron_expression=cron_expr,
+            timezone=timezone,
+            next_run_at=monitor.next_run_at.isoformat() if monitor.next_run_at else "",
+            last_run=last_run_dict,
+            metadata=monitor.metadata or {},
+            created_at=monitor.created_at.isoformat() if monitor.created_at else "",
+            updated_at=monitor.updated_at.isoformat() if monitor.updated_at else "",
+        )
 
 
 class MonitorStatus(str, Enum):
@@ -130,16 +192,12 @@ class ExaCreateMonitorBlock(Block):
         status: str = SchemaField(description="Status of the monitor")
         behavior_type: str = SchemaField(description="Type of monitor behavior")
         next_run_at: Optional[str] = SchemaField(
-            description="When the monitor will next run",
-            default=None,
+            description="When the monitor will next run"
         )
         cron_expression: str = SchemaField(description="The schedule cron expression")
         timezone: str = SchemaField(description="The timezone for scheduling")
         created_at: str = SchemaField(description="When the monitor was created")
-        error: str = SchemaField(
-            description="Error message if the creation failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the creation failed")
 
     def __init__(self):
         super().__init__(
@@ -187,10 +245,8 @@ class ExaCreateMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.monitors()
-        headers = build_headers(
-            credentials.api_key.get_secret_value(), include_content_type=True
-        )
+        # Use AsyncExa SDK (methods are sync despite class name)
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Build the payload
         payload = {
@@ -235,29 +291,21 @@ class ExaCreateMonitorBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        try:
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # Create monitor using SDK - no await needed
+        sdk_monitor = aexa.websets.monitors.create(params=payload)
 
-            yield "monitor_id", data.get("id", "")
-            yield "webset_id", data.get("websetId", "")
-            yield "status", data.get("status", "")
+        # Convert to our stable model
+        monitor = MonitorModel.from_sdk(sdk_monitor)
 
-            behavior = data.get("behavior", {})
-            yield "behavior_type", behavior.get("type", "")
-
-            yield "next_run_at", data.get("nextRunAt")
-
-            cadence = data.get("cadence", {})
-            yield "cron_expression", cadence.get("cron", "")
-            yield "timezone", cadence.get("timezone", "")
-
-            yield "created_at", data.get("createdAt", "")
-
-        except ValueError as e:
-            # Re-raise user input validation errors
-            raise ValueError(f"Failed to create monitor: {e}") from e
-        # Let all other exceptions propagate naturally
+        # Yield all fields
+        yield "monitor_id", monitor.id
+        yield "webset_id", monitor.webset_id
+        yield "status", monitor.status
+        yield "behavior_type", monitor.behavior_type
+        yield "next_run_at", monitor.next_run_at
+        yield "cron_expression", monitor.cron_expression
+        yield "timezone", monitor.timezone
+        yield "created_at", monitor.created_at
 
 
 class ExaGetMonitorBlock(Block):
@@ -280,29 +328,20 @@ class ExaGetMonitorBlock(Block):
         status: str = SchemaField(description="Current status of the monitor")
         behavior_type: str = SchemaField(description="Type of monitor behavior")
         behavior_config: dict = SchemaField(
-            description="Configuration for the monitor behavior",
-            default_factory=dict,
+            description="Configuration for the monitor behavior"
         )
         cron_expression: str = SchemaField(description="The schedule cron expression")
         timezone: str = SchemaField(description="The timezone for scheduling")
         next_run_at: Optional[str] = SchemaField(
-            description="When the monitor will next run",
-            default=None,
+            description="When the monitor will next run"
         )
         last_run: Optional[dict] = SchemaField(
-            description="Information about the last run",
-            default=None,
+            description="Information about the last run"
         )
         created_at: str = SchemaField(description="When the monitor was created")
         updated_at: str = SchemaField(description="When the monitor was last updated")
-        metadata: dict = SchemaField(
-            description="Metadata attached to the monitor",
-            default_factory=dict,
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        metadata: dict = SchemaField(description="Metadata attached to the monitor")
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -316,32 +355,28 @@ class ExaGetMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.monitor(input_data.monitor_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        response = await Requests().get(url, headers=headers)
-        data = response.json()
+        # Get monitor using SDK - no await needed
+        sdk_monitor = aexa.websets.monitors.get(monitor_id=input_data.monitor_id)
 
-        yield "monitor_id", data.get("id", "")
-        yield "webset_id", data.get("websetId", "")
-        yield "status", data.get("status", "")
+        # Convert to our stable model
+        monitor = MonitorModel.from_sdk(sdk_monitor)
 
-        behavior = data.get("behavior", {})
-        yield "behavior_type", behavior.get("type", "")
-        yield "behavior_config", behavior.get("config", {})
-
-        cadence = data.get("cadence", {})
-        yield "cron_expression", cadence.get("cron", "")
-        yield "timezone", cadence.get("timezone", "")
-
-        yield "next_run_at", data.get("nextRunAt")
-        yield "last_run", data.get("lastRun")
-        yield "created_at", data.get("createdAt", "")
-        yield "updated_at", data.get("updatedAt", "")
-        yield "metadata", data.get("metadata", {})
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid monitor IDs
+        # Yield all fields
+        yield "monitor_id", monitor.id
+        yield "webset_id", monitor.webset_id
+        yield "status", monitor.status
+        yield "behavior_type", monitor.behavior_type
+        yield "behavior_config", monitor.behavior_config
+        yield "cron_expression", monitor.cron_expression
+        yield "timezone", monitor.timezone
+        yield "next_run_at", monitor.next_run_at
+        yield "last_run", monitor.last_run
+        yield "created_at", monitor.created_at
+        yield "updated_at", monitor.updated_at
+        yield "metadata", monitor.metadata
 
 
 class ExaUpdateMonitorBlock(Block):
@@ -380,18 +415,11 @@ class ExaUpdateMonitorBlock(Block):
         )
         status: str = SchemaField(description="Updated status of the monitor")
         next_run_at: Optional[str] = SchemaField(
-            description="When the monitor will next run",
-            default=None,
+            description="When the monitor will next run"
         )
         updated_at: str = SchemaField(description="When the monitor was updated")
-        success: str = SchemaField(
-            description="Whether the update was successful",
-            default="true",
-        )
-        error: str = SchemaField(
-            description="Error message if the update failed",
-            default="",
-        )
+        success: str = SchemaField(description="Whether the update was successful")
+        error: str = SchemaField(description="Error message if the update failed")
 
     def __init__(self):
         super().__init__(
@@ -405,11 +433,8 @@ class ExaUpdateMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/monitors/{input_data.monitor_id}"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Build update payload
         payload = {}
@@ -428,20 +453,20 @@ class ExaUpdateMonitorBlock(Block):
         if input_data.metadata is not None:
             payload["metadata"] = input_data.metadata
 
-        try:
-            response = await Requests().patch(url, headers=headers, json=payload)
-            data = response.json()
+        # Update monitor using SDK - no await needed
+        sdk_monitor = aexa.websets.monitors.update(
+            monitor_id=input_data.monitor_id, params=payload
+        )
 
-            yield "monitor_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "next_run_at", data.get("nextRunAt")
-            yield "updated_at", data.get("updatedAt", "")
-            yield "success", "true"
+        # Convert to our stable model
+        monitor = MonitorModel.from_sdk(sdk_monitor)
 
-        except ValueError as e:
-            # Re-raise user input validation errors
-            raise ValueError(f"Failed to update monitor: {e}") from e
-        # Let all other exceptions propagate naturally
+        # Yield fields
+        yield "monitor_id", monitor.id
+        yield "status", monitor.status
+        yield "next_run_at", monitor.next_run_at
+        yield "updated_at", monitor.updated_at
+        yield "success", "true"
 
 
 class ExaDeleteMonitorBlock(Block):
@@ -458,14 +483,8 @@ class ExaDeleteMonitorBlock(Block):
 
     class Output(BlockSchema):
         monitor_id: str = SchemaField(description="The ID of the deleted monitor")
-        success: str = SchemaField(
-            description="Whether the deletion was successful",
-            default="true",
-        )
-        error: str = SchemaField(
-            description="Error message if the deletion failed",
-            default="",
-        )
+        success: str = SchemaField(description="Whether the deletion was successful")
+        error: str = SchemaField(description="Error message if the deletion failed")
 
     def __init__(self):
         super().__init__(
@@ -479,17 +498,14 @@ class ExaDeleteMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.monitor(input_data.monitor_id)
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        await Requests().delete(url, headers=headers)
+        # Delete monitor using SDK - no await needed
+        deleted_monitor = aexa.websets.monitors.delete(monitor_id=input_data.monitor_id)
 
-        # API returns 204 No Content on successful deletion
-        yield "monitor_id", input_data.monitor_id
+        yield "monitor_id", deleted_monitor.id
         yield "success", "true"
-
-        # Let all exceptions propagate naturally
-        # The API will return appropriate HTTP errors for invalid operations
 
 
 class ExaListMonitorsBlock(Block):
@@ -517,26 +533,17 @@ class ExaListMonitorsBlock(Block):
         )
 
     class Output(BlockSchema):
-        monitors: list[dict] = SchemaField(
-            description="List of monitors",
-            default_factory=list,
-        )
+        monitors: list[dict] = SchemaField(description="List of monitors")
         monitor: dict = SchemaField(
-            description="Individual monitor (yielded for each monitor)",
-            default_factory=dict,
+            description="Individual monitor (yielded for each monitor)"
         )
         has_more: bool = SchemaField(
-            description="Whether there are more monitors to paginate through",
-            default=False,
+            description="Whether there are more monitors to paginate through"
         )
         next_cursor: Optional[str] = SchemaField(
-            description="Cursor for the next page of results",
-            default=None,
+            description="Cursor for the next page of results"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-            default="",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -550,22 +557,26 @@ class ExaListMonitorsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = ExaApiUrls.monitors()
-        headers = build_headers(credentials.api_key.get_secret_value())
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        params: dict[str, Any] = {
-            "limit": input_data.limit,
-        }
-        if input_data.cursor:
-            params["cursor"] = input_data.cursor
-        if input_data.webset_id:
-            params["websetId"] = input_data.webset_id
+        # List monitors using SDK - no await needed
+        response = aexa.websets.monitors.list(
+            cursor=input_data.cursor,
+            limit=input_data.limit,
+            webset_id=input_data.webset_id,
+        )
 
-        response = await Requests().get(url, headers=headers, params=params)
-        data = response.json()
+        # Convert SDK monitors to our stable models
+        monitors = [MonitorModel.from_sdk(m) for m in response.data]
 
-        # Yield paginated results using helper
-        for key, value in yield_paginated_results(data, "monitors", "monitor"):
-            yield key, value
+        # Yield the full list
+        yield "monitors", [m.model_dump() for m in monitors]
 
-        # Let all exceptions propagate naturally
+        # Yield individual monitors for graph chaining
+        for monitor in monitors:
+            yield "monitor", monitor.model_dump()
+
+        # Yield pagination metadata
+        yield "has_more", response.has_more
+        yield "next_cursor", response.next_cursor
