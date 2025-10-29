@@ -1,10 +1,9 @@
 "use client";
 
+import FavoritesSection from "./components/FavoritesSection/FavoritesSection";
 import LibraryActionHeader from "./components/LibraryActionHeader/LibraryActionHeader";
 import LibraryAgentList from "./components/LibraryAgentList/LibraryAgentList";
-import FavoritesSection from "./components/FavoritesSection/FavoritesSection";
 import { LibraryPageStateProvider } from "./components/state-provider";
-import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
 
 /**
  * LibraryPage Component
@@ -14,7 +13,6 @@ export default function LibraryPage() {
   return (
     <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
       <LibraryPageStateProvider>
-        <GoogleDrivePicker />
         <LibraryActionHeader />
         <FavoritesSection />
         <LibraryAgentList />

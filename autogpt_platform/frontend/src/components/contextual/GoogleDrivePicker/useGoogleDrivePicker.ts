@@ -61,12 +61,21 @@ export function useGoogleDrivePicker(options: Props) {
   const isReady = pickerReadyRef.current && !!tokenClientRef.current;
   const { toast } = useToast();
 
-  console.log(tokenClientRef.current);
-
   const hasGoogleOAuth = useMemo(() => {
     if (!credentials || credentials.isLoading) return false;
     return credentials.savedCredentials?.length > 0;
   }, [credentials]);
+
+  async function openPicker() {
+    try {
+      await ensureLoaded();
+      console.log(accessTokenRef.current);
+      const token = accessTokenRef.current || (await requestAccessToken());
+      buildAndShowPicker(token);
+    } catch (e) {
+      if (onError) onError(e);
+    }
+  }
 
   function ensureLoaded() {
     async function load() {
@@ -78,13 +87,13 @@ export function useGoogleDrivePicker(options: Props) {
           loadGoogleIdentityServices(),
         ]);
 
-        tokenClientRef.current = (
-          window.google as any
-        ).accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: scopes.join(" "),
-          callback: () => {},
-        });
+        if (!clientId) throw new Error("Google OAuth client ID is not set");
+        tokenClientRef.current =
+          window.google!.accounts!.oauth2!.initTokenClient({
+            client_id: clientId,
+            scope: scopes.join(" "),
+            callback: () => {},
+          });
 
         pickerReadyRef.current = true;
       } catch (e) {
@@ -101,21 +110,32 @@ export function useGoogleDrivePicker(options: Props) {
     return load();
   }
 
-  function handlePickerData(data: any): void {
-    try {
-      const files = normalizePickerResponse(data);
-      if (files.length) {
-        onPicked(files);
-      } else {
-        onCanceled();
+  async function requestAccessToken() {
+    function executor(
+      resolve: (value: string) => void,
+      reject: (reason?: unknown) => void,
+    ) {
+      const tokenClient = tokenClientRef.current;
+
+      if (!tokenClient) {
+        return reject(new Error("Token client not initialized"));
       }
-    } catch (e) {
-      if (onError) onError(e);
+
+      setIsAuthInProgress(true);
+      // Update the callback on the already-initialized token client,
+      // then request an access token using the token flow (no redirects).
+      (tokenClient as any).callback = onTokenResponseFactory(resolve, reject);
+      tokenClient.requestAccessToken({
+        prompt: accessTokenRef.current ? "" : "consent",
+      });
     }
+
+    return await new Promise(executor);
   }
 
   function buildAndShowPicker(accessToken: string): void {
-    const gp = (window as any).google.picker;
+    const gp = window.google!.picker!;
+
     const builder = new gp.PickerBuilder()
       .setOAuthToken(accessToken)
       .setDeveloperKey(developerKey)
@@ -132,13 +152,29 @@ export function useGoogleDrivePicker(options: Props) {
     views.forEach((v) => {
       const vid = mapViewId(v);
       const view = new gp.DocsView(vid);
-      if (!allowThumbnails || listModeIfNoDriveScope)
+
+      if (!allowThumbnails || listModeIfNoDriveScope) {
         view.setMode(gp.DocsViewMode.LIST);
+      }
+
       builder.addView(view);
     });
 
     const picker = builder.build();
     picker.setVisible(true);
+  }
+
+  function handlePickerData(data: any): void {
+    try {
+      const files = normalizePickerResponse(data);
+      if (files.length) {
+        onPicked(files);
+      } else {
+        onCanceled();
+      }
+    } catch (e) {
+      if (onError) onError(e);
+    }
   }
 
   function onTokenResponseFactory(
@@ -151,41 +187,6 @@ export function useGoogleDrivePicker(options: Props) {
       accessTokenRef.current = response.access_token;
       resolve(response.access_token);
     };
-  }
-
-  async function requestAccessToken(): Promise<string> {
-    function executor(
-      resolve: (value: string) => void,
-      reject: (reason?: unknown) => void,
-    ) {
-      const tokenClient = tokenClientRef.current;
-      if (!tokenClient)
-        return reject(new Error("Token client not initialized"));
-
-      setIsAuthInProgress(true);
-      const googleObj = (window as any).google;
-      googleObj.accounts.oauth2
-        .initTokenClient({
-          client_id: clientId,
-          scope: scopes.join(" "),
-          callback: onTokenResponseFactory(resolve, reject),
-        })
-        .requestAccessToken({
-          prompt: accessTokenRef.current ? "" : "consent",
-        });
-    }
-
-    return await new Promise<string>(executor);
-  }
-
-  async function openPicker() {
-    try {
-      await ensureLoaded();
-      const token = accessTokenRef.current || (await requestAccessToken());
-      buildAndShowPicker(token);
-    } catch (e) {
-      if (onError) onError(e);
-    }
   }
 
   return {
