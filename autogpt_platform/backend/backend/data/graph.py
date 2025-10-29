@@ -1122,7 +1122,11 @@ async def validate_graph_execution_permissions(
     Args:
         graph_id: The ID of the graph to check
         user_id: The ID of the user
-        graph_version: Optional specific version to check
+        graph_version: Optional specific version to check. If None (recommended),
+                      performs version-agnostic check allowing execution of any
+                      version as long as the graph is in the user's library.
+                      This is important for sub-graphs that may reference older
+                      versions no longer in the library.
 
     Raises:
         GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived)
