@@ -38,25 +38,6 @@ DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
 
-def sanitize_query(query: str | None) -> str | None:
-    if query is None:
-        return query
-    query = query.strip()[:100]
-    return (
-        query.replace("\\", "\\\\")
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("'", "\\'")
-        .replace('"', '\\"')
-        .replace(";", "\\;")
-        .replace("--", "\\--")
-        .replace("/*", "\\/*")
-        .replace("*/", "\\*/")
-    )
-
-
 async def get_store_agents(
     featured: bool = False,
     creators: list[str] | None = None,
@@ -73,31 +54,9 @@ async def get_store_agents(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
 
-    sanitized_creators = []
-    if creators:
-        for c in creators:
-            sanitized_creators.append(sanitize_query(c))
-
-    sanitized_category = None
-    if category:
-        sanitized_category = sanitize_query(category)
-
     try:
         # If search_query is provided, use full-text search
         if search_query:
-            search_term = sanitize_query(search_query)
-            if not search_term:
-                # Return empty results for invalid search query
-                return backend.server.v2.store.model.StoreAgentsResponse(
-                    agents=[],
-                    pagination=backend.server.v2.store.model.Pagination(
-                        current_page=page,
-                        total_items=0,
-                        total_pages=0,
-                        page_size=page_size,
-                    ),
-                )
-
             offset = (page - 1) * page_size
 
             # Whitelist allowed order_by columns
@@ -115,7 +74,7 @@ async def get_store_agents(
 
             # Build WHERE conditions and parameters list
             where_parts: list[str] = []
-            params: list[typing.Any] = [search_term]  # $1 - search term
+            params: list[typing.Any] = [search_query]  # $1 - search term
             param_index = 2  # Start at $2 for next parameter
 
             # Always filter for available agents
@@ -124,15 +83,15 @@ async def get_store_agents(
             if featured:
                 where_parts.append("featured = true")
 
-            if creators and sanitized_creators:
+            if creators and creators:
                 # Use ANY with array parameter
                 where_parts.append(f"creator_username = ANY(${param_index})")
-                params.append(sanitized_creators)
+                params.append(creators)
                 param_index += 1
 
-            if category and sanitized_category:
+            if category and category:
                 where_parts.append(f"${param_index} = ANY(categories)")
-                params.append(sanitized_category)
+                params.append(category)
                 param_index += 1
 
             sql_where_clause: str = " AND ".join(where_parts) if where_parts else "1=1"
@@ -218,9 +177,9 @@ async def get_store_agents(
             if featured:
                 where_clause["featured"] = featured
             if creators:
-                where_clause["creator_username"] = {"in": sanitized_creators}
-            if sanitized_category:
-                where_clause["categories"] = {"has": sanitized_category}
+                where_clause["creator_username"] = {"in": creators}
+            if category:
+                where_clause["categories"] = {"has": category}
 
             order_by = []
             if sorted_by == "rating":
@@ -1775,22 +1734,21 @@ async def get_admin_listings_with_versions(
         if status:
             where_dict["Versions"] = {"some": {"submissionStatus": status}}
 
-        sanitized_query = sanitize_query(search_query)
-        if sanitized_query:
+        if search_query:
             # Find users with matching email
             matching_users = await prisma.models.User.prisma().find_many(
-                where={"email": {"contains": sanitized_query, "mode": "insensitive"}},
+                where={"email": {"contains": search_query, "mode": "insensitive"}},
             )
 
             user_ids = [user.id for user in matching_users]
 
             # Set up OR conditions
             where_dict["OR"] = [
-                {"slug": {"contains": sanitized_query, "mode": "insensitive"}},
+                {"slug": {"contains": search_query, "mode": "insensitive"}},
                 {
                     "Versions": {
                         "some": {
-                            "name": {"contains": sanitized_query, "mode": "insensitive"}
+                            "name": {"contains": search_query, "mode": "insensitive"}
                         }
                     }
                 },
@@ -1798,7 +1756,7 @@ async def get_admin_listings_with_versions(
                     "Versions": {
                         "some": {
                             "description": {
-                                "contains": sanitized_query,
+                                "contains": search_query,
                                 "mode": "insensitive",
                             }
                         }
@@ -1808,7 +1766,7 @@ async def get_admin_listings_with_versions(
                     "Versions": {
                         "some": {
                             "subHeading": {
-                                "contains": sanitized_query,
+                                "contains": search_query,
                                 "mode": "insensitive",
                             }
                         }
