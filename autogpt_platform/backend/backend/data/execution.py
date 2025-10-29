@@ -346,6 +346,7 @@ class GraphExecutionWithNodes(GraphExecution):
         self,
         user_context: "UserContext",
         compiled_nodes_input_masks: Optional[NodesInputMasks] = None,
+        parent_graph_exec_id: Optional[str] = None,
     ):
         return GraphExecutionEntry(
             user_id=self.user_id,
@@ -354,6 +355,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_exec_id=self.id,
             nodes_input_masks=compiled_nodes_input_masks,
             user_context=user_context,
+            parent_graph_exec_id=parent_graph_exec_id,
         )
 
 
@@ -632,6 +634,25 @@ async def get_graph_execution(
     )
 
 
+async def get_child_graph_executions(
+    parent_exec_id: str,
+) -> list[GraphExecutionMeta]:
+    """
+    Get all child executions of a parent execution.
+
+    Args:
+        parent_exec_id: Parent graph execution ID
+
+    Returns:
+        List of child graph executions
+    """
+    children = await AgentGraphExecution.prisma().find_many(
+        where={"parentGraphExecutionId": parent_exec_id, "isDeleted": False}
+    )
+
+    return [GraphExecutionMeta.from_db(child) for child in children]
+
+
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,
@@ -641,6 +662,7 @@ async def create_graph_execution(
     preset_id: Optional[str] = None,
     credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    parent_graph_exec_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -677,6 +699,7 @@ async def create_graph_execution(
             },
             "userId": user_id,
             "agentPresetId": preset_id,
+            "parentGraphExecutionId": parent_graph_exec_id,
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
@@ -1007,6 +1030,7 @@ class GraphExecutionEntry(BaseModel):
     graph_version: int
     nodes_input_masks: Optional[NodesInputMasks] = None
     user_context: UserContext
+    parent_graph_exec_id: Optional[str] = None
 
 
 class NodeExecutionEntry(BaseModel):
