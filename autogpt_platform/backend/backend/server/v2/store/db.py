@@ -105,13 +105,14 @@ async def get_store_agents(
                 "rating": "rating DESC, rank DESC",
                 "runs": "runs DESC, rank DESC",
                 "name": "agent_name ASC, rank DESC",
+                "updated_at": "updated_at DESC, rank DESC",
             }
 
             # Validate and get order clause
             if sorted_by and sorted_by in ALLOWED_ORDER_BY:
                 order_by_clause = ALLOWED_ORDER_BY[sorted_by]
             else:
-                order_by_clause = "rank DESC, updated_at DESC"
+                order_by_clause = "updated_at DESC, rank DESC",
 
             # Build WHERE conditions and parameters list
             where_parts: list[str] = []
