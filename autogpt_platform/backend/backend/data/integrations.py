@@ -1,7 +1,7 @@
 import logging
 from typing import AsyncGenerator, Literal, Optional, overload
 
-from prisma.models import IntegrationWebhook
+from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
     IntegrationWebhookCreateInput,
     IntegrationWebhookUpdateInput,
@@ -15,7 +15,9 @@ from backend.data.includes import (
     INTEGRATION_WEBHOOK_INCLUDE,
     MAX_INTEGRATION_WEBHOOKS_FETCH,
 )
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
+from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
@@ -235,6 +237,77 @@ async def update_webhook(
     if _updated_webhook is None:
         raise NotFoundError(f"Webhook #{webhook_id} not found")
     return Webhook.from_db(_updated_webhook)
+
+
+async def find_webhooks_by_graph_id(graph_id: str, user_id: str) -> list[Webhook]:
+    """
+    Find all webhooks that trigger nodes OR presets in a specific graph for a user.
+
+    Args:
+        graph_id: The ID of the graph
+        user_id: The ID of the user
+
+    Returns:
+        list[Webhook]: List of webhooks associated with the graph
+    """
+    where_clause: IntegrationWebhookWhereInput = {
+        "userId": user_id,
+        "OR": [
+            # Webhooks that trigger nodes in this graph
+            {"AgentNodes": {"some": {"agentGraphId": graph_id}}},
+            # Webhooks that trigger presets for this graph
+            {"AgentPresets": {"some": {"agentGraphId": graph_id}}},
+        ],
+    }
+    webhooks = await IntegrationWebhook.prisma().find_many(where=where_clause)
+    return [Webhook.from_db(webhook) for webhook in webhooks]
+
+
+async def unlink_webhook_from_graph(
+    webhook_id: str, graph_id: str, user_id: str
+) -> None:
+    """
+    Unlink a webhook from all nodes and presets in a specific graph.
+    If the webhook has no remaining triggers, it will be automatically deleted
+    and deregistered with the provider.
+
+    Args:
+        webhook_id: The ID of the webhook
+        graph_id: The ID of the graph to unlink from
+        user_id: The ID of the user (for authorization)
+    """
+    # Avoid circular imports
+    from backend.data.graph import set_node_webhook
+    from backend.server.v2.library.db import set_preset_webhook
+
+    # Find all nodes in this graph that use this webhook
+    nodes = await AgentNode.prisma().find_many(
+        where={"agentGraphId": graph_id, "webhookId": webhook_id}
+    )
+
+    # Unlink webhook from each node
+    for node in nodes:
+        await set_node_webhook(node.id, None)
+
+    # Find all presets for this graph that use this webhook
+    presets = await AgentPreset.prisma().find_many(
+        where={"agentGraphId": graph_id, "webhookId": webhook_id, "userId": user_id}
+    )
+
+    # Unlink webhook from each preset
+    for preset in presets:
+        await set_preset_webhook(user_id, preset.id, None)
+
+    # Check if webhook needs cleanup (prune_webhook_if_dangling handles the trigger check)
+    webhook = await get_webhook(webhook_id, include_relations=False)
+    webhook_manager = get_webhook_manager(webhook.provider)
+    creds_manager = IntegrationCredentialsManager()
+    credentials = (
+        await creds_manager.get(user_id, webhook.credentials_id)
+        if webhook.credentials_id
+        else None
+    )
+    await webhook_manager.prune_webhook_if_dangling(user_id, webhook.id, credentials)
 
 
 async def delete_webhook(user_id: str, webhook_id: str) -> None:
