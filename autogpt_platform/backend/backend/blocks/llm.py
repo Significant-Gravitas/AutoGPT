@@ -1455,12 +1455,13 @@ class AITextSummarizerBlock(AIBlockBase):
 
         # Validate that the LLM returned a string and not a list or other type
         if not isinstance(summary, str):
+            from backend.util.truncate import truncate
+
+            truncated_summary = truncate(summary, 500)
             raise ValueError(
                 f"LLM generation failed: Expected a string summary, but received {type(summary).__name__}. "
                 f"The language model incorrectly formatted its response. "
-                f"This may be due to the model interpreting the '{input_data.style}' style "
-                f"as a request for a list format instead of a single text summary. "
-                f"Received value: {summary}"
+                f"Received value: {json.dumps(truncated_summary)}"
             )
 
         return summary
@@ -1489,12 +1490,13 @@ class AITextSummarizerBlock(AIBlockBase):
 
             # Validate that the LLM returned a string and not a list or other type
             if not isinstance(final_summary, str):
+                from backend.util.truncate import truncate
+
+                truncated_final_summary = truncate(final_summary, 500)
                 raise ValueError(
                     f"LLM generation failed: Expected a string final summary, but received {type(final_summary).__name__}. "
                     f"The language model incorrectly formatted its response. "
-                    f"This may be due to the model interpreting the '{input_data.style}' style "
-                    f"as a request for a list format instead of a single text summary. "
-                    f"Received value: {final_summary}"
+                    f"Received value: {json.dumps(truncated_final_summary)}"
                 )
 
             return final_summary

@@ -538,7 +538,6 @@ class TestAITextSummarizerValidation:
         error_message = str(exc_info.value)
         assert "Expected a string summary" in error_message
         assert "received list" in error_message
-        assert "SummaryStyle.BULLET_POINTS" in error_message  # Should mention the style
         assert "incorrectly formatted" in error_message
 
     @pytest.mark.asyncio
@@ -585,7 +584,6 @@ class TestAITextSummarizerValidation:
         error_message = str(exc_info.value)
         assert "Expected a string final summary" in error_message
         assert "received list" in error_message
-        assert "SummaryStyle.BULLET_POINTS" in error_message  # Should mention the style
         assert "incorrectly formatted" in error_message
 
     @pytest.mark.asyncio
