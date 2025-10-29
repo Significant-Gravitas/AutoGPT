@@ -514,6 +514,15 @@ async def validate_and_construct_node_execution_input(
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
+    # Validate that the user has permission to execute this graph
+    # This checks both library membership and execution permissions,
+    # raising specific exceptions for appropriate error handling
+    await gdb.validate_graph_execution_permissions(
+        graph_id=graph_id,
+        user_id=user_id,
+        graph_version=graph.version,
+    )
+
     nodes_input_masks = _merge_nodes_input_masks(
         (
             make_node_credentials_input_map(graph, graph_credentials_inputs)
