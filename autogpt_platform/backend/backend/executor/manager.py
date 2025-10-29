@@ -206,7 +206,6 @@ async def execute_node(
         "graph_exec_id": graph_exec_id,
         "node_exec_id": node_exec_id,
         "user_id": user_id,
-        "parent_graph_exec_id": graph_exec_id,  # Pass as parent ID for child executions
     }
 
     # Add user context from NodeExecutionEntry
