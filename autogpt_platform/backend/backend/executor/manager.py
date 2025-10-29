@@ -1555,18 +1555,30 @@ class ExecutionManager(AppProcess):
                 )
                 _ack_message(reject=True, requeue=True)
             return
-        self._execution_locks[graph_exec_id] = cluster_lock
 
-        logger.info(
-            f"[{self.service_name}] Acquired cluster lock for {graph_exec_id} with executor {self.executor_id}"
-        )
+        # Wrap entire block after successful lock acquisition
+        try:
+            self._execution_locks[graph_exec_id] = cluster_lock
 
-        cancel_event = threading.Event()
+            logger.info(
+                f"[{self.service_name}] Acquired cluster lock for {graph_exec_id} with executor {self.executor_id}"
+            )
 
-        future = self.executor.submit(
-            execute_graph, graph_exec_entry, cancel_event, cluster_lock
-        )
-        self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+            cancel_event = threading.Event()
+            future = self.executor.submit(
+                execute_graph, graph_exec_entry, cancel_event, cluster_lock
+            )
+            self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+        except Exception as e:
+            logger.warning(
+                f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
+            )
+            # Release cluster lock before requeue
+            cluster_lock.release()
+            if graph_exec_id in self._execution_locks:
+                del self._execution_locks[graph_exec_id]
+            _ack_message(reject=True, requeue=True)
+            return
         self._update_prompt_metrics()
 
         def _on_run_done(f: Future):
