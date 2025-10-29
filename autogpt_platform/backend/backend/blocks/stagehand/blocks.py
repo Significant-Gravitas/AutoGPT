@@ -29,11 +29,7 @@ from backend.sdk import (
 )
 
 # Suppress false positive cleanup warning of litellm (a dependency of stagehand)
-warnings.filterwarnings(
-    "ignore",
-    message="coroutine 'close_litellm_async_clients' was never awaited",
-    category=RuntimeWarning,
-)
+warnings.filterwarnings("ignore", module="litellm.llms.custom_httpx")
 
 # Store the original method
 original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers

@@ -44,10 +44,7 @@ export default function AuthErrorPage() {
     return (
       <div className="flex h-screen items-center justify-center">
         <Card className="w-full max-w-md p-8">
-          <WaitlistErrorContent
-            onClose={() => router.push("/login")}
-            closeButtonText="Back to Login"
-          />
+          <WaitlistErrorContent onBackToLogin={() => router.push("/login")} />
         </Card>
       </div>
     );

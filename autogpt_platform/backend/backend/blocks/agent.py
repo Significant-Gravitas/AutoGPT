@@ -67,7 +67,13 @@ class AgentExecutorBlock(Block):
             categories={BlockCategory.AGENT},
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        graph_exec_id: str,
+        **kwargs,
+    ) -> BlockOutput:
 
         from backend.executor import utils as execution_utils
 
@@ -77,6 +83,7 @@ class AgentExecutorBlock(Block):
             user_id=input_data.user_id,
             inputs=input_data.inputs,
             nodes_input_masks=input_data.nodes_input_masks,
+            parent_graph_exec_id=graph_exec_id,
         )
 
         logger = execution_utils.LogMetadata(

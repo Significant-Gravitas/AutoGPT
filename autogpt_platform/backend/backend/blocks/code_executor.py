@@ -4,7 +4,7 @@ from typing import Any, Literal, Optional
 from e2b_code_interpreter import AsyncSandbox
 from e2b_code_interpreter import Result as E2BExecutionResult
 from e2b_code_interpreter.charts import Chart as E2BExecutionResultChart
-from pydantic import BaseModel, JsonValue, SecretStr
+from pydantic import BaseModel, Field, JsonValue, SecretStr
 
 from backend.data.block import (
     Block,
@@ -67,7 +67,7 @@ class MainCodeExecutionResult(BaseModel):
     jpeg: Optional[str] = None
     pdf: Optional[str] = None
     latex: Optional[str] = None
-    json: Optional[JsonValue] = None  # type: ignore (reportIncompatibleMethodOverride)
+    json_data: Optional[JsonValue] = Field(None, alias="json")
     javascript: Optional[str] = None
     data: Optional[dict] = None
     chart: Optional[Chart] = None
