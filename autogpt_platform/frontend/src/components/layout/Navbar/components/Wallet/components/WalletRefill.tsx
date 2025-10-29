@@ -134,14 +134,6 @@ export function WalletRefill() {
                 <FormField
                   control={topUpForm.control}
                   name="amount"
-                  rules={{
-                    validate: (value) => {
-                      if (value < 5) {
-                        return "Amount must be at least $5";
-                      }
-                      return true;
-                    },
-                  }}
                   render={({ field }) => (
                     <Input
                       label="Amount"
@@ -177,14 +169,6 @@ export function WalletRefill() {
                 <FormField
                   control={autoRefillForm.control}
                   name="threshold"
-                  rules={{
-                    validate: (value) => {
-                      if (value < 5) {
-                        return "Amount must be at least $5";
-                      }
-                      return true;
-                    },
-                  }}
                   render={({ field }) => (
                     <Input
                       type="amount"
@@ -201,14 +185,6 @@ export function WalletRefill() {
                 <FormField
                   control={autoRefillForm.control}
                   name="refillAmount"
-                  rules={{
-                    validate: (value) => {
-                      if (value <= autoRefillForm.getValues("threshold")) {
-                        return "Refill amount must be greater than the threshold";
-                      }
-                      return true;
-                    },
-                  }}
                   render={({ field }) => (
                     <Input
                       type="amount"
