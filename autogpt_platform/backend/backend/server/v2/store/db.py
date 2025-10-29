@@ -2,6 +2,7 @@ import asyncio
 import logging
 import typing
 from datetime import datetime, timezone
+from typing import Literal
 
 import fastapi
 import prisma.enums
@@ -41,7 +42,7 @@ DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 async def get_store_agents(
     featured: bool = False,
     creators: list[str] | None = None,
-    sorted_by: str | None = None,
+    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = None,
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
@@ -63,7 +64,7 @@ async def get_store_agents(
             ALLOWED_ORDER_BY = {
                 "rating": "rating DESC, rank DESC",
                 "runs": "runs DESC, rank DESC",
-                "name": "agent_name ASC, rank DESC",
+                "name": "agent_name ASC, rank ASC",
                 "updated_at": "updated_at DESC, rank DESC",
             }
 
@@ -71,7 +72,7 @@ async def get_store_agents(
             if sorted_by and sorted_by in ALLOWED_ORDER_BY:
                 order_by_clause = ALLOWED_ORDER_BY[sorted_by]
             else:
-                order_by_clause = "updated_at DESC, rank DESC",
+                order_by_clause = ("updated_at DESC, rank DESC",)
 
             # Build WHERE conditions and parameters list
             where_parts: list[str] = []
@@ -421,7 +422,7 @@ async def get_store_agent_by_version_id(
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
-    sorted_by: str | None = None,
+    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> backend.server.v2.store.model.CreatorsResponse:

@@ -6,9 +6,10 @@ import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsRespons
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { useState, useMemo } from "react";
 
+type MarketplaceSearchSort = "rating" | "runs" | "name" | "updated_at";
 interface useMainSearchResultPageType {
   searchTerm: string;
-  sort: string;
+  sort: MarketplaceSearchSort;
 }
 
 export const useMainSearchResultPage = ({
@@ -30,22 +31,39 @@ export const useMainSearchResultPage = ({
     },
     {
       query: {
-        select: (x) => {
+        select: (x: any) => {
           return (x.data as StoreAgentsResponse).agents;
         },
       },
     },
   );
 
+  const creatorsSortBy:
+    | "agent_rating"
+    | "agent_runs"
+    | "num_agents"
+    | undefined = useMemo(() => {
+    switch (sort) {
+      case "runs":
+        return "agent_runs";
+      case "rating":
+        return "agent_rating";
+      default:
+        return "num_agents";
+    }
+  }, [sort]);
   const {
     data: creatorsData,
     isLoading: isCreatorsLoading,
     isError: isCreatorsError,
   } = useGetV2ListStoreCreators(
-    { search_query: searchTerm, sorted_by: sort },
+    {
+      search_query: searchTerm,
+      sorted_by: creatorsSortBy,
+    },
     {
       query: {
-        select: (x) => {
+        select: (x: any) => {
           return (x.data as CreatorsResponse).creators;
         },
       },

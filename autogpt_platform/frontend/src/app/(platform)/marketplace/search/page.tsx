@@ -3,7 +3,11 @@
 import { use } from "react";
 import { MainSearchResultPage } from "../components/MainSearchResultPage/MainSearchResultPage";
 
-type MarketplaceSearchPageSearchParams = { searchTerm?: string; sort?: string };
+type MarketplaceSearchSort = "rating" | "runs" | "name" | "updated_at";
+type MarketplaceSearchPageSearchParams = {
+  searchTerm?: string;
+  sort?: MarketplaceSearchSort;
+};
 
 export default function MarketplaceSearchPage({
   searchParams,
@@ -13,7 +17,7 @@ export default function MarketplaceSearchPage({
   return (
     <MainSearchResultPage
       searchTerm={use(searchParams).searchTerm || ""}
-      sort={use(searchParams).sort || "trending"}
+      sort={use(searchParams).sort || "runs"}
     />
   );
 }

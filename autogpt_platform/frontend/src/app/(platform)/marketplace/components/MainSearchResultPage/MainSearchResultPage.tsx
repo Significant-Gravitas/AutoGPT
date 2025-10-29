@@ -8,12 +8,14 @@ import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 
+type MarketplaceSearchSort = "rating" | "runs" | "name" | "updated_at";
+
 export const MainSearchResultPage = ({
   searchTerm,
   sort,
 }: {
   searchTerm: string;
-  sort: string;
+  sort: MarketplaceSearchSort;
 }) => {
   const {
     agents,
