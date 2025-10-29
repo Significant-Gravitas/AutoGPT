@@ -2,8 +2,9 @@
 
 import { use } from "react";
 import { MainSearchResultPage } from "../components/MainSearchResultPage/MainSearchResultPage";
+import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
 
-type MarketplaceSearchSort = "rating" | "runs" | "name" | "updated_at";
+type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 type MarketplaceSearchPageSearchParams = {
   searchTerm?: string;
   sort?: MarketplaceSearchSort;

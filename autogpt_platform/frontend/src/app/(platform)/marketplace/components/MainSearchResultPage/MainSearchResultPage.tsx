@@ -7,8 +7,9 @@ import { Separator } from "@/components/__legacy__/ui/separator";
 import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
+import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
 
-type MarketplaceSearchSort = "rating" | "runs" | "name" | "updated_at";
+type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 
 export const MainSearchResultPage = ({
   searchTerm,
