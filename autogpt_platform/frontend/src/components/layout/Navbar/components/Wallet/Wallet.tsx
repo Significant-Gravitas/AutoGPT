@@ -360,9 +360,8 @@ export function Wallet() {
       <PopoverContent
         side="bottom"
         align="end"
-        sideOffset={12}
         collisionPadding={16}
-        className={cn("z-50 w-[28.5rem] px-[0.625rem] py-2")}
+        className={cn("relative -top-12 z-50 w-[28.5rem] px-[0.625rem] py-2")}
       >
         {/* Header */}
         <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">
