@@ -4,7 +4,13 @@ from typing import Any, List, Optional
 
 from typing_extensions import TypedDict
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from ._api import get_api
@@ -26,7 +32,7 @@ class ReviewEvent(Enum):
 
 
 class GithubCreatePRReviewBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         class ReviewComment(TypedDict, total=False):
             path: str
             position: Optional[int]
@@ -61,7 +67,7 @@ class GithubCreatePRReviewBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         review_id: int = SchemaField(description="ID of the created review")
         state: str = SchemaField(
             description="State of the review (e.g., PENDING, COMMENTED, APPROVED, CHANGES_REQUESTED)"
@@ -197,7 +203,7 @@ class GithubCreatePRReviewBlock(Block):
 
 
 class GithubListPRReviewsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
             description="GitHub repository",
@@ -208,7 +214,7 @@ class GithubListPRReviewsBlock(Block):
             placeholder="123",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class ReviewItem(TypedDict):
             id: int
             user: str
@@ -223,7 +229,6 @@ class GithubListPRReviewsBlock(Block):
         reviews: list[ReviewItem] = SchemaField(
             description="List of all reviews on the pull request"
         )
-        error: str = SchemaField(description="Error message if listing reviews failed")
 
     def __init__(self):
         super().__init__(
@@ -317,7 +322,7 @@ class GithubListPRReviewsBlock(Block):
 
 
 class GithubSubmitPendingReviewBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
             description="GitHub repository",
@@ -336,7 +341,7 @@ class GithubSubmitPendingReviewBlock(Block):
             default=ReviewEvent.COMMENT,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         state: str = SchemaField(description="State of the submitted review")
         html_url: str = SchemaField(description="URL of the submitted review")
         error: str = SchemaField(
@@ -415,7 +420,7 @@ class GithubSubmitPendingReviewBlock(Block):
 
 
 class GithubResolveReviewDiscussionBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
             description="GitHub repository",
@@ -434,9 +439,8 @@ class GithubResolveReviewDiscussionBlock(Block):
             default=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the operation was successful")
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -579,7 +583,7 @@ class GithubResolveReviewDiscussionBlock(Block):
 
 
 class GithubGetPRReviewCommentsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
             description="GitHub repository",
@@ -596,7 +600,7 @@ class GithubGetPRReviewCommentsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class CommentItem(TypedDict):
             id: int
             user: str
@@ -616,7 +620,6 @@ class GithubGetPRReviewCommentsBlock(Block):
         comments: list[CommentItem] = SchemaField(
             description="List of all review comments on the pull request"
         )
-        error: str = SchemaField(description="Error message if getting comments failed")
 
     def __init__(self):
         super().__init__(
@@ -744,7 +747,7 @@ class GithubGetPRReviewCommentsBlock(Block):
 
 
 class GithubCreateCommentObjectBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         path: str = SchemaField(
             description="The file path to comment on",
             placeholder="src/main.py",
@@ -781,7 +784,7 @@ class GithubCreateCommentObjectBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         comment_object: dict = SchemaField(
             description="The comment object formatted for GitHub API"
         )

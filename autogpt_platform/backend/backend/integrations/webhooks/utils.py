@@ -9,7 +9,7 @@ from backend.util.settings import Config
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
-    from backend.data.block import Block, BlockSchema
+    from backend.data.block import AnyBlockSchema
     from backend.data.integrations import Webhook
     from backend.data.model import Credentials
     from backend.integrations.providers import ProviderName
@@ -29,7 +29,7 @@ def webhook_ingress_url(provider_name: "ProviderName", webhook_id: str) -> str:
 
 async def setup_webhook_for_block(
     user_id: str,
-    trigger_block: "Block[BlockSchema, BlockSchema]",
+    trigger_block: "AnyBlockSchema",
     trigger_config: dict[str, JsonValue],  # = Trigger block inputs
     for_graph_id: Optional[str] = None,
     for_preset_id: Optional[str] = None,
