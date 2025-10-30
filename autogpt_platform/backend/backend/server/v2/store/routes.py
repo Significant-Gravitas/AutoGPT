@@ -2,6 +2,7 @@ import logging
 import tempfile
 import typing
 import urllib.parse
+from typing import Literal
 
 import autogpt_libs.auth
 import fastapi
@@ -93,7 +94,7 @@ async def update_or_create_profile(
 async def get_agents(
     featured: bool = False,
     creator: str | None = None,
-    sorted_by: str | None = None,
+    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = None,
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
@@ -254,7 +255,7 @@ async def create_review(
 async def get_creators(
     featured: bool = False,
     search_query: str | None = None,
-    sorted_by: str | None = None,
+    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = None,
     page: int = 1,
     page_size: int = 20,
 ):
