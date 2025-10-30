@@ -74,8 +74,7 @@ class WebsetItemModel(BaseModel):
     title: str
     content: str
     entity_data: Dict[str, Any]
-    enrichments: Dict[str, EnrichmentResultModel]  # Changed from Dict[str, Any]
-    verification_status: str
+    enrichments: Dict[str, EnrichmentResultModel]
     created_at: str
     updated_at: str
 
@@ -131,7 +130,6 @@ class WebsetItemModel(BaseModel):
             content=content or "",
             entity_data=properties_dict,
             enrichments=enrichments_dict,
-            verification_status="",  # Not yet exposed in SDK
             created_at=item.created_at.isoformat() if item.created_at else "",
             updated_at=item.updated_at.isoformat() if item.updated_at else "",
         )
@@ -160,9 +158,6 @@ class ExaGetWebsetItemBlock(Block):
         content: str = SchemaField(description="The main content of the item")
         entity_data: dict = SchemaField(description="Entity-specific structured data")
         enrichments: dict = SchemaField(description="Enrichment data added to the item")
-        verification_status: str = SchemaField(
-            description="Verification status against criteria"
-        )
         created_at: str = SchemaField(
             description="When the item was added to the webset"
         )
@@ -181,25 +176,20 @@ class ExaGetWebsetItemBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK (methods are sync but class is AsyncExa)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get item using SDK - no await needed
         sdk_item = aexa.websets.items.get(
             webset_id=input_data.webset_id, id=input_data.item_id
         )
 
-        # Convert to our stable model
         item = WebsetItemModel.from_sdk(sdk_item)
 
-        # Yield all fields
         yield "item_id", item.id
         yield "url", item.url
         yield "title", item.title
         yield "content", item.content
         yield "entity_data", item.entity_data
         yield "enrichments", item.enrichments
-        yield "verification_status", item.verification_status
         yield "created_at", item.created_at
         yield "updated_at", item.updated_at
 
@@ -269,10 +259,8 @@ class ExaListWebsetItemsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK (methods are sync despite class name)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # If wait_for_items is True, poll until items are available
         if input_data.wait_for_items:
             import asyncio
             import time
@@ -288,7 +276,6 @@ class ExaListWebsetItemsBlock(Block):
                     limit=input_data.limit,
                 )
 
-                # Check if we have any items
                 if response.data:
                     break
 
@@ -308,17 +295,13 @@ class ExaListWebsetItemsBlock(Block):
                 limit=input_data.limit,
             )
 
-        # Convert SDK items to our stable models
         items = [WebsetItemModel.from_sdk(item) for item in response.data]
 
-        # Yield the full list
         yield "items", items
 
-        # Yield individual items for graph chaining
         for item in items:
             yield "item", item
 
-        # Yield pagination metadata
         yield "has_more", response.has_more
         yield "next_cursor", response.next_cursor
         yield "webset_id", input_data.webset_id
@@ -357,10 +340,8 @@ class ExaDeleteWebsetItemBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Delete item using SDK
         deleted_item = aexa.websets.items.delete(
             webset_id=input_data.webset_id, id=input_data.item_id
         )
@@ -425,7 +406,6 @@ class ExaBulkWebsetItemsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Use list_all iterator to get items up to max_items
         all_items: List[WebsetItemModel] = []
         item_iterator = aexa.websets.items.list_all(
             webset_id=input_data.webset_id, limit=input_data.max_items
@@ -435,10 +415,8 @@ class ExaBulkWebsetItemsBlock(Block):
             if len(all_items) >= input_data.max_items:
                 break
 
-            # Convert to our stable model
             item = WebsetItemModel.from_sdk(sdk_item)
 
-            # Apply field filters by setting to empty values
             if not input_data.include_enrichments:
                 item.enrichments = {}
             if not input_data.include_content:
@@ -446,10 +424,8 @@ class ExaBulkWebsetItemsBlock(Block):
 
             all_items.append(item)
 
-        # Yield results
         yield "items", all_items
 
-        # Yield individual items for chaining
         for item in all_items:
             yield "item", item
 
@@ -486,9 +462,6 @@ class ExaWebsetItemsSummaryBlock(Block):
         enrichment_columns: list[str] = SchemaField(
             description="List of enrichment columns available"
         )
-        verification_stats: dict = SchemaField(
-            description="Statistics about item verification status"
-        )
         error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
@@ -506,10 +479,8 @@ class ExaWebsetItemsSummaryBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get webset details
         webset = aexa.websets.get(id=input_data.webset_id)
 
-        # Get entity type from searches
         entity_type = "unknown"
         if webset.searches:
             first_search = webset.searches[0]
@@ -536,10 +507,6 @@ class ExaWebsetItemsSummaryBlock(Block):
                 WebsetItemModel.from_sdk(item) for item in items_response.data
             ]
 
-        # Calculate verification stats from sample (not yet in SDK)
-        verification_stats: dict[str, int] = {}
-
-        # Get total count - estimate from search progress
         total_items = 0
         if webset.searches:
             for search in webset.searches:
@@ -550,7 +517,6 @@ class ExaWebsetItemsSummaryBlock(Block):
         yield "entity_type", entity_type
         yield "sample_items", sample_items
         yield "enrichment_columns", enrichment_columns
-        yield "verification_stats", verification_stats
 
 
 class ExaGetNewItemsBlock(Block):

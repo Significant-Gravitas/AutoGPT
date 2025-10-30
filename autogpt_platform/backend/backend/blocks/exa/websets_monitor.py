@@ -245,7 +245,6 @@ class ExaCreateMonitorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK (methods are sync despite class name)
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Build the payload
@@ -291,10 +290,8 @@ class ExaCreateMonitorBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        # Create monitor using SDK - no await needed
         sdk_monitor = aexa.websets.monitors.create(params=payload)
 
-        # Convert to our stable model
         monitor = MonitorModel.from_sdk(sdk_monitor)
 
         # Yield all fields
@@ -358,10 +355,8 @@ class ExaGetMonitorBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get monitor using SDK - no await needed
         sdk_monitor = aexa.websets.monitors.get(monitor_id=input_data.monitor_id)
 
-        # Convert to our stable model
         monitor = MonitorModel.from_sdk(sdk_monitor)
 
         # Yield all fields
@@ -453,7 +448,6 @@ class ExaUpdateMonitorBlock(Block):
         if input_data.metadata is not None:
             payload["metadata"] = input_data.metadata
 
-        # Update monitor using SDK - no await needed
         sdk_monitor = aexa.websets.monitors.update(
             monitor_id=input_data.monitor_id, params=payload
         )
@@ -501,7 +495,6 @@ class ExaDeleteMonitorBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Delete monitor using SDK - no await needed
         deleted_monitor = aexa.websets.monitors.delete(monitor_id=input_data.monitor_id)
 
         yield "monitor_id", deleted_monitor.id
@@ -560,7 +553,6 @@ class ExaListMonitorsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # List monitors using SDK - no await needed
         response = aexa.websets.monitors.list(
             cursor=input_data.cursor,
             limit=input_data.limit,

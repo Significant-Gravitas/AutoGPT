@@ -315,10 +315,8 @@ class ExaCreateWebsetSearchBlock(Block):
 
         start_time = time.time()
 
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Create the search using SDK (sync method despite AsyncExa class)
         sdk_search = aexa.websets.searches.create(
             webset_id=input_data.webset_id, params=payload
         )
@@ -445,12 +443,10 @@ class ExaGetWebsetSearchBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get search using SDK
         sdk_search = aexa.websets.searches.get(
             webset_id=input_data.webset_id, id=input_data.search_id
         )
 
-        # Convert to our stable model
         search = WebsetSearchModel.from_sdk(sdk_search)
 
         # Extract progress information
@@ -502,11 +498,6 @@ class ExaCancelWebsetSearchBlock(Block):
             description="The ID of the search to cancel",
             placeholder="search-id",
         )
-        reason: Optional[str] = SchemaField(
-            default=None,
-            description="Optional reason for cancellation",
-            advanced=True,
-        )
 
     class Output(BlockSchema):
         search_id: str = SchemaField(description="The ID of the canceled search")
@@ -534,7 +525,6 @@ class ExaCancelWebsetSearchBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Cancel search using SDK (doesn't accept reason param)
         canceled_search = aexa.websets.searches.cancel(
             webset_id=input_data.webset_id, id=input_data.search_id
         )

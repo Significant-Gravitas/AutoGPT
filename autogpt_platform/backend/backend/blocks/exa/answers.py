@@ -89,7 +89,6 @@ class ExaAnswerBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get answer using SDK (stream=False for blocks) - this IS async, needs await
@@ -101,10 +100,8 @@ class ExaAnswerBlock(Block):
         # provides a bit of safety for sdk updates.
         assert type(response) is AnswerResponse
 
-        # Yield the answer
         yield "answer", response.answer
 
-        # Convert citations to our Pydantic model using from_sdk()
         citations = [
             AnswerCitation.from_sdk(sdk_citation)
             for sdk_citation in response.citations or []

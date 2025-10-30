@@ -3,7 +3,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
 
-# Import AsyncExa for SDK methods
 from exa_py import AsyncExa, Exa
 from exa_py.websets.types import (
     CreateCriterionParameters,
@@ -258,9 +257,6 @@ class ExaCreateWebsetBlock(Block):
 
         exa = Exa(credentials.api_key.get_secret_value())
 
-        # ------------------------------------------------------------
-        # Build entity (if explicitly provided)
-        # ------------------------------------------------------------
         entity = None
         if input_data.search_entity_type == SearchEntityType.COMPANY:
             entity = WebsetCompanyEntity(type="company")
@@ -278,9 +274,6 @@ class ExaCreateWebsetBlock(Block):
                 type="custom", description=input_data.search_entity_description
             )
 
-        # ------------------------------------------------------------
-        # Build criteria list
-        # ------------------------------------------------------------
         criteria = None
         if input_data.search_criteria:
             criteria = [
@@ -288,9 +281,6 @@ class ExaCreateWebsetBlock(Block):
                 for item in input_data.search_criteria
             ]
 
-        # ------------------------------------------------------------
-        # Build exclude sources list
-        # ------------------------------------------------------------
         exclude_items = None
         if input_data.search_exclude_sources:
             exclude_items = []
@@ -307,9 +297,6 @@ class ExaCreateWebsetBlock(Block):
                     source_enum = ImportSource.import_
                 exclude_items.append(ExcludeItem(source=source_enum, id=src_id))
 
-        # ------------------------------------------------------------
-        # Build scope list
-        # ------------------------------------------------------------
         scope_items = None
         if input_data.search_scope_sources:
             scope_items = []
@@ -338,9 +325,6 @@ class ExaCreateWebsetBlock(Block):
                     ScopeItem(source=src_enum, id=src_id, relationship=relationship)
                 )
 
-        # ------------------------------------------------------------
-        # Assemble search parameters (only if a query is provided)
-        # ------------------------------------------------------------
         search_params = None
         if input_data.search_query:
             search_params = CreateWebsetParametersSearch(
@@ -352,9 +336,6 @@ class ExaCreateWebsetBlock(Block):
                 scope=scope_items,
             )
 
-        # ------------------------------------------------------------
-        # Build imports list
-        # ------------------------------------------------------------
         imports_params = None
         if input_data.import_sources:
             imports_params = []
@@ -368,9 +349,6 @@ class ExaCreateWebsetBlock(Block):
                     source_enum = ImportSource.import_
                 imports_params.append(ImportItem(source=source_enum, id=src_id))
 
-        # ------------------------------------------------------------
-        # Build enrichment list
-        # ------------------------------------------------------------
         enrichments_params = None
         if input_data.enrichment_descriptions:
             enrichments_params = []
@@ -405,9 +383,6 @@ class ExaCreateWebsetBlock(Block):
                     )
                 )
 
-        # ------------------------------------------------------------
-        # Create the webset
-        # ------------------------------------------------------------
         try:
             start_time = time.time()
             webset = exa.websets.create(
@@ -420,12 +395,10 @@ class ExaCreateWebsetBlock(Block):
                 )
             )
 
-            # Convert to our Webset model
             webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
 
             # If wait_for_initial_results is True, poll for completion
             if input_data.wait_for_initial_results and search_params:
-                # Use SDK's wait_until_idle method
                 final_webset = exa.websets.wait_until_idle(
                     id=webset_result.id,
                     timeout=input_data.polling_timeout,
@@ -433,7 +406,6 @@ class ExaCreateWebsetBlock(Block):
                 )
                 completion_time = time.time() - start_time
 
-                # Get item count from final webset
                 item_count = 0
                 if final_webset.searches:
                     for search in final_webset.searches:
@@ -447,9 +419,7 @@ class ExaCreateWebsetBlock(Block):
                 yield "webset", webset_result
 
         except ValueError as e:
-            # Re-raise user input validation errors
             raise ValueError(f"Invalid webset configuration: {e}") from e
-        # Let all other exceptions (network, auth, rate limits) propagate naturally
 
 
 class ExaCreateOrFindWebsetBlock(Block):
@@ -460,13 +430,11 @@ class ExaCreateOrFindWebsetBlock(Block):
             description="The Exa integration requires an API Key."
         )
 
-        # Required external_id for find-or-create pattern
         external_id: str = SchemaField(
             description="External identifier for this webset - used to find existing or create new",
             placeholder="my-unique-webset-id",
         )
 
-        # Same search parameters as create (all optional)
         search_query: Optional[str] = SchemaField(
             default=None,
             description="Search query (optional - only needed if creating new webset)",
@@ -479,7 +447,6 @@ class ExaCreateOrFindWebsetBlock(Block):
             le=1000,
         )
 
-        # Metadata
         metadata: Optional[dict] = SchemaField(
             default=None,
             description="Key-value pairs to associate with the webset",
@@ -509,14 +476,10 @@ class ExaCreateOrFindWebsetBlock(Block):
     ) -> BlockOutput:
         import httpx
 
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         try:
-            # Try to find existing webset by external_id
             webset = aexa.websets.get(id=input_data.external_id)
-
-            # Found existing - convert to our model
             webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
 
             yield "webset", webset_result
@@ -540,7 +503,6 @@ class ExaCreateOrFindWebsetBlock(Block):
                     )
                 )
 
-                # Convert to our model
                 webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
 
                 yield "webset", webset_result
@@ -588,18 +550,14 @@ class ExaUpdateWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Build the payload
         payload = {}
         if input_data.metadata is not None:
             payload["metadata"] = input_data.metadata
 
-        # Update webset using SDK - no await needed
         sdk_webset = aexa.websets.update(id=input_data.webset_id, params=payload)
 
-        # Extract status
         status_str = (
             sdk_webset.status.value
             if hasattr(sdk_webset.status, "value")
@@ -660,16 +618,13 @@ class ExaListWebsetsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # List websets using SDK - no await needed
         response = aexa.websets.list(
             cursor=input_data.cursor,
             limit=input_data.limit,
         )
 
-        # Convert websets to dict for output
         websets_data = [
             w.model_dump(by_alias=True, exclude_none=True) for w in response.data
         ]
@@ -725,20 +680,16 @@ class ExaGetWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get webset using SDK - no await needed
         sdk_webset = aexa.websets.get(id=input_data.webset_id)
 
-        # Extract status
         status_str = (
             sdk_webset.status.value
             if hasattr(sdk_webset.status, "value")
             else str(sdk_webset.status)
         )
 
-        # Convert nested objects to dicts
         searches_data = [
             s.model_dump(by_alias=True, exclude_none=True)
             for s in sdk_webset.searches or []
@@ -800,13 +751,10 @@ class ExaDeleteWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Delete webset using SDK - no await needed
         deleted_webset = aexa.websets.delete(id=input_data.webset_id)
 
-        # Extract status
         status_str = (
             deleted_webset.status.value
             if hasattr(deleted_webset.status, "value")
@@ -854,13 +802,10 @@ class ExaCancelWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Cancel webset using SDK - no await needed
         canceled_webset = aexa.websets.cancel(id=input_data.webset_id)
 
-        # Extract status
         status_str = (
             canceled_webset.status.value
             if hasattr(canceled_webset.status, "value")
@@ -1015,15 +960,12 @@ class ExaPreviewWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Build the payload
         payload: dict[str, Any] = {
             "query": input_data.query,
         }
 
-        # Add entity configuration if provided
         if input_data.entity_type:
             entity: dict[str, Any] = {"type": input_data.entity_type.value}
             if (
@@ -1033,13 +975,10 @@ class ExaPreviewWebsetBlock(Block):
                 entity["description"] = input_data.entity_description
             payload["entity"] = entity
 
-        # Preview webset using SDK - no await needed
         sdk_preview = aexa.websets.preview(params=payload)
 
-        # Convert to our stable Pydantic model
         preview = PreviewWebsetModel.from_sdk(sdk_preview)
 
-        # Extract details for individual fields (for easier graph connections)
         entity_type = preview.search.entity_type
         entity_description = preview.search.entity_description
         criteria = preview.search.criteria
@@ -1118,13 +1057,10 @@ class ExaWebsetStatusBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get webset details using SDK
         webset = aexa.websets.get(id=input_data.webset_id)
 
-        # Extract status
         status = (
             webset.status.value
             if hasattr(webset.status, "value")
@@ -1256,10 +1192,8 @@ class ExaWebsetSummaryBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get webset details using SDK
         webset = aexa.websets.get(id=input_data.webset_id)
 
         # Extract basic info
@@ -1435,13 +1369,11 @@ class ExaWebsetReadyCheckBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         # Get webset details
         webset = aexa.websets.get(id=input_data.webset_id)
 
-        # Extract status
         status = (
             webset.status.value
             if hasattr(webset.status, "value")

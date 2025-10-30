@@ -104,7 +104,6 @@ class ExaFindSimilarBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Build kwargs for SDK call
         sdk_kwargs = {
             "url": input_data.url,
             "num_results": input_data.number_of_results,
@@ -134,14 +133,12 @@ class ExaFindSimilarBlock(Block):
         if input_data.exclude_text:
             sdk_kwargs["exclude_text"] = input_data.exclude_text
 
-        # Handle moderation
         if input_data.moderation:
             sdk_kwargs["moderation"] = input_data.moderation
 
-        # Handle contents - check if we need to use find_similar_and_contents
+        # check if we need to use find_similar_and_contents
         content_settings = process_contents_settings(input_data.contents)
 
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         if content_settings:
@@ -153,10 +150,8 @@ class ExaFindSimilarBlock(Block):
                 sdk_kwargs["summary"] = content_settings["summary"]
             response = await aexa.find_similar_and_contents(**sdk_kwargs)
         else:
-            # Use regular find_similar when no contents requested
             response = await aexa.find_similar(**sdk_kwargs)
 
-        # SearchResponse is a dataclass, convert results to our Pydantic models
         converted_results = [
             ExaSearchResults.from_sdk(sdk_result)
             for sdk_result in response.results or []
@@ -166,10 +161,8 @@ class ExaFindSimilarBlock(Block):
         for result in converted_results:
             yield "result", result
 
-        # Yield context if present
         if response.context:
             yield "context", response.context
 
-        # Yield cost information if present
         if response.cost_dollars:
             yield "cost_dollars", response.cost_dollars

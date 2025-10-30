@@ -215,18 +215,14 @@ class ExaCreateImportBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Parse CSV data to count rows
         csv_reader = csv.reader(StringIO(input_data.csv_data))
         rows = list(csv_reader)
-        count = len(rows) - 1 if len(rows) > 1 else 0  # Subtract header row
+        count = len(rows) - 1 if len(rows) > 1 else 0
 
-        # Calculate size in bytes
         size = len(input_data.csv_data.encode("utf-8"))
 
-        # Build the payload
         payload = {
             "title": input_data.title,
             "format": ImportFormat.CSV.value,
@@ -254,16 +250,12 @@ class ExaCreateImportBlock(Block):
         if input_data.metadata:
             payload["metadata"] = input_data.metadata
 
-        # Create import using SDK - no await needed
-        # Pass CSV data as string
         sdk_import = aexa.websets.imports.create(
             params=payload, csv_data=input_data.csv_data
         )
 
-        # Convert to our stable model
         import_obj = ImportModel.from_sdk(sdk_import)
 
-        # Yield fields
         yield "import_id", import_obj.id
         yield "status", import_obj.status
         yield "title", import_obj.title
@@ -325,10 +317,8 @@ class ExaGetImportBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get import using SDK - no await needed
         sdk_import = aexa.websets.imports.get(import_id=input_data.import_id)
 
-        # Convert to our stable model
         import_obj = ImportModel.from_sdk(sdk_import)
 
         # Yield all fields
@@ -394,7 +384,6 @@ class ExaListImportsBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # List imports using SDK - no await needed
         response = aexa.websets.imports.list(
             cursor=input_data.cursor,
             limit=input_data.limit,
@@ -403,14 +392,11 @@ class ExaListImportsBlock(Block):
         # Convert SDK imports to our stable models
         imports = [ImportModel.from_sdk(i) for i in response.data]
 
-        # Yield the full list
         yield "imports", [i.model_dump() for i in imports]
 
-        # Yield individual imports for graph chaining
         for import_obj in imports:
             yield "import_item", import_obj.model_dump()
 
-        # Yield pagination metadata
         yield "has_more", response.has_more
         yield "next_cursor", response.next_cursor
 
@@ -447,7 +433,6 @@ class ExaDeleteImportBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Delete import using SDK - no await needed
         deleted_import = aexa.websets.imports.delete(import_id=input_data.import_id)
 
         yield "import_id", deleted_import.id

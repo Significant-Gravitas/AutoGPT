@@ -202,7 +202,6 @@ class ExaCreateEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Create enrichment using SDK
         sdk_enrichment = aexa.websets.enrichments.create(
             webset_id=input_data.webset_id, params=payload
         )
@@ -331,12 +330,10 @@ class ExaGetEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Get enrichment using SDK
         sdk_enrichment = aexa.websets.enrichments.get(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
 
-        # Convert to our stable model
         enrichment = WebsetEnrichmentModel.from_sdk(sdk_enrichment)
 
         yield "enrichment_id", enrichment.id
@@ -480,7 +477,6 @@ class ExaDeleteEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Delete enrichment using SDK
         deleted_enrichment = aexa.websets.enrichments.delete(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
@@ -533,7 +529,6 @@ class ExaCancelEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Cancel enrichment using SDK
         canceled_enrichment = aexa.websets.enrichments.cancel(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )

@@ -134,11 +134,9 @@ class ExaContentsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Validate input
         if not input_data.urls and not input_data.ids:
             raise ValueError("Either 'urls' or 'ids' must be provided")
 
-        # Build kwargs for SDK call
         sdk_kwargs = {}
 
         # Prefer urls over ids
@@ -147,7 +145,6 @@ class ExaContentsBlock(Block):
         elif input_data.ids:
             sdk_kwargs["ids"] = input_data.ids
 
-        # Handle text field - when true, include HTML tags for better LLM understanding
         if input_data.text:
             sdk_kwargs["text"] = {"includeHtmlTags": True}
 
@@ -178,19 +175,15 @@ class ExaContentsBlock(Block):
                 summary_dict["schema"] = input_data.summary.schema
             sdk_kwargs["summary"] = summary_dict
 
-        # Handle livecrawl
         if input_data.livecrawl:
             sdk_kwargs["livecrawl"] = input_data.livecrawl.value
 
-        # Handle livecrawl_timeout
         if input_data.livecrawl_timeout is not None:
             sdk_kwargs["livecrawl_timeout"] = input_data.livecrawl_timeout
 
-        # Handle subpages
         if input_data.subpages is not None:
             sdk_kwargs["subpages"] = input_data.subpages
 
-        # Handle subpage_target
         if input_data.subpage_target:
             sdk_kwargs["subpage_target"] = input_data.subpage_target
 
@@ -208,11 +201,9 @@ class ExaContentsBlock(Block):
         # Always enable context for LLM-ready output
         sdk_kwargs["context"] = True
 
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
         response = await aexa.get_contents(**sdk_kwargs)
 
-        # SearchResponse is a dataclass, convert results to our Pydantic models
         converted_results = [
             ExaSearchResults.from_sdk(sdk_result)
             for sdk_result in response.results or []
@@ -220,18 +211,14 @@ class ExaContentsBlock(Block):
 
         yield "results", converted_results
 
-        # Yield individual results
         for result in converted_results:
             yield "result", result
 
-        # Yield context if present
         if response.context:
             yield "context", response.context
 
-        # Yield statuses if present
         if response.statuses:
             yield "statuses", response.statuses
 
-        # Yield cost information if present
         if response.cost_dollars:
             yield "cost_dollars", response.cost_dollars

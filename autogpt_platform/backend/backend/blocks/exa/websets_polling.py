@@ -114,16 +114,13 @@ class ExaWaitForWebsetBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         start_time = time.time()
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         try:
-            # Use SDK's wait_until_idle if target status is IDLE or ANY_COMPLETE
             if input_data.target_status in [
                 WebsetTargetStatus.IDLE,
                 WebsetTargetStatus.ANY_COMPLETE,
             ]:
-                # SDK's wait_until_idle handles polling for us
                 final_webset = aexa.websets.wait_until_idle(
                     id=input_data.webset_id,
                     timeout=input_data.timeout,
@@ -132,14 +129,12 @@ class ExaWaitForWebsetBlock(Block):
 
                 elapsed = time.time() - start_time
 
-                # Extract status
                 status_str = (
                     final_webset.status.value
                     if hasattr(final_webset.status, "value")
                     else str(final_webset.status)
                 )
 
-                # Estimate item count from search progress
                 item_count = 0
                 if final_webset.searches:
                     for search in final_webset.searches:
@@ -221,7 +216,6 @@ class ExaWaitForWebsetBlock(Block):
                     else str(webset.status)
                 )
 
-                # Estimate item count from search progress
                 item_count = 0
                 if webset.searches:
                     for search in webset.searches:

@@ -133,21 +133,17 @@ class ExaSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # Build kwargs for SDK call
         sdk_kwargs = {
             "query": input_data.query,
             "num_results": input_data.number_of_results,
         }
 
-        # Handle type field
         if input_data.type:
             sdk_kwargs["type"] = input_data.type.value
 
-        # Handle category field
         if input_data.category:
             sdk_kwargs["category"] = input_data.category.value
 
-        # Handle user_location
         if input_data.user_location:
             sdk_kwargs["user_location"] = input_data.user_location
 
@@ -175,18 +171,15 @@ class ExaSearchBlock(Block):
         if input_data.exclude_text:
             sdk_kwargs["exclude_text"] = input_data.exclude_text
 
-        # Handle moderation
         if input_data.moderation:
             sdk_kwargs["moderation"] = input_data.moderation
 
-        # Handle contents - check if we need to use search_and_contents
+        # heck if we need to use search_and_contents
         content_settings = process_contents_settings(input_data.contents)
 
-        # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
         if content_settings:
-            # Use search_and_contents when contents are requested
             sdk_kwargs["text"] = content_settings.get("text", False)
             if "highlights" in content_settings:
                 sdk_kwargs["highlights"] = content_settings["highlights"]
@@ -194,10 +187,8 @@ class ExaSearchBlock(Block):
                 sdk_kwargs["summary"] = content_settings["summary"]
             response = await aexa.search_and_contents(**sdk_kwargs)
         else:
-            # Use regular search when no contents requested
             response = await aexa.search(**sdk_kwargs)
 
-        # SearchResponse is a dataclass, convert results to our Pydantic models
         converted_results = [
             ExaSearchResults.from_sdk(sdk_result)
             for sdk_result in response.results or []
@@ -207,14 +198,11 @@ class ExaSearchBlock(Block):
         for result in converted_results:
             yield "result", result
 
-        # Yield context if present
         if response.context:
             yield "context", response.context
 
-        # Yield resolved search type if present
         if response.resolved_search_type:
             yield "resolved_search_type", response.resolved_search_type
 
-        # Yield cost information if present
         if response.cost_dollars:
             yield "cost_dollars", response.cost_dollars

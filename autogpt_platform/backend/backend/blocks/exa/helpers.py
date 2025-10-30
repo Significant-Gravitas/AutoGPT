@@ -11,7 +11,6 @@ class LivecrawlTypes(str, Enum):
     PREFERRED = "preferred"
 
 
-# Discriminated union models for text field
 class TextEnabled(BaseModel):
     discriminator: Literal["enabled"] = "enabled"
 
@@ -82,7 +81,6 @@ class ExtrasSettings(BaseModel):
     )
 
 
-# Discriminated union models for context field
 class ContextEnabled(BaseModel):
     discriminator: Literal["enabled"] = "enabled"
 
@@ -366,7 +364,6 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
             highlights_dict["query"] = contents.highlights.query
         content_settings["highlights"] = highlights_dict
 
-    # Handle summary
     if contents.summary:
         summary_dict = {}
         if contents.summary.query:
@@ -375,23 +372,18 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
             summary_dict["schema"] = contents.summary.schema
         content_settings["summary"] = summary_dict
 
-    # Handle livecrawl
     if contents.livecrawl:
         content_settings["livecrawl"] = contents.livecrawl.value
 
-    # Handle livecrawl_timeout
     if contents.livecrawl_timeout is not None:
         content_settings["livecrawlTimeout"] = contents.livecrawl_timeout
 
-    # Handle subpages
     if contents.subpages is not None:
         content_settings["subpages"] = contents.subpages
 
-    # Handle subpage_target
     if contents.subpage_target:
         content_settings["subpageTarget"] = contents.subpage_target
 
-    # Handle extras
     if contents.extras:
         extras_dict = {}
         if contents.extras.links:
@@ -400,7 +392,6 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
             extras_dict["imageLinks"] = contents.extras.image_links
         content_settings["extras"] = extras_dict
 
-    # Handle context within contents
     context_value = process_context_field(contents.context)
     if context_value is not None:
         content_settings["context"] = context_value
