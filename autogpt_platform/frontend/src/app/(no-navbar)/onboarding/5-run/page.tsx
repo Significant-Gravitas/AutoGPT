@@ -190,7 +190,7 @@ export default function Page() {
               />
               {/* Right content */}
               <div className="ml-2 flex flex-1 flex-col">
-                <span className="w-[292px] truncate font-sans text-[14px] font-medium leading-normal text-zinc-800">
+                <span className="data-sentry-unmask w-[292px] truncate font-sans text-[14px] font-medium leading-normal text-zinc-800">
                   {storeAgent?.agent_name}
                 </span>
                 <span className="mt-[5px] w-[292px] truncate font-sans text-xs font-normal leading-tight text-zinc-600">
