@@ -160,9 +160,7 @@ async def stream_chat(
     session = await chat_service.get_session(session_id, user_id)
 
     if not session:
-        raise NotFoundError(
-            f"Session {session_id} not found. "
-        )
+        raise NotFoundError(f"Session {session_id} not found. ")
     if session.user_id is None and user_id is not None:
         session = await chat_service.assign_user_to_session(session_id, user_id)
 

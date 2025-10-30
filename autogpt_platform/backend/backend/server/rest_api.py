@@ -294,7 +294,9 @@ app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
-    dependencies=[fastapi.Depends(create_feature_flag_dependency(Flag.CHAT, default=True))],
+    dependencies=[
+        fastapi.Depends(create_feature_flag_dependency(Flag.CHAT, default=True))
+    ],
 )
 
 app.mount("/external-api", external_app)
