@@ -21,7 +21,6 @@ export default function OnboardingAgentCard({
           "relative animate-pulse",
           "h-[394px] w-[368px] rounded-[20px] border border-transparent bg-zinc-200",
         )}
-        onClick={onClick}
       />
     );
   }

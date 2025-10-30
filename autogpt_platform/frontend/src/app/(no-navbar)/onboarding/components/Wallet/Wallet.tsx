@@ -215,8 +215,8 @@ export default function Wallet() {
   useEffect(() => {
     if (typeof credits !== "number") return;
     // Open once for first-time users
-    if (state && state.walletShown === false) {
-      setWalletOpen(true);
+    if (state) {
+      requestAnimationFrame(() => setWalletOpen(true));
       // Mark as shown so it won't reopen on every reload
       updateState({ walletShown: true });
       return;
@@ -227,7 +227,7 @@ export default function Wallet() {
       credits > lastSeenCredits &&
       walletOpen === false
     ) {
-      setWalletOpen(true);
+      requestAnimationFrame(() => setWalletOpen(true));
     }
   }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
 
@@ -329,7 +329,7 @@ export default function Wallet() {
           <button
             ref={walletRef}
             className={cn(
-              "relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm",
+              "group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm",
             )}
             onClick={onWalletOpen}
           >
@@ -339,8 +339,8 @@ export default function Wallet() {
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}
               </span>
-              {completedCount && completedCount < totalCount && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+              {completedCount !== null && completedCount < totalCount && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"/>
               )}
               <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
                 <Text variant="body-medium">
