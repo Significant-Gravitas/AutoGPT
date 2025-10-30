@@ -151,11 +151,19 @@ async def stream_chat_completion(
                     ],
                 )
                 session.messages.append(tool_call_response)
+                yield chunk
             elif isinstance(chunk, StreamToolExecutionResult):
+                # chunk.result is already a JSON string from model_dump_json()
+                # Don't double-encode it with orjson.dumps()
+                result_content = (
+                    chunk.result
+                    if isinstance(chunk.result, str)
+                    else orjson.dumps(chunk.result).decode("utf-8")
+                )
                 session.messages.append(
                     ChatMessage(
                         role="tool",
-                        content=orjson.dumps(chunk.result).decode("utf-8"),
+                        content=result_content,
                         tool_call_id=chunk.tool_id,
                     )
                 )

@@ -5,7 +5,8 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
-from fastapi import HTTPException
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
@@ -23,6 +24,37 @@ T = TypeVar("T")
 
 _is_initialized = False
 
+# Optional bearer token authentication for feature flags
+_optional_bearer = HTTPBearer(auto_error=False)
+
+
+def _get_optional_user_id_from_auth(
+    credentials: HTTPAuthorizationCredentials | None = Security(_optional_bearer),
+) -> str | None:
+    """
+    Extract user ID from JWT token if present, otherwise return None.
+
+    This is used by feature flag dependencies to get the authenticated user context
+    for LaunchDarkly targeting while still supporting anonymous access.
+
+    Args:
+        credentials: Optional HTTP bearer credentials from the request
+
+    Returns:
+        User ID string if authenticated, None for anonymous access
+    """
+    if not credentials:
+        return None
+
+    try:
+        from autogpt_libs.auth.jwt_utils import parse_jwt_token
+
+        payload = parse_jwt_token(credentials.credentials)
+        return payload.get("sub")
+    except Exception as e:
+        logger.debug(f"Auth token validation failed (anonymous access): {e}")
+        return None
+
 
 class Flag(str, Enum):
     """
@@ -36,6 +68,7 @@ class Flag(str, Enum):
     BETA_BLOCKS = "beta-blocks"
     AGENT_ACTIVITY = "agent-activity"
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
+    CHAT = "chat"
 
 
 def is_configured() -> bool:
@@ -250,6 +283,75 @@ def feature_flag(
         return async_wrapper
 
     return decorator
+
+
+def create_feature_flag_dependency(
+    flag_key: Flag,
+    default: bool = False,
+) -> Callable[[str | None], Awaitable[None]]:
+    """
+    Create a FastAPI dependency that checks a feature flag.
+
+    This dependency automatically extracts the user_id from the JWT token
+    (if present) for proper LaunchDarkly user targeting, while still
+    supporting anonymous access.
+
+    Args:
+        flag_key: The Flag enum value to check
+        default: Default value if flag evaluation fails
+
+    Returns:
+        An async dependency function that raises HTTPException if flag is disabled
+
+    Example:
+        router = APIRouter(
+            dependencies=[Depends(create_feature_flag_dependency(Flag.CHAT))]
+        )
+    """
+
+    async def check_feature_flag(
+        user_id: str | None = Security(_get_optional_user_id_from_auth),
+    ) -> None:
+        """Check if feature flag is enabled for the user.
+
+        The user_id is automatically injected from JWT authentication if present,
+        or None for anonymous access.
+        """
+        # For routes that don't require authentication, use anonymous context
+        check_user_id = user_id or "anonymous"
+
+        # Check if LaunchDarkly is configured before trying to use it
+        if not is_configured():
+            logger.debug(
+                f"LaunchDarkly not configured, using default {flag_key.value}={default}"
+            )
+            if not default:
+                raise HTTPException(status_code=404, detail="Feature not available")
+            return
+
+        try:
+            client = get_client()
+            if not client.is_initialized():
+                logger.debug(
+                    f"LaunchDarkly not initialized, using default {flag_key.value}={default}"
+                )
+                if not default:
+                    raise HTTPException(status_code=404, detail="Feature not available")
+                return
+
+            is_enabled = await is_feature_enabled(flag_key, check_user_id, default)
+
+            if not is_enabled:
+                raise HTTPException(status_code=404, detail="Feature not available")
+        except Exception as e:
+            # If LaunchDarkly fails for any reason, use default
+            logger.warning(
+                f"LaunchDarkly error for flag {flag_key.value}: {e}, using default={default}"
+            )
+            if not default:
+                raise HTTPException(status_code=404, detail="Feature not available")
+
+    return check_feature_flag
 
 
 @contextlib.contextmanager
