@@ -42,6 +42,7 @@ from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
 from .block import (
+    AnyBlockSchema,
     Block,
     BlockInput,
     BlockSchema,
@@ -90,7 +91,7 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
-    def block(self) -> "Block[BlockSchema, BlockSchema] | _UnknownBlockBase":
+    def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
         """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:

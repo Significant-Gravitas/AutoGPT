@@ -3,14 +3,20 @@ from backend.blocks.nvidia._auth import (
     NvidiaCredentialsField,
     NvidiaCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 
 class NvidiaDeepfakeDetectBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: NvidiaCredentialsInput = NvidiaCredentialsField()
         image_base64: MediaFileType = SchemaField(
             description="Image to analyze for deepfakes",
@@ -20,7 +26,7 @@ class NvidiaDeepfakeDetectBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(
             description="Detection status (SUCCESS, ERROR, CONTENT_FILTERED)",
         )

@@ -10,7 +10,13 @@ from backend.blocks.replicate._auth import (
     ReplicateCredentialsInput,
 )
 from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 
 
@@ -38,7 +44,7 @@ class ImageType(str, Enum):
 
 
 class ReplicateFluxAdvancedModelBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: ReplicateCredentialsInput = CredentialsField(
             description="The Replicate integration can be used with "
             "any API key with sufficient permissions for the blocks it is used on.",
@@ -105,9 +111,8 @@ class ReplicateFluxAdvancedModelBlock(Block):
             title="Safety Tolerance",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: str = SchemaField(description="Generated output")
-        error: str = SchemaField(description="Error message if the model run failed")
 
     def __init__(self):
         super().__init__(

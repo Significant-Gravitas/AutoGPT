@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from backend.data.block import BlockSchema
+from backend.data.block import BlockSchemaInput
 from backend.data.model import SchemaField, UserIntegrations
 from backend.integrations.ayrshare import AyrshareClient
 from backend.util.clients import get_database_manager_async_client
@@ -17,7 +17,7 @@ async def get_profile_key(user_id: str):
     return user_integrations.managed_credentials.ayrshare_profile_key
 
 
-class BaseAyrshareInput(BlockSchema):
+class BaseAyrshareInput(BlockSchemaInput):
     """Base input model for Ayrshare social media posts with common fields."""
 
     post: str = SchemaField(

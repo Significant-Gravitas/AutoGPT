@@ -3,7 +3,13 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
 
@@ -59,11 +65,11 @@ class GetStoreAgentDetailsBlock(Block):
     Block that retrieves detailed information about an agent from the store.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         creator: str = SchemaField(description="The username of the agent creator")
         slug: str = SchemaField(description="The name of the agent")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         found: bool = SchemaField(
             description="Whether the agent was found in the store"
         )
@@ -163,7 +169,7 @@ class SearchStoreAgentsBlock(Block):
     Block that searches for agents in the store based on various criteria.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         query: str | None = SchemaField(
             description="Search query to find agents", default=None
         )
@@ -177,7 +183,7 @@ class SearchStoreAgentsBlock(Block):
             description="Maximum number of results to return", default=10, ge=1, le=100
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         agents: list[StoreAgent] = SchemaField(
             description="List of agents matching the search criteria",
             default_factory=list,
