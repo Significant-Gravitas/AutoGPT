@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Optional
 
+from exa_py import AsyncExa
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -8,7 +10,6 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
@@ -17,8 +18,6 @@ from .helpers import (
     ContentSettings,
     CostDollars,
     ExaSearchResults,
-    add_optional_fields,
-    format_date_fields,
     process_contents_settings,
 )
 
@@ -82,18 +81,16 @@ class ExaFindSimilarBlock(Block):
             description="List of similar documents with metadata and content"
         )
         result: ExaSearchResults = SchemaField(
-            description="Single similar document result",
+            description="Single similar document result"
         )
         context: str = SchemaField(
-            description="A formatted string of the results ready for LLMs.",
+            description="A formatted string of the results ready for LLMs."
         )
         request_id: str = SchemaField(description="Unique identifier for the request")
         cost_dollars: Optional[CostDollars] = SchemaField(
-            description="Cost breakdown for the request", default=None
+            description="Cost breakdown for the request"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -107,67 +104,72 @@ class ExaFindSimilarBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/findSimilar"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
-
-        payload = {
+        # Build kwargs for SDK call
+        sdk_kwargs = {
             "url": input_data.url,
-            "numResults": input_data.number_of_results,
+            "num_results": input_data.number_of_results,
         }
 
-        # Handle contents field with helper function
-        content_settings = process_contents_settings(input_data.contents)
-        if content_settings:
-            payload["contents"] = content_settings
+        # Handle domains
+        if input_data.include_domains:
+            sdk_kwargs["include_domains"] = input_data.include_domains
+        if input_data.exclude_domains:
+            sdk_kwargs["exclude_domains"] = input_data.exclude_domains
 
-        # Handle date fields with helper function
-        date_field_mapping = {
-            "start_crawl_date": "startCrawlDate",
-            "end_crawl_date": "endCrawlDate",
-            "start_published_date": "startPublishedDate",
-            "end_published_date": "endPublishedDate",
-        }
-        payload.update(format_date_fields(input_data, date_field_mapping))
+        # Handle dates
+        if input_data.start_crawl_date:
+            sdk_kwargs["start_crawl_date"] = input_data.start_crawl_date.isoformat()
+        if input_data.end_crawl_date:
+            sdk_kwargs["end_crawl_date"] = input_data.end_crawl_date.isoformat()
+        if input_data.start_published_date:
+            sdk_kwargs["start_published_date"] = (
+                input_data.start_published_date.isoformat()
+            )
+        if input_data.end_published_date:
+            sdk_kwargs["end_published_date"] = input_data.end_published_date.isoformat()
 
-        # Handle other optional fields
-        optional_field_mapping = {
-            "include_domains": "includeDomains",
-            "exclude_domains": "excludeDomains",
-            "include_text": "includeText",
-            "exclude_text": "excludeText",
-        }
-        add_optional_fields(input_data, optional_field_mapping, payload)
+        # Handle text filters
+        if input_data.include_text:
+            sdk_kwargs["include_text"] = input_data.include_text
+        if input_data.exclude_text:
+            sdk_kwargs["exclude_text"] = input_data.exclude_text
 
-        # Add moderation field
+        # Handle moderation
         if input_data.moderation:
-            payload["moderation"] = input_data.moderation
+            sdk_kwargs["moderation"] = input_data.moderation
 
-        # Always enable context for LLM-ready output
-        payload["context"] = True
+        # Handle contents - check if we need to use find_similar_and_contents
+        content_settings = process_contents_settings(input_data.contents)
 
-        try:
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-            # Extract all response fields
-            yield "results", data.get("results", [])
-            for result in data.get("results", []):
-                yield "result", result
+        if content_settings:
+            # Use find_similar_and_contents when contents are requested
+            sdk_kwargs["text"] = content_settings.get("text", False)
+            if "highlights" in content_settings:
+                sdk_kwargs["highlights"] = content_settings["highlights"]
+            if "summary" in content_settings:
+                sdk_kwargs["summary"] = content_settings["summary"]
+            response = await aexa.find_similar_and_contents(**sdk_kwargs)
+        else:
+            # Use regular find_similar when no contents requested
+            response = await aexa.find_similar(**sdk_kwargs)
 
-            # Yield context if present
-            if "context" in data:
-                yield "context", data["context"]
+        # SearchResponse is a dataclass, convert results to our Pydantic models
+        converted_results = [
+            ExaSearchResults.from_sdk(sdk_result)
+            for sdk_result in response.results or []
+        ]
 
-            # Yield request ID if present
-            if "requestId" in data:
-                yield "request_id", data["requestId"]
+        yield "results", converted_results
+        for result in converted_results:
+            yield "result", result
 
-            # Yield cost information if present
-            if "costDollars" in data:
-                yield "cost_dollars", data["costDollars"]
+        # Yield context if present
+        if response.context:
+            yield "context", response.context
 
-        except Exception as e:
-            yield "error", str(e)
+        # Yield cost information if present
+        if response.cost_dollars:
+            yield "cost_dollars", response.cost_dollars

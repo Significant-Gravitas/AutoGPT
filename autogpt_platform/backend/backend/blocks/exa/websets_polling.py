@@ -8,8 +8,10 @@ to complete, with progress tracking and timeout management.
 import asyncio
 import time
 from enum import Enum
+from typing import Any, Dict
 
 from exa_py import AsyncExa
+from pydantic import BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -22,6 +24,19 @@ from backend.sdk import (
 )
 
 from ._config import exa
+
+# Import WebsetItemModel for use in enrichment samples
+# This is safe as websets_items doesn't import from websets_polling
+from .websets_items import WebsetItemModel
+
+
+# Model for sample enrichment data
+class SampleEnrichmentModel(BaseModel):
+    """Sample enrichment result for display."""
+
+    item_id: str
+    item_title: str
+    enrichment_data: Dict[str, Any]
 
 
 class WebsetTargetStatus(str, Enum):
@@ -470,7 +485,7 @@ class ExaWaitForEnrichmentBlock(Block):
             description="Title/description of the enrichment"
         )
         elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
-        sample_data: list[dict] = SchemaField(
+        sample_data: list[SampleEnrichmentModel] = SchemaField(
             description="Sample of enriched data (if requested)"
         )
         timed_out: bool = SchemaField(description="Whether the operation timed out")
@@ -567,40 +582,29 @@ class ExaWaitForEnrichmentBlock(Block):
 
     async def _get_sample_enrichments(
         self, webset_id: str, enrichment_id: str, aexa: AsyncExa
-    ) -> tuple[list[dict], int]:
+    ) -> tuple[list[SampleEnrichmentModel], int]:
         """Get sample enriched data and count."""
         # Get a few items to see enrichment results using SDK
         response = aexa.websets.items.list(webset_id=webset_id, limit=5)
 
-        sample_data = []
+        sample_data: list[SampleEnrichmentModel] = []
         enriched_count = 0
 
-        for item in response.data:
-            # Check if item has this enrichment
-            if item.enrichments:
-                for enrich in item.enrichments:
-                    if enrich.enrichment_id == enrichment_id:
-                        enriched_count += 1
-                        enrich_dict = enrich.model_dump(
-                            by_alias=True, exclude_none=True
-                        )
-                        sample_data.append(
-                            {
-                                "item_id": item.id,
-                                "item_title": (
-                                    item.properties.title
-                                    if hasattr(item.properties, "title")
-                                    else ""
-                                ),
-                                "enrichment_data": enrich_dict,
-                            }
-                        )
-                        break
+        for sdk_item in response.data:
+            # Convert to our WebsetItemModel first
+            item = WebsetItemModel.from_sdk(sdk_item)
 
-        # Estimate total enriched count based on sample
-        # Note: This is an estimate - would need to check all items for accurate count
-        if enriched_count > 0 and len(response.data) > 0:
-            # For now, just return the sample count as we don't have total item count easily
-            pass
+            # Check if this item has the enrichment we're looking for
+            if enrichment_id in item.enrichments:
+                enriched_count += 1
+                enrich_model = item.enrichments[enrichment_id]
+
+                # Create sample using our typed model
+                sample = SampleEnrichmentModel(
+                    item_id=item.id,
+                    item_title=item.title,
+                    enrichment_data=enrich_model.model_dump(exclude_none=True),
+                )
+                sample_data.append(sample)
 
         return sample_data, enriched_count

@@ -1,5 +1,7 @@
 from typing import Optional
 
+from exa_py import AsyncExa
+from exa_py.api import AnswerResponse
 from pydantic import BaseModel
 
 from backend.sdk import (
@@ -10,12 +12,10 @@ from backend.sdk import (
     BlockSchema,
     CredentialsMetaInput,
     MediaFileType,
-    Requests,
     SchemaField,
 )
 
 from ._config import exa
-from .helpers import CostDollars
 
 
 class AnswerCitation(BaseModel):
@@ -23,24 +23,32 @@ class AnswerCitation(BaseModel):
 
     id: str = SchemaField(description="The temporary ID for the document")
     url: str = SchemaField(description="The URL of the search result")
-    title: Optional[str] = SchemaField(
-        description="The title of the search result", default=None
-    )
-    author: Optional[str] = SchemaField(
-        description="The author of the content", default=None
-    )
+    title: Optional[str] = SchemaField(description="The title of the search result")
+    author: Optional[str] = SchemaField(description="The author of the content")
     publishedDate: Optional[str] = SchemaField(
-        description="An estimate of the creation date", default=None
+        description="An estimate of the creation date"
     )
-    text: Optional[str] = SchemaField(
-        description="The full text content of the source", default=None
-    )
+    text: Optional[str] = SchemaField(description="The full text content of the source")
     image: Optional[MediaFileType] = SchemaField(
-        description="The URL of the image associated with the result", default=None
+        description="The URL of the image associated with the result"
     )
     favicon: Optional[MediaFileType] = SchemaField(
-        description="The URL of the favicon for the domain", default=None
+        description="The URL of the favicon for the domain"
     )
+
+    @classmethod
+    def from_sdk(cls, sdk_citation) -> "AnswerCitation":
+        """Convert SDK AnswerResult (dataclass) to our Pydantic model."""
+        return cls(
+            id=getattr(sdk_citation, "id", ""),
+            url=getattr(sdk_citation, "url", ""),
+            title=getattr(sdk_citation, "title", None),
+            author=getattr(sdk_citation, "author", None),
+            publishedDate=getattr(sdk_citation, "published_date", None),
+            text=getattr(sdk_citation, "text", None),
+            image=getattr(sdk_citation, "image", None),
+            favicon=getattr(sdk_citation, "favicon", None),
+        )
 
 
 class ExaAnswerBlock(Block):
@@ -62,18 +70,12 @@ class ExaAnswerBlock(Block):
             description="The generated answer based on search results"
         )
         citations: list[AnswerCitation] = SchemaField(
-            description="Search results used to generate the answer",
-            default_factory=list,
+            description="Search results used to generate the answer"
         )
         citation: AnswerCitation = SchemaField(
             description="Individual citation from the answer"
         )
-        cost_dollars: Optional[CostDollars] = SchemaField(
-            description="Cost breakdown for the request", default=None
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -87,38 +89,27 @@ class ExaAnswerBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/answer"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        payload = {
-            "query": input_data.query,
-            "text": input_data.text,
-            # We don't support streaming in blocks
-            "stream": False,
-        }
+        # Get answer using SDK (stream=False for blocks) - this IS async, needs await
+        response = await aexa.answer(
+            query=input_data.query, text=input_data.text, stream=False
+        )
 
-        try:
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # this should remain true as long as they don't start defaulting to streaming only.
+        # provides a bit of safety for sdk updates.
+        assert type(response) is AnswerResponse
 
-            # Yield the answer
-            if "answer" in data:
-                yield "answer", data["answer"]
+        # Yield the answer
+        yield "answer", response.answer
 
-            # Yield citations as a list
-            if "citations" in data:
-                yield "citations", data["citations"]
+        # Convert citations to our Pydantic model using from_sdk()
+        citations = [
+            AnswerCitation.from_sdk(sdk_citation)
+            for sdk_citation in response.citations or []
+        ]
 
-                # Also yield individual citations
-                for citation in data["citations"]:
-                    yield "citation", citation
-
-            # Yield cost information if present
-            if "costDollars" in data:
-                yield "cost_dollars", data["costDollars"]
-
-        except Exception as e:
-            yield "error", str(e)
+        yield "citations", citations
+        for citation in citations:
+            yield "citation", citation

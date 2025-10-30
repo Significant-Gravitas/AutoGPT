@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Optional
 
+from exa_py import AsyncExa
 from pydantic import BaseModel
 
 from backend.sdk import (
@@ -10,7 +11,6 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
@@ -105,27 +105,22 @@ class ExaContentsBlock(Block):
 
     class Output(BlockSchema):
         results: list[ExaSearchResults] = SchemaField(
-            description="List of document contents with metadata", default_factory=list
+            description="List of document contents with metadata"
         )
         result: ExaSearchResults = SchemaField(
             description="Single document content result"
         )
         context: str = SchemaField(
-            description="A formatted string of the results ready for LLMs", default=""
+            description="A formatted string of the results ready for LLMs"
         )
-        request_id: str = SchemaField(
-            description="Unique identifier for the request", default=""
-        )
+        request_id: str = SchemaField(description="Unique identifier for the request")
         statuses: list[ContentStatus] = SchemaField(
-            description="Status information for each requested URL",
-            default_factory=list,
+            description="Status information for each requested URL"
         )
         cost_dollars: Optional[CostDollars] = SchemaField(
-            description="Cost breakdown for the request", default=None
+            description="Cost breakdown for the request"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -139,27 +134,22 @@ class ExaContentsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/contents"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        # Validate input
+        if not input_data.urls and not input_data.ids:
+            raise ValueError("Either 'urls' or 'ids' must be provided")
 
-        # Build payload with urls or deprecated ids
-        payload = {}
+        # Build kwargs for SDK call
+        sdk_kwargs = {}
 
         # Prefer urls over ids
         if input_data.urls:
-            payload["urls"] = input_data.urls
+            sdk_kwargs["urls"] = input_data.urls
         elif input_data.ids:
-            payload["ids"] = input_data.ids
-        else:
-            yield "error", "Either 'urls' or 'ids' must be provided"
-            return
+            sdk_kwargs["ids"] = input_data.ids
 
         # Handle text field - when true, include HTML tags for better LLM understanding
         if input_data.text:
-            payload["text"] = {"includeHtmlTags": True}
+            sdk_kwargs["text"] = {"includeHtmlTags": True}
 
         # Handle highlights - only include if modified from defaults
         if input_data.highlights and (
@@ -174,7 +164,7 @@ class ExaContentsBlock(Block):
             )
             if input_data.highlights.query:
                 highlights_dict["query"] = input_data.highlights.query
-            payload["highlights"] = highlights_dict
+            sdk_kwargs["highlights"] = highlights_dict
 
         # Handle summary - only include if modified from defaults
         if input_data.summary and (
@@ -186,23 +176,23 @@ class ExaContentsBlock(Block):
                 summary_dict["query"] = input_data.summary.query
             if input_data.summary.schema:
                 summary_dict["schema"] = input_data.summary.schema
-            payload["summary"] = summary_dict
+            sdk_kwargs["summary"] = summary_dict
 
         # Handle livecrawl
         if input_data.livecrawl:
-            payload["livecrawl"] = input_data.livecrawl.value
+            sdk_kwargs["livecrawl"] = input_data.livecrawl.value
 
         # Handle livecrawl_timeout
         if input_data.livecrawl_timeout is not None:
-            payload["livecrawlTimeout"] = input_data.livecrawl_timeout
+            sdk_kwargs["livecrawl_timeout"] = input_data.livecrawl_timeout
 
         # Handle subpages
         if input_data.subpages is not None:
-            payload["subpages"] = input_data.subpages
+            sdk_kwargs["subpages"] = input_data.subpages
 
         # Handle subpage_target
         if input_data.subpage_target:
-            payload["subpageTarget"] = input_data.subpage_target
+            sdk_kwargs["subpage_target"] = input_data.subpage_target
 
         # Handle extras - only include if modified from defaults
         if input_data.extras and (
@@ -212,38 +202,36 @@ class ExaContentsBlock(Block):
             if input_data.extras.links:
                 extras_dict["links"] = input_data.extras.links
             if input_data.extras.image_links:
-                extras_dict["imageLinks"] = input_data.extras.image_links
-            payload["extras"] = extras_dict
+                extras_dict["image_links"] = input_data.extras.image_links
+            sdk_kwargs["extras"] = extras_dict
 
         # Always enable context for LLM-ready output
-        payload["context"] = True
+        sdk_kwargs["context"] = True
 
-        try:
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+        response = await aexa.get_contents(**sdk_kwargs)
 
-            # Extract all response fields
-            yield "results", data.get("results", [])
+        # SearchResponse is a dataclass, convert results to our Pydantic models
+        converted_results = [
+            ExaSearchResults.from_sdk(sdk_result)
+            for sdk_result in response.results or []
+        ]
 
-            # Yield individual results
-            for result in data.get("results", []):
-                yield "result", result
+        yield "results", converted_results
 
-            # Yield context if present
-            if "context" in data:
-                yield "context", data["context"]
+        # Yield individual results
+        for result in converted_results:
+            yield "result", result
 
-            # Yield request ID if present
-            if "requestId" in data:
-                yield "request_id", data["requestId"]
+        # Yield context if present
+        if response.context:
+            yield "context", response.context
 
-            # Yield statuses if present
-            if "statuses" in data:
-                yield "statuses", data["statuses"]
+        # Yield statuses if present
+        if response.statuses:
+            yield "statuses", response.statuses
 
-            # Yield cost information if present
-            if "costDollars" in data:
-                yield "cost_dollars", data["costDollars"]
-
-        except Exception as e:
-            yield "error", str(e)
+        # Yield cost information if present
+        if response.cost_dollars:
+            yield "cost_dollars", response.cost_dollars

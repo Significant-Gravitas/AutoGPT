@@ -1,7 +1,5 @@
-import asyncio
-import time
 from enum import Enum
-from typing import Any, Callable, Dict, Literal, Optional, TypeVar, Union
+from typing import Any, Dict, Literal, Optional, Union
 
 from backend.sdk import BaseModel, MediaFileType, SchemaField
 
@@ -257,6 +255,25 @@ class ExaSearchResults(BaseModel):
     subpages: list[dict] = SchemaField(default_factory=list)
     extras: ExaSearchExtras | None = None
 
+    @classmethod
+    def from_sdk(cls, sdk_result) -> "ExaSearchResults":
+        """Convert SDK Result (dataclass) to our Pydantic model."""
+        return cls(
+            id=getattr(sdk_result, "id", ""),
+            url=getattr(sdk_result, "url", None),
+            title=getattr(sdk_result, "title", None),
+            author=getattr(sdk_result, "author", None),
+            publishedDate=getattr(sdk_result, "published_date", None),
+            text=getattr(sdk_result, "text", None),
+            highlights=getattr(sdk_result, "highlights", None) or [],
+            highlightScores=getattr(sdk_result, "highlight_scores", None) or [],
+            summary=getattr(sdk_result, "summary", None),
+            subpages=getattr(sdk_result, "subpages", None) or [],
+            image=getattr(sdk_result, "image", None),
+            favicon=getattr(sdk_result, "favicon", None),
+            extras=getattr(sdk_result, "extras", None),
+        )
+
 
 # Cost tracking models
 class CostBreakdown(BaseModel):
@@ -440,258 +457,3 @@ def add_optional_fields(
                 payload[api_field] = value.value
             else:
                 payload[api_field] = value
-
-
-T = TypeVar("T")
-
-
-async def poll_until_complete(
-    check_fn: Callable[[], tuple[bool, T]],
-    timeout: int = 300,
-    initial_interval: float = 5.0,
-    max_interval: float = 30.0,
-    backoff_factor: float = 1.5,
-    progress_callback: Optional[Callable[[str], None]] = None,
-) -> T:
-    """
-    Generic polling function for async operations.
-
-    Args:
-        check_fn: Function that returns (is_complete, result)
-        timeout: Maximum time to wait in seconds
-        initial_interval: Initial wait interval between polls
-        max_interval: Maximum wait interval between polls
-        backoff_factor: Factor to increase interval by each iteration
-        progress_callback: Optional callback for progress updates
-
-    Returns:
-        The result from check_fn when complete
-
-    Raises:
-        TimeoutError: If operation doesn't complete within timeout
-    """
-    start_time = time.time()
-    interval = initial_interval
-    attempt = 0
-
-    while time.time() - start_time < timeout:
-        attempt += 1
-        is_complete, result = check_fn()
-
-        if is_complete:
-            if progress_callback:
-                progress_callback(f"✓ Operation completed after {attempt} attempts")
-            return result
-
-        # Calculate remaining time
-        elapsed = time.time() - start_time
-        remaining = timeout - elapsed
-
-        if progress_callback:
-            progress_callback(
-                f"⏳ Attempt {attempt}: Operation still in progress. "
-                f"Elapsed: {int(elapsed)}s, Remaining: {int(remaining)}s"
-            )
-
-        # Wait before next poll
-        wait_time = min(interval, remaining)
-        if wait_time > 0:
-            await asyncio.sleep(wait_time)
-
-        # Exponential backoff
-        interval = min(interval * backoff_factor, max_interval)
-
-    raise TimeoutError(f"Operation did not complete within {timeout} seconds")
-
-
-async def poll_webset_status(
-    webset_id: str,
-    api_key: str,
-    target_status: str = "idle",
-    timeout: int = 300,
-    progress_callback: Optional[Callable[[str], None]] = None,
-) -> Dict[str, Any]:
-    """
-    Poll a webset until it reaches the target status.
-
-    Args:
-        webset_id: Webset ID to poll
-        api_key: API key for authentication
-        target_status: Status to wait for (default: "idle")
-        timeout: Maximum time to wait in seconds
-        progress_callback: Optional callback for progress updates
-
-    Returns:
-        The webset data when target status is reached
-    """
-    import httpx
-
-    def check_status() -> tuple[bool, Dict[str, Any]]:
-        with httpx.Client() as client:
-            response = client.get(
-                f"https://api.exa.ai/v1alpha/websets/{webset_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            status = data.get("status", {}).get("type")
-            is_complete = status == target_status
-
-            if progress_callback and not is_complete:
-                items_count = data.get("itemsCount", 0)
-                progress_callback(f"Status: {status}, Items: {items_count}")
-
-            return is_complete, data
-
-    return await poll_until_complete(
-        check_fn=check_status, timeout=timeout, progress_callback=progress_callback
-    )
-
-
-async def poll_search_completion(
-    webset_id: str,
-    search_id: str,
-    api_key: str,
-    timeout: int = 300,
-    progress_callback: Optional[Callable[[str], None]] = None,
-) -> Dict[str, Any]:
-    """
-    Poll a search until it completes.
-
-    Args:
-        webset_id: Webset ID
-        search_id: Search ID to poll
-        api_key: API key for authentication
-        timeout: Maximum time to wait in seconds
-        progress_callback: Optional callback for progress updates
-
-    Returns:
-        The search data when complete
-    """
-    import httpx
-
-    def check_search() -> tuple[bool, Dict[str, Any]]:
-        with httpx.Client() as client:
-            response = client.get(
-                f"https://api.exa.ai/v1alpha/websets/{webset_id}/searches/{search_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            status = data.get("status")
-            is_complete = status in ["completed", "failed", "cancelled"]
-
-            if progress_callback and not is_complete:
-                items_found = data.get("results", {}).get("itemsFound", 0)
-                progress_callback(
-                    f"Search status: {status}, Items found: {items_found}"
-                )
-
-            return is_complete, data
-
-    return await poll_until_complete(
-        check_fn=check_search, timeout=timeout, progress_callback=progress_callback
-    )
-
-
-async def poll_enrichment_completion(
-    webset_id: str,
-    enrichment_id: str,
-    api_key: str,
-    timeout: int = 300,
-    progress_callback: Optional[Callable[[str], None]] = None,
-) -> Dict[str, Any]:
-    """
-    Poll an enrichment until it completes.
-
-    Args:
-        webset_id: Webset ID
-        enrichment_id: Enrichment ID to poll
-        api_key: API key for authentication
-        timeout: Maximum time to wait in seconds
-        progress_callback: Optional callback for progress updates
-
-    Returns:
-        The enrichment data when complete
-    """
-    import httpx
-
-    def check_enrichment() -> tuple[bool, Dict[str, Any]]:
-        with httpx.Client() as client:
-            response = client.get(
-                f"https://api.exa.ai/v1alpha/websets/{webset_id}/enrichments/{enrichment_id}",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            status = data.get("status")
-            is_complete = status in ["completed", "failed", "cancelled"]
-
-            if progress_callback and not is_complete:
-                progress = data.get("progress", {})
-                processed = progress.get("processedItems", 0)
-                total = progress.get("totalItems", 0)
-                progress_callback(
-                    f"Enrichment status: {status}, Progress: {processed}/{total}"
-                )
-
-            return is_complete, data
-
-    return await poll_until_complete(
-        check_fn=check_enrichment, timeout=timeout, progress_callback=progress_callback
-    )
-
-
-def format_progress_message(
-    operation_type: str, current_state: str, details: Optional[Dict[str, Any]] = None
-) -> str:
-    """
-    Format a progress message for display.
-
-    Args:
-        operation_type: Type of operation (webset, search, enrichment)
-        current_state: Current state description
-        details: Optional details to include
-
-    Returns:
-        Formatted progress message
-    """
-    message_parts = [f"[{operation_type.upper()}]", current_state]
-
-    if details:
-        detail_parts = []
-        for key, value in details.items():
-            detail_parts.append(f"{key}: {value}")
-        if detail_parts:
-            message_parts.append(f"({', '.join(detail_parts)})")
-
-    return " ".join(message_parts)
-
-
-def calculate_polling_stats(
-    start_time: float, timeout: int, attempts: int
-) -> Dict[str, Any]:
-    """
-    Calculate polling statistics.
-
-    Args:
-        start_time: Start time (from time.time())
-        timeout: Maximum timeout in seconds
-        attempts: Number of polling attempts made
-
-    Returns:
-        Dictionary with polling statistics
-    """
-    elapsed = time.time() - start_time
-    remaining = max(0, timeout - elapsed)
-
-    return {
-        "elapsed_seconds": int(elapsed),
-        "remaining_seconds": int(remaining),
-        "attempts": attempts,
-        "average_interval": elapsed / attempts if attempts > 0 else 0,
-        "progress_percentage": min(100, (elapsed / timeout) * 100),
-    }

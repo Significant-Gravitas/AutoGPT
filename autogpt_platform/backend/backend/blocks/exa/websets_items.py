@@ -9,7 +9,14 @@ from typing import Any, Dict, List, Optional
 
 from exa_py import AsyncExa
 from exa_py.websets.types import WebsetItem as SdkWebsetItem
-from pydantic import BaseModel
+from exa_py.websets.types import (
+    WebsetItemArticleProperties,
+    WebsetItemCompanyProperties,
+    WebsetItemCustomProperties,
+    WebsetItemPersonProperties,
+    WebsetItemResearchPaperProperties,
+)
+from pydantic import AnyUrl, BaseModel
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -24,16 +31,50 @@ from backend.sdk import (
 from ._config import exa
 
 
+# Mirrored model for enrichment results
+class EnrichmentResultModel(BaseModel):
+    """Stable output model mirroring SDK EnrichmentResult."""
+
+    enrichment_id: str
+    format: str
+    result: Optional[List[str]]
+    reasoning: Optional[str]
+    references: List[Dict[str, Any]]
+
+    @classmethod
+    def from_sdk(cls, sdk_enrich) -> "EnrichmentResultModel":
+        """Convert SDK EnrichmentResult to our model."""
+        format_str = (
+            sdk_enrich.format.value
+            if hasattr(sdk_enrich.format, "value")
+            else str(sdk_enrich.format)
+        )
+
+        # Convert references to dicts
+        references_list = []
+        if sdk_enrich.references:
+            for ref in sdk_enrich.references:
+                references_list.append(ref.model_dump(by_alias=True, exclude_none=True))
+
+        return cls(
+            enrichment_id=sdk_enrich.enrichment_id,
+            format=format_str,
+            result=sdk_enrich.result,
+            reasoning=sdk_enrich.reasoning,
+            references=references_list,
+        )
+
+
 # Mirrored model for stability - don't use SDK types directly in block outputs
 class WebsetItemModel(BaseModel):
     """Stable output model mirroring SDK WebsetItem."""
 
     id: str
-    url: str
+    url: Optional[AnyUrl]
     title: str
     content: str
     entity_data: Dict[str, Any]
-    enrichments: Dict[str, Any]
+    enrichments: Dict[str, EnrichmentResultModel]  # Changed from Dict[str, Any]
     verification_status: str
     created_at: str
     updated_at: str
@@ -43,23 +84,51 @@ class WebsetItemModel(BaseModel):
         """Convert SDK WebsetItem to our stable model."""
         # Extract properties from the union type
         properties_dict = {}
+        url_value = None
+        title = ""
+        content = ""
+
         if hasattr(item, "properties") and item.properties:
             properties_dict = item.properties.model_dump(
                 by_alias=True, exclude_none=True
             )
 
-        # Convert enrichments from list to dict keyed by enrichment_id
-        enrichments_dict = {}
+            # URL is always available on all property types
+            url_value = item.properties.url
+
+            # Extract title using isinstance checks on the union type
+            if isinstance(item.properties, WebsetItemPersonProperties):
+                title = item.properties.person.name
+                content = ""  # Person type has no content
+            elif isinstance(item.properties, WebsetItemCompanyProperties):
+                title = item.properties.company.name
+                content = item.properties.content or ""
+            elif isinstance(item.properties, WebsetItemArticleProperties):
+                title = item.properties.description
+                content = item.properties.content or ""
+            elif isinstance(item.properties, WebsetItemResearchPaperProperties):
+                title = item.properties.description
+                content = item.properties.content or ""
+            elif isinstance(item.properties, WebsetItemCustomProperties):
+                title = item.properties.description
+                content = item.properties.content or ""
+            else:
+                # Fallback
+                title = item.properties.description
+                content = getattr(item.properties, "content", "")
+
+        # Convert enrichments from list to dict keyed by enrichment_id using Pydantic models
+        enrichments_dict: Dict[str, EnrichmentResultModel] = {}
         if hasattr(item, "enrichments") and item.enrichments:
-            for enrich in item.enrichments:
-                enrichment_data = enrich.model_dump(by_alias=True, exclude_none=True)
-                enrichments_dict[enrich.enrichment_id] = enrichment_data
+            for sdk_enrich in item.enrichments:
+                enrich_model = EnrichmentResultModel.from_sdk(sdk_enrich)
+                enrichments_dict[enrich_model.enrichment_id] = enrich_model
 
         return cls(
             id=item.id,
-            url=properties_dict.get("url", ""),
-            title=properties_dict.get("title", ""),
-            content=properties_dict.get("content", ""),
+            url=url_value,
+            title=title,
+            content=content or "",
             entity_data=properties_dict,
             enrichments=enrichments_dict,
             verification_status="",  # Not yet exposed in SDK
@@ -174,11 +243,11 @@ class ExaListWebsetItemsBlock(Block):
         items: list[WebsetItemModel] = SchemaField(
             description="List of webset items",
         )
+        webset_id: str = SchemaField(
+            description="The ID of the webset",
+        )
         item: WebsetItemModel = SchemaField(
             description="Individual item (yielded for each item in the list)",
-        )
-        total_count: Optional[int] = SchemaField(
-            description="Total number of items in the webset",
         )
         has_more: bool = SchemaField(
             description="Whether there are more items to paginate through",
@@ -250,9 +319,9 @@ class ExaListWebsetItemsBlock(Block):
             yield "item", item
 
         # Yield pagination metadata
-        yield "total_count", None  # SDK doesn't provide total in pagination
         yield "has_more", response.has_more
         yield "next_cursor", response.next_cursor
+        yield "webset_id", input_data.webset_id
 
 
 class ExaDeleteWebsetItemBlock(Block):
@@ -336,9 +405,6 @@ class ExaBulkWebsetItemsBlock(Block):
         total_retrieved: int = SchemaField(
             description="Total number of items retrieved"
         )
-        total_in_webset: Optional[int] = SchemaField(
-            description="Total number of items in the webset"
-        )
         truncated: bool = SchemaField(
             description="Whether results were truncated due to max_items limit"
         )
@@ -388,7 +454,6 @@ class ExaBulkWebsetItemsBlock(Block):
             yield "item", item
 
         yield "total_retrieved", len(all_items)
-        yield "total_in_webset", None  # SDK doesn't provide total count
         yield "truncated", len(all_items) >= input_data.max_items
 
 

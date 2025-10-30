@@ -9,9 +9,10 @@ import csv
 import json
 from enum import Enum
 from io import StringIO
-from typing import Optional
+from typing import Optional, Union
 
 from exa_py import AsyncExa
+from exa_py.websets.types import CreateImportResponse
 from exa_py.websets.types import Import as SdkImport
 from pydantic import BaseModel
 
@@ -38,7 +39,8 @@ class ImportModel(BaseModel):
     format: str
     entity_type: str
     count: int
-    size: int
+    upload_url: Optional[str]  # Only in CreateImportResponse
+    upload_valid_until: Optional[str]  # Only in CreateImportResponse
     failed_reason: str
     failed_message: str
     metadata: dict
@@ -46,11 +48,15 @@ class ImportModel(BaseModel):
     updated_at: str
 
     @classmethod
-    def from_sdk(cls, import_obj: SdkImport) -> "ImportModel":
-        """Convert SDK Import to our stable model."""
-        # Extract entity type from union
-        entity_dict = import_obj.entity.model_dump(by_alias=True, exclude_none=True)
-        entity_type = entity_dict.get("type", "unknown")
+    def from_sdk(
+        cls, import_obj: Union[SdkImport, CreateImportResponse]
+    ) -> "ImportModel":
+        """Convert SDK Import or CreateImportResponse to our stable model."""
+        # Extract entity type from union (may be None)
+        entity_type = "unknown"
+        if import_obj.entity:
+            entity_dict = import_obj.entity.model_dump(by_alias=True, exclude_none=True)
+            entity_type = entity_dict.get("type", "unknown")
 
         # Handle status enum
         status_str = (
@@ -66,15 +72,29 @@ class ImportModel(BaseModel):
             else str(import_obj.format)
         )
 
+        # Handle failed_reason enum (may be None or enum)
+        failed_reason_str = ""
+        if import_obj.failed_reason:
+            failed_reason_str = (
+                import_obj.failed_reason.value
+                if hasattr(import_obj.failed_reason, "value")
+                else str(import_obj.failed_reason)
+            )
+
         return cls(
             id=import_obj.id,
             status=status_str,
             title=import_obj.title or "",
             format=format_str,
             entity_type=entity_type,
-            count=import_obj.count or 0,
-            size=import_obj.size or 0,
-            failed_reason=import_obj.failed_reason or "",
+            count=int(import_obj.count or 0),
+            upload_url=getattr(
+                import_obj, "upload_url", None
+            ),  # Only in CreateImportResponse
+            upload_valid_until=getattr(
+                import_obj, "upload_valid_until", None
+            ),  # Only in CreateImportResponse
+            failed_reason=failed_reason_str,
             failed_message=import_obj.failed_message or "",
             metadata=import_obj.metadata or {},
             created_at=(
@@ -160,6 +180,12 @@ class ExaCreateImportBlock(Block):
         title: str = SchemaField(description="Title of the import")
         count: int = SchemaField(description="Number of items in the import")
         entity_type: str = SchemaField(description="Type of entities imported")
+        upload_url: Optional[str] = SchemaField(
+            description="Upload URL for CSV data (only if csv_data not provided in request)"
+        )
+        upload_valid_until: Optional[str] = SchemaField(
+            description="Expiration time for upload URL (only if upload_url is provided)"
+        )
         created_at: str = SchemaField(description="When the import was created")
         error: str = SchemaField(description="Error message if the import failed")
 
@@ -243,6 +269,8 @@ class ExaCreateImportBlock(Block):
         yield "title", import_obj.title
         yield "count", import_obj.count
         yield "entity_type", import_obj.entity_type
+        yield "upload_url", import_obj.upload_url
+        yield "upload_valid_until", import_obj.upload_valid_until
         yield "created_at", import_obj.created_at
 
 
@@ -265,6 +293,12 @@ class ExaGetImportBlock(Block):
         format: str = SchemaField(description="Format of the imported data")
         entity_type: str = SchemaField(description="Type of entities imported")
         count: int = SchemaField(description="Number of items imported")
+        upload_url: Optional[str] = SchemaField(
+            description="Upload URL for CSV data (if import not yet uploaded)"
+        )
+        upload_valid_until: Optional[str] = SchemaField(
+            description="Expiration time for upload URL (if applicable)"
+        )
         failed_reason: Optional[str] = SchemaField(
             description="Reason for failure (if applicable)"
         )
@@ -304,6 +338,8 @@ class ExaGetImportBlock(Block):
         yield "format", import_obj.format
         yield "entity_type", import_obj.entity_type
         yield "count", import_obj.count
+        yield "upload_url", import_obj.upload_url
+        yield "upload_valid_until", import_obj.upload_valid_until
         yield "failed_reason", import_obj.failed_reason
         yield "failed_message", import_obj.failed_message
         yield "created_at", import_obj.created_at
@@ -442,10 +478,10 @@ class ExaExportWebsetBlock(Block):
             description="Include enrichment data in export",
         )
         max_items: int = SchemaField(
-            default=1000,
+            default=100,
             description="Maximum number of items to export",
             ge=1,
-            le=10000,
+            le=100,
         )
 
     class Output(BlockSchema):

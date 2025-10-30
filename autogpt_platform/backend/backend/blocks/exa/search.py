@@ -2,6 +2,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+from exa_py import AsyncExa
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -9,7 +11,6 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
@@ -18,8 +19,6 @@ from .helpers import (
     ContentSettings,
     CostDollars,
     ExaSearchResults,
-    add_optional_fields,
-    format_date_fields,
     process_contents_settings,
 )
 
@@ -106,11 +105,9 @@ class ExaSearchBlock(Block):
         results: list[ExaSearchResults] = SchemaField(
             description="List of search results"
         )
-        result: ExaSearchResults = SchemaField(
-            description="Single search result",
-        )
+        result: ExaSearchResults = SchemaField(description="Single search result")
         context: str = SchemaField(
-            description="A formatted string of the search results ready for LLMs.",
+            description="A formatted string of the search results ready for LLMs."
         )
         search_type: str = SchemaField(
             description="For auto searches, indicates which search type was selected."
@@ -120,11 +117,9 @@ class ExaSearchBlock(Block):
             description="The search type that was actually used for this request (neural or keyword)"
         )
         cost_dollars: Optional[CostDollars] = SchemaField(
-            description="Cost breakdown for the request", default=None
+            description="Cost breakdown for the request"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed",
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -138,82 +133,88 @@ class ExaSearchBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/search"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
-
-        payload = {
+        # Build kwargs for SDK call
+        sdk_kwargs = {
             "query": input_data.query,
-            "numResults": input_data.number_of_results,
+            "num_results": input_data.number_of_results,
         }
 
-        # Handle contents field with helper function
-        content_settings = process_contents_settings(input_data.contents)
-        if content_settings:
-            payload["contents"] = content_settings
+        # Handle type field
+        if input_data.type:
+            sdk_kwargs["type"] = input_data.type.value
 
-        # Handle date fields with helper function
-        date_field_mapping = {
-            "start_crawl_date": "startCrawlDate",
-            "end_crawl_date": "endCrawlDate",
-            "start_published_date": "startPublishedDate",
-            "end_published_date": "endPublishedDate",
-        }
-        payload.update(format_date_fields(input_data, date_field_mapping))
+        # Handle category field
+        if input_data.category:
+            sdk_kwargs["category"] = input_data.category.value
 
-        # Handle enum fields separately since they need special processing
-        for field_name, api_field in [("type", "type"), ("category", "category")]:
-            value = getattr(input_data, field_name, None)
-            if value:
-                payload[api_field] = value.value if hasattr(value, "value") else value
+        # Handle user_location
+        if input_data.user_location:
+            sdk_kwargs["user_location"] = input_data.user_location
 
-        # Handle other optional fields
-        optional_field_mapping = {
-            "user_location": "userLocation",
-            "include_domains": "includeDomains",
-            "exclude_domains": "excludeDomains",
-            "include_text": "includeText",
-            "exclude_text": "excludeText",
-        }
-        add_optional_fields(input_data, optional_field_mapping, payload)
+        # Handle domains
+        if input_data.include_domains:
+            sdk_kwargs["include_domains"] = input_data.include_domains
+        if input_data.exclude_domains:
+            sdk_kwargs["exclude_domains"] = input_data.exclude_domains
 
-        # Add moderation field
+        # Handle dates
+        if input_data.start_crawl_date:
+            sdk_kwargs["start_crawl_date"] = input_data.start_crawl_date.isoformat()
+        if input_data.end_crawl_date:
+            sdk_kwargs["end_crawl_date"] = input_data.end_crawl_date.isoformat()
+        if input_data.start_published_date:
+            sdk_kwargs["start_published_date"] = (
+                input_data.start_published_date.isoformat()
+            )
+        if input_data.end_published_date:
+            sdk_kwargs["end_published_date"] = input_data.end_published_date.isoformat()
+
+        # Handle text filters
+        if input_data.include_text:
+            sdk_kwargs["include_text"] = input_data.include_text
+        if input_data.exclude_text:
+            sdk_kwargs["exclude_text"] = input_data.exclude_text
+
+        # Handle moderation
         if input_data.moderation:
-            payload["moderation"] = input_data.moderation
+            sdk_kwargs["moderation"] = input_data.moderation
 
-        # Always enable context for LLM-ready output
-        payload["context"] = True
+        # Handle contents - check if we need to use search_and_contents
+        content_settings = process_contents_settings(input_data.contents)
 
-        try:
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # Use AsyncExa SDK
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-            # Extract all response fields
-            yield "results", data.get("results", [])
-            for result in data.get("results", []):
-                yield "result", result
+        if content_settings:
+            # Use search_and_contents when contents are requested
+            sdk_kwargs["text"] = content_settings.get("text", False)
+            if "highlights" in content_settings:
+                sdk_kwargs["highlights"] = content_settings["highlights"]
+            if "summary" in content_settings:
+                sdk_kwargs["summary"] = content_settings["summary"]
+            response = await aexa.search_and_contents(**sdk_kwargs)
+        else:
+            # Use regular search when no contents requested
+            response = await aexa.search(**sdk_kwargs)
 
-            # Yield context if present
-            if "context" in data:
-                yield "context", data["context"]
+        # SearchResponse is a dataclass, convert results to our Pydantic models
+        converted_results = [
+            ExaSearchResults.from_sdk(sdk_result)
+            for sdk_result in response.results or []
+        ]
 
-            # Yield search type if present
-            if "searchType" in data:
-                yield "search_type", data["searchType"]
+        yield "results", converted_results
+        for result in converted_results:
+            yield "result", result
 
-            # Yield request ID if present
-            if "requestId" in data:
-                yield "request_id", data["requestId"]
+        # Yield context if present
+        if response.context:
+            yield "context", response.context
 
-            # Yield resolved search type if present
-            if "resolvedSearchType" in data:
-                yield "resolved_search_type", data["resolvedSearchType"]
+        # Yield resolved search type if present
+        if response.resolved_search_type:
+            yield "resolved_search_type", response.resolved_search_type
 
-            # Yield cost information if present
-            if "costDollars" in data:
-                yield "cost_dollars", data["costDollars"]
-
-        except Exception as e:
-            yield "error", str(e)
+        # Yield cost information if present
+        if response.cost_dollars:
+            yield "cost_dollars", response.cost_dollars
