@@ -1,6 +1,5 @@
-from autogpt_libs.utils.cache import cached
-
 import backend.server.v2.store.db
+from backend.util.cache import cached
 
 ##############################################
 ############### Caches #######################
@@ -17,7 +16,7 @@ def clear_all_caches():
 
 # Cache store agents list for 5 minutes
 # Different cache entries for different query combinations
-@cached(maxsize=5000, ttl_seconds=300)
+@cached(maxsize=5000, ttl_seconds=300, shared_cache=True)
 async def _get_cached_store_agents(
     featured: bool,
     creator: str | None,
@@ -40,7 +39,7 @@ async def _get_cached_store_agents(
 
 
 # Cache individual agent details for 15 minutes
-@cached(maxsize=200, ttl_seconds=300)
+@cached(maxsize=200, ttl_seconds=300, shared_cache=True)
 async def _get_cached_agent_details(username: str, agent_name: str):
     """Cached helper to get agent details."""
     return await backend.server.v2.store.db.get_store_agent_details(
@@ -49,7 +48,7 @@ async def _get_cached_agent_details(username: str, agent_name: str):
 
 
 # Cache creators list for 5 minutes
-@cached(maxsize=200, ttl_seconds=300)
+@cached(maxsize=200, ttl_seconds=300, shared_cache=True)
 async def _get_cached_store_creators(
     featured: bool,
     search_query: str | None,
@@ -68,7 +67,7 @@ async def _get_cached_store_creators(
 
 
 # Cache individual creator details for 5 minutes
-@cached(maxsize=100, ttl_seconds=300)
+@cached(maxsize=100, ttl_seconds=300, shared_cache=True)
 async def _get_cached_creator_details(username: str):
     """Cached helper to get creator details."""
     return await backend.server.v2.store.db.get_store_creator_details(

@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Check, BadgeQuestionMark } from "lucide-react";
 import { cn } from "@/lib/utils";
-import * as party from "party-js";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import {
-  Task,
-  TaskGroup,
-} from "@/app/(no-navbar)/onboarding/components/Wallet/Wallet";
+import { BadgeQuestionMark, Check, ChevronDown } from "lucide-react";
+import * as party from "party-js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Task, TaskGroup } from "../Wallet";
 
 interface Props {
   groups: TaskGroup[];

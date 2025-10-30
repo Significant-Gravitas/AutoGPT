@@ -45,9 +45,6 @@ class MainApp(AppProcess):
 
         app.main(silent=True)
 
-    def cleanup(self):
-        pass
-
 
 @click.group()
 def main():
