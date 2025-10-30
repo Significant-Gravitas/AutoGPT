@@ -340,7 +340,7 @@ export function Wallet() {
                 {formatCredits(credits)}
               </span>
               {completedCount !== null && completedCount < totalCount && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"/>
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600" />
               )}
               <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
                 <Text variant="body-medium">
