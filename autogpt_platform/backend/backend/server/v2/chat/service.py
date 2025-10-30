@@ -37,9 +37,11 @@ async def create_chat_session(
     user_id: str | None = None,
 ) -> ChatSession:
     """
-    Create a new chat session.
+    Create a new chat session and persist it to the database.
     """
-    return ChatSession.new(user_id)
+    session = ChatSession.new(user_id)
+    # Persist the session immediately so it can be used for streaming
+    return await upsert_chat_session(session)
 
 
 async def get_session(
@@ -74,17 +76,19 @@ async def stream_chat_completion(
     """Main entry point for streaming chat completions with database handling.
 
     This function handles all database operations and delegates streaming
-    to the pure stream_chat_response function.
+    to the internal _stream_chat_chunks function.
 
     Args:
         session_id: Chat session ID
         user_message: User's input message
-        user_id: User ID for authentication
-        model: OpenAI model to use
-        max_messages: Maximum context messages to include
+        user_id: User ID for authentication (None for anonymous)
 
     Yields:
-        SSE formatted JSON strings with response data
+        StreamBaseResponse objects formatted as SSE
+
+    Raises:
+        NotFoundError: If session_id is invalid
+        ValueError: If max_context_messages is exceeded
 
     """
     logger.info(
@@ -109,7 +113,7 @@ async def stream_chat_completion(
     session = await upsert_chat_session(session)
     assert session, "Session not found"
 
-    assistant_repsonse = ChatMessage(
+    assistant_response = ChatMessage(
         role="assistant",
         content="",
     )
@@ -123,9 +127,15 @@ async def stream_chat_completion(
         ):
 
             if isinstance(chunk, StreamTextChunk):
-                assistant_repsonse.content += chunk.content
+                assistant_response.content += chunk.content
                 yield chunk
             elif isinstance(chunk, StreamToolCall):
+                # Convert arguments dict to JSON string for consistent storage
+                arguments_str = (
+                    orjson.dumps(chunk.arguments).decode("utf-8")
+                    if chunk.arguments
+                    else "{}"
+                )
                 tool_call_response = ChatMessage(
                     role="assistant",
                     content="",
@@ -135,7 +145,7 @@ async def stream_chat_completion(
                             "type": "function",
                             "function": {
                                 "name": chunk.tool_name,
-                                "arguments": chunk.arguments,
+                                "arguments": arguments_str,
                             },
                         }
                     ],
@@ -167,13 +177,16 @@ async def stream_chat_completion(
             else:
                 logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
     except Exception as e:
-        logger.error(f"Error in stream: {e!s}", exc_info=True)
+        logger.error(f"Error during stream: {e!s}", exc_info=True)
+        # Always yield error response if we haven't already
         if not has_yielded_error:
             error_response = StreamError(
                 message=str(e),
                 timestamp=datetime.now(UTC).isoformat(),
             )
             yield error_response
+            has_yielded_error = True
+        # Always yield end marker after error
         if not has_yielded_end:
             yield StreamEnd(
                 timestamp=datetime.now(UTC).isoformat(),
@@ -185,7 +198,10 @@ async def stream_chat_completion(
         logger.info(
             f"Upserting session: {session.session_id} with user id {session.user_id}"
         )
-        session.messages.append(assistant_repsonse)
+        # Only append assistant response if it has content or tool calls
+        # to avoid saving empty messages on errors
+        if assistant_response.content or assistant_response.tool_calls:
+            session.messages.append(assistant_response)
         await upsert_chat_session(session)
 
 
@@ -225,10 +241,9 @@ async def _stream_chat_chunks(
                 stream=True,
             )
 
-            # Variables to accumulate the response
-            assistant_message: str = ""
+            # Variables to accumulate tool calls
             tool_calls: list[dict[str, Any]] = []
-            active_tool_call_idx = None
+            active_tool_call_idx: int | None = None
             finish_reason: str | None = None
 
             # Process the stream
@@ -253,7 +268,6 @@ async def _stream_chat_chunks(
 
                     # Handle content streaming
                     if delta.content:
-                        assistant_message += delta.content
                         # Stream the text chunk
                         text_response = StreamTextChunk(
                             content=delta.content,
@@ -268,12 +282,17 @@ async def _stream_chat_chunks(
                             if active_tool_call_idx is None:
                                 active_tool_call_idx = idx
 
+                            # When we start receiving a new tool call (higher index),
+                            # yield the previous one since it's now complete
+                            # (OpenAI streams tool calls with incrementing indices)
                             if active_tool_call_idx != idx:
                                 yield_idx = idx - 1
                                 async for tc in _yield_tool_call(
                                     tool_calls, yield_idx, session
                                 ):
                                     yield tc
+                                # Update to track the new active tool call
+                                active_tool_call_idx = idx
 
                             # Ensure we have a tool call object at this index
                             while len(tool_calls) <= idx:
@@ -302,11 +321,19 @@ async def _stream_chat_chunks(
                                     ] += tc_chunk.function.arguments
             logger.info(f"Stream complete. Finish reason: {finish_reason}")
 
-            if active_tool_call_idx is not None:
+            # Yield the final tool call if any were accumulated
+            if active_tool_call_idx is not None and active_tool_call_idx < len(
+                tool_calls
+            ):
                 async for tc in _yield_tool_call(
                     tool_calls, active_tool_call_idx, session
                 ):
                     yield tc
+            elif active_tool_call_idx is not None:
+                logger.warning(
+                    f"Active tool call index {active_tool_call_idx} out of bounds "
+                    f"(tool_calls length: {len(tool_calls)})"
+                )
 
             yield StreamEnd(
                 timestamp=datetime.now(UTC).isoformat(),
@@ -334,16 +361,34 @@ async def _yield_tool_call(
     Yield a tool call.
     """
     logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
+
+    # Parse tool call arguments with error handling
+    try:
+        arguments = orjson.loads(tool_calls[yield_idx]["function"]["arguments"])
+    except (orjson.JSONDecodeError, KeyError, TypeError) as e:
+        logger.error(
+            f"Failed to parse tool call arguments: {e}",
+            exc_info=True,
+            extra={
+                "tool_call": tool_calls[yield_idx],
+            },
+        )
+        yield StreamError(
+            message=f"Invalid tool call arguments: {e}",
+            timestamp=datetime.now(UTC).isoformat(),
+        )
+        return
+
     yield StreamToolCall(
         tool_id=tool_calls[yield_idx]["id"],
         tool_name=tool_calls[yield_idx]["function"]["name"],
-        arguments=orjson.loads(tool_calls[yield_idx]["function"]["arguments"]),
+        arguments=arguments,
         timestamp=datetime.now(UTC).isoformat(),
     )
 
     tool_execution_response: StreamToolExecutionResult = await execute_tool(
         tool_name=tool_calls[yield_idx]["function"]["name"],
-        parameters=orjson.loads(tool_calls[yield_idx]["function"]["arguments"]),
+        parameters=arguments,
         tool_call_id=tool_calls[yield_idx]["id"],
         user_id=session.user_id,
         session_id=session.session_id,

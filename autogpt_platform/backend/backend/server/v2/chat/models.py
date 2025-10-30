@@ -10,7 +10,6 @@ class ResponseType(str, Enum):
     TEXT_CHUNK = "text_chunk"
     TOOL_CALL = "tool_call"
     TOOL_RESPONSE = "tool_response"
-    LOGIN_NEEDED = "login_needed"
     ERROR = "error"
     USAGE = "usage"
     STREAM_END = "stream_end"
@@ -57,22 +56,8 @@ class StreamToolExecutionResult(StreamBaseResponse):
     )
 
 
-class StreamLoginNeeded(StreamBaseResponse):
-    """Authentication required notification."""
-
-    type: ResponseType = ResponseType.LOGIN_NEEDED
-    message: str = Field(..., description="Message explaining why login is needed")
-    session_id: str = Field(..., description="Current session ID to preserve")
-    agent_info: dict[str, Any] | None = Field(
-        default=None, description="Agent context if applicable"
-    )
-    required_action: str = Field(
-        default="login", description="Required action (login/signup)"
-    )
-
-
 class StreamUsage(StreamBaseResponse):
-    """Error response."""
+    """Token usage statistics."""
 
     type: ResponseType = ResponseType.USAGE
     prompt_tokens: int

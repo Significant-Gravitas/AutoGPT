@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 from backend.server.v2.chat.config import ChatConfig
 from backend.util.cache import async_redis
+from backend.util.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -46,6 +47,7 @@ class ChatSession(BaseModel):
     user_id: str | None
     messages: list[ChatMessage]
     usage: list[Usage]
+    credentials: dict[str, dict] = {}  # Map of provider -> credential metadata
     started_at: datetime
     updated_at: datetime
 
@@ -56,6 +58,7 @@ class ChatSession(BaseModel):
             user_id=user_id,
             messages=[],
             usage=[],
+            credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
@@ -102,13 +105,27 @@ class ChatSession(BaseModel):
                 if message.tool_calls:
                     t: list[ChatCompletionMessageToolCallParam] = []
                     for tool_call in message.tool_calls:
+                        # Tool calls are stored with nested structure: {id, type, function: {name, arguments}}
+                        function_data = tool_call.get("function", {})
+
+                        # Skip tool calls that are missing required fields
+                        if "id" not in tool_call or "name" not in function_data:
+                            logger.warning(
+                                f"Skipping invalid tool call: missing required fields. "
+                                f"Got: {tool_call.keys()}, function keys: {function_data.keys()}"
+                            )
+                            continue
+
+                        # Arguments are stored as a JSON string
+                        arguments_str = function_data.get("arguments", "{}")
+
                         t.append(
                             ChatCompletionMessageToolCallParam(
                                 id=tool_call["id"],
                                 type="function",
                                 function=Function(
-                                    arguments=tool_call["arguments"],
-                                    name=tool_call["name"],
+                                    arguments=arguments_str,
+                                    name=function_data["name"],
                                 ),
                             )
                         )
@@ -142,15 +159,19 @@ async def get_chat_session(
     """Get a chat session by ID."""
     redis_key = f"chat:session:{session_id}"
 
-    raw_session: bytes = await async_redis.get(redis_key)
+    raw_session: bytes | None = await async_redis.get(redis_key)
 
-    if not raw_session:
-        logger.warning(f"Session {session_id} not found")
+    if raw_session is None:
+        logger.warning(f"Session {session_id} not found in Redis")
         return None
 
-    session = ChatSession.model_validate_json(raw_session)
+    try:
+        session = ChatSession.model_validate_json(raw_session)
+    except Exception as e:
+        logger.error(f"Failed to deserialize session {session_id}: {e}", exc_info=True)
+        raise RedisError(f"Corrupted session data for {session_id}") from e
 
-    if session.user_id != user_id:
+    if session.user_id is not None and session.user_id != user_id:
         logger.warning(
             f"Session {session_id} user id mismatch: {session.user_id} != {user_id}"
         )
@@ -171,6 +192,8 @@ async def upsert_chat_session(
     )
 
     if not resp:
-        raise Exception(f"Failed to update chat session: {resp}")
+        raise RedisError(
+            f"Failed to persist chat session {session.session_id} to Redis: {resp}"
+        )
 
     return session

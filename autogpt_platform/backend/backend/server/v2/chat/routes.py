@@ -1,10 +1,12 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
 import logging
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, Query, Security
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -149,15 +151,36 @@ async def stream_chat(
         message: The user's new message to process.
         user_id: Optional authenticated user ID.
 
-    Yields:
-        SSE-formatted response chunks.
+    Returns:
+        StreamingResponse: SSE-formatted response chunks.
 
     """
+    # Validate session exists before starting the stream
+    # This prevents errors after the response has already started
+    session = await chat_service.get_session(session_id, user_id)
 
-    async for chunk in chat_service.stream_chat_completion(
-        session_id, message, user_id
-    ):
-        yield chunk.to_sse()
+    if not session:
+        raise NotFoundError(
+            f"Session {session_id} not found. "
+        )
+    if session.user_id is None and user_id is not None:
+        session = await chat_service.assign_user_to_session(session_id, user_id)
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        async for chunk in chat_service.stream_chat_completion(
+            session_id, message, user_id
+        ):
+            yield chunk.to_sse()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
 
 
 @router.patch(

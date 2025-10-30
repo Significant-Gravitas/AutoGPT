@@ -98,3 +98,9 @@ class DatabaseError(Exception):
     """Raised when there is an error interacting with the database"""
 
     pass
+
+
+class RedisError(Exception):
+    """Raised when there is an error interacting with Redis"""
+
+    pass
