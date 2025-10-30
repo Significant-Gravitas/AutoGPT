@@ -170,7 +170,7 @@ class SearchStoreAgentsBlock(Block):
         category: str | None = SchemaField(
             description="Filter by category", default=None
         )
-        sort_by: Literal["rating", "runs", "name", "recent"] = SchemaField(
+        sort_by: Literal["rating", "runs", "name", "updated_at"] = SchemaField(
             description="How to sort the results", default="rating"
         )
         limit: int = SchemaField(
@@ -272,24 +272,18 @@ class SearchStoreAgentsBlock(Block):
         self,
         query: str | None = None,
         category: str | None = None,
-        sort_by: str = "rating",
+        sort_by: Literal["rating", "runs", "name", "updated_at"] = "rating",
         limit: int = 10,
     ) -> SearchAgentsResponse:
         """
         Search for agents in the store using the existing store database function.
         """
         # Map our sort_by to the store's sorted_by parameter
-        sorted_by_map = {
-            "rating": "most_popular",
-            "runs": "most_runs",
-            "name": "alphabetical",
-            "recent": "recently_updated",
-        }
 
         result = await get_database_manager_async_client().get_store_agents(
             featured=False,
             creators=None,
-            sorted_by=sorted_by_map.get(sort_by, "most_popular"),
+            sorted_by=sort_by,
             search_query=query,
             category=category,
             page=1,

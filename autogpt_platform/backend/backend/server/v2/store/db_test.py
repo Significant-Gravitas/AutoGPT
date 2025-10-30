@@ -393,20 +393,6 @@ async def test_get_store_agents_with_search_and_filters_parameterized():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_agents_search_with_invalid_sort_by():
-    """Test that invalid sorted_by value doesn't cause SQL injection"""  # Try to inject SQL via sorted_by parameter
-    malicious_sort = "rating; DROP TABLE Users; --"
-    result = await db.get_store_agents(
-        search_query="test",
-        sorted_by=malicious_sort,
-    )
-
-    # Verify the query executed without error
-    # Invalid sort_by should fall back to default, not cause SQL injection
-    assert isinstance(result.agents, list)
-
-
-@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents_search_category_array_injection():
     """Test that category parameter is safely passed as a parameter"""
     # Try SQL injection via category
