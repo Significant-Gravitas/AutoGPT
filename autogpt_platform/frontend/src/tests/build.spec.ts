@@ -7,8 +7,8 @@
 import test from "@playwright/test";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import { getTestUser } from "./utils/auth";
 import { hasUrl } from "./utils/assertion";
+import { getTestUser } from "./utils/auth";
 
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
 // prettier-ignore
@@ -255,7 +255,7 @@ test.describe("Build", () => { //(1)!
   });
 
   test("user can build an agent with inputs and output blocks", async ({ page }, testInfo) => {
-    test.setTimeout(testInfo.timeout * 20);
+    test.setTimeout(testInfo.timeout * 10);
 
     // prep
     await buildPage.openBlocksPanel();
