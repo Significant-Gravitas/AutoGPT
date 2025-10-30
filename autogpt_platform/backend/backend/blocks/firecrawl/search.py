@@ -39,6 +39,10 @@ class FirecrawlSearchBlock(Block):
     class Output(BlockSchemaOutput):
         data: dict[str, Any] = SchemaField(description="The result of the search")
         site: dict[str, Any] = SchemaField(description="The site of the search")
+        error: str = SchemaField(
+            description="Error message if the search failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
