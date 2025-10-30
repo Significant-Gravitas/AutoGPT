@@ -185,6 +185,9 @@ importers:
       react:
         specifier: 18.3.1
         version: 18.3.1
+      react-currency-input-field:
+        specifier: 4.0.3
+        version: 4.0.3(react@18.3.1)
       react-day-picker:
         specifier: 9.8.1
         version: 9.8.1(react@18.3.1)
@@ -6246,6 +6249,11 @@ packages:
   range-parser@1.2.1:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
+
+  react-currency-input-field@4.0.3:
+    resolution: {integrity: sha512-alimHDX5tplPsNB3jEAW7qjlJ76RfBAc/p8yru3cTiAYslj3oJ+KNnk788IZYe6ja3cAuH26v047lMzadh47ow==}
+    peerDependencies:
+      react: ^16.9.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   react-day-picker@9.8.1:
     resolution: {integrity: sha512-kMcLrp3PfN/asVJayVv82IjF3iLOOxuH5TNFWezX6lS/T8iVRFPTETpHl3TUSTH99IDMZLubdNPJr++rQctkEw==}
@@ -14307,6 +14315,10 @@ snapshots:
       safe-buffer: 5.2.1
 
   range-parser@1.2.1: {}
+
+  react-currency-input-field@4.0.3(react@18.3.1):
+    dependencies:
+      react: 18.3.1
 
   react-day-picker@9.8.1(react@18.3.1):
     dependencies:

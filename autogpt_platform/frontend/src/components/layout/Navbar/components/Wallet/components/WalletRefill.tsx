@@ -1,29 +1,22 @@
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/__legacy__/ui/tabs";
-import { cn } from "@/lib/utils";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/__legacy__/ui/form";
-import { Input } from "../../../../../../components/__legacy__/ui/input";
-import Link from "next/link";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import {
   useToast,
   useToastOnFail,
-} from "../../../../../../components/molecules/Toast/use-toast";
+} from "@/components/molecules/Toast/use-toast";
 import useCredits from "@/hooks/useCredits";
+import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 const topUpSchema = z.object({
   amount: z
@@ -49,12 +42,14 @@ const autoRefillSchema = z
     path: ["refillAmount"],
   });
 
-export default function WalletRefill() {
+export function WalletRefill() {
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
+
   const { requestTopUp, autoTopUpConfig, updateAutoTopUpConfig } = useCredits({
     fetchInitialAutoTopUpConfig: true,
   });
+
   const [isLoading, setIsLoading] = useState(false);
 
   const topUpForm = useForm<z.infer<typeof topUpSchema>>({
@@ -132,46 +127,29 @@ export default function WalletRefill() {
               Enter an amount (min. $5) and add credits instantly.
             </div>
             <Form {...topUpForm}>
-              <form onSubmit={topUpForm.handleSubmit(submitTopUp)}>
+              <form
+                onSubmit={topUpForm.handleSubmit(submitTopUp)}
+                className="my-4"
+              >
                 <FormField
                   control={topUpForm.control}
                   name="amount"
                   render={({ field }) => (
-                    <FormItem className="mb-6 mt-4">
-                      <FormLabel className="font-sans text-sm font-medium leading-snug text-zinc-800">
-                        Amount
-                      </FormLabel>
-                      <FormControl>
-                        <>
-                          <Input
-                            className={cn(
-                              "mt-2 rounded-3xl border-0 bg-white py-2 pl-6 pr-4 font-sans outline outline-1 outline-zinc-300",
-                              "focus:outline-2 focus:outline-offset-0 focus:outline-violet-700",
-                            )}
-                            type="number"
-                            step="1"
-                            {...field}
-                          />
-                          <span className="absolute left-10 -translate-y-9 text-sm text-zinc-500">
-                            $
-                          </span>
-                        </>
-                      </FormControl>
-                      <FormMessage className="mt-2 font-sans text-xs font-normal leading-tight" />
-                    </FormItem>
+                    <Input
+                      label="Amount"
+                      type="amount"
+                      size="small"
+                      decimalCount={0}
+                      id={field.name}
+                      error={topUpForm.formState.errors.amount?.message}
+                      amountPrefix="$"
+                      {...field}
+                    />
                   )}
                 />
-                <button
-                  className={cn(
-                    "mb-2 inline-flex h-10 w-24 items-center justify-center rounded-3xl bg-zinc-800 px-4 py-2",
-                    "font-sans text-sm font-medium leading-snug text-white",
-                    "transition-colors duration-200 hover:bg-zinc-700 disabled:bg-zinc-500",
-                  )}
-                  type="submit"
-                  disabled={isLoading}
-                >
+                <Button type="submit" disabled={isLoading} size="small">
                   Top up
-                </button>
+                </Button>
               </form>
             </Form>
           </TabsContent>
@@ -186,74 +164,50 @@ export default function WalletRefill() {
             <Form {...autoRefillForm}>
               <form
                 onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
+                className="my-6"
               >
                 <FormField
                   control={autoRefillForm.control}
                   name="threshold"
                   render={({ field }) => (
-                    <FormItem className="mb-6 mt-4">
-                      <FormLabel className="font-sans text-sm font-medium leading-snug text-zinc-800">
-                        Refill when balance drops below:
-                      </FormLabel>
-                      <FormControl>
-                        <>
-                          <Input
-                            className={cn(
-                              "mt-2 rounded-3xl border-0 bg-white py-2 pl-6 pr-4 font-sans outline outline-1 outline-zinc-300",
-                              "focus:outline-2 focus:outline-offset-0 focus:outline-violet-700",
-                            )}
-                            type="number"
-                            step="1"
-                            {...field}
-                          />
-                          <span className="absolute left-10 -translate-y-9 text-sm text-zinc-500">
-                            $
-                          </span>
-                        </>
-                      </FormControl>
-                      <FormMessage className="mt-2 font-sans text-xs font-normal leading-tight" />
-                    </FormItem>
+                    <Input
+                      type="amount"
+                      label="Refill when balance drops below:"
+                      id={field.name}
+                      size="small"
+                      decimalCount={0}
+                      error={autoRefillForm.formState.errors.threshold?.message}
+                      amountPrefix="$"
+                      {...field}
+                    />
                   )}
                 />
                 <FormField
                   control={autoRefillForm.control}
                   name="refillAmount"
                   render={({ field }) => (
-                    <FormItem className="mb-6">
-                      <FormLabel className="font-sans text-sm font-medium leading-snug text-zinc-800">
-                        Add this amount:
-                      </FormLabel>
-                      <FormControl>
-                        <>
-                          <Input
-                            className={cn(
-                              "mt-2 rounded-3xl border-0 bg-white py-2 pl-6 pr-4 font-sans outline outline-1 outline-zinc-300",
-                              "focus:outline-2 focus:outline-offset-0 focus:outline-violet-700",
-                            )}
-                            type="number"
-                            step="1"
-                            {...field}
-                          />
-                          <span className="absolute left-10 -translate-y-9 text-sm text-zinc-500">
-                            $
-                          </span>
-                        </>
-                      </FormControl>
-                      <FormMessage className="mt-2 font-sans text-xs font-normal leading-tight" />
-                    </FormItem>
+                    <Input
+                      type="amount"
+                      label="Add this amount:"
+                      size="small"
+                      decimalCount={0}
+                      id={field.name}
+                      error={
+                        autoRefillForm.formState.errors.refillAmount?.message
+                      }
+                      amountPrefix="$"
+                      {...field}
+                    />
                   )}
                 />
-                <button
-                  className={cn(
-                    "mb-4 inline-flex h-10 w-40 items-center justify-center rounded-3xl bg-zinc-800 px-4 py-2",
-                    "font-sans text-sm font-medium leading-snug text-white",
-                    "transition-colors duration-200 hover:bg-zinc-700 disabled:bg-zinc-500",
-                  )}
+                <Button
                   type="submit"
                   disabled={isLoading}
+                  size="small"
+                  className="mt-5"
                 >
                   Enable Auto-refill
-                </button>
+                </Button>
               </form>
             </Form>
           </TabsContent>
