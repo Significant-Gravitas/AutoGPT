@@ -2580,13 +2580,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "enum": ["rating", "runs", "name", "updated_at"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Sorted By"
             }
           },
@@ -2836,13 +2830,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "enum": ["agent_rating", "agent_runs", "num_agents"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Sorted By"
             }
           },
