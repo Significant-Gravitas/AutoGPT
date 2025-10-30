@@ -70,7 +70,7 @@
 
 @layer components {
   .agpt-border-input {
-    @apply m-0.5 border border-input focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
+    @apply m-0.5 border border-input data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400;
   }
 
   .agpt-shadow-input {

@@ -175,10 +175,15 @@ async def validate_url(
                     f"for hostname {ascii_hostname} is not allowed."
                 )
 
+    # Reconstruct the netloc with IDNA-encoded hostname and preserve port
+    netloc = ascii_hostname
+    if parsed.port:
+        netloc = f"{ascii_hostname}:{parsed.port}"
+
     return (
         URL(
             parsed.scheme,
-            ascii_hostname,
+            netloc,
             quote(parsed.path, safe="/%:@"),
             parsed.params,
             parsed.query,

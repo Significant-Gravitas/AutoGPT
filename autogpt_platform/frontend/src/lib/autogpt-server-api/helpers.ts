@@ -81,10 +81,27 @@ export function buildUrlWithQuery(
 
 export async function handleFetchError(response: Response): Promise<ApiError> {
   const errorMessage = await parseApiError(response);
+
+  // Safely parse response body - it might not be JSON (e.g., HTML error pages)
+  let responseData: any = null;
+  try {
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      responseData = await response.json();
+    } else {
+      // For non-JSON responses, get the text content
+      responseData = await response.text();
+    }
+  } catch (e) {
+    // If parsing fails, use null as response data
+    console.warn("Failed to parse error response body:", e);
+    responseData = null;
+  }
+
   return new ApiError(
     errorMessage || "Request failed",
     response.status,
-    await response.json(),
+    responseData,
   );
 }
 

@@ -327,5 +327,6 @@ class WebsocketServer(AppProcess):
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
+            ws="websockets-sansio",
             log_config=None,
         )
