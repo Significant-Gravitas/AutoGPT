@@ -517,10 +517,12 @@ async def validate_and_construct_node_execution_input(
     # Validate that the user has permission to execute this graph
     # This checks both library membership and execution permissions,
     # raising specific exceptions for appropriate error handling
+    # Note: Version-agnostic check to allow execution of graphs that reference
+    # older versions of sub-graphs that may no longer be in the library
     await gdb.validate_graph_execution_permissions(
         graph_id=graph_id,
         user_id=user_id,
-        graph_version=graph.version,
+        # graph_version omitted for version-agnostic permission check
     )
 
     nodes_input_masks = _merge_nodes_input_masks(

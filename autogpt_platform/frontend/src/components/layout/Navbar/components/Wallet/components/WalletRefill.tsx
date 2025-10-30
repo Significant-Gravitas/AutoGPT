@@ -1,14 +1,4 @@
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/__legacy__/ui/tabs";
-import { cn } from "@/lib/utils";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import {
   Form,
   FormControl,
   FormField,
@@ -16,14 +6,24 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/__legacy__/ui/form";
-import { Input } from "../../../../../../components/__legacy__/ui/input";
-import Link from "next/link";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/__legacy__/ui/tabs";
+import { Input } from "@/components/atoms/Input/Input";
 import {
   useToast,
   useToastOnFail,
-} from "../../../../../../components/molecules/Toast/use-toast";
+} from "@/components/molecules/Toast/use-toast";
 import useCredits from "@/hooks/useCredits";
+import { cn } from "@/lib/utils";
+import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 const topUpSchema = z.object({
   amount: z
@@ -148,6 +148,8 @@ export default function WalletRefill() {
                               "mt-2 rounded-3xl border-0 bg-white py-2 pl-6 pr-4 font-sans outline outline-1 outline-zinc-300",
                               "focus:outline-2 focus:outline-offset-0 focus:outline-violet-700",
                             )}
+                            label="Amount"
+                            id="amount"
                             type="number"
                             step="1"
                             {...field}
@@ -204,6 +206,8 @@ export default function WalletRefill() {
                             )}
                             type="number"
                             step="1"
+                            label="Refill when balance drops below:"
+                            id="threshold"
                             {...field}
                           />
                           <span className="absolute left-10 -translate-y-9 text-sm text-zinc-500">
@@ -232,6 +236,8 @@ export default function WalletRefill() {
                             )}
                             type="number"
                             step="1"
+                            label="Add this amount:"
+                            id="refillAmount"
                             {...field}
                           />
                           <span className="absolute left-10 -translate-y-9 text-sm text-zinc-500">
