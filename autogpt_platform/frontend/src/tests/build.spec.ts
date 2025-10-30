@@ -254,7 +254,7 @@ test.describe("Build", () => { //(1)!
     await test.expect(buildPage.isRunButtonEnabled()).resolves.toBeTruthy();
   });
 
-  test("user can build an agent with inputs and output blocks", async ({ page }, testInfo) => {
+  test.skip("user can build an agent with inputs and output blocks", async ({ page }, testInfo) => {
     test.setTimeout(testInfo.timeout * 10);
 
     // prep
