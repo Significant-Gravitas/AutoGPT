@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import OAuth2Credentials, SchemaField
 
 from ._api import NotionClient
@@ -16,15 +22,14 @@ from ._auth import (
 class NotionReadPageBlock(Block):
     """Read a Notion page by ID and return its raw JSON."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: NotionCredentialsInput = NotionCredentialsField()
         page_id: str = SchemaField(
             description="Notion page ID. Must be accessible by the connected integration. You can get this from the page URL notion.so/A-Page-586edd711467478da59fe3ce29a1ffab would be 586edd711467478da59fe35e29a1ffab",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         page: dict = SchemaField(description="Raw Notion page JSON.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(

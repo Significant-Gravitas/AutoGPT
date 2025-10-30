@@ -5,7 +5,13 @@ from typing import Optional
 
 from typing_extensions import TypedDict
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from ._api import get_api
@@ -37,7 +43,7 @@ class CheckRunConclusion(Enum):
 
 
 class GithubGetCIResultsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
             description="GitHub repository",
@@ -60,7 +66,7 @@ class GithubGetCIResultsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class CheckRunItem(TypedDict, total=False):
             id: int
             name: str
@@ -104,7 +110,6 @@ class GithubGetCIResultsBlock(Block):
         total_checks: int = SchemaField(description="Total number of CI checks")
         passed_checks: int = SchemaField(description="Number of passed checks")
         failed_checks: int = SchemaField(description="Number of failed checks")
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(

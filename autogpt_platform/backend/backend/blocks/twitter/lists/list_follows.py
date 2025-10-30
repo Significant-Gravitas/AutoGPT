@@ -13,7 +13,13 @@ from backend.blocks.twitter._auth import (
 # from backend.blocks.twitter._builders import UserExpansionsBuilder
 # from backend.blocks.twitter._types import TweetFields, TweetUserFields, UserExpansionInputs, UserExpansions
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 # from tweepy.client import Response
@@ -24,7 +30,7 @@ class TwitterUnfollowListBlock(Block):
     Unfollows a Twitter list for the authenticated user
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["follows.write", "offline.access"]
         )
@@ -34,9 +40,8 @@ class TwitterUnfollowListBlock(Block):
             placeholder="Enter list ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the unfollow was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -87,7 +92,7 @@ class TwitterFollowListBlock(Block):
     Follows a Twitter list for the authenticated user
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "users.read", "list.write", "offline.access"]
         )
@@ -97,9 +102,8 @@ class TwitterFollowListBlock(Block):
             placeholder="Enter list ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the follow was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -178,7 +182,7 @@ class TwitterFollowListBlock(Block):
 #             advanced=True,
 #         )
 
-#     class Output(BlockSchema):
+#     class Output(BlockSchemaOutput):
 #         user_ids: list[str] = SchemaField(description="List of user IDs of followers")
 #         usernames: list[str] = SchemaField(description="List of usernames of followers")
 #         next_token: str = SchemaField(description="Token for next page of results")
@@ -340,7 +344,7 @@ class TwitterFollowListBlock(Block):
 #             advanced=True,
 #         )
 
-#     class Output(BlockSchema):
+#     class Output(BlockSchemaOutput):
 #         list_ids: list[str] = SchemaField(description="List of list IDs")
 #         list_names: list[str] = SchemaField(description="List of list names")
 #         data: list[dict] = SchemaField(description="Complete list data")

@@ -10,7 +10,13 @@ from backend.blocks.fal._auth import (
     FalCredentialsField,
     FalCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import ClientResponseError, Requests
 
@@ -24,7 +30,7 @@ class FalModel(str, Enum):
 
 
 class AIVideoGeneratorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="Description of the video to generate.",
             placeholder="A dog running in a field.",
@@ -36,7 +42,7 @@ class AIVideoGeneratorBlock(Block):
         )
         credentials: FalCredentialsInput = FalCredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="The URL of the generated video.")
         error: str = SchemaField(
             description="Error message if video generation failed."
