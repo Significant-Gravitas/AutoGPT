@@ -23,6 +23,8 @@ from backend.data.block import (
     BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     BlockType,
     BlockWebhookConfig,
 )
@@ -122,6 +124,8 @@ __all__ = [
     "BlockCategory",
     "BlockOutput",
     "BlockSchema",
+    "BlockSchemaInput",
+    "BlockSchemaOutput",
     "BlockType",
     "BlockWebhookConfig",
     "BlockManualWebhookConfig",

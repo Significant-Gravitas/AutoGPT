@@ -3,7 +3,13 @@ from typing import Literal
 import googlemaps
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -37,7 +43,7 @@ class Place(BaseModel):
 
 
 class GoogleMapsSearchBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.GOOGLE_MAPS], Literal["api_key"]
         ] = CredentialsField(description="Google Maps API Key")
@@ -58,9 +64,8 @@ class GoogleMapsSearchBlock(Block):
             le=60,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         place: Place = SchemaField(description="Place found")
-        error: str = SchemaField(description="Error message if the search failed")
 
     def __init__(self):
         super().__init__(

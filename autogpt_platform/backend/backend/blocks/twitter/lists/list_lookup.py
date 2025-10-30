@@ -23,7 +23,7 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.data.model import SchemaField
 
 
@@ -42,7 +42,7 @@ class TwitterGetListBlock(Block):
             placeholder="Enter list ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         id: str = SchemaField(description="ID of the Twitter List")
         name: str = SchemaField(description="Name of the Twitter List")
@@ -55,7 +55,6 @@ class TwitterGetListBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata about the response")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -201,7 +200,7 @@ class TwitterGetOwnedListsBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         list_ids: list[str] = SchemaField(description="List ids of the owned lists")
         list_names: list[str] = SchemaField(description="List names of the owned lists")
@@ -213,7 +212,6 @@ class TwitterGetOwnedListsBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata about the response")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

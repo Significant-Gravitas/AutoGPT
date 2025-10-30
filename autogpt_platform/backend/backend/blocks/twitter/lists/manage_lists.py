@@ -12,7 +12,13 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsInput,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -21,7 +27,7 @@ class TwitterDeleteListBlock(Block):
     Deletes a Twitter List owned by the authenticated user
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["list.write", "offline.access"]
         )
@@ -31,9 +37,8 @@ class TwitterDeleteListBlock(Block):
             placeholder="Enter list ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the deletion was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -84,7 +89,7 @@ class TwitterUpdateListBlock(Block):
     Updates a Twitter List owned by the authenticated user
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["list.write", "offline.access"]
         )
@@ -109,9 +114,8 @@ class TwitterUpdateListBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the update was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -180,7 +184,7 @@ class TwitterCreateListBlock(Block):
     Creates a Twitter List owned by the authenticated user
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["list.write", "offline.access"]
         )
@@ -205,10 +209,9 @@ class TwitterCreateListBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         url: str = SchemaField(description="URL of the created list")
         list_id: str = SchemaField(description="ID of the created list")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
