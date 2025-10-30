@@ -20,7 +20,6 @@ from typing import (
 
 import jsonref
 import jsonschema
-from autogpt_libs.utils.cache import cached
 from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
@@ -28,6 +27,7 @@ from pydantic import BaseModel
 from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.cache import cached
 from backend.util.settings import Config
 
 from .model import (
@@ -593,11 +593,6 @@ def is_block_auth_configured(
             f"Block {block_cls.__name__} has only optional credential inputs"
             " - will work without credentials configured"
         )
-    if len(credential_inputs) > 1:
-        logger.warning(
-            f"Block {block_cls.__name__} has multiple credential inputs: "
-            f"{', '.join(credential_inputs.keys())}"
-        )
 
     # Check if the credential inputs for this block are correctly configured
     for field_name, field_info in credential_inputs.items():
@@ -722,7 +717,7 @@ def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
     return cls() if cls else None
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_webhook_block_ids() -> Sequence[str]:
     return [
         id
@@ -731,7 +726,7 @@ def get_webhook_block_ids() -> Sequence[str]:
     ]
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def get_io_block_ids() -> Sequence[str]:
     return [
         id

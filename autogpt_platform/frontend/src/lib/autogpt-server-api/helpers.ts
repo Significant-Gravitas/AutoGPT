@@ -1,7 +1,6 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
-import { getAgptServerApiUrl } from "@/lib/env-config";
-import { isServerSide } from "../utils/is-server-side";
+import { environment } from "@/services/environment";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -41,12 +40,11 @@ export function buildRequestUrl(
   method: string,
   payload?: Record<string, any>,
 ): string {
-  let url = baseUrl + path;
+  const url = baseUrl + path;
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
 
   if (payloadAsQuery && payload) {
-    const queryParams = new URLSearchParams(payload);
-    url += `?${queryParams.toString()}`;
+    return buildUrlWithQuery(url, payload);
   }
 
   return url;
@@ -57,25 +55,53 @@ export function buildClientUrl(path: string): string {
 }
 
 export function buildServerUrl(path: string): string {
-  return `${getAgptServerApiUrl()}${path}`;
+  return `${environment.getAGPTServerApiUrl()}${path}`;
 }
 
 export function buildUrlWithQuery(
   url: string,
-  payload?: Record<string, any>,
+  query?: Record<string, any>,
 ): string {
-  if (!payload) return url;
+  if (!query) return url;
 
-  const queryParams = new URLSearchParams(payload);
-  return `${url}?${queryParams.toString()}`;
+  // Filter out undefined values to prevent them from being included as "undefined" strings
+  const filteredQuery = Object.entries(query).reduce(
+    (acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    },
+    {} as Record<string, any>,
+  );
+
+  const queryParams = new URLSearchParams(filteredQuery);
+  return queryParams.size > 0 ? `${url}?${queryParams.toString()}` : url;
 }
 
 export async function handleFetchError(response: Response): Promise<ApiError> {
   const errorMessage = await parseApiError(response);
+
+  // Safely parse response body - it might not be JSON (e.g., HTML error pages)
+  let responseData: any = null;
+  try {
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      responseData = await response.json();
+    } else {
+      // For non-JSON responses, get the text content
+      responseData = await response.text();
+    }
+  } catch (e) {
+    // If parsing fails, use null as response data
+    console.warn("Failed to parse error response body:", e);
+    responseData = null;
+  }
+
   return new ApiError(
     errorMessage || "Request failed",
     response.status,
-    await response.json(),
+    responseData,
   );
 }
 
@@ -197,7 +223,7 @@ function isAuthenticationError(
 }
 
 function isLogoutInProgress(): boolean {
-  if (isServerSide()) return false;
+  if (environment.isServerSide()) return false;
 
   try {
     // Check if logout was recently triggered

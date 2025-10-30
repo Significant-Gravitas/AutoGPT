@@ -1,24 +1,25 @@
 "use client";
 
-import useCredits from "@/hooks/useCredits";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { X } from "lucide-react";
 import { Text } from "@/components/atoms/Text/Text";
-import { PopoverClose } from "@radix-ui/react-popover";
-import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/Wallet/components/WalletTaskGroups";
-import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
-import * as party from "party-js";
-import WalletRefill from "./components/WalletRefill";
+import useCredits from "@/hooks/useCredits";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
+import { cn } from "@/lib/utils";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
+import { PopoverClose } from "@radix-ui/react-popover";
+import { X } from "lucide-react";
+import * as party from "party-js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
+import WalletRefill from "./components/WalletRefill";
+import { TaskGroups } from "./components/WalletTaskGroups";
 
 export interface Task {
   id: OnboardingStep;
@@ -38,8 +39,9 @@ export interface TaskGroup {
   tasks: Task[];
 }
 
-export default function Wallet() {
+export function Wallet() {
   const { state, updateState } = useOnboarding();
+  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
   const groups = useMemo<TaskGroup[]>(() => {
     return [
@@ -379,9 +381,7 @@ export default function Wallet() {
         </div>
         <ScrollArea className="max-h-[85vh] overflow-y-auto">
           {/* Top ups */}
-          {process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true" && (
-            <WalletRefill />
-          )}
+          {isPaymentEnabled && <WalletRefill />}
           {/* Tasks */}
           <p className="mx-1 my-3 font-sans text-xs font-normal text-zinc-400">
             Complete the following tasks to earn more credits!

@@ -1,35 +1,27 @@
-/**
- * Utility functions for working with Cloudflare Turnstile
- */
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
-import { getAgptServerApiUrl } from "@/lib/env-config";
+import { environment } from "@/services/environment";
 
 export async function verifyTurnstileToken(
   token: string,
   action?: string,
 ): Promise<boolean> {
-  // Skip verification unless explicitly enabled via environment variable
-  if (process.env.NEXT_PUBLIC_TURNSTILE !== "enabled") {
-    return true;
-  }
-
-  // Skip verification in local development
-  const behaveAs = getBehaveAs();
-  if (behaveAs !== BehaveAs.CLOUD) {
+  if (!environment.isCAPTCHAEnabled() || environment.isLocal()) {
     return true;
   }
 
   try {
-    const response = await fetch(`${getAgptServerApiUrl()}/turnstile/verify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await fetch(
+      `${environment.getAGPTServerApiUrl()}/turnstile/verify`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          token,
+          action,
+        }),
       },
-      body: JSON.stringify({
-        token,
-        action,
-      }),
-    });
+    );
 
     if (!response.ok) {
       console.error("Turnstile verification failed:", await response.text());
