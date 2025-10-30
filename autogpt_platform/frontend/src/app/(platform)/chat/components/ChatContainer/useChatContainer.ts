@@ -414,7 +414,13 @@ export function useChatContainer({
                   content: completedContent,
                   timestamp: new Date(),
                 };
-                setMessages((prev) => [...prev, assistantMessage]);
+
+                // Replace ALL local messages with just the completed message
+                // This prevents duplicates when initialMessages updates from backend
+                setMessages([assistantMessage]);
+              } else {
+                // No text content, just clear all local messages
+                setMessages([]);
               }
 
               // Clear streaming state immediately now that we have the message

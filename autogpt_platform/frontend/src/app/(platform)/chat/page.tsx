@@ -4,7 +4,6 @@ import { useChatPage } from "./useChatPage";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatErrorState } from "./components/ChatErrorState/ChatErrorState";
 import { ChatLoadingState } from "./components/ChatLoadingState/ChatLoadingState";
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
 
 function ChatPage() {
   const {
@@ -69,4 +68,4 @@ function ChatPage() {
   );
 }
 
-export default withFeatureFlag(ChatPage, "chat");
+export default ChatPage;
