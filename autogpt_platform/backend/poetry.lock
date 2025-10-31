@@ -271,14 +271,16 @@ test = ["anyio[trio]", "blockbuster (>=1.5.23)", "coverage[toml] (>=7)", "except
 trio = ["trio (>=0.26.1)"]
 
 [[package]]
-name = "APScheduler"
-version = "3.11.0.post3"
+name = "apscheduler"
+version = "3.11.1"
 description = "In-process task scheduler with Cron-like capabilities"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "apscheduler-3.11.1-py3-none-any.whl", hash = "sha256:6162cb5683cb09923654fa9bdd3130c4be4bfda6ad8990971c9597ecd52965d2"},
+    {file = "apscheduler-3.11.1.tar.gz", hash = "sha256:0db77af6400c84d1747fe98a04b8b58f0080c77d11d338c4f507a9752880f221"},
+]
 
 [package.dependencies]
 tzlocal = ">=3.0"
@@ -295,12 +297,6 @@ test = ["APScheduler[etcd,mongodb,redis,rethinkdb,sqlalchemy,tornado,zookeeper]"
 tornado = ["tornado (>=4.3)"]
 twisted = ["twisted"]
 zookeeper = ["kazoo"]
-
-[package.source]
-type = "git"
-url = "https://github.com/berianjames/apscheduler.git"
-reference = "ff9a687424a23c81a72deb7331a69cc1351b0420"
-resolved_reference = "ff9a687424a23c81a72deb7331a69cc1351b0420"
 
 [[package]]
 name = "async-timeout"
@@ -7281,4 +7277,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "d088262266d5b1f5fabc63cf7db5257894ca12edc06c86bdb7483bdc96943849"
+content-hash = "4d7134993527a5ff91b531a4e28b36bcab7cef2db18cf00702a950e34ae9ea1d"
