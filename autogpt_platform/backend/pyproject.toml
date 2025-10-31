@@ -13,7 +13,8 @@ aio-pika = "^9.5.5"
 aiohttp = "^3.10.0"
 aiodns = "^3.5.0"
 anthropic = "^0.59.0"
-apscheduler = "^3.11.0"
+# TEMPFIX until APScheduler releases a fix - https://github.com/Significant-Gravitas/AutoGPT/issues/11273
+apscheduler = { git = "https://github.com/berianjames/apscheduler.git", rev = "ff9a687424a23c81a72deb7331a69cc1351b0420" }
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
 click = "^8.2.0"
