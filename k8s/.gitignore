@@ -1,0 +1,18 @@
+# Environment files with secrets
+.env
+.env.local
+.env.production
+
+# Terraform files
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Helm files
+charts/
+Chart.lock
+
+# Generated files
+secrets.yaml
