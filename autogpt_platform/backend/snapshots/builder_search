@@ -1,0 +1,16 @@
+{
+  "items": [
+    {
+      "id": "block1",
+      "name": "Block 1"
+    }
+  ],
+  "total_items": {
+    "blocks": 1,
+    "integrations": 0,
+    "marketplace_agents": 0,
+    "my_agents": 0
+  },
+  "page": 1,
+  "more_pages": false
+}
