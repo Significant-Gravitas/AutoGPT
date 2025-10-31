@@ -1778,6 +1778,7 @@ class AIListGeneratorBlock(AIBlockBase):
             |```
 
             |Do not include any explanations or additional text, just respond with the list in the format specified above.
+            |Do not include code fences or any other formatting, just the raw list.
             """
         # If a focus is provided, add it to the prompt
         if input_data.focus:
