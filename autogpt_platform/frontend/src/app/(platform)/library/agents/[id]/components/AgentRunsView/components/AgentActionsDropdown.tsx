@@ -92,7 +92,7 @@ export function AgentActionsDropdown({ agent }: Props) {
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>
             <Link
-              href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+              href={`/build?flowID=${agent.graph_id}`}
               target="_blank"
               className="flex items-center gap-2"
             >
