@@ -103,7 +103,7 @@ class ExaWaitForWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="619d71e8-b72a-434d-8bd4-23376dd0342c",
             description="Wait for a webset to reach a specific status with progress tracking",
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForWebsetBlock.Input,
@@ -327,7 +327,7 @@ class ExaWaitForSearchBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            id="14da21ae-40a1-41bc-a111-c8e5c9ef012b",
             description="Wait for a specific webset search to complete with progress tracking",
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForSearchBlock.Input,
@@ -423,7 +423,6 @@ class ExaWaitForSearchBlock(Block):
             yield "items_analyzed", progress_dict.get("analyzed", 0)
             yield "completion_percentage", progress_dict.get("completion", 0)
             yield "elapsed_time", elapsed
-            yield "recall_info", {}
             yield "timed_out", True
 
         except asyncio.TimeoutError:
@@ -487,7 +486,7 @@ class ExaWaitForEnrichmentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-a7b8-9012-cdef-345678901234",
+            id="a11865c3-ac80-4721-8a40-ac4e3b71a558",
             description="Wait for a webset enrichment to complete with progress tracking",
             categories={BlockCategory.SEARCH},
             input_schema=ExaWaitForEnrichmentBlock.Input,
@@ -566,7 +565,6 @@ class ExaWaitForEnrichmentBlock(Block):
             yield "items_enriched", 0
             yield "enrichment_title", title
             yield "elapsed_time", elapsed
-            yield "sample_data", []
             yield "timed_out", True
 
         except asyncio.TimeoutError:

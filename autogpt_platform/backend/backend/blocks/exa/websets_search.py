@@ -234,7 +234,7 @@ class ExaCreateWebsetSearchBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d4e5f6a7-b8c9-0123-def4-567890123456",
+            id="342ff776-2e2c-4cdb-b392-4eeb34b21d5f",
             description="Add a new search to an existing webset to find more items",
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetSearchBlock.Input,
@@ -430,7 +430,7 @@ class ExaGetWebsetSearchBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e5f6a7b8-c9d0-1234-ef56-789012345678",
+            id="4fa3e627-a0ff-485f-8732-52148051646c",
             description="Get the status and details of a webset search",
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetSearchBlock.Input,
@@ -512,7 +512,7 @@ class ExaCancelWebsetSearchBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f6a7b8c9-d0e1-2345-f678-901234567890",
+            id="74ef9f1e-ae89-4c7f-9d7d-d217214815b4",
             description="Cancel a running webset search",
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelWebsetSearchBlock.Input,
@@ -593,7 +593,7 @@ class ExaFindOrCreateSearchBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d4e5f6a7-8901-2345-6789-012345678901",
+            id="cbdb05ac-cb73-4b03-a493-6d34e9a011da",
             description="Find existing search by query or create new - prevents duplicate searches in workflows",
             categories={BlockCategory.SEARCH},
             input_schema=ExaFindOrCreateSearchBlock.Input,

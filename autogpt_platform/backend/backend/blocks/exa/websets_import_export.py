@@ -191,7 +191,7 @@ class ExaCreateImportBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f2a3b4c5-d6e7-8901-2345-678901234567",
+            id="020a35d8-8a53-4e60-8b60-1de5cbab1df3",
             description="Import CSV data to use with websets for targeted searches",
             categories={BlockCategory.DATA},
             input_schema=ExaCreateImportBlock.Input,
@@ -304,7 +304,7 @@ class ExaGetImportBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a3b4c5d6-e7f8-9012-3456-789012345678",
+            id="236663c8-a8dc-45f7-a050-2676bb0a3dd2",
             description="Get the status and details of an import",
             categories={BlockCategory.DATA},
             input_schema=ExaGetImportBlock.Input,
@@ -371,7 +371,7 @@ class ExaListImportsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b4c5d6e7-f8a9-0123-4567-890123456789",
+            id="65323630-f7e9-4692-a624-184ba14c0686",
             description="List all imports with pagination support",
             categories={BlockCategory.DATA},
             input_schema=ExaListImportsBlock.Input,
@@ -420,7 +420,7 @@ class ExaDeleteImportBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c5d6e7f8-a9b0-1234-5678-901234567890",
+            id="81ae30ed-c7ba-4b5d-8483-b726846e570c",
             description="Delete an import",
             categories={BlockCategory.DATA},
             input_schema=ExaDeleteImportBlock.Input,
@@ -485,7 +485,7 @@ class ExaExportWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d6e7f8a9-b0c1-2345-6789-012345678901",
+            id="5da9d0fd-4b5b-4318-8302-8f71d0ccce9d",
             description="Export webset data in JSON, CSV, or JSON Lines format",
             categories={BlockCategory.DATA},
             input_schema=ExaExportWebsetBlock.Input,

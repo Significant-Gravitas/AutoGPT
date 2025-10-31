@@ -167,7 +167,7 @@ class ExaCreateEnrichmentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a7b8c9d0-e1f2-3456-789a-bcdef0123456",
+            id="71146ae8-0cb1-4a15-8cde-eae30de71cb6",
             description="Create enrichments to extract additional structured data from webset items",
             categories={BlockCategory.AI, BlockCategory.SEARCH},
             input_schema=ExaCreateEnrichmentBlock.Input,
@@ -393,7 +393,7 @@ class ExaUpdateEnrichmentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c9d0e1f2-a3b4-5678-9abc-def012345678",
+            id="c8d5c5fb-9684-4a29-bd2a-5b38d71776c9",
             description="Update an existing enrichment configuration",
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateEnrichmentBlock.Input,
@@ -464,7 +464,7 @@ class ExaDeleteEnrichmentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d0e1f2a3-b4c5-6789-0abc-def123456789",
+            id="b250de56-2ca6-4237-a7b8-b5684892189f",
             description="Delete an enrichment from a webset",
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteEnrichmentBlock.Input,
@@ -516,7 +516,7 @@ class ExaCancelEnrichmentBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e1f2a3b4-c5d6-7890-1abc-def234567890",
+            id="7e1f8f0f-b6ab-43b3-bd1d-0c534a649295",
             description="Cancel a running enrichment operation",
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelEnrichmentBlock.Input,

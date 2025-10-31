@@ -464,7 +464,7 @@ class ExaCreateOrFindWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-5e6f-7890-1234-567890abcdef",
+            id="214542b6-3603-4bea-bc07-f51c2871cbd9",
             description="Create a new webset or return existing one by external_id (idempotent operation)",
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateOrFindWebsetBlock.Input,
@@ -1047,7 +1047,7 @@ class ExaWebsetStatusBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e3f4a5b6-c7d8-9012-3456-789abcdef012",
+            id="47cc3cd8-840f-4ec4-8d40-fcaba75fbe1a",
             description="Get a quick status overview of a webset",
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetStatusBlock.Input,
@@ -1182,7 +1182,7 @@ class ExaWebsetSummaryBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f4a5b6c7-d8e9-0123-4567-89abcdef0123",
+            id="9eff1710-a49b-490e-b486-197bf8b23c61",
             description="Get a comprehensive summary of a webset with samples and statistics",
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetSummaryBlock.Input,
@@ -1359,7 +1359,7 @@ class ExaWebsetReadyCheckBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-f6a7-8901-2345-678901234567",
+            id="faf9f0f3-e659-4264-b33b-284a02166bec",
             description="Check if webset is ready for next operation - enables conditional workflow branching",
             categories={BlockCategory.SEARCH, BlockCategory.LOGIC},
             input_schema=ExaWebsetReadyCheckBlock.Input,

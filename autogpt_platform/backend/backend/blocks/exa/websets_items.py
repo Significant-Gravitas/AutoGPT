@@ -249,7 +249,7 @@ class ExaListWebsetItemsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b5e8c9f0-1a2b-3c4d-5e6f-7a8b9c0d1e2f",
+            id="7b5e8c9f-01a2-43c4-95e6-f7a8b9c0d1e2",
             description="List items in a webset with pagination support",
             categories={BlockCategory.SEARCH},
             input_schema=ExaListWebsetItemsBlock.Input,
@@ -330,7 +330,7 @@ class ExaDeleteWebsetItemBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d7f0a1b2-3c4d-5e6f-8g9h-0i1j2k3l4m5n",
+            id="12c57fbe-c270-4877-a2b6-d2d05529ba79",
             description="Delete a specific item from a webset",
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteWebsetItemBlock.Input,
@@ -393,7 +393,7 @@ class ExaBulkWebsetItemsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e8a9b0c1-2d3e-4f5g-6h7i-8j9k0l1m2n3o",
+            id="dbd619f5-476e-4395-af9a-a7a7c0fb8c4e",
             description="Get all items from a webset in bulk (with configurable limits)",
             categories={BlockCategory.SEARCH},
             input_schema=ExaBulkWebsetItemsBlock.Input,
@@ -466,7 +466,7 @@ class ExaWebsetItemsSummaryBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f9b0c1d2-3e4f-5g6h-7i8j-9k0l1m2n3o4p",
+            id="db7813ad-10bd-4652-8623-5667d6fecdd5",
             description="Get a summary of webset items without retrieving all data",
             categories={BlockCategory.SEARCH},
             input_schema=ExaWebsetItemsSummaryBlock.Input,
@@ -560,7 +560,7 @@ class ExaGetNewItemsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-7890-1234-5678-901234567890",
+            id="3ff9bdf5-9613-4d21-8a60-90eb8b69c414",
             description="Get items added since a cursor - enables incremental processing without reprocessing",
             categories={BlockCategory.SEARCH, BlockCategory.DATA},
             input_schema=ExaGetNewItemsBlock.Input,

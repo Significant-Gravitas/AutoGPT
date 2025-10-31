@@ -342,7 +342,7 @@ class ExaGetMonitorBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a9b0c1d2-e3f4-5678-901b-cdef23456789",
+            id="5c852a2d-d505-4a56-b711-7def8dd14e72",
             description="Get the details and status of a webset monitor",
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetMonitorBlock.Input,
@@ -418,7 +418,7 @@ class ExaUpdateMonitorBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b0c1d2e3-f4a5-6789-012c-def345678901",
+            id="245102c3-6af3-4515-a308-c2210b7939d2",
             description="Update a monitor's status, schedule, or metadata",
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateMonitorBlock.Input,
@@ -482,7 +482,7 @@ class ExaDeleteMonitorBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c1d2e3f4-a5b6-7890-123d-ef4567890123",
+            id="f16f9b10-0c4d-4db8-997d-7b96b6026094",
             description="Delete a monitor from a webset",
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteMonitorBlock.Input,
@@ -540,7 +540,7 @@ class ExaListMonitorsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d2e3f4a5-b6c7-8901-234e-f56789012345",
+            id="f06e2b38-5397-4e8f-aa85-491149dd98df",
             description="List all monitors with optional webset filtering",
             categories={BlockCategory.SEARCH},
             input_schema=ExaListMonitorsBlock.Input,
