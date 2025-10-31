@@ -17,7 +17,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -117,7 +118,7 @@ class ResearchTaskModel(BaseModel):
 class ExaCreateResearchBlock(Block):
     """Create an asynchronous research task that explores the web and synthesizes findings."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -146,7 +147,7 @@ class ExaCreateResearchBlock(Block):
             le=3600,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         research_id: str = SchemaField(
             description="Unique identifier for tracking this research request"
         )
@@ -170,7 +171,6 @@ class ExaCreateResearchBlock(Block):
         elapsed_time: Optional[float] = SchemaField(
             description="Time taken to complete in seconds (only if wait_for_completion was True)"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -250,7 +250,7 @@ class ExaCreateResearchBlock(Block):
 class ExaGetResearchBlock(Block):
     """Get the status and results of a research task."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -264,7 +264,7 @@ class ExaGetResearchBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         research_id: str = SchemaField(description="The research task identifier")
         status: str = SchemaField(
             description="Current status: pending, running, completed, canceled, or failed"
@@ -303,7 +303,6 @@ class ExaGetResearchBlock(Block):
         events: Optional[List[dict]] = SchemaField(
             description="Detailed event log (if include_events was True)"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -357,7 +356,7 @@ class ExaGetResearchBlock(Block):
 class ExaWaitForResearchBlock(Block):
     """Wait for a research task to complete with progress tracking."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -379,7 +378,7 @@ class ExaWaitForResearchBlock(Block):
             le=60,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         research_id: str = SchemaField(description="The research task identifier")
         final_status: str = SchemaField(description="Final status when polling stopped")
         output_content: Optional[str] = SchemaField(
@@ -393,7 +392,6 @@ class ExaWaitForResearchBlock(Block):
         timed_out: bool = SchemaField(
             description="Whether polling timed out before completion"
         )
-        error: str = SchemaField(description="Error message if polling failed")
 
     def __init__(self):
         super().__init__(
@@ -452,7 +450,7 @@ class ExaWaitForResearchBlock(Block):
 class ExaListResearchBlock(Block):
     """List all research tasks with pagination support."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -469,7 +467,7 @@ class ExaListResearchBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         research_tasks: List[ResearchTaskModel] = SchemaField(
             description="List of research tasks ordered by creation time (newest first)"
         )
@@ -482,7 +480,6 @@ class ExaListResearchBlock(Block):
         next_cursor: Optional[str] = SchemaField(
             description="Cursor for the next page of results"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

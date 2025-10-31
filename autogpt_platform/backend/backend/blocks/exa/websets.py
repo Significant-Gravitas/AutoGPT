@@ -241,7 +241,6 @@ class ExaCreateWebsetBlock(Block):
         completion_time: Optional[float] = SchemaField(
             description="Time taken to complete the initial search in seconds (only if wait_for_initial_results was True)"
         )
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -426,7 +425,7 @@ class ExaCreateWebsetBlock(Block):
 class ExaCreateOrFindWebsetBlock(Block):
     """Create a new webset or return existing one if external_id already exists (idempotent)."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -454,14 +453,13 @@ class ExaCreateOrFindWebsetBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset: Webset = SchemaField(
             description="The webset (existing or newly created)"
         )
         was_created: bool = SchemaField(
             description="True if webset was newly created, False if it already existed"
         )
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -537,7 +535,6 @@ class ExaUpdateWebsetBlock(Block):
         updated_at: str = SchemaField(
             description="The date and time the webset was updated"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -605,7 +602,6 @@ class ExaListWebsetsBlock(Block):
         next_cursor: Optional[str] = SchemaField(
             description="Cursor for the next page of results"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -667,7 +663,6 @@ class ExaGetWebsetBlock(Block):
         updated_at: str = SchemaField(
             description="The date and time the webset was last updated"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -738,7 +733,6 @@ class ExaDeleteWebsetBlock(Block):
         )
         status: str = SchemaField(description="The status of the deleted webset")
         success: str = SchemaField(description="Whether the deletion was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -789,7 +783,6 @@ class ExaCancelWebsetBlock(Block):
         success: str = SchemaField(
             description="Whether the cancellation was successful"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -906,7 +899,7 @@ class PreviewWebsetModel(BaseModel):
 
 
 class ExaPreviewWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -925,7 +918,7 @@ class ExaPreviewWebsetBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         preview: PreviewWebsetModel = SchemaField(
             description="Full preview response with search and enrichment details"
         )
@@ -947,7 +940,6 @@ class ExaPreviewWebsetBlock(Block):
         suggestions: list[str] = SchemaField(
             description="Suggestions for improving the query"
         )
-        error: str = SchemaField(description="Error message if the preview failed")
 
     def __init__(self):
         super().__init__(
@@ -1020,7 +1012,7 @@ class ExaPreviewWebsetBlock(Block):
 class ExaWebsetStatusBlock(Block):
     """Get a quick status overview of a webset without fetching all details."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -1029,7 +1021,7 @@ class ExaWebsetStatusBlock(Block):
             placeholder="webset-id-or-external-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The webset identifier")
         status: str = SchemaField(
             description="Current status (idle, running, paused, etc.)"
@@ -1044,7 +1036,6 @@ class ExaWebsetStatusBlock(Block):
         is_processing: bool = SchemaField(
             description="Whether any operations are currently running"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -1130,7 +1121,7 @@ class WebsetStatisticsModel(BaseModel):
 class ExaWebsetSummaryBlock(Block):
     """Get a comprehensive summary of a webset including samples and statistics."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -1157,7 +1148,7 @@ class ExaWebsetSummaryBlock(Block):
             description="Include details about enrichments",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The webset identifier")
         status: str = SchemaField(description="Current status")
         entity_type: str = SchemaField(description="Type of entities in the webset")
@@ -1179,7 +1170,6 @@ class ExaWebsetSummaryBlock(Block):
         )
         created_at: str = SchemaField(description="When the webset was created")
         updated_at: str = SchemaField(description="When the webset was last updated")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -1327,7 +1317,7 @@ class ExaWebsetSummaryBlock(Block):
 class ExaWebsetReadyCheckBlock(Block):
     """Check if a webset is ready for the next operation (conditional workflow helper)."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -1341,7 +1331,7 @@ class ExaWebsetReadyCheckBlock(Block):
             ge=0,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         is_ready: bool = SchemaField(
             description="True if webset is idle AND has minimum items"
         )
@@ -1356,7 +1346,6 @@ class ExaWebsetReadyCheckBlock(Block):
         recommendation: str = SchemaField(
             description="Suggested next action (ready_to_process, waiting_for_results, needs_search, etc.)"
         )
-        error: str = SchemaField(description="Error message if check failed")
 
     def __init__(self):
         super().__init__(

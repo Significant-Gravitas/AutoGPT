@@ -14,7 +14,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -51,7 +52,7 @@ class CodeContextResponse(BaseModel):
 class ExaCodeContextBlock(Block):
     """Get relevant code snippets and examples from open source repositories."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -65,7 +66,7 @@ class ExaCodeContextBlock(Block):
             placeholder="dynamic",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         request_id: str = SchemaField(description="Unique identifier for this request")
         query: str = SchemaField(description="The search query used")
         response: str = SchemaField(
@@ -79,7 +80,6 @@ class ExaCodeContextBlock(Block):
             description="Time taken to search in milliseconds"
         )
         output_tokens: int = SchemaField(description="Number of tokens in the response")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

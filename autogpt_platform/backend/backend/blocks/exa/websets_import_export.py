@@ -21,7 +21,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -134,7 +135,7 @@ class ExportFormat(str, Enum):
 class ExaCreateImportBlock(Block):
     """Create an import to load external data that can be used with websets."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -172,7 +173,7 @@ class ExaCreateImportBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         import_id: str = SchemaField(
             description="The unique identifier for the created import"
         )
@@ -187,7 +188,6 @@ class ExaCreateImportBlock(Block):
             description="Expiration time for upload URL (only if upload_url is provided)"
         )
         created_at: str = SchemaField(description="When the import was created")
-        error: str = SchemaField(description="Error message if the import failed")
 
     def __init__(self):
         super().__init__(
@@ -269,7 +269,7 @@ class ExaCreateImportBlock(Block):
 class ExaGetImportBlock(Block):
     """Get the status and details of an import."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -278,7 +278,7 @@ class ExaGetImportBlock(Block):
             placeholder="import-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         import_id: str = SchemaField(description="The unique identifier for the import")
         status: str = SchemaField(description="Current status of the import")
         title: str = SchemaField(description="Title of the import")
@@ -300,7 +300,6 @@ class ExaGetImportBlock(Block):
         created_at: str = SchemaField(description="When the import was created")
         updated_at: str = SchemaField(description="When the import was last updated")
         metadata: dict = SchemaField(description="Metadata attached to the import")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -340,7 +339,7 @@ class ExaGetImportBlock(Block):
 class ExaListImportsBlock(Block):
     """List all imports with pagination."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -356,7 +355,7 @@ class ExaListImportsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         imports: list[dict] = SchemaField(description="List of imports")
         import_item: dict = SchemaField(
             description="Individual import (yielded for each import)"
@@ -367,7 +366,6 @@ class ExaListImportsBlock(Block):
         next_cursor: Optional[str] = SchemaField(
             description="Cursor for the next page of results"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -404,7 +402,7 @@ class ExaListImportsBlock(Block):
 class ExaDeleteImportBlock(Block):
     """Delete an import."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -413,10 +411,9 @@ class ExaDeleteImportBlock(Block):
             placeholder="import-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         import_id: str = SchemaField(description="The ID of the deleted import")
         success: str = SchemaField(description="Whether the deletion was successful")
-        error: str = SchemaField(description="Error message if the deletion failed")
 
     def __init__(self):
         super().__init__(
@@ -442,7 +439,7 @@ class ExaDeleteImportBlock(Block):
 class ExaExportWebsetBlock(Block):
     """Export all data from a webset in various formats."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -469,7 +466,7 @@ class ExaExportWebsetBlock(Block):
             le=100,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         export_data: str = SchemaField(
             description="Exported data in the requested format"
         )
@@ -481,7 +478,6 @@ class ExaExportWebsetBlock(Block):
             description="Whether the export was truncated due to max_items limit"
         )
         format: str = SchemaField(description="Format of the exported data")
-        error: str = SchemaField(description="Error message if the export failed")
 
     def __init__(self):
         super().__init__(

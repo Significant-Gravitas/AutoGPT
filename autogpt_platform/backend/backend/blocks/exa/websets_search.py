@@ -17,7 +17,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -112,7 +113,7 @@ class SearchEntityType(str, Enum):
 class ExaCreateWebsetSearchBlock(Block):
     """Add a new search to an existing webset."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -214,7 +215,7 @@ class ExaCreateWebsetSearchBlock(Block):
             le=600,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         search_id: str = SchemaField(
             description="The unique identifier for the created search"
         )
@@ -230,7 +231,6 @@ class ExaCreateWebsetSearchBlock(Block):
         completion_time: Optional[float] = SchemaField(
             description="Time taken to complete in seconds (if wait_for_completion was True)"
         )
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -396,7 +396,7 @@ class ExaCreateWebsetSearchBlock(Block):
 class ExaGetWebsetSearchBlock(Block):
     """Get the status and details of a webset search."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -409,7 +409,7 @@ class ExaGetWebsetSearchBlock(Block):
             placeholder="search-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         search_id: str = SchemaField(description="The unique identifier for the search")
         status: str = SchemaField(description="Current status of the search")
         query: str = SchemaField(description="The search query")
@@ -426,7 +426,6 @@ class ExaGetWebsetSearchBlock(Block):
             description="Reason for cancellation (if applicable)"
         )
         metadata: dict = SchemaField(description="Metadata attached to the search")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -486,7 +485,7 @@ class ExaGetWebsetSearchBlock(Block):
 class ExaCancelWebsetSearchBlock(Block):
     """Cancel a running webset search."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -499,7 +498,7 @@ class ExaCancelWebsetSearchBlock(Block):
             placeholder="search-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         search_id: str = SchemaField(description="The ID of the canceled search")
         status: str = SchemaField(description="Status after cancellation")
         items_found_before_cancel: int = SchemaField(
@@ -508,7 +507,6 @@ class ExaCancelWebsetSearchBlock(Block):
         success: str = SchemaField(
             description="Whether the cancellation was successful"
         )
-        error: str = SchemaField(description="Error message if the cancellation failed")
 
     def __init__(self):
         super().__init__(
@@ -549,7 +547,7 @@ class ExaCancelWebsetSearchBlock(Block):
 class ExaFindOrCreateSearchBlock(Block):
     """Find existing search by query or create new one (prevents duplicate searches)."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -578,7 +576,7 @@ class ExaFindOrCreateSearchBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         search_id: str = SchemaField(description="The search ID (existing or new)")
         webset_id: str = SchemaField(description="The webset ID")
         status: str = SchemaField(description="Current search status")
@@ -589,7 +587,6 @@ class ExaFindOrCreateSearchBlock(Block):
         items_found: int = SchemaField(
             description="Number of items found (0 if still running)"
         )
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(

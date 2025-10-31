@@ -17,7 +17,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -110,7 +111,7 @@ class SearchBehavior(str, Enum):
 class ExaCreateMonitorBlock(Block):
     """Create a monitor to automatically keep a webset updated on a schedule."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -184,7 +185,7 @@ class ExaCreateMonitorBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         monitor_id: str = SchemaField(
             description="The unique identifier for the created monitor"
         )
@@ -197,7 +198,6 @@ class ExaCreateMonitorBlock(Block):
         cron_expression: str = SchemaField(description="The schedule cron expression")
         timezone: str = SchemaField(description="The timezone for scheduling")
         created_at: str = SchemaField(description="When the monitor was created")
-        error: str = SchemaField(description="Error message if the creation failed")
 
     def __init__(self):
         super().__init__(
@@ -308,7 +308,7 @@ class ExaCreateMonitorBlock(Block):
 class ExaGetMonitorBlock(Block):
     """Get the details and status of a monitor."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -317,7 +317,7 @@ class ExaGetMonitorBlock(Block):
             placeholder="monitor-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         monitor_id: str = SchemaField(
             description="The unique identifier for the monitor"
         )
@@ -338,7 +338,6 @@ class ExaGetMonitorBlock(Block):
         created_at: str = SchemaField(description="When the monitor was created")
         updated_at: str = SchemaField(description="When the monitor was last updated")
         metadata: dict = SchemaField(description="Metadata attached to the monitor")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -377,7 +376,7 @@ class ExaGetMonitorBlock(Block):
 class ExaUpdateMonitorBlock(Block):
     """Update a monitor's configuration."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -404,7 +403,7 @@ class ExaUpdateMonitorBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         monitor_id: str = SchemaField(
             description="The unique identifier for the monitor"
         )
@@ -414,7 +413,6 @@ class ExaUpdateMonitorBlock(Block):
         )
         updated_at: str = SchemaField(description="When the monitor was updated")
         success: str = SchemaField(description="Whether the update was successful")
-        error: str = SchemaField(description="Error message if the update failed")
 
     def __init__(self):
         super().__init__(
@@ -466,7 +464,7 @@ class ExaUpdateMonitorBlock(Block):
 class ExaDeleteMonitorBlock(Block):
     """Delete a monitor from a webset."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -475,10 +473,9 @@ class ExaDeleteMonitorBlock(Block):
             placeholder="monitor-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         monitor_id: str = SchemaField(description="The ID of the deleted monitor")
         success: str = SchemaField(description="Whether the deletion was successful")
-        error: str = SchemaField(description="Error message if the deletion failed")
 
     def __init__(self):
         super().__init__(
@@ -504,7 +501,7 @@ class ExaDeleteMonitorBlock(Block):
 class ExaListMonitorsBlock(Block):
     """List all monitors with pagination."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -525,7 +522,7 @@ class ExaListMonitorsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         monitors: list[dict] = SchemaField(description="List of monitors")
         monitor: dict = SchemaField(
             description="Individual monitor (yielded for each monitor)"
@@ -536,7 +533,6 @@ class ExaListMonitorsBlock(Block):
         next_cursor: Optional[str] = SchemaField(
             description="Cursor for the next page of results"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

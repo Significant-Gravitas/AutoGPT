@@ -18,7 +18,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -50,7 +51,7 @@ class WebsetTargetStatus(str, Enum):
 class ExaWaitForWebsetBlock(Block):
     """Wait for a webset to reach a specific status with progress tracking."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -87,7 +88,7 @@ class ExaWaitForWebsetBlock(Block):
             description="Include detailed progress information in output",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The webset ID that was monitored")
         final_status: str = SchemaField(description="The final status of the webset")
         elapsed_time: float = SchemaField(description="Total time elapsed in seconds")
@@ -99,7 +100,6 @@ class ExaWaitForWebsetBlock(Block):
             description="Detailed enrichment progress information"
         )
         timed_out: bool = SchemaField(description="Whether the operation timed out")
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -282,7 +282,7 @@ class ExaWaitForWebsetBlock(Block):
 class ExaWaitForSearchBlock(Block):
     """Wait for a specific webset search to complete with progress tracking."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -308,7 +308,7 @@ class ExaWaitForSearchBlock(Block):
             le=60,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         search_id: str = SchemaField(description="The search ID that was monitored")
         final_status: str = SchemaField(description="The final status of the search")
         items_found: int = SchemaField(
@@ -323,7 +323,6 @@ class ExaWaitForSearchBlock(Block):
             description="Information about expected results and confidence"
         )
         timed_out: bool = SchemaField(description="Whether the operation timed out")
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -434,7 +433,7 @@ class ExaWaitForSearchBlock(Block):
 class ExaWaitForEnrichmentBlock(Block):
     """Wait for a webset enrichment to complete with progress tracking."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -464,7 +463,7 @@ class ExaWaitForEnrichmentBlock(Block):
             description="Include sample enrichment results in output",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         enrichment_id: str = SchemaField(
             description="The enrichment ID that was monitored"
         )
@@ -482,7 +481,6 @@ class ExaWaitForEnrichmentBlock(Block):
             description="Sample of enriched data (if requested)"
         )
         timed_out: bool = SchemaField(description="Whether the operation timed out")
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(

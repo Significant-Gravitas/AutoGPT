@@ -23,7 +23,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -138,7 +139,7 @@ class WebsetItemModel(BaseModel):
 class ExaGetWebsetItemBlock(Block):
     """Get a specific item from a webset by its ID."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -151,7 +152,7 @@ class ExaGetWebsetItemBlock(Block):
             placeholder="item-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         item_id: str = SchemaField(description="The unique identifier for the item")
         url: str = SchemaField(description="The URL of the original source")
         title: str = SchemaField(description="The title of the item")
@@ -162,7 +163,6 @@ class ExaGetWebsetItemBlock(Block):
             description="When the item was added to the webset"
         )
         updated_at: str = SchemaField(description="When the item was last updated")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -197,7 +197,7 @@ class ExaGetWebsetItemBlock(Block):
 class ExaListWebsetItemsBlock(Block):
     """List items in a webset with pagination and optional filtering."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -229,7 +229,7 @@ class ExaListWebsetItemsBlock(Block):
             le=300,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         items: list[WebsetItemModel] = SchemaField(
             description="List of webset items",
         )
@@ -245,7 +245,6 @@ class ExaListWebsetItemsBlock(Block):
         next_cursor: Optional[str] = SchemaField(
             description="Cursor for the next page of results",
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -310,7 +309,7 @@ class ExaListWebsetItemsBlock(Block):
 class ExaDeleteWebsetItemBlock(Block):
     """Delete a specific item from a webset."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -323,10 +322,9 @@ class ExaDeleteWebsetItemBlock(Block):
             placeholder="item-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         item_id: str = SchemaField(description="The ID of the deleted item")
         success: str = SchemaField(description="Whether the deletion was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -353,7 +351,7 @@ class ExaDeleteWebsetItemBlock(Block):
 class ExaBulkWebsetItemsBlock(Block):
     """Get all items from a webset in a single operation (with size limits)."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -376,7 +374,7 @@ class ExaBulkWebsetItemsBlock(Block):
             description="Include full content for each item",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         items: list[WebsetItemModel] = SchemaField(
             description="All items from the webset"
         )
@@ -389,7 +387,6 @@ class ExaBulkWebsetItemsBlock(Block):
         truncated: bool = SchemaField(
             description="Whether results were truncated due to max_items limit"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -436,7 +433,7 @@ class ExaBulkWebsetItemsBlock(Block):
 class ExaWebsetItemsSummaryBlock(Block):
     """Get a summary of items in a webset without retrieving all data."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -451,7 +448,7 @@ class ExaWebsetItemsSummaryBlock(Block):
             le=10,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         total_items: int = SchemaField(
             description="Total number of items in the webset"
         )
@@ -462,7 +459,6 @@ class ExaWebsetItemsSummaryBlock(Block):
         enrichment_columns: list[str] = SchemaField(
             description="List of enrichment columns available"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -522,7 +518,7 @@ class ExaWebsetItemsSummaryBlock(Block):
 class ExaGetNewItemsBlock(Block):
     """Get items added to a webset since a specific cursor (incremental processing helper)."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -542,7 +538,7 @@ class ExaGetNewItemsBlock(Block):
             le=1000,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         new_items: list[WebsetItemModel] = SchemaField(
             description="Items added since the cursor"
         )
@@ -556,7 +552,6 @@ class ExaGetNewItemsBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more new items beyond max_items"
         )
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(

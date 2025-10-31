@@ -17,7 +17,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -93,7 +94,7 @@ class EnrichmentFormat(str, Enum):
 class ExaCreateEnrichmentBlock(Block):
     """Create a new enrichment to extract additional data from webset items."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -141,7 +142,7 @@ class ExaCreateEnrichmentBlock(Block):
             le=600,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         enrichment_id: str = SchemaField(
             description="The unique identifier for the created enrichment"
         )
@@ -163,7 +164,6 @@ class ExaCreateEnrichmentBlock(Block):
         completion_time: Optional[float] = SchemaField(
             description="Time taken to complete in seconds (if wait_for_completion was True)"
         )
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(
@@ -279,7 +279,7 @@ class ExaCreateEnrichmentBlock(Block):
 class ExaGetEnrichmentBlock(Block):
     """Get the status and details of a webset enrichment."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -292,7 +292,7 @@ class ExaGetEnrichmentBlock(Block):
             placeholder="enrichment-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         enrichment_id: str = SchemaField(
             description="The unique identifier for the enrichment"
         )
@@ -313,7 +313,6 @@ class ExaGetEnrichmentBlock(Block):
             description="When the enrichment was last updated"
         )
         metadata: dict = SchemaField(description="Metadata attached to the enrichment")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -351,7 +350,7 @@ class ExaGetEnrichmentBlock(Block):
 class ExaUpdateEnrichmentBlock(Block):
     """Update an existing enrichment configuration."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -380,7 +379,7 @@ class ExaUpdateEnrichmentBlock(Block):
             description="New metadata to attach to the enrichment",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         enrichment_id: str = SchemaField(
             description="The unique identifier for the enrichment"
         )
@@ -389,7 +388,6 @@ class ExaUpdateEnrichmentBlock(Block):
         description: str = SchemaField(description="Updated description")
         format: str = SchemaField(description="Updated format")
         success: str = SchemaField(description="Whether the update was successful")
-        error: str = SchemaField(description="Error message if the update failed")
 
     def __init__(self):
         super().__init__(
@@ -444,7 +442,7 @@ class ExaUpdateEnrichmentBlock(Block):
 class ExaDeleteEnrichmentBlock(Block):
     """Delete an enrichment from a webset."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -457,10 +455,9 @@ class ExaDeleteEnrichmentBlock(Block):
             placeholder="enrichment-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         enrichment_id: str = SchemaField(description="The ID of the deleted enrichment")
         success: str = SchemaField(description="Whether the deletion was successful")
-        error: str = SchemaField(description="Error message if the deletion failed")
 
     def __init__(self):
         super().__init__(
@@ -488,7 +485,7 @@ class ExaDeleteEnrichmentBlock(Block):
 class ExaCancelEnrichmentBlock(Block):
     """Cancel a running enrichment operation."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -501,7 +498,7 @@ class ExaCancelEnrichmentBlock(Block):
             placeholder="enrichment-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         enrichment_id: str = SchemaField(
             description="The ID of the canceled enrichment"
         )
@@ -512,7 +509,6 @@ class ExaCancelEnrichmentBlock(Block):
         success: str = SchemaField(
             description="Whether the cancellation was successful"
         )
-        error: str = SchemaField(description="Error message if the cancellation failed")
 
     def __init__(self):
         super().__init__(
