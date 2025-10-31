@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { environment } from "@/services/environment";
 
@@ -156,6 +157,28 @@ export function useTurnstile({
     (err: Error) => {
       if (shouldRender) {
         setError(err);
+
+        // Log to Sentry with error code if available
+        const errorCode = (err as any).errorCode;
+        Sentry.captureException(err, {
+          level: "error",
+          extra: {
+            errorCode,
+            action,
+            context: "Turnstile widget error",
+            message: err.message,
+          },
+          tags: {
+            turnstile_error: errorCode || "unknown",
+          },
+        });
+
+        console.error("[useTurnstile] Turnstile error:", {
+          message: err.message,
+          errorCode,
+          action,
+        });
+
         if (resetOnError) {
           setToken(null);
           setVerified(false);
@@ -163,7 +186,7 @@ export function useTurnstile({
         if (onError) onError(err);
       }
     },
-    [onError, shouldRender, resetOnError],
+    [onError, shouldRender, resetOnError, action],
   );
 
   return {
