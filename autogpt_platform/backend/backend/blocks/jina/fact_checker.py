@@ -8,7 +8,13 @@ from backend.blocks.jina._auth import (
     JinaCredentialsField,
     JinaCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
@@ -20,13 +26,13 @@ class Reference(TypedDict):
 
 
 class FactCheckerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         statement: str = SchemaField(
             description="The statement to check for factuality"
         )
         credentials: JinaCredentialsInput = JinaCredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         factuality: float = SchemaField(
             description="The factuality score of the statement"
         )
@@ -36,7 +42,6 @@ class FactCheckerBlock(Block):
             description="List of references supporting or contradicting the statement",
             default=[],
         )
-        error: str = SchemaField(description="Error message if the check fails")
 
     def __init__(self):
         super().__init__(

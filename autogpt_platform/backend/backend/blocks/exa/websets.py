@@ -32,7 +32,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -104,7 +105,7 @@ class Webset(BaseModel):
 
 
 class ExaCreateWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -232,7 +233,7 @@ class ExaCreateWebsetBlock(Block):
             le=600,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset: Webset = SchemaField(description="The created webset with full details")
         initial_item_count: Optional[int] = SchemaField(
             description="Number of items found in the initial search (only if wait_for_initial_results was True)"
@@ -513,7 +514,7 @@ class ExaCreateOrFindWebsetBlock(Block):
 
 
 class ExaUpdateWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -526,7 +527,7 @@ class ExaUpdateWebsetBlock(Block):
             description="Key-value pairs to associate with this webset (set to null to clear)",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
         external_id: Optional[str] = SchemaField(
@@ -574,7 +575,7 @@ class ExaUpdateWebsetBlock(Block):
 
 
 class ExaListWebsetsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -596,7 +597,7 @@ class ExaListWebsetsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         websets: list[Webset] = SchemaField(description="List of websets")
         has_more: bool = SchemaField(
             description="Whether there are more results to paginate through"
@@ -635,7 +636,7 @@ class ExaListWebsetsBlock(Block):
 
 
 class ExaGetWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -644,7 +645,7 @@ class ExaGetWebsetBlock(Block):
             placeholder="webset-id-or-external-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
         external_id: Optional[str] = SchemaField(
@@ -719,7 +720,7 @@ class ExaGetWebsetBlock(Block):
 
 
 class ExaDeleteWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -728,7 +729,7 @@ class ExaDeleteWebsetBlock(Block):
             placeholder="webset-id-or-external-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(
             description="The unique identifier for the deleted webset"
         )
@@ -768,7 +769,7 @@ class ExaDeleteWebsetBlock(Block):
 
 
 class ExaCancelWebsetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -777,7 +778,7 @@ class ExaCancelWebsetBlock(Block):
             placeholder="webset-id-or-external-id",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(
             description="The status of the webset after cancellation"

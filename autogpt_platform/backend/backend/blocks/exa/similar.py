@@ -8,7 +8,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -23,7 +24,7 @@ from .helpers import (
 
 
 class ExaFindSimilarBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -76,7 +77,7 @@ class ExaFindSimilarBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: list[ExaSearchResults] = SchemaField(
             description="List of similar documents with metadata and content"
         )

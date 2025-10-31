@@ -9,7 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -53,7 +54,7 @@ class ContentStatus(BaseModel):
 
 
 class ExaContentsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -103,7 +104,7 @@ class ExaContentsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: list[ExaSearchResults] = SchemaField(
             description="List of document contents with metadata"
         )

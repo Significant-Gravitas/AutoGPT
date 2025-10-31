@@ -9,7 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     MediaFileType,
     SchemaField,
@@ -52,7 +53,7 @@ class AnswerCitation(BaseModel):
 
 
 class ExaAnswerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -65,7 +66,7 @@ class ExaAnswerBlock(Block):
             default=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         answer: str = SchemaField(
             description="The generated answer based on search results"
         )

@@ -2,7 +2,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     Credentials,
     CredentialsMetaInput,
     SchemaField,
@@ -17,7 +18,7 @@ class WordPressCreatePostBlock(Block):
     Creates a new post on a WordPress.com site or Jetpack-enabled site and publishes it.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = wordpress.credentials_field()
         site: str = SchemaField(
             description="Site ID or domain (e.g., 'myblog.wordpress.com' or '123456789')"
@@ -49,7 +50,7 @@ class WordPressCreatePostBlock(Block):
             description="URLs of images to sideload and attach to the post", default=[]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         post_id: int = SchemaField(description="The ID of the created post")
         post_url: str = SchemaField(description="The full URL of the created post")
         short_url: str = SchemaField(description="The shortened wp.me URL")

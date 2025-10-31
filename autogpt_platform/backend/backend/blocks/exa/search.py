@@ -9,7 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -43,7 +44,7 @@ class ExaSearchCategories(Enum):
 
 
 class ExaSearchBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -101,7 +102,7 @@ class ExaSearchBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: list[ExaSearchResults] = SchemaField(
             description="List of search results"
         )

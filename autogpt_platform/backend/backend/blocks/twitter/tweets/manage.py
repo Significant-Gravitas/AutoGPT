@@ -35,7 +35,13 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -71,7 +77,7 @@ class TwitterPostTweetBlock(Block):
     Create a tweet on Twitter with the option to include one additional element such as a media, quote, or deep link.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "tweet.write", "users.read", "offline.access"]
         )
@@ -118,7 +124,7 @@ class TwitterPostTweetBlock(Block):
             default=TweetReplySettingsFilter(All_Users=True),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         tweet_id: str = SchemaField(description="ID of the created tweet")
         tweet_url: str = SchemaField(description="URL to the tweet")
         error: str = SchemaField(
@@ -240,7 +246,7 @@ class TwitterDeleteTweetBlock(Block):
     Deletes a tweet on Twitter using twitter Id
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "tweet.write", "users.read", "offline.access"]
         )
@@ -250,7 +256,7 @@ class TwitterDeleteTweetBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the tweet was successfully deleted"
         )
@@ -335,7 +341,7 @@ class TwitterSearchRecentTweetsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common Outputs that user commonly uses
         tweet_ids: list[str] = SchemaField(description="All Tweet IDs")
         tweet_texts: list[str] = SchemaField(description="All Tweet texts")
@@ -351,7 +357,6 @@ class TwitterSearchRecentTweetsBlock(Block):
         )
 
         # error
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

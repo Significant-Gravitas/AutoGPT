@@ -5,7 +5,7 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.data.block import Block, BlockCategory, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -101,7 +101,7 @@ class ImageGenModel(str, Enum):
 
 
 class AIImageGeneratorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]
         ] = CredentialsField(
@@ -135,9 +135,8 @@ class AIImageGeneratorBlock(Block):
             title="Image Style",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         image_url: str = SchemaField(description="URL of the generated image")
-        error: str = SchemaField(description="Error message if generation failed")
 
     def __init__(self):
         super().__init__(
