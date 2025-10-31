@@ -4784,18 +4784,6 @@
         "summary": "Create Session",
         "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
-        "security": [{ "HTTPBearer": [] }],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "User Id"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4806,16 +4794,9 @@
                 }
               }
             }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
           }
-        }
+        },
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearer": [] }]
       }
     },
     "/api/chat/sessions/{session_id}": {
@@ -4824,22 +4805,13 @@
         "summary": "Get Session",
         "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.",
         "operationId": "getV2GetSession",
-        "security": [{ "HTTPBearer": [] }],
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "session_id",
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
-          },
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "User Id"
-            }
           }
         ],
         "responses": {
@@ -4870,7 +4842,7 @@
         "summary": "Stream Chat",
         "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "getV2StreamChat",
-        "security": [{ "HTTPBearer": [] }],
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "session_id",
@@ -4887,15 +4859,6 @@
               "minLength": 1,
               "maxLength": 10000,
               "title": "Message"
-            }
-          },
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "User Id"
             }
           }
         ],
@@ -4921,22 +4884,13 @@
         "summary": "Session Assign User",
         "description": "Assign an authenticated user to a chat session.\n\nUsed (typically post-login) to claim an existing anonymous session as the current authenticated user.\n\nArgs:\n    session_id: The identifier for the (previously anonymous) session.\n    user_id: The authenticated user's ID to associate with the session.\n\nReturns:\n    dict: Status of the assignment.",
         "operationId": "patchV2SessionAssignUser",
-        "security": [{ "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "session_id",
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
-          },
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "User Id"
-            }
           }
         ],
         "responses": {
@@ -4972,39 +4926,21 @@
         "summary": "Health Check",
         "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation, assignment, and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
         "operationId": "getV2HealthCheck",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "User Id"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
                   "additionalProperties": true,
+                  "type": "object",
                   "title": "Response Getv2Healthcheck"
                 }
               }
             }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
           }
-        }
+        },
+        "security": [{ "HTTPBearer": [] }]
       }
     },
     "/health": {
