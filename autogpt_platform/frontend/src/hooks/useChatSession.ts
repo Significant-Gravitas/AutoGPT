@@ -95,7 +95,6 @@ export function useChatSession({
     refetch,
   } = useGetV2GetSession(
     sessionId || "",
-    undefined, // No params needed
     {
       query: {
         enabled: !!sessionId && !!urlSessionId, // Only fetch if session ID came from URL
@@ -158,7 +157,7 @@ export function useChatSession({
     async function createSession(): Promise<string> {
       try {
         setError(null);
-        const response = await createSessionMutation({});
+        const response = await createSessionMutation();
 
         // Type guard to ensure we have a successful response
         if (response.status !== 200) {
