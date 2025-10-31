@@ -1,8 +1,8 @@
 "use client";
 
+import FavoritesSection from "./components/FavoritesSection/FavoritesSection";
 import LibraryActionHeader from "./components/LibraryActionHeader/LibraryActionHeader";
 import LibraryAgentList from "./components/LibraryAgentList/LibraryAgentList";
-import FavoritesSection from "./components/FavoritesSection/FavoritesSection";
 import { LibraryPageStateProvider } from "./components/state-provider";
 
 /**
