@@ -16,7 +16,9 @@ export const ADMIN_PAGES = ["/admin"] as const;
 
 export function getCookieSettings(): Partial<CookieOptions> {
   return {
-    secure: process.env.NODE_ENV === "production",
+    // Use secure cookies only when behaving as CLOUD (served over HTTPS)
+    // Local/dev and Playwright runs use http://localhost, so cookies must be non-secure
+    secure: environment.isCloud(),
     sameSite: "lax",
     httpOnly: true,
   } as const;

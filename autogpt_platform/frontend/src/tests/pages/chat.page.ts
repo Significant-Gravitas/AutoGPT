@@ -3,8 +3,8 @@ import { Page, Locator } from "@playwright/test";
 export class ChatPage {
   constructor(private page: Page) {}
 
-  async goto() {
-    await this.page.goto("/chat");
+  async goto(sessionId?: string) {
+    await this.page.goto(sessionId ? `/chat?session=${sessionId}` : "/chat");
   }
 
   // Selectors

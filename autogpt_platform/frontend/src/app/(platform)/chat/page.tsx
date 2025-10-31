@@ -7,7 +7,6 @@ import { ChatLoadingState } from "./components/ChatLoadingState/ChatLoadingState
 
 function ChatPage() {
   const {
-    session,
     messages,
     isLoading,
     isCreating,
@@ -55,7 +54,7 @@ function ChatPage() {
         )}
 
         {/* Session Content */}
-        {session && !isLoading && !error && (
+        {sessionId && !isLoading && !error && (
           <ChatContainer
             sessionId={sessionId}
             initialMessages={messages}
