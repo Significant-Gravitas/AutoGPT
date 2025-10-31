@@ -93,17 +93,14 @@ export function useChatSession({
     isLoading: isLoadingSession,
     error: loadError,
     refetch,
-  } = useGetV2GetSession(
-    sessionId || "",
-    {
-      query: {
-        enabled: !!sessionId && !!urlSessionId, // Only fetch if session ID came from URL
-        staleTime: 30000, // Consider data fresh for 30 seconds
-        retry: 1,
-        // Error handling is done in useChatPage via the error state
-      },
+  } = useGetV2GetSession(sessionId || "", {
+    query: {
+      enabled: !!sessionId && !!urlSessionId, // Only fetch if session ID came from URL
+      staleTime: 30000, // Consider data fresh for 30 seconds
+      retry: 1,
+      // Error handling is done in useChatPage via the error state
     },
-  );
+  });
 
   // Claim session mutation (assign user to anonymous session)
   const { mutateAsync: claimSessionMutation } = usePatchV2SessionAssignUser();
