@@ -24,6 +24,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -207,6 +208,7 @@ class ExaCreateMonitorBlock(Block):
             input_schema=ExaCreateMonitorBlock.Input,
             output_schema=ExaCreateMonitorBlock.Output,
             test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "webset_id": "test-webset",
                 "cron_expression": "0 9 * * 1",
                 "behavior_type": MonitorBehaviorType.SEARCH,
@@ -214,38 +216,66 @@ class ExaCreateMonitorBlock(Block):
                 "search_count": 10,
             },
             test_output=[
-                ("monitor_id", str),
+                ("monitor_id", "monitor-123"),
                 ("webset_id", "test-webset"),
                 ("status", "enabled"),
                 ("behavior_type", "search"),
+                ("next_run_at", "2024-01-01T00:00:00"),
                 ("cron_expression", "0 9 * * 1"),
                 ("timezone", "Etc/UTC"),
-                ("created_at", str),
+                ("created_at", "2024-01-01T00:00:00"),
             ],
-            test_mock={
-                "requests": lambda: {
-                    "post": lambda url, **kwargs: type(
-                        "Response",
-                        (),
-                        {
-                            "json": lambda: {
-                                "id": "monitor-123",
-                                "status": "enabled",
-                                "websetId": "test-webset",
-                                "behavior": {"type": "search"},
-                                "cadence": {"cron": "0 9 * * 1", "timezone": "Etc/UTC"},
-                                "createdAt": "2024-01-01T00:00:00Z",
-                            }
-                        },
-                    )()
-                },
-            },
+            test_credentials=TEST_CREDENTIALS,
+            test_mock=self._create_test_mock(),
         )
+
+    @staticmethod
+    def _create_test_mock():
+        """Create test mocks for the AsyncExa SDK."""
+        from datetime import datetime
+        from unittest.mock import MagicMock
+
+        # Create mock SDK monitor object
+        mock_monitor = MagicMock()
+        mock_monitor.id = "monitor-123"
+        mock_monitor.status = MagicMock(value="enabled")
+        mock_monitor.webset_id = "test-webset"
+        mock_monitor.next_run_at = datetime.fromisoformat("2024-01-01T00:00:00")
+        mock_monitor.created_at = datetime.fromisoformat("2024-01-01T00:00:00")
+        mock_monitor.updated_at = datetime.fromisoformat("2024-01-01T00:00:00")
+        mock_monitor.metadata = {}
+        mock_monitor.last_run = None
+
+        # Mock behavior
+        mock_behavior = MagicMock()
+        mock_behavior.model_dump = MagicMock(
+            return_value={"type": "search", "config": {}}
+        )
+        mock_monitor.behavior = mock_behavior
+
+        # Mock cadence
+        mock_cadence = MagicMock()
+        mock_cadence.model_dump = MagicMock(
+            return_value={"cron": "0 9 * * 1", "timezone": "Etc/UTC"}
+        )
+        mock_monitor.cadence = mock_cadence
+
+        return {
+            "_get_client": lambda *args, **kwargs: MagicMock(
+                websets=MagicMock(
+                    monitors=MagicMock(create=lambda *args, **kwargs: mock_monitor)
+                )
+            )
+        }
+
+    def _get_client(self, api_key: str) -> AsyncExa:
+        """Get Exa client (separated for testing)."""
+        return AsyncExa(api_key=api_key)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+        aexa = self._get_client(credentials.api_key.get_secret_value())
 
         # Build the payload
         payload = {

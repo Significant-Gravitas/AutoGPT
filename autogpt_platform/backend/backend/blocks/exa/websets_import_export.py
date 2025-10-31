@@ -28,6 +28,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
+from ._test import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
 
 
 # Mirrored model for stability - don't use SDK types directly in block outputs
@@ -197,25 +198,68 @@ class ExaCreateImportBlock(Block):
             input_schema=ExaCreateImportBlock.Input,
             output_schema=ExaCreateImportBlock.Output,
             test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "title": "Test Import",
                 "csv_data": "name,url\nAcme,https://acme.com",
                 "entity_type": ImportEntityType.COMPANY,
                 "identifier_column": 0,
             },
             test_output=[
-                ("import_id", str),
-                ("status", str),
+                ("import_id", "import-123"),
+                ("status", "pending"),
                 ("title", "Test Import"),
-                ("count", int),
+                ("count", 1),
                 ("entity_type", "company"),
-                ("created_at", str),
+                ("upload_url", None),
+                ("upload_valid_until", None),
+                ("created_at", "2024-01-01T00:00:00"),
             ],
+            test_credentials=TEST_CREDENTIALS,
+            test_mock=self._create_test_mock(),
         )
+
+    @staticmethod
+    def _create_test_mock():
+        """Create test mocks for the AsyncExa SDK."""
+        from datetime import datetime
+        from unittest.mock import MagicMock
+
+        # Create mock SDK import object
+        mock_import = MagicMock()
+        mock_import.id = "import-123"
+        mock_import.status = MagicMock(value="pending")
+        mock_import.title = "Test Import"
+        mock_import.format = MagicMock(value="csv")
+        mock_import.count = 1
+        mock_import.upload_url = None
+        mock_import.upload_valid_until = None
+        mock_import.failed_reason = None
+        mock_import.failed_message = ""
+        mock_import.metadata = {}
+        mock_import.created_at = datetime.fromisoformat("2024-01-01T00:00:00")
+        mock_import.updated_at = datetime.fromisoformat("2024-01-01T00:00:00")
+
+        # Mock entity
+        mock_entity = MagicMock()
+        mock_entity.model_dump = MagicMock(return_value={"type": "company"})
+        mock_import.entity = mock_entity
+
+        return {
+            "_get_client": lambda *args, **kwargs: MagicMock(
+                websets=MagicMock(
+                    imports=MagicMock(create=lambda *args, **kwargs: mock_import)
+                )
+            )
+        }
+
+    def _get_client(self, api_key: str) -> AsyncExa:
+        """Get Exa client (separated for testing)."""
+        return AsyncExa(api_key=api_key)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+        aexa = self._get_client(credentials.api_key.get_secret_value())
 
         csv_reader = csv.reader(StringIO(input_data.csv_data))
         rows = list(csv_reader)
@@ -487,6 +531,7 @@ class ExaExportWebsetBlock(Block):
             input_schema=ExaExportWebsetBlock.Input,
             output_schema=ExaExportWebsetBlock.Output,
             test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "webset_id": "test-webset",
                 "format": ExportFormat.JSON,
                 "include_content": True,
@@ -495,18 +540,59 @@ class ExaExportWebsetBlock(Block):
             },
             test_output=[
                 ("export_data", str),
-                ("item_count", int),
-                ("total_items", int),
-                ("truncated", bool),
+                ("item_count", 2),
+                ("total_items", 2),
+                ("truncated", False),
                 ("format", "json"),
             ],
+            test_credentials=TEST_CREDENTIALS,
+            test_mock=self._create_test_mock(),
         )
+
+    @staticmethod
+    def _create_test_mock():
+        """Create test mocks for the AsyncExa SDK."""
+        from unittest.mock import MagicMock
+
+        # Create mock webset items
+        mock_item1 = MagicMock()
+        mock_item1.model_dump = MagicMock(
+            return_value={
+                "id": "item-1",
+                "url": "https://example.com",
+                "title": "Test Item 1",
+            }
+        )
+
+        mock_item2 = MagicMock()
+        mock_item2.model_dump = MagicMock(
+            return_value={
+                "id": "item-2",
+                "url": "https://example.org",
+                "title": "Test Item 2",
+            }
+        )
+
+        # Create mock iterator
+        mock_items = [mock_item1, mock_item2]
+
+        return {
+            "_get_client": lambda *args, **kwargs: MagicMock(
+                websets=MagicMock(
+                    items=MagicMock(list_all=lambda *args, **kwargs: iter(mock_items))
+                )
+            )
+        }
+
+    def _get_client(self, api_key: str) -> AsyncExa:
+        """Get Exa client (separated for testing)."""
+        return AsyncExa(api_key=api_key)
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Use AsyncExa SDK
-        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+        aexa = self._get_client(credentials.api_key.get_secret_value())
 
         try:
             all_items = []
