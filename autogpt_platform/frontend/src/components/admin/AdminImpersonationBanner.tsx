@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useAdminImpersonation } from "@/hooks/useAdminImpersonation";
 
 /**
