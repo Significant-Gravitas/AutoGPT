@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign } from "lucide-react";
+import { Users, DollarSign, UserCheck } from "lucide-react";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -15,6 +15,11 @@ const sidebarLinkGroups = [
         text: "User Spending",
         href: "/admin/spending",
         icon: <DollarSign className="h-6 w-6" />,
+      },
+      {
+        text: "User Impersonation",
+        href: "/admin/impersonation",
+        icon: <UserCheck className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",

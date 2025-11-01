@@ -3,6 +3,10 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
+import {
+  IMPERSONATION_HEADER_NAME,
+  IMPERSONATION_STORAGE_KEY,
+} from "@/lib/constants";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -1013,11 +1017,26 @@ export default class BackendAPI {
       url = buildUrlWithQuery(url, payload);
     }
 
+    // Prepare headers with admin impersonation support
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    // Add admin impersonation header if available in sessionStorage
+    try {
+      const impersonatedUserId = sessionStorage.getItem(
+        IMPERSONATION_STORAGE_KEY,
+      );
+      if (impersonatedUserId) {
+        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+      }
+    } catch (_error) {
+      // Ignore sessionStorage errors (e.g., when disabled)
+    }
+
     const response = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
       credentials: "include",
     });

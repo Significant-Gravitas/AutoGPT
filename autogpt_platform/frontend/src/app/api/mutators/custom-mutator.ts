@@ -6,6 +6,10 @@ import {
 
 import { transformDates } from "./date-transformer";
 import { environment } from "@/services/environment";
+import {
+  IMPERSONATION_HEADER_NAME,
+  IMPERSONATION_STORAGE_KEY,
+} from "@/lib/constants";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
@@ -53,6 +57,24 @@ export const customMutator = async <
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
 
+  // Add admin impersonation header if available in sessionStorage
+  if (environment.isClientSide()) {
+    try {
+      const impersonatedUserId = sessionStorage.getItem(
+        IMPERSONATION_STORAGE_KEY,
+      );
+      if (impersonatedUserId) {
+        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+      }
+    } catch (error) {
+      // Log sessionStorage errors for debugging (e.g., when storage is disabled)
+      console.error(
+        "Admin impersonation: Failed to access sessionStorage:",
+        error,
+      );
+    }
+  }
+
   const isFormData = data instanceof FormData;
   const contentType = isFormData ? "multipart/form-data" : "application/json";
 
@@ -94,13 +116,29 @@ export const customMutator = async <
   });
 
   if (!response.ok) {
-    const response_data = await getBody<any>(response);
+    let response_data: any = null;
+    try {
+      response_data = await getBody<any>(response);
+    } catch (error) {
+      console.warn("Failed to parse error response body:", error);
+      response_data = { error: "Failed to parse response" };
+    }
+
     const errorMessage =
-      response_data?.detail || response_data?.message || response.statusText;
+      response_data?.detail ||
+      response_data?.message ||
+      response.statusText ||
+      `HTTP ${response.status}`;
 
     console.error(
       `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
-      { status: response.status, url: fullUrl, data: response_data },
+      {
+        status: response.status,
+        method,
+        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+        errorMessage,
+        responseData: response_data || "No response data",
+      },
     );
 
     throw new ApiError(errorMessage, response.status, response_data);
