@@ -40,7 +40,7 @@ export const ArrayEditor = ({
             return (
               <div
                 key={element.key}
-                className="-ml-2 flex max-w-[400px] items-center gap-2"
+                className="-ml-2 flex max-w-[350px] items-center gap-2"
               >
                 <ArrayEditorContext.Provider
                   value={{
@@ -59,7 +59,7 @@ export const ArrayEditor = ({
                     <Button
                       type="button"
                       variant="secondary"
-                      className="relative top-5"
+                      className="relative top-5 min-w-0"
                       size="small"
                       onClick={element.onDropIndexClick(element.index)}
                     >

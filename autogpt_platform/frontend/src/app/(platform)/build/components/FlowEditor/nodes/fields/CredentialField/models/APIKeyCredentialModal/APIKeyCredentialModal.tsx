@@ -114,7 +114,7 @@ export function APIKeyCredentialsModal({ schema, provider }: Props) {
         onClick={() => setIsOpen(true)}
       >
         <KeyIcon />
-        <Text variant="body-medium" className="!text-white opacity-100">
+        <Text variant="small" className="!text-white opacity-100">
           Add API key
         </Text>
       </Button>

@@ -47,7 +47,9 @@ export const OAuthCredentialModal = ({
         disabled={loading}
       >
         {Icon && <Icon className="size-4" />}
-        Add OAuth2
+        <Text variant="small" className="!text-white opacity-100">
+          Add OAuth2
+        </Text>
       </Button>
       {error && (
         <div className="mt-2 flex w-fit items-center rounded-full bg-red-50 p-1 px-3 ring-1 ring-red-600">

@@ -2,9 +2,10 @@
 
 import React, { useState } from "react";
 import { CheckIcon, CopyIcon, DownloadIcon } from "@phosphor-icons/react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { OutputRenderer, OutputMetadata } from "../types";
 import { downloadOutputs } from "../utils/download";
+import { cn } from "@/lib/utils";
 
 interface OutputActionsProps {
   items: Array<{
@@ -12,9 +13,14 @@ interface OutputActionsProps {
     metadata?: OutputMetadata;
     renderer: OutputRenderer;
   }>;
+  isPrimary?: boolean;
+  className?: string;
 }
 
-export function OutputActions({ items }: OutputActionsProps) {
+export function OutputActions({
+  items,
+  isPrimary = false,
+}: OutputActionsProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopyAll = async () => {
@@ -61,25 +67,39 @@ export function OutputActions({ items }: OutputActionsProps) {
   return (
     <div className="flex items-center gap-3">
       <Button
-        variant="ghost"
-        size="icon"
+        variant={isPrimary ? "primary" : "ghost"}
+        size={isPrimary ? "small" : "icon"}
         onClick={handleCopyAll}
         aria-label="Copy all text outputs"
+        className={cn(isPrimary ? "min-w-0" : "")}
       >
         {copied ? (
           <CheckIcon className="size-4 text-green-600" />
         ) : (
-          <CopyIcon className="size-4 text-neutral-500" />
+          <CopyIcon
+            className={cn(
+              "size-4",
+              isPrimary ? "text-white" : "text-neutral-500",
+            )}
+          />
         )}
+        {isPrimary && <span>Copy All</span>}
       </Button>
 
       <Button
-        variant="ghost"
-        size="icon"
+        variant={isPrimary ? "primary" : "ghost"}
+        size={isPrimary ? "small" : "icon"}
         onClick={handleDownloadAll}
         aria-label="Download outputs"
+        className={cn(isPrimary ? "min-w-0" : "")}
       >
-        <DownloadIcon className="size-4 text-neutral-500" />
+        <DownloadIcon
+          className={cn(
+            "size-4",
+            isPrimary ? "text-white" : "text-neutral-500",
+          )}
+        />
+        {isPrimary && <span>Download All</span>}
       </Button>
     </div>
   );

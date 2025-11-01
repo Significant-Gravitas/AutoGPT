@@ -5,6 +5,7 @@ import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { usePasswordCredentialModal } from "./usePasswordCredentialModal";
 import { toDisplayName } from "../../helpers";
 import { UserIcon } from "@phosphor-icons/react";
+import { Text } from "@/components/atoms/Text/Text";
 
 type Props = {
   provider: string;
@@ -92,7 +93,9 @@ export function PasswordCredentialsModal({ provider }: Props) {
         onClick={() => setOpen(true)}
       >
         <UserIcon className="size-4" />
-        Add username & password
+        <Text variant="small" className="!text-white opacity-100">
+          Add username & password
+        </Text>
       </Button>
     </>
   );
