@@ -383,6 +383,11 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Parent-child execution tracking for nested agent graphs
+  parentGraphExecutionId String?
+  ParentExecution        AgentGraphExecution?  @relation("ParentChildExecution", fields: [parentGraphExecutionId], references: [id], onDelete: SetNull)
+  ChildExecutions        AgentGraphExecution[] @relation("ParentChildExecution")
+
   // Sharing fields
   isShared   Boolean   @default(false)
   shareToken String?   @unique
@@ -393,6 +398,7 @@ model AgentGraphExecution {
   @@index([createdAt])
   @@index([agentPresetId])
   @@index([shareToken])
+  @@index([parentGraphExecutionId])
 }
 
 // This model describes the execution of an AgentNode.

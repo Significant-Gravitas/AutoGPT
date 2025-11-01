@@ -1,8 +1,8 @@
 import { expect, Locator, Page } from "@playwright/test";
-import { BasePage } from "./base.page";
 import { Block as APIBlock } from "../../lib/autogpt-server-api/types";
 import { beautifyString } from "../../lib/utils";
 import { isVisible } from "../utils/assertion";
+import { BasePage } from "./base.page";
 
 export interface Block {
   id: string;
@@ -215,6 +215,41 @@ export class BuildPage extends BasePage {
     return selector;
   }
 
+  private async moveBlockToViewportPosition(
+    blockSelector: string,
+    options: { xRatio?: number; yRatio?: number } = {},
+  ): Promise<void> {
+    const { xRatio = 0.5, yRatio = 0.5 } = options;
+    const blockLocator = this.page.locator(blockSelector).first();
+
+    await blockLocator.waitFor({ state: "visible" });
+
+    const boundingBox = await blockLocator.boundingBox();
+    const viewport = this.page.viewportSize();
+
+    if (!boundingBox || !viewport) {
+      return;
+    }
+
+    const currentX = boundingBox.x + boundingBox.width / 2;
+    const currentY = boundingBox.y + boundingBox.height / 2;
+
+    const targetX = viewport.width * xRatio;
+    const targetY = viewport.height * yRatio;
+
+    const distance = Math.hypot(targetX - currentX, targetY - currentY);
+
+    if (distance < 5) {
+      return;
+    }
+
+    await this.page.mouse.move(currentX, currentY);
+    await this.page.mouse.down();
+    await this.page.mouse.move(targetX, targetY, { steps: 15 });
+    await this.page.mouse.up();
+    await this.page.waitForTimeout(200);
+  }
+
   async getBlockById(blockId: string, dataId?: string): Promise<Locator> {
     console.log(`getting block ${blockId} with dataId ${dataId}`);
     return this.page.locator(await this._buildBlockSelector(blockId, dataId));
@@ -317,7 +352,11 @@ export class BuildPage extends BasePage {
       startBlockId,
       startDataId,
     );
+
     const endBlockBase = await this._buildBlockSelector(endBlockId, endDataId);
+
+    await this.moveBlockToViewportPosition(startBlockBase, { xRatio: 0.35 });
+    await this.moveBlockToViewportPosition(endBlockBase, { xRatio: 0.65 });
 
     const startBlockOutputSelector = `${startBlockBase} [data-testid="output-handle-${startBlockOutputName.toLowerCase()}"]`;
     const endBlockInputSelector = `${endBlockBase} [data-testid="input-handle-${endBlockInputName.toLowerCase()}"]`;
@@ -325,9 +364,16 @@ export class BuildPage extends BasePage {
     console.log("Start block selector:", startBlockOutputSelector);
     console.log("End block selector:", endBlockInputSelector);
 
-    await this.page
-      .locator(startBlockOutputSelector)
-      .dragTo(this.page.locator(endBlockInputSelector));
+    const startElement = this.page.locator(startBlockOutputSelector);
+    const endElement = this.page.locator(endBlockInputSelector);
+
+    await startElement.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(200);
+
+    await endElement.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(200);
+
+    await startElement.dragTo(endElement);
   }
 
   async isLoaded(): Promise<boolean> {

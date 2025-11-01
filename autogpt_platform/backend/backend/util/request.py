@@ -175,10 +175,15 @@ async def validate_url(
                     f"for hostname {ascii_hostname} is not allowed."
                 )
 
+    # Reconstruct the netloc with IDNA-encoded hostname and preserve port
+    netloc = ascii_hostname
+    if parsed.port:
+        netloc = f"{ascii_hostname}:{parsed.port}"
+
     return (
         URL(
             parsed.scheme,
-            ascii_hostname,
+            netloc,
             quote(parsed.path, safe="/%:@"),
             parsed.params,
             parsed.query,
@@ -420,6 +425,9 @@ class Requests:
             req_headers["Host"] = hostname
 
         # Override data if files are provided
+        # Set max_field_size to handle servers with large headers (e.g., long CSP headers)
+        # Default is 8190 bytes, we increase to 16KB to accommodate legitimate large headers
+        session_kwargs["max_field_size"] = 16384
 
         async with aiohttp.ClientSession(**session_kwargs) as session:
             # Perform the request with redirects disabled for manual handling

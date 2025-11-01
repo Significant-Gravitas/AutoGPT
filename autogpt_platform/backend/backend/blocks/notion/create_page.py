@@ -4,7 +4,13 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import model_validator
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import OAuth2Credentials, SchemaField
 
 from ._api import NotionClient
@@ -20,7 +26,7 @@ from ._auth import (
 class NotionCreatePageBlock(Block):
     """Create a new page in Notion with content."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: NotionCredentialsInput = NotionCredentialsField()
         parent_page_id: Optional[str] = SchemaField(
             description="Parent page ID to create the page under. Either this OR parent_database_id is required.",
@@ -58,10 +64,9 @@ class NotionCreatePageBlock(Block):
                 )
             return self
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         page_id: str = SchemaField(description="ID of the created page.")
         page_url: str = SchemaField(description="URL of the created page.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(
