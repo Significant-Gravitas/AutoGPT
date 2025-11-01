@@ -1,9 +1,12 @@
 import { ArrayFieldTemplateItemType, RJSFSchema } from "@rjsf/utils";
-import { generateHandleId, HandleIdType } from "../../handlers/helpers";
 import { ArrayEditorContext } from "./ArrayEditorContext";
 import { Button } from "@/components/atoms/Button/Button";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
+import {
+  generateHandleId,
+  HandleIdType,
+} from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 
 export interface ArrayEditorProps {
   items?: ArrayFieldTemplateItemType<any, RJSFSchema, any>[];
@@ -15,7 +18,7 @@ export interface ArrayEditorProps {
   id: string;
 }
 
-export const ArrayEditor = ({
+export const ArrayEditorWidget = ({
   items,
   nodeId,
   canAdd,

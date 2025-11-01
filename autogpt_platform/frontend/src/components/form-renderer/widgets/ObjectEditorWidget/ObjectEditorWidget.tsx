@@ -5,13 +5,13 @@ import { Plus, X } from "lucide-react";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
-import NodeHandle from "../../handlers/NodeHandle";
+import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import {
   generateHandleId,
   HandleIdType,
   parseKeyValueHandleId,
-} from "../../handlers/helpers";
+} from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 
 export interface ObjectEditorProps {
   id: string;
@@ -90,6 +90,10 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
       }
     });
 
+    // Note: ObjectEditor is always used in node context, so showHandles is always true
+    // If you need to use it in dialog context, you'll need to pass showHandles via props
+    const showHandles = true;
+
     return (
       <div
         ref={ref}
@@ -107,11 +111,13 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
           return (
             <div key={idx} className="flex flex-col gap-2">
               <div className="-ml-2 flex items-center gap-1">
-                <NodeHandle
-                  isConnected={isDynamicPropertyConnected}
-                  handleId={handleId}
-                  side="left"
-                />
+                {showHandles && (
+                  <NodeHandle
+                    isConnected={isDynamicPropertyConnected}
+                    handleId={handleId}
+                    side="left"
+                  />
+                )}
                 <Text variant="small" className="!text-gray-500">
                   #{key.trim() === "" ? "" : key}
                 </Text>

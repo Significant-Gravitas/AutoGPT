@@ -2,7 +2,7 @@ import { beautifyString, cn } from "@/lib/utils";
 import { CustomNodeData } from "./CustomNode";
 import { Text } from "@/components/atoms/Text/Text";
 import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "../../processors/input-schema-pre-processor";
+import { preprocessInputSchema } from "../../../../../../../components/form-renderer/utils/input-schema-pre-processor";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { OutputHandler } from "../OutputHandler";

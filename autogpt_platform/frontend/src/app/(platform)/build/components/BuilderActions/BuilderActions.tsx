@@ -1,4 +1,4 @@
-import { RunGraph } from "./components/RunGraph";
+import { RunGraph } from "./components/RunGraph/RunGraph";
 
 export const BuilderActions = () => {
   return (

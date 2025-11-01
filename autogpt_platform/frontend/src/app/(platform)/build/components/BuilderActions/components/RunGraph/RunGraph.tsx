@@ -5,9 +5,11 @@ import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { StopIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
 
 export const RunGraph = () => {
-  const { runGraph, isSaving } = useRunGraph();
+  const { runGraph, isSaving, openRunInputDialog, setOpenRunInputDialog } =
+    useRunGraph();
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
   );
@@ -27,6 +29,10 @@ export const RunGraph = () => {
         <StopIcon className="mr-1 size-5" />
       )}
       {isGraphRunning || isSaving ? "Stop Agent" : "Run Agent"}
+      <RunInputDialog
+        isOpen={openRunInputDialog}
+        setIsOpen={setOpenRunInputDialog}
+      />
     </Button>
   );
 };

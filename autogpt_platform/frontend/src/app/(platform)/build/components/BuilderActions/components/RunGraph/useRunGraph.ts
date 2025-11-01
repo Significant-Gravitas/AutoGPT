@@ -5,6 +5,7 @@ import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { GraphExecutionMeta } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/use-agent-runs";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
+import { useState } from "react";
 
 export const useRunGraph = () => {
   const { onSubmit: onSaveGraph, isLoading: isSaving } = useNewSaveControl({
@@ -14,6 +15,12 @@ export const useRunGraph = () => {
   const setIsGraphRunning = useGraphStore(
     useShallow((state) => state.setIsGraphRunning),
   );
+  const hasInputs = useGraphStore(useShallow((state) => state.hasInputs));
+  const hasCredentials = useGraphStore(
+    useShallow((state) => state.hasCredentials),
+  );
+  const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
+
   const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
@@ -41,22 +48,24 @@ export const useRunGraph = () => {
   });
 
   const runGraph = async () => {
-    setIsGraphRunning(true);
     await onSaveGraph(undefined);
 
-    // Todo : We need to save graph which has inputs and credentials inputs
-    await executeGraph({
-      graphId: flowID ?? "",
-      graphVersion: flowVersion || null,
-      data: {
-        inputs: {},
-        credentials_inputs: {},
-      },
-    });
+    if (hasInputs() || hasCredentials()) {
+      setOpenRunInputDialog(true);
+    } else {
+      setIsGraphRunning(true);
+      await executeGraph({
+        graphId: flowID ?? "",
+        graphVersion: flowVersion || null,
+        data: { inputs: {}, credentials_inputs: {} },
+      });
+    }
   };
 
   return {
     runGraph,
     isSaving,
+    openRunInputDialog,
+    setOpenRunInputDialog,
   };
 };
