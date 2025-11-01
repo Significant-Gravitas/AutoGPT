@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
 
@@ -41,7 +41,7 @@ function getInitialImpersonationState(): string | null {
  * Triggers a full page refresh to ensure all data is updated correctly.
  */
 export function useAdminImpersonation(): AdminImpersonationHook {
-  const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
+  const [impersonatedUserId] = useState<string | null>(
     getInitialImpersonationState,
   );
 
