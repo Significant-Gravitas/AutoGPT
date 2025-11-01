@@ -79,7 +79,9 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     onboarding = await get_user_onboarding(user_id)
     if data.completedSteps is not None:
-        update["completedSteps"] = list(set(data.completedSteps + onboarding.completedSteps))
+        update["completedSteps"] = list(
+            set(data.completedSteps + onboarding.completedSteps)
+        )
         for step in (
             OnboardingStep.AGENT_NEW_RUN,
             OnboardingStep.MARKETPLACE_VISIT,
@@ -96,7 +98,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         ):
             if step in data.completedSteps:
                 await reward_user(user_id, step, onboarding)
-    if data.walletShown == True:
+    if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
         update["notified"] = list(set(data.notified + onboarding.notified))
