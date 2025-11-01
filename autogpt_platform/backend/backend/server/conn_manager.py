@@ -1,4 +1,4 @@
-from typing import Dict, Set
+from typing import Any, Dict, Set
 
 from fastapi import WebSocket
 
@@ -19,15 +19,24 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
         self.subscriptions: Dict[str, Set[WebSocket]] = {}
+        self.user_connections: Dict[str, Set[WebSocket]] = {}
 
-    async def connect_socket(self, websocket: WebSocket):
+    async def connect_socket(self, websocket: WebSocket, *, user_id: str):
         await websocket.accept()
         self.active_connections.add(websocket)
+        if user_id not in self.user_connections:
+            self.user_connections[user_id] = set()
+        self.user_connections[user_id].add(websocket)
 
-    def disconnect_socket(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+    def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
+        self.active_connections.discard(websocket)
         for subscribers in self.subscriptions.values():
             subscribers.discard(websocket)
+        user_conns = self.user_connections.get(user_id)
+        if user_conns is not None:
+            user_conns.discard(websocket)
+            if not user_conns:
+                del self.user_connections[user_id]
 
     async def subscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
@@ -91,6 +100,21 @@ class ConnectionManager:
                 n_sent += 1
 
         return n_sent
+
+    async def send_notification(
+        self, *, user_id: str, payload: dict[str, Any] | list[Any] | str
+    ) -> int:
+        """Send a notification to all websocket connections belonging to a user."""
+        message = WSMessage(
+            method=WSMethod.NOTIFICATION,
+            data=payload,
+        ).model_dump_json()
+
+        connections = self.user_connections.get(user_id, set())
+        for connection in connections:
+            await connection.send_text(message)
+
+        return len(connections)
 
     async def _subscribe(self, channel_key: str, websocket: WebSocket) -> str:
         if channel_key not in self.subscriptions:

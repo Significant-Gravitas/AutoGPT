@@ -228,7 +228,7 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect_socket(websocket)
+    await manager.connect_socket(websocket, user_id=user_id)
 
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
@@ -301,7 +301,7 @@ async def websocket_router(
                 )
 
     except WebSocketDisconnect:
-        manager.disconnect_socket(websocket)
+        manager.disconnect_socket(websocket, user_id=user_id)
         logger.debug("WebSocket client disconnected")
     finally:
         update_websocket_connections(user_id, -1)

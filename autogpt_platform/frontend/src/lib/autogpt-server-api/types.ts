@@ -976,6 +976,20 @@ export interface UserOnboarding {
   agentRuns: number;
 }
 
+export interface OnboardingNotificationPayload {
+  type: "onboarding";
+  event: "trigger_webhook_completed";
+  step: OnboardingStep;
+}
+
+export type WebSocketNotification =
+  | OnboardingNotificationPayload
+  | {
+      type: string;
+      event?: string;
+      [key: string]: unknown;
+    };
+
 /* *** UTILITIES *** */
 
 /** Use branded types for IDs -> deny mixing IDs between different object classes */
