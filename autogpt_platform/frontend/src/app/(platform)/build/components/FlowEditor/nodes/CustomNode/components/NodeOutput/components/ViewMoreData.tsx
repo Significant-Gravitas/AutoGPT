@@ -4,10 +4,10 @@ import { Text } from "@/components/atoms/Text/Text";
 import { beautifyString, cn } from "@/lib/utils";
 import { ContentRenderer } from "./ContentRenderer";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
-import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
 import { NodeDataViewer } from "./NodeDataViewer/NodeDataViewer";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
 
 export const ViewMoreData = ({
   outputData,
