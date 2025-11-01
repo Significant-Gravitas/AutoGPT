@@ -66,6 +66,7 @@ import type {
   UserOnboarding,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
+  WebSocketNotification,
 } from "./types";
 import { environment } from "@/services/environment";
 
@@ -1323,6 +1324,7 @@ type WebsocketMessageTypeMap = {
   subscribe_graph_executions: { graph_id: GraphID };
   graph_execution_event: GraphExecution;
   node_execution_event: NodeExecutionResult;
+  notification: WebSocketNotification;
   heartbeat: "ping" | "pong";
 };
 
