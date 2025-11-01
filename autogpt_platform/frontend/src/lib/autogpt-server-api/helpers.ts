@@ -322,20 +322,8 @@ export async function makeAuthenticatedFileUpload(
 ): Promise<string> {
   const token = await getServerAuthToken();
 
-  const headers: Record<string, string> = {};
-  if (token && token !== "no-token-found") {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  // Forward admin impersonation header if present
-  if (originalRequest) {
-    const impersonationHeader = originalRequest.headers.get(
-      IMPERSONATION_HEADER_NAME,
-    );
-    if (impersonationHeader) {
-      headers[IMPERSONATION_HEADER_NAME] = impersonationHeader;
-    }
-  }
+  // Reuse existing header creation logic but exclude Content-Type for FormData
+  const headers = createRequestHeaders(token, false, "", originalRequest);
 
   // Don't set Content-Type for FormData - let the browser set it with boundary
   const response = await fetch(url, {

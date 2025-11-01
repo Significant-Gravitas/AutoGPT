@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { X } from "@phosphor-icons/react";
 import { useAdminImpersonation } from "@/hooks/useAdminImpersonation";
 
 /**
