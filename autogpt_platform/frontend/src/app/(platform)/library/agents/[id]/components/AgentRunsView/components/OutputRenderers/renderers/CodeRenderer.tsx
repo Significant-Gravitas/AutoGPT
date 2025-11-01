@@ -82,7 +82,7 @@ function renderCode(
           {language}
         </div>
       )}
-      <pre className="overflow-x-auto rounded-md bg-muted p-3">
+      <pre className="overflow-x-auto rounded-xlarge bg-muted p-3">
         <code className="font-mono text-sm">{codeValue}</code>
       </pre>
     </div>

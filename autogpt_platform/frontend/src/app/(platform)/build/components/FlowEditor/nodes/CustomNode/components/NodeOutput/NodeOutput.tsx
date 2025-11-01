@@ -52,22 +52,10 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
         <>
           <div className="flex max-w-[350px] flex-col gap-4">
             <div className="space-y-2">
-              <div className="w-fit rounded-xlarge border border-purple-400 bg-purple-100 p-1 px-4">
-                <Text
-                  variant="small-medium"
-                  className="flex items-center gap-1 !text-xs text-purple-700"
-                >
-                  Input
-                  <CaretLineDownIcon size={12} weight="bold" className="ml-1" />
-                </Text>
-              </div>
-              <div
-                className={cn(
-                  "rounded-xlarge border border-transparent from-zinc-100 to-white p-3 text-slate-700 [background-clip:padding-box,border-box] [background-image:linear-gradient(to_bottom_right,rgb(244_244_245),white),linear-gradient(to_bottom_right,rgb(228_228_231),rgb(250_250_250))] [background-origin:padding-box,border-box]",
-                )}
-              >
-                <ContentRenderer value={inputData} truncateLongData={true} />
-              </div>
+              <Text variant="small-medium">Input</Text>
+
+              <ContentRenderer value={inputData} />
+
               <div className="mt-1 flex justify-end gap-1">
                 <NodeDataViewer
                   data={inputData}
@@ -92,7 +80,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                 </Button>
               </div>
             </div>
-            <Separator />
+
             {Object.entries(outputData)
               .slice(0, 2)
               .map(([key, value]) => (
@@ -117,18 +105,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     </Text>
                     <div className="relative">
                       {value.map((item, index) => (
-                        <div
-                          key={index}
-                          className={cn(
-                            "rounded-xlarge border border-transparent from-zinc-100 to-white p-3 text-slate-700 [background-clip:padding-box,border-box] [background-image:linear-gradient(to_bottom_right,rgb(244_244_245),white),linear-gradient(to_bottom_right,rgb(228_228_231),rgb(250_250_250))] [background-origin:padding-box,border-box]",
-                            index < value.length - 1 && "mb-2",
-                          )}
-                        >
-                          <ContentRenderer
-                            value={item}
-                            truncateLongData={true}
-                          />
-                        </div>
+                        <ContentRenderer key={index} value={item} />
                       ))}
 
                       <div className="mt-1 flex justify-end gap-1">
@@ -160,7 +137,6 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
               ))}
           </div>
 
-          {/* TODO: Currently this button is not working, need to make it working */}
           {Object.keys(outputData).length > 2 && (
             <ViewMoreData outputData={outputData} execId={executionResultId} />
           )}

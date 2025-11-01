@@ -106,7 +106,7 @@ export const ViewMoreData = ({
                             index < value.length - 1 && "mb-2",
                           )}
                         >
-                          <ContentRenderer value={item} isViewMoreData={true} />
+                          <ContentRenderer value={item} />
                         </div>
                       ))}
 
