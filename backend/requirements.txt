@@ -1,0 +1,20 @@
+# FastAPI y servidor
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Base de datos
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+
+# Validación de datos
+pydantic==2.5.3
+pydantic[email]==2.5.3
+
+# Variables de entorno
+python-dotenv==1.0.0
+
+# Cliente de Anthropic Claude para el chatbot
+anthropic==0.18.1
+
+# Utilidades
+python-multipart==0.0.6

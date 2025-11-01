@@ -177,3 +177,13 @@ arena/TestAgent.json
 # evo.ninja
 autogpts/evo.ninja/*
 !autogpts/evo.ninja/setup
+
+# NEUS MVP specific
+.env.local
+backend/.env
+frontend/.env
+node_modules/
+dist/
+build/
+*.pyc
+Thumbs.db
