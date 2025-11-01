@@ -18,6 +18,22 @@ type AdminImpersonationHook = AdminImpersonationState &
   AdminImpersonationActions;
 
 /**
+ * Get the initial impersonation state from sessionStorage synchronously to prevent UI flicker.
+ */
+function getInitialImpersonationState(): string | null {
+  if (!environment.isClientSide()) {
+    return null;
+  }
+
+  try {
+    return sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
+  } catch (error) {
+    console.error("Failed to read initial impersonation state:", error);
+    return null;
+  }
+}
+
+/**
  * Hook for managing admin user impersonation state.
  *
  * Provides functions to start/stop impersonating users and automatically
@@ -26,14 +42,15 @@ type AdminImpersonationHook = AdminImpersonationState &
  */
 export function useAdminImpersonation(): AdminImpersonationHook {
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
-    null,
+    getInitialImpersonationState,
   );
 
   const isImpersonating = Boolean(impersonatedUserId);
 
   const startImpersonating = useCallback((userId: string) => {
     if (!userId.trim()) {
-      throw new Error("User ID is required for impersonation");
+      console.error("Failed to start impersonation: User ID is required");
+      return;
     }
 
     if (environment.isClientSide()) {
@@ -53,20 +70,6 @@ export function useAdminImpersonation(): AdminImpersonationHook {
         window.location.reload();
       } catch (error) {
         console.error("Failed to stop impersonation:", error);
-      }
-    }
-  }, []);
-
-  // Restore impersonation state from sessionStorage on mount
-  useEffect(() => {
-    if (environment.isClientSide()) {
-      try {
-        const storedUserId = sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
-        if (storedUserId) {
-          setImpersonatedUserId(storedUserId);
-        }
-      } catch (error) {
-        console.error("Failed to restore impersonation state:", error);
       }
     }
   }, []);
