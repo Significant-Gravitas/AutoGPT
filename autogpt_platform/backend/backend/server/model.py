@@ -14,6 +14,7 @@ class WSMethod(enum.Enum):
     UNSUBSCRIBE = "unsubscribe"
     GRAPH_EXECUTION_EVENT = "graph_execution_event"
     NODE_EXECUTION_EVENT = "node_execution_event"
+    NOTIFICATION = "notification"
     ERROR = "error"
     HEARTBEAT = "heartbeat"
 
