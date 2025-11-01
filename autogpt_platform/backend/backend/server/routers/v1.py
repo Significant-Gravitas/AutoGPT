@@ -52,6 +52,7 @@ from backend.data.onboarding import (
     get_recommended_agents,
     get_user_onboarding,
     onboarding_enabled,
+    reset_user_onboarding,
     update_user_onboarding,
 )
 from backend.data.user import (
@@ -257,6 +258,16 @@ async def get_onboarding_agents(
 )
 async def is_onboarding_enabled():
     return await onboarding_enabled()
+
+
+@v1_router.post(
+    "/onboarding/reset",
+    summary="Reset onboarding progress",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
+    return await reset_user_onboarding(user_id)
 
 
 ########################################################
