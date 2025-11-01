@@ -215,7 +215,7 @@ export function Wallet() {
   useEffect(() => {
     if (typeof credits !== "number") return;
     // Open once for first-time users
-    if (state) {
+    if (state && state.walletShown === false) {
       requestAnimationFrame(() => setWalletOpen(true));
       // Mark as shown so it won't reopen on every reload
       updateState({ walletShown: true });
