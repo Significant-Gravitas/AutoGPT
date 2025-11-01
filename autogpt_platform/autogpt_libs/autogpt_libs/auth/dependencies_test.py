@@ -4,9 +4,10 @@ Tests the full authentication flow from HTTP requests to user validation.
 """
 
 import os
+from unittest.mock import Mock
 
 import pytest
-from fastapi import FastAPI, HTTPException, Security
+from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
@@ -123,29 +124,35 @@ class TestAuthDependencies:
 
     async def test_get_user_id_with_valid_payload(self, mocker: MockerFixture):
         """Test get_user_id extracts user ID correctly."""
+        request = Mock(spec=Request)
+        request.headers = {}
         jwt_payload = {"sub": "user-id-xyz", "role": "user"}
 
         mocker.patch(
             "autogpt_libs.auth.dependencies.get_jwt_payload", return_value=jwt_payload
         )
-        user_id = await get_user_id(jwt_payload)
+        user_id = await get_user_id(request, jwt_payload)
         assert user_id == "user-id-xyz"
 
     async def test_get_user_id_missing_sub(self):
         """Test get_user_id with missing user ID."""
+        request = Mock(spec=Request)
+        request.headers = {}
         jwt_payload = {"role": "user"}
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_user_id(jwt_payload)
+            await get_user_id(request, jwt_payload)
         assert exc_info.value.status_code == 401
         assert "User ID not found" in exc_info.value.detail
 
     async def test_get_user_id_none_sub(self):
         """Test get_user_id with None user ID."""
+        request = Mock(spec=Request)
+        request.headers = {}
         jwt_payload = {"sub": None, "role": "user"}
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_user_id(jwt_payload)
+            await get_user_id(request, jwt_payload)
         assert exc_info.value.status_code == 401
 
 
