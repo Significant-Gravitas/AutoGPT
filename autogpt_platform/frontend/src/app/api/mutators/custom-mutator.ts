@@ -67,7 +67,6 @@ export const customMutator = async <
         headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
       }
     } catch (error) {
-      // Log sessionStorage errors for debugging (e.g., when storage is disabled)
       console.error(
         "Admin impersonation: Failed to access sessionStorage:",
         error,
@@ -116,17 +115,17 @@ export const customMutator = async <
   });
 
   if (!response.ok) {
-    let response_data: any = null;
+    let responseData: any = null;
     try {
-      response_data = await getBody<any>(response);
+      responseData = await getBody<any>(response);
     } catch (error) {
       console.warn("Failed to parse error response body:", error);
-      response_data = { error: "Failed to parse response" };
+      responseData = { error: "Failed to parse response" };
     }
 
     const errorMessage =
-      response_data?.detail ||
-      response_data?.message ||
+      responseData?.detail ||
+      responseData?.message ||
       response.statusText ||
       `HTTP ${response.status}`;
 
@@ -137,17 +136,17 @@ export const customMutator = async <
         method,
         url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
         errorMessage,
-        responseData: response_data || "No response data",
+        responseData: responseData || "No response data",
       },
     );
 
-    throw new ApiError(errorMessage, response.status, response_data);
+    throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const response_data = await getBody<T["data"]>(response);
+  const responseData = await getBody<T["data"]>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(response_data);
+  const transformedData = transformDates(responseData);
 
   return {
     status: response.status,
