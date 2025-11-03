@@ -57,7 +57,6 @@ export const customMutator = async <
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
 
-  // Add admin impersonation header if available in sessionStorage
   if (environment.isClientSide()) {
     try {
       const impersonatedUserId = sessionStorage.getItem(

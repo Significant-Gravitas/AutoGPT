@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "@phosphor-icons/react";
-import { useAdminImpersonation } from "@/hooks/useAdminImpersonation";
+import { useAdminImpersonation } from "./useAdminImpersonation";
 
 export function AdminImpersonationBanner() {
   const { isImpersonating, impersonatedUserId, stopImpersonating } =

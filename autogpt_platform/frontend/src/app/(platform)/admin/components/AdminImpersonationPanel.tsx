@@ -6,7 +6,7 @@ import { Card } from "@/components/atoms/Card/Card";
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
-import { useAdminImpersonation } from "@/hooks/useAdminImpersonation";
+import { useAdminImpersonation } from "./useAdminImpersonation";
 import { useGetV1GetUserCredits } from "@/app/api/__generated__/endpoints/credits/credits";
 
 export function AdminImpersonationPanel() {

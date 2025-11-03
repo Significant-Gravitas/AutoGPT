@@ -1022,7 +1022,6 @@ export default class BackendAPI {
       "Content-Type": "application/json",
     };
 
-    // Add admin impersonation header if available in sessionStorage (client-side only)
     if (environment.isClientSide()) {
       try {
         const impersonatedUserId = sessionStorage.getItem(
@@ -1032,7 +1031,10 @@ export default class BackendAPI {
           headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
         }
       } catch (_error) {
-        // Ignore sessionStorage errors (e.g., when disabled)
+        console.error(
+          "Admin impersonation: Failed to access sessionStorage:",
+          _error,
+        );
       }
     }
 
