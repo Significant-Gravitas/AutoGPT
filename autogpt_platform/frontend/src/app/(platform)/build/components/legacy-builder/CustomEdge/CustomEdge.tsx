@@ -195,7 +195,7 @@ export function CustomEdge({
           className="edge-label-renderer"
         >
           <button
-            className={"edge-label-button transition-opacity duration-200 hover:opacity-100"}
+            className="edge-label-button opacity-0 transition-opacity duration-200 hover:opacity-100"
             onClick={onEdgeRemoveClick}
           >
             <X className="size-4" />

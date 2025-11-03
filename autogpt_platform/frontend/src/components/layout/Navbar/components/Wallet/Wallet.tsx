@@ -260,28 +260,28 @@ export function Wallet() {
     // Otherwise, we need to set the new prevCompletedCount
     setPrevCompletedCount(completedCount);
     // If there was no previous count, we don't show confetti
-    if (prevCompletedCount === null) {
+    if (prevCompletedCount === null || !walletRef.current) {
       return;
     }
-    // And emit confetti
-    if (walletRef.current) {
-      // Fix confetti appearing in the top left corner
-      const rect = walletRef.current.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) {
+    // Fix confetti appearing in the top left corner
+    const rect = walletRef.current.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return;
+    }
+    setTimeout(() => {
+      fetchCredits();
+      if (!walletRef.current) {
         return;
       }
-      setTimeout(() => {
-        fetchCredits();
-        party.confetti(walletRef.current!, {
-          count: 30,
-          spread: 120,
-          shapes: ["square", "circle"],
-          size: party.variation.range(1, 2),
-          speed: party.variation.range(200, 300),
-          modules: [fadeOut],
-        });
-      }, 800);
-    }
+      party.confetti(walletRef.current, {
+        count: 30,
+        spread: 120,
+        shapes: ["square", "circle"],
+        size: party.variation.range(1, 2),
+        speed: party.variation.range(200, 300),
+        modules: [fadeOut],
+      });
+    }, 800);
   }, [
     state?.completedSteps,
     state?.notified,
