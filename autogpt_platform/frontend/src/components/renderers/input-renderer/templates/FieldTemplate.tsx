@@ -9,12 +9,11 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { Text } from "@/components/atoms/Text/Text";
 
-import NodeHandle from "../../handlers/NodeHandle";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { generateHandleId } from "../../handlers/helpers";
-import { getTypeDisplayInfo } from "../helpers";
-import { ArrayEditorContext } from "../../components/ArrayEditor/ArrayEditorContext";
+import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
+import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
+import { ArrayEditorContext } from "../widgets/ArrayEditorWidget/ArrayEditorContext";
 import {
   isCredentialFieldSchema,
   toDisplayName,
@@ -23,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { BlockUIType } from "@/lib/autogpt-server-api";
+import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id: fieldId,
@@ -35,7 +35,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   uiSchema,
 }) => {
   const { isInputConnected } = useEdgeStore();
-  const { nodeId } = formContext;
+  const { nodeId, showHandles = true, size = "small" } = formContext;
 
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
@@ -55,7 +55,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     handleId = arrayFieldHandleId;
   }
 
-  const isConnected = isInputConnected(nodeId, handleId);
+  const isConnected = showHandles ? isInputConnected(nodeId, handleId) : false;
 
   if (!showAdvanced && schema.advanced === true && !isConnected) {
     return null;
@@ -78,11 +78,22 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     return <div className="w-full space-y-1">{children}</div>;
   }
 
+  // Size-based styling
+
+  const shouldShowHandle =
+    showHandles && !suppressHandle && !fromAnyOf && !isCredential;
+
   return (
-    <div className="w-[350px] space-y-1 pt-4">
+    <div
+      className={cn(
+        "mb-4 space-y-2",
+        fromAnyOf && "mb-0",
+        size === "small" ? "w-[350px]" : "w-full",
+      )}
+    >
       {label && schema.type && (
         <label htmlFor={fieldId} className="flex items-center gap-1">
-          {!suppressHandle && !fromAnyOf && !isCredential && (
+          {shouldShowHandle && (
             <NodeHandle
               handleId={handleId}
               isConnected={isConnected}
@@ -92,7 +103,11 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
           {!fromAnyOf && (
             <Text
               variant="body"
-              className={cn("line-clamp-1", isCredential && "ml-3")}
+              className={cn(
+                "line-clamp-1",
+                isCredential && !shouldShowHandle && "ml-3",
+                size == "large" && "ml-0",
+              )}
             >
               {isCredential && credentialProvider
                 ? toDisplayName(credentialProvider) + " credentials"
@@ -123,7 +138,9 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
           )}
         </label>
       )}
-      {(isAnyOf || !isConnected) && <div className="pl-2">{children}</div>}{" "}
+      {(isAnyOf || !isConnected) && (
+        <div className={cn(size === "small" ? "pl-2" : "")}>{children}</div>
+      )}{" "}
     </div>
   );
 };

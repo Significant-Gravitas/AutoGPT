@@ -1,5 +1,8 @@
 import { WidgetProps } from "@rjsf/utils";
-import { InputType, mapJsonSchemaTypeToInputType } from "../helpers";
+import {
+  InputType,
+  mapJsonSchemaTypeToInputType,
+} from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { Select } from "@/components/atoms/Select/Select";
 import {
   MultiSelector,
@@ -11,9 +14,14 @@ import {
 } from "@/components/__legacy__/ui/multiselect";
 
 export const SelectWidget = (props: WidgetProps) => {
-  const { options, value, onChange, disabled, readonly, id } = props;
+  const { options, value, onChange, disabled, readonly, id, formContext } =
+    props;
   const enumOptions = options.enumOptions || [];
   const type = mapJsonSchemaTypeToInputType(props.schema);
+  const { size = "small" } = formContext || {};
+
+  // Determine select size based on context
+  const selectSize = size === "large" ? "medium" : "small";
 
   const renderInput = () => {
     if (type === InputType.MULTI_SELECT) {
@@ -44,7 +52,7 @@ export const SelectWidget = (props: WidgetProps) => {
         id={id}
         hideLabel={true}
         disabled={disabled || readonly}
-        size="small"
+        size={selectSize as any}
         value={value ?? ""}
         onValueChange={onChange}
         options={

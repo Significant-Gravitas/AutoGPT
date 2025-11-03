@@ -1,18 +1,7 @@
-import BackendAPI from "@/lib/autogpt-server-api";
+import { postV1ResetOnboardingProgress } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { redirect } from "next/navigation";
 
 export default async function OnboardingResetPage() {
-  const api = new BackendAPI();
-  await api.updateUserOnboarding({
-    completedSteps: [],
-    walletShown: false,
-    notified: [],
-    usageReason: null,
-    integrations: [],
-    otherIntegrations: "",
-    selectedStoreListingVersionId: null,
-    agentInput: {},
-    onboardingAgentExecutionId: null,
-  });
+  await postV1ResetOnboardingProgress();
   redirect("/onboarding/1-welcome");
 }
