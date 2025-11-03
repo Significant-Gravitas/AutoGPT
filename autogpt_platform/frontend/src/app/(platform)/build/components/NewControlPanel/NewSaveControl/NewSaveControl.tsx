@@ -34,7 +34,6 @@ export const NewSaveControl = () => {
               selected={saveControlOpen}
               className="rounded-none"
             >
-              {/* Need to find phosphor icon alternative for this lucide icon */}
               <FloppyDiskIcon className="h-6 w-6" />
             </ControlPanelButton>
           </PopoverTrigger>

@@ -28,7 +28,6 @@ export const BlockMenu = () => {
               selected={blockMenuOpen}
               className="rounded-none"
             >
-              {/* Need to find phosphor icon alternative for this lucide icon */}
               <LegoIcon className="h-6 w-6" />
             </ControlPanelButton>
           </PopoverTrigger>
