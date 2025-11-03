@@ -1,36 +1,59 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Card } from "@/components/atoms/Card/Card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "@/components/ui/use-toast";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/__legacy__/ui/dialog";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Stop,
-  StopCircle,
+  StopCircleIcon,
   ArrowClockwise,
+  Stop,
   CaretLeft,
   CaretRight,
+  Copy,
 } from "@phosphor-icons/react";
-import { apiUrl } from "@/lib/autogpt-server-api";
+import React, { useState } from "react";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from "@/components/__legacy__/ui/table";
+import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import {
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/__legacy__/ui/card";
+import {
+  useGetV2ListRunningExecutions,
+  useGetV2ListOrphanedExecutions,
+  useGetV2ListFailedExecutions,
+  useGetV2ListLongRunningExecutions,
+  useGetV2ListStuckQueuedExecutions,
+  usePostV2StopSingleExecution,
+  usePostV2StopMultipleExecutions,
+  usePostV2CleanupOrphanedExecutions,
+  usePostV2CleanupAllOrphanedExecutions,
+  usePostV2RequeueStuckExecution,
+  usePostV2RequeueMultipleStuckExecutions,
+  usePostV2RequeueAllStuckQueuedExecutions,
+} from "@/app/api/__generated__/endpoints/admin/admin";
+import {
+  TabsLine,
+  TabsLineContent,
+  TabsLineList,
+  TabsLineTrigger,
+} from "@/components/molecules/TabsLine/TabsLine";
 
 interface RunningExecutionDetail {
   execution_id: string;
@@ -40,65 +63,201 @@ interface RunningExecutionDetail {
   user_id: string;
   user_email: string | null;
   status: string;
+  created_at: string;
   started_at: string | null;
   queue_status: string | null;
 }
 
 interface ExecutionsTableProps {
   onRefresh?: () => void;
+  initialTab?: "all" | "orphaned" | "failed" | "long-running" | "stuck-queued";
+  onTabChange?: (
+    tab: "all" | "orphaned" | "failed" | "long-running" | "stuck-queued",
+  ) => void;
+  diagnosticsData?: {
+    orphaned_running: number;
+    orphaned_queued: number;
+    failed_count_24h: number;
+    stuck_running_24h: number;
+    stuck_queued_1h: number;
+  };
 }
 
-export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
-  const [executions, setExecutions] = useState<RunningExecutionDetail[]>([]);
+export function ExecutionsTable({
+  onRefresh,
+  initialTab = "all",
+  onTabChange,
+  diagnosticsData,
+}: ExecutionsTableProps) {
+  const [activeTab, setActiveTab] = useState<
+    "all" | "orphaned" | "failed" | "long-running" | "stuck-queued"
+  >(initialTab);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(false);
-  const [isStopping, setIsStopping] = useState(false);
   const [showStopDialog, setShowStopDialog] = useState(false);
   const [stopTarget, setStopTarget] = useState<"single" | "selected" | "all">(
     "single",
   );
+  const [stopMode, setStopMode] = useState<"stop" | "cleanup" | "requeue">(
+    "stop",
+  );
   const [singleStopId, setSingleStopId] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
 
-  const fetchExecutions = async () => {
-    setIsLoading(true);
-    try {
-      const offset = (currentPage - 1) * pageSize;
-      const response = await fetch(
-        `${apiUrl}/admin/diagnostics/executions/running?limit=${pageSize}&offset=${offset}`,
-        {
-          credentials: "include",
-        },
-      );
+  // Handle tab changes
+  function handleTabChange(newTab: string) {
+    const tab = newTab as
+      | "all"
+      | "orphaned"
+      | "failed"
+      | "long-running"
+      | "stuck-queued";
+    setActiveTab(tab);
+    setCurrentPage(1); // Reset to first page
+    setSelectedIds(new Set()); // Clear selections
+    if (onTabChange) onTabChange(tab);
+  }
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch executions");
-      }
-
-      const data = await response.json();
-      setExecutions(data.executions || []);
-      setTotal(data.total || 0);
-    } catch (error) {
-      console.error("Error fetching executions:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch running executions",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+  // Sync with external tab changes (from clicking alert cards)
+  React.useEffect(() => {
+    if (initialTab !== activeTab) {
+      setActiveTab(initialTab);
+      setCurrentPage(1);
+      setSelectedIds(new Set());
     }
-  };
+  }, [initialTab]);
 
-  useEffect(() => {
-    fetchExecutions();
-  }, [currentPage]);
+  // Fetch data based on active tab
+  const runningQuery = useGetV2ListRunningExecutions(
+    {
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
+    },
+    { query: { enabled: activeTab === "all" } },
+  );
+
+  const orphanedQuery = useGetV2ListOrphanedExecutions(
+    {
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
+    },
+    { query: { enabled: activeTab === "orphaned" } },
+  );
+
+  const failedQuery = useGetV2ListFailedExecutions(
+    {
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
+      hours: 24,
+    },
+    { query: { enabled: activeTab === "failed" } },
+  );
+
+  // Long-running has dedicated endpoint (RUNNING status >24h only)
+  const longRunningQuery = useGetV2ListLongRunningExecutions(
+    {
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
+    },
+    { query: { enabled: activeTab === "long-running" } },
+  );
+
+  // Stuck queued has dedicated endpoint (QUEUED >1h)
+  const stuckQueuedQuery = useGetV2ListStuckQueuedExecutions(
+    {
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
+    },
+    { query: { enabled: activeTab === "stuck-queued" } },
+  );
+
+  // Select active query based on tab
+  const activeQuery =
+    activeTab === "orphaned"
+      ? orphanedQuery
+      : activeTab === "failed"
+        ? failedQuery
+        : activeTab === "long-running"
+          ? longRunningQuery
+          : activeTab === "stuck-queued"
+            ? stuckQueuedQuery
+            : runningQuery;
+
+  const { data: executionsResponse, isLoading, error, refetch } = activeQuery;
+
+  const executions =
+    (executionsResponse?.data as any)?.executions ||
+    ([] as RunningExecutionDetail[]);
+  const total = (executionsResponse?.data as any)?.total || 0;
+
+  // Stop single execution mutation
+  const { mutateAsync: stopSingleExecution, isPending: isStoppingSingle } =
+    usePostV2StopSingleExecution();
+
+  // Stop multiple executions mutation
+  const { mutateAsync: stopMultipleExecutions, isPending: isStoppingMultiple } =
+    usePostV2StopMultipleExecutions();
+
+  // Cleanup orphaned executions mutation
+  const { mutateAsync: cleanupOrphanedExecutions, isPending: isCleaningUp } =
+    usePostV2CleanupOrphanedExecutions();
+
+  // Requeue stuck queued executions mutation
+  const { mutateAsync: requeueSingleExecution, isPending: isRequeuingSingle } =
+    usePostV2RequeueStuckExecution();
+
+  const {
+    mutateAsync: requeueMultipleExecutions,
+    isPending: isRequeueingMultiple,
+  } = usePostV2RequeueMultipleStuckExecutions();
+
+  const { mutateAsync: requeueAllStuck, isPending: isRequeueingAll } =
+    usePostV2RequeueAllStuckQueuedExecutions();
+
+  const { mutateAsync: cleanupAllOrphaned, isPending: isCleaningUpAll } =
+    usePostV2CleanupAllOrphanedExecutions();
+
+  const isStopping =
+    isStoppingSingle ||
+    isStoppingMultiple ||
+    isCleaningUp ||
+    isRequeuingSingle ||
+    isRequeueingMultiple ||
+    isRequeueingAll ||
+    isCleaningUpAll;
+
+  // Calculate which executions are orphaned (>24h old based on created_at)
+  const now = new Date();
+  const orphanedIds = new Set(
+    executions
+      .filter((e: RunningExecutionDetail) => {
+        const createdDate = new Date(e.created_at);
+        const ageHours =
+          (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
+        return ageHours > 24;
+      })
+      .map((e: RunningExecutionDetail) => e.execution_id),
+  );
+
+  const selectedOrphanedIds = Array.from(selectedIds).filter((id) =>
+    orphanedIds.has(id),
+  );
+  const hasOrphanedSelected = selectedOrphanedIds.length > 0;
+
+  // Show error toast if fetching fails
+  if (error) {
+    toast({
+      title: "Error",
+      description: "Failed to fetch running executions",
+      variant: "destructive",
+    });
+  }
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(executions.map((e) => e.execution_id)));
+      setSelectedIds(
+        new Set(executions.map((e: RunningExecutionDetail) => e.execution_id)),
+      );
     } else {
       setSelectedIds(new Set());
     }
@@ -116,71 +275,170 @@ export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
 
   const confirmStop = (
     target: "single" | "selected" | "all",
+    mode: "stop" | "cleanup" | "requeue",
     singleId?: string,
   ) => {
     setStopTarget(target);
+    setStopMode(mode);
     setSingleStopId(singleId || null);
     setShowStopDialog(true);
   };
 
   const handleStop = async () => {
     setShowStopDialog(false);
-    setIsStopping(true);
-
-    let endpoint: string;
-    let body: any;
-
-    if (stopTarget === "single" && singleStopId) {
-      endpoint = `${apiUrl}/admin/diagnostics/executions/stop`;
-      body = { execution_id: singleStopId };
-    } else {
-      let idsToStop: string[] = [];
-      if (stopTarget === "selected") {
-        idsToStop = Array.from(selectedIds);
-      } else if (stopTarget === "all") {
-        idsToStop = executions.map((e) => e.execution_id);
-      }
-
-      endpoint = `${apiUrl}/admin/diagnostics/executions/stop-bulk`;
-      body = { execution_ids: idsToStop };
-    }
 
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify(body),
-      });
+      if (stopTarget === "single" && singleStopId) {
+        // Single execution - use appropriate method
+        const result =
+          stopMode === "cleanup"
+            ? await cleanupOrphanedExecutions({
+                data: { execution_ids: [singleStopId] },
+              })
+            : stopMode === "requeue"
+              ? await requeueSingleExecution({
+                  data: { execution_id: singleStopId },
+                })
+              : await stopSingleExecution({
+                  data: { execution_id: singleStopId },
+                });
 
-      const data = await response.json();
+        toast({
+          title: "Success",
+          description:
+            (result.data as any)?.message ||
+            (stopMode === "cleanup"
+              ? "Orphaned execution cleaned up"
+              : stopMode === "requeue"
+                ? "Execution requeued"
+                : "Execution stopped"),
+        });
+      } else {
+        // Multiple executions
+        if (stopMode === "requeue") {
+          // Requeue stuck queued executions
+          if (stopTarget === "all") {
+            // Use ALL endpoint for entire dataset
+            const result = await requeueAllStuck();
 
-      if (!response.ok) {
-        throw new Error(data.detail || "Failed to stop executions");
+            toast({
+              title: "Success",
+              description:
+                (result.data as any)?.message ||
+                `Requeued ${(result.data as any)?.requeued_count || 0} stuck executions`,
+            });
+          } else {
+            // Selected only
+            const allIds = Array.from(selectedIds);
+            const result = await requeueMultipleExecutions({
+              data: { execution_ids: allIds },
+            });
+
+            toast({
+              title: "Success",
+              description:
+                (result.data as any)?.message ||
+                `Requeued ${(result.data as any)?.requeued_count || 0} execution(s)`,
+            });
+          }
+        } else if (stopMode === "cleanup") {
+          // Cleanup executions
+          if (
+            stopTarget === "all" &&
+            (activeTab === "orphaned" || activeTab === "stuck-queued")
+          ) {
+            // Use ALL endpoint for orphaned/stuck-queued tabs
+            const result = await cleanupAllOrphaned();
+
+            toast({
+              title: "Success",
+              description:
+                (result.data as any)?.message ||
+                `Cleaned up ${(result.data as any)?.stopped_count || 0} executions`,
+            });
+          } else {
+            // Selected or other tabs
+            const allIds =
+              stopTarget === "selected"
+                ? Array.from(selectedIds)
+                : executions.map((e: RunningExecutionDetail) => e.execution_id);
+
+            const result = await cleanupOrphanedExecutions({
+              data: { execution_ids: allIds },
+            });
+
+            toast({
+              title: "Success",
+              description:
+                (result.data as any)?.message ||
+                `Cleaned up ${(result.data as any)?.stopped_count || 0} execution(s)`,
+            });
+          }
+        } else {
+          // Stop - intelligently split between active and orphaned
+          const activeIds: string[] = [];
+          const orphanedIdsToCleanup: string[] = [];
+
+          const allIds =
+            stopTarget === "selected"
+              ? Array.from(selectedIds)
+              : executions.map((e: RunningExecutionDetail) => e.execution_id);
+
+          // Split into active vs orphaned
+          allIds.forEach((id: string) => {
+            if (orphanedIds.has(id)) {
+              orphanedIdsToCleanup.push(id);
+            } else {
+              activeIds.push(id);
+            }
+          });
+
+          // Execute both operations in parallel
+          const results = await Promise.all([
+            activeIds.length > 0
+              ? stopMultipleExecutions({
+                  data: { execution_ids: activeIds },
+                })
+              : Promise.resolve(null),
+            orphanedIdsToCleanup.length > 0
+              ? cleanupOrphanedExecutions({
+                  data: { execution_ids: orphanedIdsToCleanup },
+                })
+              : Promise.resolve(null),
+          ]);
+
+          const stoppedCount = results[0]
+            ? (results[0].data as any)?.stopped_count || 0
+            : 0;
+          const cleanedCount = results[1]
+            ? (results[1].data as any)?.stopped_count || 0
+            : 0;
+
+          toast({
+            title: "Success",
+            description:
+              stoppedCount > 0 && cleanedCount > 0
+                ? `Stopped ${stoppedCount} active and cleaned ${cleanedCount} orphaned executions`
+                : stoppedCount > 0
+                  ? `Stopped ${stoppedCount} execution(s)`
+                  : `Cleaned ${cleanedCount} orphaned execution(s)`,
+          });
+        }
       }
-
-      toast({
-        title: "Success",
-        description: data.message || "Executions stopped successfully",
-      });
 
       // Clear selections and refresh
       setSelectedIds(new Set());
-      await fetchExecutions();
+      await refetch();
       if (onRefresh) {
         onRefresh();
       }
     } catch (error: any) {
-      console.error("Error stopping executions:", error);
+      console.error("Error stopping/cleaning executions:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to stop executions",
+        description: error.message || "Failed to stop/cleanup executions",
         variant: "destructive",
       });
-    } finally {
-      setIsStopping(false);
     }
   };
 
@@ -189,214 +447,530 @@ export function ExecutionsTable({ onRefresh }: ExecutionsTableProps) {
   return (
     <>
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Running Executions</CardTitle>
-            <div className="flex gap-2">
-              {selectedIds.size > 0 && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => confirmStop("selected")}
-                  disabled={isStopping}
-                >
-                  <StopCircle className="mr-2 h-4 w-4" />
-                  Stop Selected ({selectedIds.size})
-                </Button>
-              )}
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => confirmStop("all")}
-                disabled={isStopping || executions.length === 0}
-              >
-                <StopCircle className="mr-2 h-4 w-4" />
-                Stop All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  fetchExecutions();
-                  if (onRefresh) onRefresh();
-                }}
-                disabled={isLoading}
-              >
-                <ArrowClockwise
-                  className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-                />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading && executions.length === 0 ? (
-            <div className="flex h-32 items-center justify-center">
-              <ArrowClockwise className="h-6 w-6 animate-spin text-gray-400" />
-            </div>
-          ) : executions.length === 0 ? (
-            <div className="py-8 text-center text-gray-500">
-              No running executions
-            </div>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={
-                          selectedIds.size === executions.length &&
-                          executions.length > 0
-                        }
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
-                    <TableHead>Execution ID</TableHead>
-                    <TableHead>Agent Name</TableHead>
-                    <TableHead>Version</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Started At</TableHead>
-                    <TableHead className="w-20">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {executions.map((execution) => (
-                    <TableRow key={execution.execution_id}>
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedIds.has(execution.execution_id)}
-                          onCheckedChange={(checked) =>
-                            handleSelectExecution(
-                              execution.execution_id,
-                              checked as boolean,
-                            )
-                          }
-                        />
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {execution.execution_id.substring(0, 8)}...
-                      </TableCell>
-                      <TableCell>{execution.graph_name}</TableCell>
-                      <TableCell>{execution.graph_version}</TableCell>
-                      <TableCell>
-                        <div>
-                          {execution.user_email || (
-                            <span className="text-gray-400">Unknown</span>
-                          )}
-                        </div>
-                        <div className="font-mono text-xs text-gray-500">
-                          {execution.user_id.substring(0, 8)}...
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
-                            execution.status === "RUNNING"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-yellow-100 text-yellow-800"
-                          }`}
-                        >
-                          {execution.status}
+        <TabsLine value={activeTab} onValueChange={handleTabChange}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Executions</CardTitle>
+              <div className="flex gap-2">
+                {/* Show Cleanup and Requeue buttons for stuck-queued tab */}
+                {activeTab === "stuck-queued" && total > 0 && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="small"
+                      onClick={() => confirmStop("all", "cleanup")}
+                      disabled={isStopping}
+                      className="border-orange-500 text-orange-700 hover:bg-orange-50"
+                    >
+                      <StopCircleIcon className="mr-2 h-4 w-4" />
+                      Cleanup All ({total})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="small"
+                      onClick={() => confirmStop("all", "requeue")}
+                      disabled={isStopping}
+                      className="border-blue-500 text-blue-700 hover:bg-blue-50"
+                    >
+                      <ArrowClockwise className="mr-2 h-4 w-4" />
+                      Requeue All ({total})
+                    </Button>
+                  </>
+                )}
+                {selectedIds.size > 0 && activeTab !== "stuck-queued" && (
+                  <Button
+                    variant="destructive"
+                    size="small"
+                    onClick={() => confirmStop("selected", "stop")}
+                    disabled={isStopping}
+                  >
+                    <StopCircleIcon className="mr-2 h-4 w-4" />
+                    Stop Selected ({selectedIds.size})
+                    {hasOrphanedSelected && (
+                      <span className="ml-1 text-xs text-orange-200">
+                        ({selectedOrphanedIds.length} orphaned)
+                      </span>
+                    )}
+                  </Button>
+                )}
+                {activeTab !== "stuck-queued" && (
+                  <Button
+                    variant="destructive"
+                    size="small"
+                    onClick={() => confirmStop("all", "stop")}
+                    disabled={isStopping || total === 0}
+                  >
+                    <StopCircleIcon className="mr-2 h-4 w-4" />
+                    Stop All ({total})
+                    {diagnosticsData &&
+                      activeTab === "all" &&
+                      diagnosticsData.orphaned_running +
+                        diagnosticsData.orphaned_queued >
+                        0 && (
+                        <span className="ml-1 text-xs text-orange-200">
+                          (
+                          {diagnosticsData.orphaned_running +
+                            diagnosticsData.orphaned_queued}{" "}
+                          orphaned)
                         </span>
-                      </TableCell>
-                      <TableCell>
-                        {execution.started_at
-                          ? new Date(execution.started_at).toLocaleString()
-                          : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            confirmStop("single", execution.execution_id)
-                          }
-                          disabled={isStopping}
-                        >
-                          <Stop className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      )}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="small"
+                  onClick={() => {
+                    refetch();
+                    if (onRefresh) onRefresh();
+                  }}
+                  disabled={isLoading}
+                >
+                  <ArrowClockwise
+                    className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              </div>
+            </div>
 
-              {totalPages > 1 && (
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="text-sm text-gray-600">
-                    Showing {(currentPage - 1) * pageSize + 1} to{" "}
-                    {Math.min(currentPage * pageSize, total)} of {total}{" "}
-                    executions
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      <CaretLeft className="h-4 w-4" />
-                      Previous
-                    </Button>
-                    <div className="flex items-center px-3">
-                      Page {currentPage} of {totalPages}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                    >
-                      Next
-                      <CaretRight className="h-4 w-4" />
-                    </Button>
-                  </div>
+            {/* Tabs for filtering */}
+            <TabsLineList className="px-6">
+              <TabsLineTrigger value="all">
+                All
+                {activeTab === "all" && ` (${total})`}
+              </TabsLineTrigger>
+              <TabsLineTrigger value="orphaned">
+                Orphaned
+                {diagnosticsData &&
+                  ` (${diagnosticsData.orphaned_running + diagnosticsData.orphaned_queued})`}
+              </TabsLineTrigger>
+              <TabsLineTrigger value="stuck-queued">
+                Stuck Queued
+                {diagnosticsData && ` (${diagnosticsData.stuck_queued_1h})`}
+              </TabsLineTrigger>
+              <TabsLineTrigger value="long-running">
+                Long-Running
+                {diagnosticsData && ` (${diagnosticsData.stuck_running_24h})`}
+              </TabsLineTrigger>
+              <TabsLineTrigger value="failed">
+                Failed
+                {diagnosticsData && ` (${diagnosticsData.failed_count_24h})`}
+              </TabsLineTrigger>
+            </TabsLineList>
+          </CardHeader>
+
+          <TabsLineContent value={activeTab}>
+            <CardContent>
+              {isLoading && executions.length === 0 ? (
+                <div className="flex h-32 items-center justify-center">
+                  <ArrowClockwise className="h-6 w-6 animate-spin text-gray-400" />
                 </div>
+              ) : executions.length === 0 ? (
+                <div className="py-8 text-center text-gray-500">
+                  No running executions
+                </div>
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">
+                          <Checkbox
+                            checked={
+                              selectedIds.size === executions.length &&
+                              executions.length > 0
+                            }
+                            onCheckedChange={handleSelectAll}
+                          />
+                        </TableHead>
+                        <TableHead>Execution ID</TableHead>
+                        <TableHead>Agent Name</TableHead>
+                        <TableHead>Version</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Age</TableHead>
+                        <TableHead>
+                          {activeTab === "failed" ? "Failed At" : "Started At"}
+                        </TableHead>
+                        {activeTab === "failed" && (
+                          <TableHead>Error Message</TableHead>
+                        )}
+                        <TableHead className="w-20">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {executions.map((execution: RunningExecutionDetail) => {
+                        const isOrphaned = orphanedIds.has(
+                          execution.execution_id,
+                        );
+                        return (
+                          <TableRow
+                            key={execution.execution_id}
+                            className={
+                              isOrphaned
+                                ? "bg-orange-50 hover:bg-orange-100"
+                                : ""
+                            }
+                          >
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedIds.has(
+                                  execution.execution_id,
+                                )}
+                                onCheckedChange={(checked) =>
+                                  handleSelectExecution(
+                                    execution.execution_id,
+                                    checked as boolean,
+                                  )
+                                }
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              <div
+                                className="group flex cursor-pointer items-center gap-1 hover:text-gray-700"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(
+                                    execution.execution_id,
+                                  );
+                                  toast({
+                                    title: "Copied",
+                                    description:
+                                      "Execution ID copied to clipboard",
+                                  });
+                                }}
+                                title="Click to copy full execution ID"
+                              >
+                                {execution.execution_id.substring(0, 8)}...
+                                <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                              </div>
+                            </TableCell>
+                            <TableCell>{execution.graph_name}</TableCell>
+                            <TableCell>{execution.graph_version}</TableCell>
+                            <TableCell>
+                              <div>
+                                {execution.user_email || (
+                                  <span className="text-gray-400">Unknown</span>
+                                )}
+                              </div>
+                              <div
+                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(
+                                    execution.user_id,
+                                  );
+                                  toast({
+                                    title: "Copied",
+                                    description: "User ID copied to clipboard",
+                                  });
+                                }}
+                                title="Click to copy full user ID"
+                              >
+                                {execution.user_id.substring(0, 8)}...
+                                <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                                  execution.status === "RUNNING"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}
+                              >
+                                {execution.status}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {(() => {
+                                if (!execution.started_at)
+                                  return "Never started";
+                                const ageMs =
+                                  now.getTime() -
+                                  new Date(execution.started_at).getTime();
+                                const ageHours = ageMs / (1000 * 60 * 60);
+                                const ageDays = Math.floor(ageHours / 24);
+                                const remainingHours = Math.floor(
+                                  ageHours % 24,
+                                );
+
+                                if (ageDays > 0) {
+                                  return (
+                                    <span
+                                      className={
+                                        ageDays > 1
+                                          ? "font-semibold text-orange-600"
+                                          : ""
+                                      }
+                                    >
+                                      {ageDays}d {remainingHours}h
+                                    </span>
+                                  );
+                                } else {
+                                  return `${remainingHours}h`;
+                                }
+                              })()}
+                            </TableCell>
+                            <TableCell>
+                              {activeTab === "failed"
+                                ? (execution as any).failed_at
+                                  ? new Date(
+                                      (execution as any).failed_at,
+                                    ).toLocaleString()
+                                  : "-"
+                                : execution.started_at
+                                  ? new Date(
+                                      execution.started_at,
+                                    ).toLocaleString()
+                                  : "-"}
+                            </TableCell>
+                            {activeTab === "failed" && (
+                              <TableCell className="max-w-xs truncate">
+                                <span
+                                  className="text-xs text-red-600"
+                                  title={(execution as any).error_message || ""}
+                                >
+                                  {(execution as any).error_message ||
+                                    "No error message"}
+                                </span>
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              <div className="flex gap-1">
+                                {activeTab === "stuck-queued" ? (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="small"
+                                      onClick={() =>
+                                        confirmStop(
+                                          "single",
+                                          "cleanup",
+                                          execution.execution_id,
+                                        )
+                                      }
+                                      disabled={isStopping}
+                                      className="text-orange-600 hover:bg-orange-50"
+                                      title="Cleanup (mark as FAILED)"
+                                    >
+                                      <StopCircleIcon className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="small"
+                                      onClick={() =>
+                                        confirmStop(
+                                          "single",
+                                          "requeue",
+                                          execution.execution_id,
+                                        )
+                                      }
+                                      disabled={isStopping}
+                                      className="text-blue-600 hover:bg-blue-50"
+                                      title="Requeue (send to RabbitMQ)"
+                                    >
+                                      <ArrowClockwise className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="small"
+                                    onClick={() => {
+                                      const isOrphaned = orphanedIds.has(
+                                        execution.execution_id,
+                                      );
+                                      confirmStop(
+                                        "single",
+                                        isOrphaned ? "cleanup" : "stop",
+                                        execution.execution_id,
+                                      );
+                                    }}
+                                    disabled={isStopping}
+                                    className={
+                                      orphanedIds.has(execution.execution_id)
+                                        ? "text-orange-600 hover:bg-orange-50"
+                                        : ""
+                                    }
+                                  >
+                                    <Stop className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+
+                  {totalPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between">
+                      <div className="text-sm text-gray-600">
+                        Showing {(currentPage - 1) * pageSize + 1} to{" "}
+                        {Math.min(currentPage * pageSize, total)} of {total}{" "}
+                        executions
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="small"
+                          onClick={() => setCurrentPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                        >
+                          <CaretLeft className="h-4 w-4" />
+                          Previous
+                        </Button>
+                        <div className="flex items-center px-3">
+                          Page {currentPage} of {totalPages}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="small"
+                          onClick={() => setCurrentPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                        >
+                          Next
+                          <CaretRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-            </>
-          )}
-        </CardContent>
+            </CardContent>
+          </TabsLineContent>
+        </TabsLine>
       </Card>
 
-      <AlertDialog open={showStopDialog} onOpenChange={setShowStopDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Stop Executions</AlertDialogTitle>
-            <AlertDialogDescription>
-              {stopTarget === "single" && (
-                <>Are you sure you want to stop this execution?</>
-              )}
-              {stopTarget === "selected" && (
+      <Dialog open={showStopDialog} onOpenChange={setShowStopDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {stopMode === "cleanup"
+                ? "Confirm Cleanup Orphaned Executions"
+                : stopMode === "requeue"
+                  ? "Confirm Requeue Stuck Executions"
+                  : "Confirm Stop Executions"}
+            </DialogTitle>
+            <DialogDescription>
+              {stopMode === "requeue" ? (
                 <>
-                  Are you sure you want to stop {selectedIds.size} selected
-                  execution(s)?
+                  {stopTarget === "all" && (
+                    <>
+                      Are you sure you want to requeue ALL {total} stuck
+                      executions?
+                    </>
+                  )}
+                  <br />
+                  <br />
+                  <strong className="text-blue-700">⚠️ Warning:</strong> This
+                  will publish these executions to RabbitMQ to be processed
+                  again. This <strong>will cost credits</strong> and may fail
+                  again if the original issue persists.
+                  <br />
+                  <br />
+                  Only requeue if you believe the executions are stuck due to a
+                  temporary issue (executor restart, RabbitMQ purge, etc).
+                </>
+              ) : stopMode === "cleanup" ? (
+                <>
+                  {stopTarget === "single" && (
+                    <>
+                      Are you sure you want to cleanup this orphaned execution?
+                    </>
+                  )}
+                  {stopTarget === "selected" && (
+                    <>
+                      Are you sure you want to cleanup{" "}
+                      {selectedOrphanedIds.length} orphaned execution(s)?
+                    </>
+                  )}
+                  {stopTarget === "all" && (
+                    <>
+                      Are you sure you want to cleanup ALL {orphanedIds.size}{" "}
+                      orphaned executions?
+                    </>
+                  )}
+                  <br />
+                  <br />
+                  <strong>Orphaned executions</strong> are {">"}24h old and not
+                  actually running in the executor. This will mark them as
+                  FAILED in the database only (no cancel signal sent).
+                </>
+              ) : (
+                <>
+                  {stopTarget === "single" && (
+                    <>Are you sure you want to stop this execution?</>
+                  )}
+                  {stopTarget === "selected" && (
+                    <>
+                      Are you sure you want to stop {selectedIds.size} selected
+                      execution(s)?
+                      {hasOrphanedSelected && (
+                        <>
+                          <br />
+                          <br />
+                          <span className="text-orange-600">
+                            Includes {selectedOrphanedIds.length} orphaned
+                            execution(s) that will be cleaned up directly.
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {stopTarget === "all" && (
+                    <>
+                      Are you sure you want to stop ALL {executions.length}{" "}
+                      execution(s)?
+                      {orphanedIds.size > 0 && (
+                        <>
+                          <br />
+                          <br />
+                          <span className="text-orange-600">
+                            Includes {orphanedIds.size} orphaned execution(s) (
+                            {">"}24h old) that will be cleaned up directly.
+                          </span>
+                        </>
+                      )}
+                    </>
+                  )}
+                  <br />
+                  <br />
+                  This will automatically:
+                  <ul className="mt-2 list-disc pl-5 text-sm">
+                    <li>Send cancel signals for active executions</li>
+                    <li>
+                      Clean up orphaned executions ({">"}24h old) directly in DB
+                    </li>
+                    <li>Mark all as FAILED</li>
+                  </ul>
                 </>
               )}
-              {stopTarget === "all" && (
-                <>
-                  Are you sure you want to stop ALL {executions.length} running
-                  executions?
-                </>
-              )}
-              <br />
-              <br />
-              This action cannot be undone. The executions will be marked as
-              FAILED.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStopDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
               onClick={handleStop}
-              className="bg-red-600 hover:bg-red-700"
+              className={
+                stopMode === "cleanup"
+                  ? "bg-orange-600 hover:bg-orange-700"
+                  : stopMode === "requeue"
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "bg-red-600 hover:bg-red-700"
+              }
             >
-              Stop Executions
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              {stopMode === "cleanup"
+                ? "Cleanup Orphaned"
+                : stopMode === "requeue"
+                  ? "Requeue Executions"
+                  : "Stop Executions"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

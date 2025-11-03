@@ -3890,8 +3890,8 @@
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Get Execution Diagnostics",
+        "description": "Get comprehensive diagnostic information about execution status.\n\nReturns all execution metrics including:\n- Current state (running, queued)\n- Orphaned executions (>24h old, likely not in executor)\n- Failure metrics (1h, 24h, rate)\n- Long-running detection (stuck >1h, >24h)\n- Stuck queued detection\n- Throughput metrics (completions/hour)\n- RabbitMQ queue depths",
         "operationId": "getV2Get execution diagnostics",
-        "security": [{ "HTTPBearerJWT": [] }],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3903,21 +3903,19 @@
               }
             }
           },
-          "500": {
-            "description": "Internal Server Error"
-          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/admin/diagnostics/agents": {
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Get Agent Diagnostics",
+        "description": "Get diagnostic information about agents.\n\nReturns:\n    - agents_with_active_executions: Number of unique agents with running/queued executions\n    - timestamp: Current timestamp",
         "operationId": "getV2Get agent diagnostics",
-        "security": [{ "HTTPBearerJWT": [] }],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3929,13 +3927,495 @@
               }
             }
           },
-          "500": {
-            "description": "Internal Server Error"
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/running": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List Running Executions",
+        "description": "Get detailed list of running and queued executions (recent, likely active).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of running executions with details",
+        "operationId": "getV2List running executions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
+      }
+    },
+    "/api/admin/diagnostics/executions/orphaned": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List Orphaned Executions",
+        "description": "Get detailed list of orphaned executions (>24h old, likely not in executor).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of orphaned executions with details",
+        "operationId": "getV2List orphaned executions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/executions/failed": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List Failed Executions",
+        "description": "Get detailed list of failed executions.\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n    hours: Number of hours to look back (default 24)\n\nReturns:\n    List of failed executions with error details",
+        "operationId": "getV2List failed executions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 24, "title": "Hours" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailedExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/executions/long-running": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List Long-Running Executions",
+        "description": "Get detailed list of long-running executions (RUNNING status >24h).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of long-running executions with details",
+        "operationId": "getV2List long-running executions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/executions/stuck-queued": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List Stuck Queued Executions",
+        "description": "Get detailed list of stuck queued executions (QUEUED >1h, never started).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of stuck queued executions with details",
+        "operationId": "getV2List stuck queued executions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/executions/requeue": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Requeue Stuck Execution",
+        "description": "Requeue a stuck QUEUED execution (admin only).\nPublishes execution to RabbitMQ queue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
+        "operationId": "postV2Requeue stuck execution",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StopExecutionRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueExecutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/requeue-bulk": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Requeue Multiple Stuck Executions",
+        "description": "Requeue multiple stuck QUEUED executions (admin only).\nPublishes executions to RabbitMQ queue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
+        "operationId": "postV2Requeue multiple stuck executions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StopExecutionsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueExecutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/stop": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Stop Single Execution",
+        "description": "Stop a single execution (admin only).\n\nArgs:\n    request: Contains execution_id to stop\n\nReturns:\n    Success status and message",
+        "operationId": "postV2Stop single execution",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StopExecutionRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/stop-bulk": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Stop Multiple Executions",
+        "description": "Stop multiple active executions (admin only).\nSends cancel signals to executor for recent executions.\n\nArgs:\n    request: Contains list of execution_ids to stop\n\nReturns:\n    Number of executions stopped and success message",
+        "operationId": "postV2Stop multiple executions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StopExecutionsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/cleanup-orphaned": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Cleanup Orphaned Executions",
+        "description": "Cleanup orphaned executions by directly updating DB status (admin only).\nFor executions in DB but not actually running in executor (old/stale records).\n\nArgs:\n    request: Contains list of execution_ids to cleanup\n\nReturns:\n    Number of executions cleaned up and success message",
+        "operationId": "postV2Cleanup orphaned executions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StopExecutionsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/cleanup-all-orphaned": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Cleanup ALL Orphaned Executions",
+        "description": "Cleanup ALL orphaned executions (>24h old) by directly updating DB status.\nOperates on all executions, not just paginated results.\n\nReturns:\n    Number of executions cleaned up and success message",
+        "operationId": "postV2Cleanup all orphaned executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/requeue-all-stuck": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Requeue ALL Stuck Queued Executions",
+        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\n⚠️ WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
+        "operationId": "postV2Requeue all stuck queued executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueExecutionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/library/presets": {
@@ -4972,8 +5452,6 @@
       },
       "AgentDiagnosticsResponse": {
         "properties": {
-          "total_agents": { "type": "integer", "title": "Total Agents" },
-          "active_agents": { "type": "integer", "title": "Active Agents" },
           "agents_with_active_executions": {
             "type": "integer",
             "title": "Agents With Active Executions"
@@ -4981,13 +5459,9 @@
           "timestamp": { "type": "string", "title": "Timestamp" }
         },
         "type": "object",
-        "required": [
-          "total_agents",
-          "active_agents",
-          "agents_with_active_executions",
-          "timestamp"
-        ],
-        "title": "AgentDiagnosticsResponse"
+        "required": ["agents_with_active_executions", "timestamp"],
+        "title": "AgentDiagnosticsResponse",
+        "description": "Response model for agent diagnostics"
       },
       "AgentExecutionStatus": {
         "type": "string",
@@ -5620,6 +6094,15 @@
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
       },
+      "Document": {
+        "properties": {
+          "url": { "type": "string", "title": "Url" },
+          "relevance_score": { "type": "number", "title": "Relevance Score" }
+        },
+        "type": "object",
+        "required": ["url", "relevance_score"],
+        "title": "Document"
+      },
       "ExecutionDiagnosticsResponse": {
         "properties": {
           "running_executions": {
@@ -5634,6 +6117,44 @@
             "type": "integer",
             "title": "Queued Executions Rabbitmq"
           },
+          "cancel_queue_depth": {
+            "type": "integer",
+            "title": "Cancel Queue Depth"
+          },
+          "orphaned_running": {
+            "type": "integer",
+            "title": "Orphaned Running"
+          },
+          "orphaned_queued": { "type": "integer", "title": "Orphaned Queued" },
+          "failed_count_1h": { "type": "integer", "title": "Failed Count 1H" },
+          "failed_count_24h": {
+            "type": "integer",
+            "title": "Failed Count 24H"
+          },
+          "failure_rate_24h": { "type": "number", "title": "Failure Rate 24H" },
+          "stuck_running_24h": {
+            "type": "integer",
+            "title": "Stuck Running 24H"
+          },
+          "stuck_running_1h": {
+            "type": "integer",
+            "title": "Stuck Running 1H"
+          },
+          "oldest_running_hours": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Oldest Running Hours"
+          },
+          "stuck_queued_1h": { "type": "integer", "title": "Stuck Queued 1H" },
+          "queued_never_started": {
+            "type": "integer",
+            "title": "Queued Never Started"
+          },
+          "completed_1h": { "type": "integer", "title": "Completed 1H" },
+          "completed_24h": { "type": "integer", "title": "Completed 24H" },
+          "throughput_per_hour": {
+            "type": "number",
+            "title": "Throughput Per Hour"
+          },
           "timestamp": { "type": "string", "title": "Timestamp" }
         },
         "type": "object",
@@ -5641,18 +6162,91 @@
           "running_executions",
           "queued_executions_db",
           "queued_executions_rabbitmq",
+          "cancel_queue_depth",
+          "orphaned_running",
+          "orphaned_queued",
+          "failed_count_1h",
+          "failed_count_24h",
+          "failure_rate_24h",
+          "stuck_running_24h",
+          "stuck_running_1h",
+          "oldest_running_hours",
+          "stuck_queued_1h",
+          "queued_never_started",
+          "completed_1h",
+          "completed_24h",
+          "throughput_per_hour",
           "timestamp"
         ],
-        "title": "ExecutionDiagnosticsResponse"
+        "title": "ExecutionDiagnosticsResponse",
+        "description": "Response model for execution diagnostics"
       },
-      "Document": {
+      "FailedExecutionDetail": {
         "properties": {
-          "url": { "type": "string", "title": "Url" },
-          "relevance_score": { "type": "number", "title": "Relevance Score" }
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": { "type": "string", "title": "Graph Name" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "failed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Failed At"
+          },
+          "error_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Message"
+          }
         },
         "type": "object",
-        "required": ["url", "relevance_score"],
-        "title": "Document"
+        "required": [
+          "execution_id",
+          "graph_id",
+          "graph_name",
+          "graph_version",
+          "user_id",
+          "user_email",
+          "status",
+          "created_at",
+          "started_at",
+          "failed_at",
+          "error_message"
+        ],
+        "title": "FailedExecutionDetail",
+        "description": "Details about a failed execution for admin view"
+      },
+      "FailedExecutionsListResponse": {
+        "properties": {
+          "executions": {
+            "items": { "$ref": "#/components/schemas/FailedExecutionDetail" },
+            "type": "array",
+            "title": "Executions"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["executions", "total"],
+        "title": "FailedExecutionsListResponse",
+        "description": "Response model for list of failed executions"
       },
       "Graph": {
         "properties": {
@@ -7516,6 +8110,21 @@
         "required": ["credit_amount"],
         "title": "RequestTopUp"
       },
+      "RequeueExecutionResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "requeued_count": {
+            "type": "integer",
+            "title": "Requeued Count",
+            "default": 0
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "RequeueExecutionResponse",
+        "description": "Response model for requeue execution operations"
+      },
       "ReviewSubmissionRequest": {
         "properties": {
           "store_listing_version_id": {
@@ -7532,6 +8141,64 @@
         "type": "object",
         "required": ["store_listing_version_id", "is_approved", "comments"],
         "title": "ReviewSubmissionRequest"
+      },
+      "RunningExecutionDetail": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": { "type": "string", "title": "Graph Name" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "queue_status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Queue Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "execution_id",
+          "graph_id",
+          "graph_name",
+          "graph_version",
+          "user_id",
+          "user_email",
+          "status",
+          "created_at",
+          "started_at"
+        ],
+        "title": "RunningExecutionDetail",
+        "description": "Details about a running execution for admin view"
+      },
+      "RunningExecutionsListResponse": {
+        "properties": {
+          "executions": {
+            "items": { "$ref": "#/components/schemas/RunningExecutionDetail" },
+            "type": "array",
+            "title": "Executions"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["executions", "total"],
+        "title": "RunningExecutionsListResponse",
+        "description": "Response model for list of running executions"
       },
       "ScheduleCreationRequest": {
         "properties": {
@@ -7713,6 +8380,43 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StopExecutionRequest": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" }
+        },
+        "type": "object",
+        "required": ["execution_id"],
+        "title": "StopExecutionRequest",
+        "description": "Request model for stopping a single execution"
+      },
+      "StopExecutionResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "stopped_count": {
+            "type": "integer",
+            "title": "Stopped Count",
+            "default": 0
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "StopExecutionResponse",
+        "description": "Response model for stop execution operations"
+      },
+      "StopExecutionsRequest": {
+        "properties": {
+          "execution_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Execution Ids"
+          }
+        },
+        "type": "object",
+        "required": ["execution_ids"],
+        "title": "StopExecutionsRequest",
+        "description": "Request model for stopping multiple executions"
       },
       "StoreAgent": {
         "properties": {

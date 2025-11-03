@@ -26,9 +26,10 @@ export function useDiagnosticsContent() {
   const isError = isExecutionError || isAgentError;
   const error = executionError || agentError;
 
-  const executionData: ExecutionDiagnosticsResponse | undefined =
-    executionResponse?.data;
-  const agentData: AgentDiagnosticsResponse | undefined = agentResponse?.data;
+  const executionData = executionResponse?.data as
+    | ExecutionDiagnosticsResponse
+    | undefined;
+  const agentData = agentResponse?.data as AgentDiagnosticsResponse | undefined;
 
   const refresh = () => {
     refetchExecutions();
