@@ -4,7 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { COOKIE_CATEGORIES } from "@/lib/consent";
-import { CheckIcon, CookieIcon } from "@phosphor-icons/react/dist/ssr";
+import { CheckIcon } from "@phosphor-icons/react/dist/ssr";
 import { useCookieSettingsModal } from "./useCookieSettingsModal";
 
 interface Props {
