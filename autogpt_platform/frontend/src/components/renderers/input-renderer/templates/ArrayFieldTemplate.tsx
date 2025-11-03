@@ -1,6 +1,6 @@
 import React from "react";
 import { ArrayFieldTemplateProps } from "@rjsf/utils";
-import { ArrayEditor } from "../../components/ArrayEditor/ArrayEditor";
+import { ArrayEditorWidget } from "../widgets/ArrayEditorWidget/ArrayEditorWidget";
 
 function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
   const {
@@ -15,7 +15,7 @@ function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
   const { nodeId } = formContext;
 
   return (
-    <ArrayEditor
+    <ArrayEditorWidget
       items={items}
       nodeId={nodeId}
       canAdd={canAdd}
