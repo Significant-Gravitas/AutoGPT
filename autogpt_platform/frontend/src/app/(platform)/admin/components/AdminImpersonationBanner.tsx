@@ -1,6 +1,5 @@
 "use client";
 
-import { X } from "@phosphor-icons/react";
 import { useAdminImpersonation } from "./useAdminImpersonation";
 
 export function AdminImpersonationBanner() {
@@ -29,7 +28,6 @@ export function AdminImpersonationBanner() {
           onClick={stopImpersonating}
           className="ml-4 flex h-8 items-center rounded-md border border-amber-300 bg-transparent px-3 text-sm hover:bg-amber-100"
         >
-          <X className="mr-1 h-3 w-3" />
           Stop Impersonation
         </button>
       </div>

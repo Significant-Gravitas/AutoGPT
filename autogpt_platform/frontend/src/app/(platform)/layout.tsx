@@ -6,9 +6,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
     <main className="flex h-screen w-full flex-col">
       <Navbar />
-      <div className="px-4 pt-2">
-        <AdminImpersonationBanner />
-      </div>
+      <AdminImpersonationBanner />
       <section className="flex-1">{children}</section>
     </main>
   );
