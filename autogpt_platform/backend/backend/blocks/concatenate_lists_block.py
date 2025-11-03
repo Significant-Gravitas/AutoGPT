@@ -1,3 +1,4 @@
+from itertools import chain
 from backend.data.block import BlockIOBase, BlockIOType, SchemaField
 from backend.data.block_decorator import block
 
@@ -9,26 +10,32 @@ from backend.data.block_decorator import block
     input_schema={
         "lists": SchemaField(
             type=BlockIOType.LIST,
-            description="List of lists to concatenate"
+            description="List of lists to concatenate",
         ),
     },
     output_schema={
         "result": SchemaField(
             type=BlockIOType.LIST,
-            description="Concatenated list result"
+            description="Concatenated list result",
         ),
     },
 )
 class ConcatenateListsBlock(BlockIOBase):
-    def run(self, lists):
+    def run(self, lists: list) -> dict:
+        """Merge multiple lists into a single list."""
         try:
-            # Combine all lists into one
-            result = []
+            # Validate that the input is a list
+            if not isinstance(lists, list):
+                raise ValueError("Input must be a list of lists")
+
+            # Ensure every element inside is also a list
             for lst in lists:
-                if isinstance(lst, list):
-                    result.extend(lst)
-                else:
-                    raise ValueError("All inputs must be lists")
+                if not isinstance(lst, list):
+                    raise ValueError("All elements inside 'lists' must be lists")
+
+            # Merge efficiently using itertools
+            result = list(chain.from_iterable(lists))
             return {"result": result}
+
         except Exception as e:
             return {"error": str(e)}
