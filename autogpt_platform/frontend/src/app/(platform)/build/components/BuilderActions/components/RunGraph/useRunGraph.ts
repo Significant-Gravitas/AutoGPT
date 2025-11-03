@@ -1,4 +1,7 @@
-import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  usePostV1ExecuteGraphAgent,
+  usePostV1StopGraphExecution,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useNewSaveControl } from "../../../NewControlPanel/NewSaveControl/useNewSaveControl";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
@@ -21,11 +24,12 @@ export const useRunGraph = () => {
   );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
 
-  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
-    flowID: parseAsString,
-    flowVersion: parseAsInteger,
-    flowExecutionID: parseAsString,
-  });
+  const [{ flowID, flowVersion, flowExecutionID }, setQueryStates] =
+    useQueryStates({
+      flowID: parseAsString,
+      flowVersion: parseAsInteger,
+      flowExecutionID: parseAsString,
+    });
 
   const { mutateAsync: executeGraph } = usePostV1ExecuteGraphAgent({
     mutation: {
@@ -47,7 +51,22 @@ export const useRunGraph = () => {
     },
   });
 
-  const runGraph = async () => {
+  const { mutateAsync: stopGraph } = usePostV1StopGraphExecution({
+    mutation: {
+      onSuccess: () => {
+        setIsGraphRunning(false);
+      },
+      onError: (error) => {
+        toast({
+          title: (error.detail as string) ?? "An unexpected error occurred.",
+          description: "An unexpected error occurred.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const handleRunGraph = async () => {
     await onSaveGraph(undefined);
 
     if (hasInputs() || hasCredentials()) {
@@ -62,8 +81,19 @@ export const useRunGraph = () => {
     }
   };
 
+  const handleStopGraph = async () => {
+    if (!flowExecutionID) {
+      return;
+    }
+    await stopGraph({
+      graphId: flowID ?? "",
+      graphExecId: flowExecutionID,
+    });
+  };
+
   return {
-    runGraph,
+    handleRunGraph,
+    handleStopGraph,
     isSaving,
     openRunInputDialog,
     setOpenRunInputDialog,

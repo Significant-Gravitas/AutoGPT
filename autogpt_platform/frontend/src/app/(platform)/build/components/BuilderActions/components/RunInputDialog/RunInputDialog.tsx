@@ -2,12 +2,11 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { RJSFSchema } from "@rjsf/utils";
 import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
-import { useMemo } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { PlayIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { isCredentialFieldSchema } from "@/components/renderers/input-renderer/fields/CredentialField/helpers";
 import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
+import { useRunInputDialog } from "./useRunInputDialog";
 
 export const RunInputDialog = ({
   isOpen,
@@ -23,23 +22,13 @@ export const RunInputDialog = ({
     (state) => state.credentialsInputSchema,
   );
 
-  const credentialsUiSchema = useMemo(() => {
-    const dynamicUiSchema: any = { ...uiSchema };
-
-    if (credentialsSchema?.properties) {
-      Object.keys(credentialsSchema.properties).forEach((fieldName) => {
-        const fieldSchema = credentialsSchema.properties[fieldName];
-        if (isCredentialFieldSchema(fieldSchema)) {
-          dynamicUiSchema[fieldName] = {
-            ...dynamicUiSchema[fieldName],
-            "ui:field": "credentials",
-          };
-        }
-      });
-    }
-
-    return dynamicUiSchema;
-  }, [credentialsSchema]);
+  const {
+    credentialsUiSchema,
+    handleManualRun,
+    handleInputChange,
+    handleCredentialChange,
+    isExecutingGraph,
+  } = useRunInputDialog({ setIsOpen });
 
   return (
     <Dialog
@@ -63,7 +52,7 @@ export const RunInputDialog = ({
               <div className="px-2">
                 <FormRenderer
                   jsonSchema={credentialsSchema as RJSFSchema}
-                  handleChange={() => {}}
+                  handleChange={(v) => handleCredentialChange(v.formData)}
                   uiSchema={credentialsUiSchema}
                   initialValues={{}}
                   formContext={{
@@ -86,7 +75,7 @@ export const RunInputDialog = ({
               <div className="px-2">
                 <FormRenderer
                   jsonSchema={inputSchema as RJSFSchema}
-                  handleChange={() => {}}
+                  handleChange={(v) => handleInputChange(v.formData)}
                   uiSchema={uiSchema}
                   initialValues={{}}
                   formContext={{
@@ -104,6 +93,8 @@ export const RunInputDialog = ({
               variant="primary"
               size="large"
               className="group h-fit min-w-0 gap-2 border-none bg-gradient-to-r from-blue-600 to-purple-600 px-8 transition-all"
+              onClick={handleManualRun}
+              loading={isExecutingGraph}
             >
               <PlayIcon className="size-5 transition-transform group-hover:scale-110" />
               <span className="font-semibold">Manual Run</span>

@@ -30,7 +30,6 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
-    console.log("inputSchema", data.inputSchema);
     if (data.uiType === BlockUIType.NOTE) {
       return <StickyNoteBlock selected={selected} data={data} id={nodeId} />;
     }

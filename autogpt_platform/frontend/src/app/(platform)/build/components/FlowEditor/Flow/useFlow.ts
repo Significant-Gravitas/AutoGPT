@@ -140,6 +140,7 @@ export const useFlow = () => {
       useNodeStore.getState().setNodes([]);
       useEdgeStore.getState().setConnections([]);
       useGraphStore.getState().reset();
+      setIsGraphRunning(false);
     };
   }, []);
 
