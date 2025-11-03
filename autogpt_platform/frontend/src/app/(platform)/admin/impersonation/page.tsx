@@ -1,6 +1,6 @@
 import { AdminImpersonationPanel } from "@/components/admin/AdminImpersonationPanel";
 
-export default function AdminImpersonationPage() {
+export function AdminImpersonationPage() {
   return (
     <div className="container mx-auto space-y-6 py-6">
       <div className="space-y-2">
@@ -16,3 +16,5 @@ export default function AdminImpersonationPage() {
     </div>
   );
 }
+
+export default AdminImpersonationPage;
