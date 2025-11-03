@@ -153,7 +153,7 @@ export function useGoogleDrivePicker(options: Props) {
       const vid = mapViewId(v);
       const view = new gp.DocsView(vid);
 
-      if (!allowThumbnails || listModeIfNoDriveScope) {
+      if (!allowThumbnails && listModeIfNoDriveScope) {
         view.setMode(gp.DocsViewMode.LIST);
       }
 
