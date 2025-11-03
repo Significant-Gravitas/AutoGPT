@@ -25,7 +25,7 @@ export const NewSaveControl = () => {
   const { saveControlOpen, setSaveControlOpen } = useControlPanelStore();
   return (
     <Popover onOpenChange={setSaveControlOpen}>
-      <Tooltip delayDuration={500}>
+      <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <ControlPanelButton
