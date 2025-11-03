@@ -17,9 +17,6 @@ interface AdminImpersonationActions {
 type AdminImpersonationHook = AdminImpersonationState &
   AdminImpersonationActions;
 
-/**
- * Get the initial impersonation state from sessionStorage synchronously to prevent UI flicker.
- */
 function getInitialImpersonationState(): string | null {
   if (!environment.isClientSide()) {
     return null;
@@ -33,13 +30,6 @@ function getInitialImpersonationState(): string | null {
   }
 }
 
-/**
- * Hook for managing admin user impersonation state.
- *
- * Provides functions to start/stop impersonating users and automatically
- * sets the X-Act-As-User-Id header for API requests via sessionStorage.
- * Triggers a full page refresh to ensure all data is updated correctly.
- */
 export function useAdminImpersonation(): AdminImpersonationHook {
   const [impersonatedUserId] = useState<string | null>(
     getInitialImpersonationState,

@@ -3,12 +3,6 @@
 import { X } from "@phosphor-icons/react";
 import { useAdminImpersonation } from "@/hooks/useAdminImpersonation";
 
-/**
- * Security banner that appears when an admin is impersonating another user.
- *
- * Displays prominently at the top of the page with warning styling and
- * provides a quick way to stop impersonation.
- */
 export function AdminImpersonationBanner() {
   const { isImpersonating, impersonatedUserId, stopImpersonating } =
     useAdminImpersonation();
