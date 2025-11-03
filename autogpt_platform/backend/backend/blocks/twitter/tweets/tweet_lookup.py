@@ -26,7 +26,7 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.data.model import SchemaField
 
 
@@ -45,7 +45,7 @@ class TwitterGetTweetBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common Outputs that user commonly uses
         id: str = SchemaField(description="Tweet ID")
         text: str = SchemaField(description="Tweet text")
@@ -58,8 +58,6 @@ class TwitterGetTweetBlock(Block):
             description="Additional data that you have requested (Optional) via Expansions field"
         )
         meta: dict = SchemaField(description="Metadata about the tweet")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -204,7 +202,7 @@ class TwitterGetTweetsBlock(Block):
             placeholder="Enter tweet IDs",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common Outputs that user commonly uses
         ids: list[str] = SchemaField(description="All Tweet IDs")
         texts: list[str] = SchemaField(description="All Tweet texts")
@@ -221,8 +219,6 @@ class TwitterGetTweetsBlock(Block):
             description="Additional data that you have requested (Optional) via Expansions field"
         )
         meta: dict = SchemaField(description="Metadata about the tweets")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

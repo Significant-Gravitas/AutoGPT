@@ -14,7 +14,13 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel, Field
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.settings import Settings
@@ -320,7 +326,7 @@ class GmailBase(Block, ABC):
 
 
 class GmailReadBlock(GmailBase):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.readonly"]
         )
@@ -333,7 +339,7 @@ class GmailReadBlock(GmailBase):
             default=10,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         email: Email = SchemaField(
             description="Email data",
         )
@@ -516,7 +522,7 @@ class GmailSendBlock(GmailBase):
     - Attachment support for multiple files
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.send"]
         )
@@ -540,7 +546,7 @@ class GmailSendBlock(GmailBase):
             description="Files to attach", default_factory=list, advanced=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: GmailSendResult = SchemaField(
             description="Send confirmation",
         )
@@ -618,7 +624,7 @@ class GmailCreateDraftBlock(GmailBase):
     - Attachment support for multiple files
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.modify"]
         )
@@ -642,7 +648,7 @@ class GmailCreateDraftBlock(GmailBase):
             description="Files to attach", default_factory=list, advanced=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: GmailDraftResult = SchemaField(
             description="Draft creation result",
         )
@@ -721,12 +727,12 @@ class GmailCreateDraftBlock(GmailBase):
 
 
 class GmailListLabelsBlock(GmailBase):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.labels"]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: list[dict] = SchemaField(
             description="List of labels",
         )
@@ -779,7 +785,7 @@ class GmailListLabelsBlock(GmailBase):
 
 
 class GmailAddLabelBlock(GmailBase):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.modify"]
         )
@@ -790,7 +796,7 @@ class GmailAddLabelBlock(GmailBase):
             description="Label name to add",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: GmailLabelResult = SchemaField(
             description="Label addition result",
         )
@@ -865,7 +871,7 @@ class GmailAddLabelBlock(GmailBase):
 
 
 class GmailRemoveLabelBlock(GmailBase):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.modify"]
         )
@@ -876,7 +882,7 @@ class GmailRemoveLabelBlock(GmailBase):
             description="Label name to remove",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: GmailLabelResult = SchemaField(
             description="Label removal result",
         )
@@ -941,17 +947,16 @@ class GmailRemoveLabelBlock(GmailBase):
 
 
 class GmailGetThreadBlock(GmailBase):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.readonly"]
         )
         threadId: str = SchemaField(description="Gmail thread ID")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         thread: Thread = SchemaField(
             description="Gmail thread with decoded message bodies"
         )
-        error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(
@@ -1218,7 +1223,7 @@ class GmailReplyBlock(GmailBase):
     - Full Unicode/emoji support with UTF-8 encoding
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             [
                 "https://www.googleapis.com/auth/gmail.send",
@@ -1246,14 +1251,13 @@ class GmailReplyBlock(GmailBase):
             description="Files to attach", default_factory=list, advanced=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         messageId: str = SchemaField(description="Sent message ID")
         threadId: str = SchemaField(description="Thread ID")
         message: dict = SchemaField(description="Raw Gmail message object")
         email: Email = SchemaField(
             description="Parsed email object with decoded body and attachments"
         )
-        error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(
@@ -1368,7 +1372,7 @@ class GmailDraftReplyBlock(GmailBase):
     - Full Unicode/emoji support with UTF-8 encoding
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             [
                 "https://www.googleapis.com/auth/gmail.modify",
@@ -1396,12 +1400,11 @@ class GmailDraftReplyBlock(GmailBase):
             description="Files to attach", default_factory=list, advanced=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         draftId: str = SchemaField(description="Created draft ID")
         messageId: str = SchemaField(description="Draft message ID")
         threadId: str = SchemaField(description="Thread ID")
         status: str = SchemaField(description="Draft creation status")
-        error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(
@@ -1482,14 +1485,13 @@ class GmailDraftReplyBlock(GmailBase):
 
 
 class GmailGetProfileBlock(GmailBase):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/gmail.readonly"]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         profile: Profile = SchemaField(description="Gmail user profile information")
-        error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(
@@ -1555,7 +1557,7 @@ class GmailForwardBlock(GmailBase):
     - Manual content type override option
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             [
                 "https://www.googleapis.com/auth/gmail.send",
@@ -1589,11 +1591,10 @@ class GmailForwardBlock(GmailBase):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         messageId: str = SchemaField(description="Forwarded message ID")
         threadId: str = SchemaField(description="Thread ID")
         status: str = SchemaField(description="Forward status")
-        error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(

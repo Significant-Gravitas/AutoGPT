@@ -5,7 +5,7 @@
 # import tweepy
 # from tweepy.client import Response
 
-# from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+# from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockSchemaInput, BlockSchemaOutput
 # from backend.data.model import SchemaField
 # from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
 # from backend.blocks.twitter._auth import (
@@ -22,7 +22,7 @@
 #     Sends a direct message to a Twitter user
 #     """
 
-#     class Input(BlockSchema):
+#     class Input(BlockSchemaInput):
 #         credentials: TwitterCredentialsInput = TwitterCredentialsField(
 #             ["offline.access", "direct_messages.write"]
 #         )
@@ -54,7 +54,7 @@
 #             default=""
 #         )
 
-#     class Output(BlockSchema):
+#     class Output(BlockSchemaOutput):
 #         dm_event_id: str = SchemaField(description="ID of the sent direct message")
 #         dm_conversation_id_: str = SchemaField(description="ID of the conversation")
 #         error: str = SchemaField(description="Error message if sending failed")
@@ -148,7 +148,7 @@
 #     Creates a new group direct message conversation on Twitter
 #     """
 
-#     class Input(BlockSchema):
+#     class Input(BlockSchemaInput):
 #         credentials: TwitterCredentialsInput = TwitterCredentialsField(
 #             ["offline.access", "dm.write","dm.read","tweet.read","user.read"]
 #         )
@@ -174,7 +174,7 @@
 #             advanced=False
 #         )
 
-#     class Output(BlockSchema):
+#     class Output(BlockSchemaOutput):
 #         dm_event_id: str = SchemaField(description="ID of the sent direct message")
 #         dm_conversation_id: str = SchemaField(description="ID of the conversation")
 #         error: str = SchemaField(description="Error message if sending failed")

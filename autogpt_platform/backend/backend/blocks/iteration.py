@@ -1,12 +1,18 @@
 from typing import Any
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.json import loads
 
 
 class StepThroughItemsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         items: list = SchemaField(
             advanced=False,
             description="The list or dictionary of items to iterate over",
@@ -26,7 +32,7 @@ class StepThroughItemsBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         item: Any = SchemaField(description="The current item in the iteration")
         key: Any = SchemaField(
             description="The key or index of the current item in the iteration",

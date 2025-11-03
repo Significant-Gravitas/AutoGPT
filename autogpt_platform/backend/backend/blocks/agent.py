@@ -7,6 +7,7 @@ from backend.data.block import (
     BlockInput,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     BlockType,
     get_block,
 )
@@ -19,7 +20,7 @@ _logger = logging.getLogger(__name__)
 
 
 class AgentExecutorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         user_id: str = SchemaField(description="User ID")
         graph_id: str = SchemaField(description="Graph ID")
         graph_version: int = SchemaField(description="Graph Version")
@@ -53,6 +54,7 @@ class AgentExecutorBlock(Block):
             return validate_with_jsonschema(cls.get_input_schema(data), data)
 
     class Output(BlockSchema):
+        # Use BlockSchema to avoid automatic error field that could clash with graph outputs
         pass
 
     def __init__(self):
