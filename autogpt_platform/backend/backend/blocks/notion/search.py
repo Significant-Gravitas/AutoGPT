@@ -4,7 +4,13 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import OAuth2Credentials, SchemaField
 
 from ._api import NotionClient, extract_page_title, parse_rich_text
@@ -35,7 +41,7 @@ class NotionSearchResult(BaseModel):
 class NotionSearchBlock(Block):
     """Search across your Notion workspace for pages and databases."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: NotionCredentialsInput = NotionCredentialsField()
         query: str = SchemaField(
             description="Search query text. Leave empty to get all accessible pages/databases.",
@@ -49,7 +55,7 @@ class NotionSearchBlock(Block):
             description="Maximum number of results to return", default=20, ge=1, le=100
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: List[NotionSearchResult] = SchemaField(
             description="List of search results with title, type, URL, and metadata."
         )
@@ -60,7 +66,6 @@ class NotionSearchBlock(Block):
             description="List of IDs from search results for batch operations."
         )
         count: int = SchemaField(description="Number of results found.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(

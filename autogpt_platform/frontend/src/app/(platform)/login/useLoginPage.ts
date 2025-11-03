@@ -1,13 +1,13 @@
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { environment } from "@/services/environment";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -162,7 +162,7 @@ export function useLoginPage() {
     feedback,
     turnstile,
     captchaKey,
-    isLoggedIn: !!user,
+    user,
     isLoading,
     isCloudEnv,
     isUserLoading,

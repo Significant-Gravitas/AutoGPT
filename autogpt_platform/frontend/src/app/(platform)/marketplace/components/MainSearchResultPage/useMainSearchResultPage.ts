@@ -3,12 +3,17 @@ import {
   useGetV2ListStoreCreators,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { CreatorsResponse } from "@/app/api/__generated__/models/creatorsResponse";
+import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
+import { GetV2ListStoreCreatorsParams } from "@/app/api/__generated__/models/getV2ListStoreCreatorsParams";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { useState, useMemo } from "react";
 
+type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
+type CreatorSortBy = GetV2ListStoreCreatorsParams["sorted_by"];
+
 interface useMainSearchResultPageType {
   searchTerm: string;
-  sort: string;
+  sort: MarketplaceSearchSort;
 }
 
 export const useMainSearchResultPage = ({
@@ -17,7 +22,9 @@ export const useMainSearchResultPage = ({
 }: useMainSearchResultPageType) => {
   const [showAgents, setShowAgents] = useState(true);
   const [showCreators, setShowCreators] = useState(true);
-  const [clientSortBy, setClientSortBy] = useState<string>(sort);
+  const [clientSortBy, setClientSortBy] = useState<string>(
+    sort ?? "updated_at",
+  );
 
   const {
     data: agentsData,
@@ -37,12 +44,25 @@ export const useMainSearchResultPage = ({
     },
   );
 
+  const creatorsSortBy: CreatorSortBy = useMemo(() => {
+    switch (sort) {
+      case "runs":
+        return "agent_runs";
+      case "rating":
+        return "agent_rating";
+      default:
+        return "num_agents";
+    }
+  }, [sort]);
   const {
     data: creatorsData,
     isLoading: isCreatorsLoading,
     isError: isCreatorsError,
   } = useGetV2ListStoreCreators(
-    { search_query: searchTerm, sorted_by: sort },
+    {
+      search_query: searchTerm,
+      sorted_by: creatorsSortBy,
+    },
     {
       query: {
         select: (x) => {

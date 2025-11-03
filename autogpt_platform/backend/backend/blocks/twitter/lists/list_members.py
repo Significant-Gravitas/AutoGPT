@@ -29,7 +29,13 @@ from backend.blocks.twitter._types import (
     UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -38,7 +44,7 @@ class TwitterRemoveListMemberBlock(Block):
     Removes a member from a Twitter List that the authenticated user owns
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["list.write", "users.read", "tweet.read", "offline.access"]
         )
@@ -53,11 +59,10 @@ class TwitterRemoveListMemberBlock(Block):
             placeholder="Enter user ID to remove",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the member was successfully removed"
         )
-        error: str = SchemaField(description="Error message if the removal failed")
 
     def __init__(self):
         super().__init__(
@@ -112,7 +117,7 @@ class TwitterAddListMemberBlock(Block):
     Adds a member to a Twitter List that the authenticated user owns
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["list.write", "users.read", "tweet.read", "offline.access"]
         )
@@ -127,11 +132,10 @@ class TwitterAddListMemberBlock(Block):
             placeholder="Enter user ID to add",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the member was successfully added"
         )
-        error: str = SchemaField(description="Error message if the addition failed")
 
     def __init__(self):
         super().__init__(
@@ -210,7 +214,7 @@ class TwitterGetListMembersBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         ids: list[str] = SchemaField(description="List of member user IDs")
         usernames: list[str] = SchemaField(description="List of member usernames")
         next_token: str = SchemaField(description="Next token for pagination")
@@ -222,8 +226,6 @@ class TwitterGetListMembersBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata including pagination info")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -391,7 +393,7 @@ class TwitterGetListMembershipsBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         list_ids: list[str] = SchemaField(description="List of list IDs")
         next_token: str = SchemaField(description="Next token for pagination")
 
@@ -400,7 +402,6 @@ class TwitterGetListMembershipsBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata about pagination")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
