@@ -52,10 +52,10 @@ export function getRunMilestoneSteps(
 ): OnboardingStep[] {
   const steps: OnboardingStep[] = [];
 
-  if (newRunCount === 10) steps.push("RUN_AGENTS");
-  if (newRunCount === 100) steps.push("RUN_AGENTS_100");
-  if (consecutiveDays === 3) steps.push("RUN_3_DAYS");
-  if (consecutiveDays === 14) steps.push("RUN_14_DAYS");
+  if (newRunCount >= 10) steps.push("RUN_AGENTS");
+  if (newRunCount >= 100) steps.push("RUN_AGENTS_100");
+  if (consecutiveDays >= 3) steps.push("RUN_3_DAYS");
+  if (consecutiveDays >= 14) steps.push("RUN_14_DAYS");
 
   return steps;
 }

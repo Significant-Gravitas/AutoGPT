@@ -1,25 +1,25 @@
 "use client";
 
-import useCredits from "@/hooks/useCredits";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { X } from "lucide-react";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Text } from "@/components/atoms/Text/Text";
-import { PopoverClose } from "@radix-ui/react-popover";
-import { TaskGroups } from "@/app/(no-navbar)/onboarding/components/Wallet/components/WalletTaskGroups";
-import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
-import * as party from "party-js";
-import WalletRefill from "./components/WalletRefill";
+import useCredits from "@/hooks/useCredits";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
+import { cn } from "@/lib/utils";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
-import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
+import { PopoverClose } from "@radix-ui/react-popover";
+import { X } from "lucide-react";
+import * as party from "party-js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WalletRefill } from "./components/WalletRefill";
+import { TaskGroups } from "./components/WalletTaskGroups";
 
 export interface Task {
   id: OnboardingStep;
@@ -39,7 +39,7 @@ export interface TaskGroup {
   tasks: Task[];
 }
 
-export default function Wallet() {
+export function Wallet() {
   const { state, updateState } = useOnboarding();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
@@ -360,9 +360,8 @@ export default function Wallet() {
       <PopoverContent
         side="bottom"
         align="end"
-        sideOffset={12}
         collisionPadding={16}
-        className={cn("z-50 w-[28.5rem] px-[0.625rem] py-2")}
+        className={cn("relative -top-12 z-50 w-[28.5rem] px-[0.625rem] py-2")}
       >
         {/* Header */}
         <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">

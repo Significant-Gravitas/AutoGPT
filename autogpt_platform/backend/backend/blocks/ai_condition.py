@@ -10,7 +10,12 @@ from backend.blocks.llm import (
     LLMResponse,
     llm_call,
 )
-from backend.data.block import BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
 
@@ -23,7 +28,7 @@ class AIConditionBlock(AIBlockBase):
     It provides the same yes/no data pass-through functionality as the standard ConditionBlock.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input_value: Any = SchemaField(
             description="The input value to evaluate with the AI condition",
             placeholder="Enter the value to be evaluated (text, number, or any data)",
@@ -50,7 +55,7 @@ class AIConditionBlock(AIBlockBase):
         )
         credentials: AICredentials = AICredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: bool = SchemaField(
             description="The result of the AI condition evaluation (True or False)"
         )
