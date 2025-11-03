@@ -5,7 +5,13 @@ from typing import Any
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.settings import Settings
 
@@ -195,7 +201,7 @@ class BatchOperationType(str, Enum):
     CLEAR = "clear"
 
 
-class BatchOperation(BlockSchema):
+class BatchOperation(BlockSchemaInput):
     type: BatchOperationType = SchemaField(
         description="The type of operation to perform"
     )
@@ -206,7 +212,7 @@ class BatchOperation(BlockSchema):
 
 
 class GoogleSheetsReadBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
@@ -218,7 +224,7 @@ class GoogleSheetsReadBlock(Block):
             description="The A1 notation of the range to read",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: list[list[str]] = SchemaField(
             description="The data read from the spreadsheet",
         )
@@ -274,7 +280,7 @@ class GoogleSheetsReadBlock(Block):
 
 
 class GoogleSheetsWriteBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -289,7 +295,7 @@ class GoogleSheetsWriteBlock(Block):
             description="The data to write to the spreadsheet",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(
             description="The result of the write operation",
         )
@@ -363,7 +369,7 @@ class GoogleSheetsWriteBlock(Block):
 
 
 class GoogleSheetsAppendBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -403,9 +409,8 @@ class GoogleSheetsAppendBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Append API response")
-        error: str = SchemaField(description="Error message, if any")
 
     def __init__(self):
         super().__init__(
@@ -503,7 +508,7 @@ class GoogleSheetsAppendBlock(Block):
 
 
 class GoogleSheetsClearBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -515,7 +520,7 @@ class GoogleSheetsClearBlock(Block):
             description="The A1 notation of the range to clear",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(
             description="The result of the clear operation",
         )
@@ -571,7 +576,7 @@ class GoogleSheetsClearBlock(Block):
 
 
 class GoogleSheetsMetadataBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
@@ -580,7 +585,7 @@ class GoogleSheetsMetadataBlock(Block):
             title="Spreadsheet ID or URL",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(
             description="The metadata of the spreadsheet including sheets info",
         )
@@ -652,7 +657,7 @@ class GoogleSheetsMetadataBlock(Block):
 
 
 class GoogleSheetsManageSheetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -672,9 +677,8 @@ class GoogleSheetsManageSheetBlock(Block):
             description="New sheet name for copy", default=""
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Operation result")
-        error: str = SchemaField(description="Error message, if any")
 
     def __init__(self):
         super().__init__(
@@ -760,7 +764,7 @@ class GoogleSheetsManageSheetBlock(Block):
 
 
 class GoogleSheetsBatchOperationsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -772,7 +776,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
             description="List of operations to perform",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(
             description="The result of the batch operations",
         )
@@ -877,7 +881,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
 
 
 class GoogleSheetsFindReplaceBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -904,7 +908,7 @@ class GoogleSheetsFindReplaceBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(
             description="The result of the find/replace operation including number of replacements",
         )
@@ -987,7 +991,7 @@ class GoogleSheetsFindReplaceBlock(Block):
 
 
 class GoogleSheetsFindBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
@@ -1020,7 +1024,7 @@ class GoogleSheetsFindBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(
             description="The result of the find operation including locations and count",
         )
@@ -1255,7 +1259,7 @@ class GoogleSheetsFindBlock(Block):
 
 
 class GoogleSheetsFormatBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -1270,9 +1274,8 @@ class GoogleSheetsFormatBlock(Block):
         italic: bool = SchemaField(default=False)
         font_size: int = SchemaField(default=10)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="API response or success flag")
-        error: str = SchemaField(description="Error message, if any")
 
     def __init__(self):
         super().__init__(
@@ -1383,7 +1386,7 @@ class GoogleSheetsFormatBlock(Block):
 
 
 class GoogleSheetsCreateSpreadsheetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
@@ -1395,7 +1398,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             default=["Sheet1"],
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: dict = SchemaField(
             description="The result containing spreadsheet ID and URL",
         )

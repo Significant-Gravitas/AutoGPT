@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import OAuth2Credentials, SchemaField
 
 from ._api import NotionClient, parse_rich_text
@@ -18,7 +24,7 @@ from ._auth import (
 class NotionReadDatabaseBlock(Block):
     """Query a Notion database and retrieve entries with their properties."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: NotionCredentialsInput = NotionCredentialsField()
         database_id: str = SchemaField(
             description="Notion database ID. Must be accessible by the connected integration.",
@@ -44,7 +50,7 @@ class NotionReadDatabaseBlock(Block):
             le=100,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         entries: List[Dict[str, Any]] = SchemaField(
             description="List of database entries with their properties."
         )
@@ -59,7 +65,6 @@ class NotionReadDatabaseBlock(Block):
         )
         count: int = SchemaField(description="Number of entries retrieved.")
         database_title: str = SchemaField(description="Title of the database.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(

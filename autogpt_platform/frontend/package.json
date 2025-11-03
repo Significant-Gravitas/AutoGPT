@@ -84,6 +84,7 @@
     "nuqs": "2.4.3",
     "party-js": "2.2.0",
     "react": "18.3.1",
+    "react-currency-input-field": "4.0.3",
     "react-day-picker": "9.8.1",
     "react-dom": "18.3.1",
     "react-drag-drop-files": "2.4.0",
