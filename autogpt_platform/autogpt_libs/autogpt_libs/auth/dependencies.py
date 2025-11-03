@@ -74,7 +74,7 @@ async def get_user_id(
         # Log the impersonation for audit trail
         logger.info(
             f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
-            f"acting as user {impersonate_header}"
+            f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
         )
 
         return impersonate_header
