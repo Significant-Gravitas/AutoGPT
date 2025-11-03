@@ -1,7 +1,7 @@
 import { AdminImpersonationPanel } from "../components/AdminImpersonationPanel";
 import { Text } from "@/components/atoms/Text/Text";
 
-export function AdminImpersonationPage() {
+export default function AdminImpersonationPage() {
   return (
     <div className="container mx-auto space-y-6 py-6">
       <div className="space-y-2">
@@ -17,5 +17,3 @@ export function AdminImpersonationPage() {
     </div>
   );
 }
-
-export default AdminImpersonationPage;
