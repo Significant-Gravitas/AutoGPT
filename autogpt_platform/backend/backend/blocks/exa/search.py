@@ -113,7 +113,6 @@ class ExaSearchBlock(Block):
         search_type: str = SchemaField(
             description="For auto searches, indicates which search type was selected."
         )
-        request_id: str = SchemaField(description="Unique identifier for the request")
         resolved_search_type: str = SchemaField(
             description="The search type that was actually used for this request (neural or keyword)"
         )
