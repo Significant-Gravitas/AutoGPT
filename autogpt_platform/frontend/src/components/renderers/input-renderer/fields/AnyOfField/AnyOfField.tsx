@@ -4,14 +4,17 @@ import { FieldProps, RJSFSchema } from "@rjsf/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Select } from "@/components/atoms/Select/Select";
-import { InputType, mapJsonSchemaTypeToInputType } from "../../helpers";
+import {
+  InputType,
+  mapJsonSchemaTypeToInputType,
+} from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 
 import { InfoIcon } from "@phosphor-icons/react";
 import { useAnyOfField } from "./useAnyOfField";
-import NodeHandle from "../../../handlers/NodeHandle";
+import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { generateHandleId } from "../../../handlers/helpers";
-import { getTypeDisplayInfo } from "../../helpers";
+import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
+import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import merge from "lodash/merge";
 import {
   Tooltip,
@@ -19,6 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { cn } from "@/lib/utils";
 
 type TypeOption = {
   type: string;
@@ -46,9 +50,9 @@ export const AnyOfField = ({
   const handleId = generateHandleId(idSchema.$id ?? "");
   const updatedFormContexrt = { ...formContext, fromAnyOf: true };
 
-  const { nodeId } = updatedFormContexrt;
+  const { nodeId, showHandles = true } = updatedFormContexrt;
   const { isInputConnected } = useEdgeStore();
-  const isConnected = isInputConnected(nodeId, handleId);
+  const isConnected = showHandles ? isInputConnected(nodeId, handleId) : false;
   const {
     isNullableType,
     nonNull,
@@ -124,15 +128,21 @@ export const AnyOfField = ({
     const { displayType, colorClass } = getTypeDisplayInfo(nonNull);
 
     return (
-      <div className="flex flex-col">
+      <div className="mb-0 flex flex-col">
         <div className="flex items-center justify-between gap-2">
-          <div className="-ml-2 flex items-center gap-1">
-            <NodeHandle
-              handleId={handleId}
-              isConnected={isConnected}
-              side="left"
-            />
-            <Text variant="body">
+          <div
+            className={cn("flex items-center gap-1", showHandles && "-ml-2")}
+          >
+            {showHandles && (
+              <NodeHandle
+                handleId={handleId}
+                isConnected={isConnected}
+                side="left"
+              />
+            )}
+            <Text
+              variant={formContext.size === "small" ? "body" : "body-medium"}
+            >
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
             <Text variant="small" className={colorClass}>
@@ -147,16 +157,22 @@ export const AnyOfField = ({
             />
           )}
         </div>
-        {!isConnected && isEnabled && renderInput(nonNull)}
+        <div>{!isConnected && isEnabled && renderInput(nonNull)}</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="-mb-3 -ml-2 flex items-center gap-1">
-        <NodeHandle handleId={handleId} isConnected={isConnected} side="left" />
-        <Text variant="body">
+    <div className="mb-0 flex flex-col">
+      <div className={cn("flex items-center gap-1", showHandles && "-ml-2")}>
+        {showHandles && (
+          <NodeHandle
+            handleId={handleId}
+            isConnected={isConnected}
+            side="left"
+          />
+        )}
+        <Text variant={formContext.size === "small" ? "body" : "body-medium"}>
           {name.charAt(0).toUpperCase() + name.slice(1)}
         </Text>
         {!isConnected && (
@@ -193,6 +209,7 @@ export const AnyOfField = ({
           </TooltipProvider>
         )}
       </div>
+
       {!isConnected && currentTypeOption && renderInput(currentTypeOption)}
     </div>
   );
