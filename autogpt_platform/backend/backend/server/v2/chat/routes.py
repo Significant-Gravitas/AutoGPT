@@ -137,6 +137,7 @@ async def stream_chat(
     session_id: str,
     message: Annotated[str, Query(min_length=1, max_length=10000)],
     user_id: str | None = Depends(get_optional_user_id),
+    is_user_message: bool = Query(default=True),
 ):
     """
     Stream chat responses for a session.
@@ -150,7 +151,7 @@ async def stream_chat(
         session_id: The chat session identifier to associate with the streamed messages.
         message: The user's new message to process.
         user_id: Optional authenticated user ID.
-
+        is_user_message: Whether the message is a user message.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -166,7 +167,7 @@ async def stream_chat(
 
     async def event_generator() -> AsyncGenerator[str, None]:
         async for chunk in chat_service.stream_chat_completion(
-            session_id, message, user_id
+            session_id, message, is_user_message=is_user_message, user_id=user_id
         ):
             yield chunk.to_sse()
 

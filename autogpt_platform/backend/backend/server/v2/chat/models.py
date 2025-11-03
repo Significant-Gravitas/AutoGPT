@@ -8,7 +8,9 @@ class ResponseType(str, Enum):
     """Types of streaming responses."""
 
     TEXT_CHUNK = "text_chunk"
+    TEXT_ENDED = "text_ended"
     TOOL_CALL = "tool_call"
+    TOOL_CALL_START = "tool_call_start"
     TOOL_RESPONSE = "tool_response"
     ERROR = "error"
     USAGE = "usage"
@@ -31,6 +33,13 @@ class StreamTextChunk(StreamBaseResponse):
 
     type: ResponseType = ResponseType.TEXT_CHUNK
     content: str = Field(..., description="Text content chunk")
+
+
+class StreamToolCallStart(StreamBaseResponse):
+    """Tool call started notification."""
+
+    type: ResponseType = ResponseType.TOOL_CALL_START
+    idx: int = Field(..., description="Index of the tool call")
 
 
 class StreamToolCall(StreamBaseResponse):
@@ -74,6 +83,12 @@ class StreamError(StreamBaseResponse):
     details: dict[str, Any] | None = Field(
         default=None, description="Additional error details"
     )
+
+
+class StreamTextEnded(StreamBaseResponse):
+    """Text streaming completed marker."""
+
+    type: ResponseType = ResponseType.TEXT_ENDED
 
 
 class StreamEnd(StreamBaseResponse):

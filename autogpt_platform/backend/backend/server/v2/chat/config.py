@@ -35,6 +35,7 @@ class ChatConfig(BaseSettings):
     )
 
     stream_timeout: int = Field(default=300, description="Stream timeout in seconds")
+    max_retries: int = Field(default=3, description="Maximum number of retries")
 
     @field_validator("api_key", mode="before")
     @classmethod

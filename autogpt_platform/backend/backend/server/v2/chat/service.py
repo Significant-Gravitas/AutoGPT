@@ -20,7 +20,9 @@ from backend.server.v2.chat.models import (
     StreamEnd,
     StreamError,
     StreamTextChunk,
+    StreamTextEnded,
     StreamToolCall,
+    StreamToolCallStart,
     StreamToolExecutionResult,
     StreamUsage,
 )
@@ -70,8 +72,10 @@ async def assign_user_to_session(
 
 async def stream_chat_completion(
     session_id: str,
-    user_message: str,
+    message: str | None = None,
+    is_user_message: bool = True,
     user_id: str | None = None,
+    retry_count: int = 0,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -92,7 +96,7 @@ async def stream_chat_completion(
 
     """
     logger.info(
-        f"Streaming chat completion for session {session_id} with user message {user_message} and user id {user_id}"
+        f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
     )
 
     session = await get_chat_session(session_id, user_id)
@@ -102,7 +106,12 @@ async def stream_chat_completion(
             f"Session {session_id} not found. Please create a new session first."
         )
 
-    session.messages.append(ChatMessage(role="user", content=user_message))
+    if message:
+        session.messages.append(
+            ChatMessage(
+                role="user" if is_user_message else "assistant", content=message
+            )
+        )
 
     if len(session.messages) > config.max_context_messages:
         raise ValueError(f"Max messages exceeded: {config.max_context_messages}")
@@ -120,6 +129,9 @@ async def stream_chat_completion(
 
     has_yielded_end = False
     has_yielded_error = False
+    has_done_tool_call = False
+    text_streaming_ended = False
+    messages_to_add: list[ChatMessage] = []
     try:
         async for chunk in _stream_chat_chunks(
             session=session,
@@ -129,48 +141,48 @@ async def stream_chat_completion(
             if isinstance(chunk, StreamTextChunk):
                 assistant_response.content += chunk.content
                 yield chunk
-            elif isinstance(chunk, StreamToolCall):
-                # Convert arguments dict to JSON string for consistent storage
-                arguments_str = (
-                    orjson.dumps(chunk.arguments).decode("utf-8")
-                    if chunk.arguments
-                    else "{}"
-                )
-                tool_call_response = ChatMessage(
-                    role="assistant",
-                    content="",
-                    tool_calls=[
-                        {
-                            "id": chunk.tool_id,
-                            "type": "function",
-                            "function": {
-                                "name": chunk.tool_name,
-                                "arguments": arguments_str,
-                            },
-                        }
-                    ],
-                )
-                session.messages.append(tool_call_response)
+            elif isinstance(chunk, StreamToolCallStart):
+                # Emit text_ended before first tool call
+                if not text_streaming_ended:
+                    yield StreamTextEnded()
+                    text_streaming_ended = True
                 yield chunk
+            # elif isinstance(chunk, StreamToolCall):
+            #     messages_to_add.append(
+            #         ChatMessage(
+            #             role="assistant",
+            #             content="",
+            #             tool_calls=[
+            #                 {
+            #                     "id": chunk.tool_id,
+            #                     "type": "function",
+            #                     "function": {
+            #                         "name": chunk.tool_name,
+            #                         "arguments": chunk.arguments,
+            #                     },
+            #                 }
+            #             ],
+            #         )
+            #     )
             elif isinstance(chunk, StreamToolExecutionResult):
-                # chunk.result is already a JSON string from model_dump_json()
-                # Don't double-encode it with orjson.dumps()
                 result_content = (
                     chunk.result
                     if isinstance(chunk.result, str)
                     else orjson.dumps(chunk.result).decode("utf-8")
                 )
-                session.messages.append(
+                messages_to_add.append(
                     ChatMessage(
                         role="tool",
                         content=result_content,
                         tool_call_id=chunk.tool_id,
                     )
                 )
+                has_done_tool_call = True
                 yield chunk
             elif isinstance(chunk, StreamEnd):
-                has_yielded_end = True
-                yield chunk
+                if not has_done_tool_call:
+                    has_yielded_end = True
+                    yield chunk
             elif isinstance(chunk, StreamError):
                 has_yielded_error = True
                 yield chunk
@@ -186,20 +198,31 @@ async def stream_chat_completion(
                 logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
     except Exception as e:
         logger.error(f"Error during stream: {e!s}", exc_info=True)
-        # Always yield error response if we haven't already
-        if not has_yielded_error:
-            error_response = StreamError(
-                message=str(e),
-                timestamp=datetime.now(UTC).isoformat(),
-            )
-            yield error_response
-            has_yielded_error = True
-        # Always yield end marker after error
-        if not has_yielded_end:
-            yield StreamEnd(
-                timestamp=datetime.now(UTC).isoformat(),
-            )
-            has_yielded_end = True
+        if assistant_response.content or assistant_response.tool_calls:
+            messages_to_add.append(assistant_response)
+
+        session.messages.extend(messages_to_add)
+        await upsert_chat_session(session)
+
+        if retry_count < config.max_retries:
+            async for chunk in stream_chat_completion(
+                session_id=session.session_id,
+                user_id=user_id,
+                retry_count=retry_count + 1,
+            ):
+                yield chunk
+        else:
+            if not has_yielded_error:
+                error_response = StreamError(
+                    message=str(e),
+                    timestamp=datetime.now(UTC).isoformat(),
+                )
+                yield error_response
+            if not has_yielded_end:
+                yield StreamEnd(
+                    timestamp=datetime.now(UTC).isoformat(),
+                )
+
     finally:
         # We always upsert the session even if an error occurs
         # So we dont lose track of tool call executions
@@ -209,8 +232,18 @@ async def stream_chat_completion(
         # Only append assistant response if it has content or tool calls
         # to avoid saving empty messages on errors
         if assistant_response.content or assistant_response.tool_calls:
-            session.messages.append(assistant_response)
+            messages_to_add.append(assistant_response)
+        session.messages.extend(messages_to_add)
         await upsert_chat_session(session)
+        # If we haven't done a tool call, stream the chat completion again to get the tool call
+        if has_done_tool_call:
+            logger.info(
+                "No tool call done, streaming chat completion again to get the tool call"
+            )
+            async for chunk in stream_chat_completion(
+                session_id=session.session_id, user_id=user_id
+            ):
+                yield chunk
 
 
 async def _stream_chat_chunks(
@@ -289,11 +322,19 @@ async def _stream_chat_chunks(
                             idx = tc_chunk.index
                             if active_tool_call_idx is None:
                                 active_tool_call_idx = idx
+                                yield StreamToolCallStart(
+                                    idx=idx,
+                                    timestamp=datetime.now(UTC).isoformat(),
+                                )
 
                             # When we start receiving a new tool call (higher index),
                             # yield the previous one since it's now complete
                             # (OpenAI streams tool calls with incrementing indices)
                             if active_tool_call_idx != idx:
+                                yield StreamToolCallStart(
+                                    idx=idx,
+                                    timestamp=datetime.now(UTC).isoformat(),
+                                )
                                 yield_idx = idx - 1
                                 async for tc in _yield_tool_call(
                                     tool_calls, yield_idx, session
