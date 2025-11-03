@@ -2,7 +2,7 @@ import { beautifyString, cn } from "@/lib/utils";
 import { CustomNodeData } from "./CustomNode";
 import { Text } from "@/components/atoms/Text/Text";
 import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "../../../../../../../components/form-renderer/utils/input-schema-pre-processor";
+import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { OutputHandler } from "../OutputHandler";
@@ -57,7 +57,7 @@ export const StandardNodeBlock = ({
           </div>
         </div>
         {/* Input Handles */}
-        <div className="bg-white pb-6 pr-6">
+        <div className="bg-white pr-6">
           <FormCreator
             jsonSchema={preprocessInputSchema(data.inputSchema)}
             nodeId={nodeId}

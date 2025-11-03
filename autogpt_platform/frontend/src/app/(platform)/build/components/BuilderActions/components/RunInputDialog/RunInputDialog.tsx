@@ -1,18 +1,13 @@
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import Form from "@rjsf/core";
 import { RJSFSchema } from "@rjsf/utils";
-import { widgets } from "../../../../../../../components/form-renderer/widgets";
-import { fields } from "../../../../../../../components/form-renderer/fields";
-import { templates } from "../../../../../../../components/form-renderer/templates";
 import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useMemo } from "react";
-import { preprocessInputSchema } from "../../../../../../../components/form-renderer/utils/input-schema-pre-processor";
-import validator from "@rjsf/validator-ajv8";
 import { Button } from "@/components/atoms/Button/Button";
-import { PlayIcon, LightningIcon, KeyIcon } from "@phosphor-icons/react";
+import { PlayIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { isCredentialFieldSchema } from "@/components/form-renderer/fields/CredentialField/helpers";
+import { isCredentialFieldSchema } from "@/components/renderers/input-renderer/fields/CredentialField/helpers";
+import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
 
 export const RunInputDialog = ({
   isOpen,
@@ -27,13 +22,6 @@ export const RunInputDialog = ({
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
   );
-  const preprocessedInputSchema = useMemo(() => {
-    return preprocessInputSchema(inputSchema as RJSFSchema);
-  }, [inputSchema]);
-
-  const preprocessedCredentialsSchema = useMemo(() => {
-    return preprocessInputSchema(credentialsSchema as RJSFSchema);
-  }, [credentialsSchema]);
 
   const credentialsUiSchema = useMemo(() => {
     const dynamicUiSchema: any = { ...uiSchema };
@@ -65,90 +53,50 @@ export const RunInputDialog = ({
       <Dialog.Content>
         <div className="space-y-6 p-1">
           {/* Credentials Section */}
-          <div className="group rounded-xl border border-gray-200 bg-gradient-to-br from-white to-gray-50/50 p-6 shadow-sm transition-all">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
-                <KeyIcon className="size-5 text-white" weight="duotone" />
-              </div>
-              <div>
+          {hasCredentials() && (
+            <div>
+              <div className="mb-4">
                 <Text variant="h4" className="text-gray-900">
                   Credentials
                 </Text>
-                <Text variant="body" className="text-sm text-gray-500">
-                  Secure authentication for your agent
-                </Text>
               </div>
-            </div>
-            {hasCredentials() ? (
-              <div className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                <Form
-                  schema={preprocessedCredentialsSchema}
-                  fields={fields}
-                  templates={templates}
-                  widgets={widgets}
+              <div className="px-2">
+                <FormRenderer
+                  jsonSchema={credentialsSchema as RJSFSchema}
+                  handleChange={() => {}}
                   uiSchema={credentialsUiSchema}
-                  validator={validator}
+                  initialValues={{}}
                   formContext={{
                     showHandles: false,
                     size: "large",
                   }}
-                  className="-mt-8 flex-1"
                 />
               </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/50 px-4 py-3">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-200">
-                  <KeyIcon className="size-4 text-gray-500" />
-                </div>
-                <Text variant="body" className="text-sm text-gray-600">
-                  No credentials required for this agent
-                </Text>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Inputs Section */}
-          <div className="group rounded-xl border border-gray-200 bg-gradient-to-br from-white to-gray-50/50 p-6 shadow-sm transition-all">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 shadow-sm">
-                <LightningIcon className="size-5 text-white" weight="duotone" />
-              </div>
-              <div>
+          {hasInputs() && (
+            <div>
+              <div className="mb-4">
                 <Text variant="h4" className="text-gray-900">
                   Inputs
                 </Text>
-                <Text variant="body" className="text-sm text-gray-500">
-                  Configure parameters for execution
-                </Text>
               </div>
-            </div>
-            {hasInputs() ? (
-              <div className="rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-100">
-                <Form
-                  schema={preprocessedInputSchema}
-                  fields={fields}
-                  templates={templates}
-                  widgets={widgets}
+              <div className="px-2">
+                <FormRenderer
+                  jsonSchema={inputSchema as RJSFSchema}
+                  handleChange={() => {}}
                   uiSchema={uiSchema}
-                  validator={validator}
+                  initialValues={{}}
                   formContext={{
                     showHandles: false,
                     size: "large",
                   }}
-                  className="-mt-8 flex-1"
                 />
               </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-300 bg-gray-50/50 px-4 py-3">
-                <div className="flex size-8 items-center justify-center rounded-full bg-gray-200">
-                  <LightningIcon className="size-4 text-gray-500" />
-                </div>
-                <Text variant="body" className="text-sm text-gray-600">
-                  No inputs required for this agent
-                </Text>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Action Button */}
           <div className="flex justify-end pt-2">

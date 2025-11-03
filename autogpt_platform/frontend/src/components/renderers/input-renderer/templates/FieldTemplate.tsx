@@ -79,12 +79,18 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   }
 
   // Size-based styling
-  const containerClass = size === "small" ? "w-[350px]" : "w-full";
+
   const shouldShowHandle =
     showHandles && !suppressHandle && !fromAnyOf && !isCredential;
 
   return (
-    <div className={cn("mt-6 space-y-1", containerClass)}>
+    <div
+      className={cn(
+        "mb-4 space-y-2",
+        fromAnyOf && "mb-0",
+        size === "small" ? "w-[350px]" : "w-full",
+      )}
+    >
       {label && schema.type && (
         <label htmlFor={fieldId} className="flex items-center gap-1">
           {shouldShowHandle && (
@@ -100,6 +106,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               className={cn(
                 "line-clamp-1",
                 isCredential && !shouldShowHandle && "ml-3",
+                size == "large" && "ml-0",
               )}
             >
               {isCredential && credentialProvider

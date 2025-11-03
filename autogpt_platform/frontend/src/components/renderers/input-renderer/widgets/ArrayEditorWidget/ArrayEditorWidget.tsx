@@ -32,7 +32,7 @@ export const ArrayEditorWidget = ({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <div className="flex-1">
+        <div className="max-w-[345px] flex-1">
           {items?.map((element) => {
             const arrayFieldHandleId = generateHandleId(
               fieldId,
@@ -62,7 +62,7 @@ export const ArrayEditorWidget = ({
                     <Button
                       type="button"
                       variant="secondary"
-                      className="relative top-5"
+                      className="relative top-2 min-w-0"
                       size="small"
                       onClick={element.onDropIndexClick(element.index)}
                     >

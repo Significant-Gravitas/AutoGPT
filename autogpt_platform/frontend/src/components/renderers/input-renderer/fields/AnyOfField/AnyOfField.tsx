@@ -7,14 +7,14 @@ import { Select } from "@/components/atoms/Select/Select";
 import {
   InputType,
   mapJsonSchemaTypeToInputType,
-} from "../../../../app/(platform)/build/components/FlowEditor/nodes/helpers";
+} from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 
 import { InfoIcon } from "@phosphor-icons/react";
 import { useAnyOfField } from "./useAnyOfField";
-import NodeHandle from "../../../../app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
+import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { generateHandleId } from "../../../../app/(platform)/build/components/FlowEditor/handlers/helpers";
-import { getTypeDisplayInfo } from "../../../../app/(platform)/build/components/FlowEditor/nodes/helpers";
+import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
+import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import merge from "lodash/merge";
 import {
   Tooltip,
@@ -128,7 +128,7 @@ export const AnyOfField = ({
     const { displayType, colorClass } = getTypeDisplayInfo(nonNull);
 
     return (
-      <div className="flex flex-col">
+      <div className="mb-0 flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div
             className={cn("flex items-center gap-1", showHandles && "-ml-2")}
@@ -140,7 +140,9 @@ export const AnyOfField = ({
                 side="left"
               />
             )}
-            <Text variant={formContext.size === "small" ? "body" : "large"}>
+            <Text
+              variant={formContext.size === "small" ? "body" : "body-medium"}
+            >
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
             <Text variant="small" className={colorClass}>
@@ -155,18 +157,14 @@ export const AnyOfField = ({
             />
           )}
         </div>
-        <div className="-mt-3">
-          {!isConnected && isEnabled && renderInput(nonNull)}
-        </div>
+        <div>{!isConnected && isEnabled && renderInput(nonNull)}</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col">
-      <div
-        className={cn("-mb-3 flex items-center gap-1", showHandles && "-ml-2")}
-      >
+    <div className="mb-0 flex flex-col">
+      <div className={cn("flex items-center gap-1", showHandles && "-ml-2")}>
         {showHandles && (
           <NodeHandle
             handleId={handleId}
@@ -174,7 +172,7 @@ export const AnyOfField = ({
             side="left"
           />
         )}
-        <Text variant={formContext.size === "small" ? "body" : "large"}>
+        <Text variant={formContext.size === "small" ? "body" : "body-medium"}>
           {name.charAt(0).toUpperCase() + name.slice(1)}
         </Text>
         {!isConnected && (
@@ -211,6 +209,7 @@ export const AnyOfField = ({
           </TooltipProvider>
         )}
       </div>
+
       {!isConnected && currentTypeOption && renderInput(currentTypeOption)}
     </div>
   );
