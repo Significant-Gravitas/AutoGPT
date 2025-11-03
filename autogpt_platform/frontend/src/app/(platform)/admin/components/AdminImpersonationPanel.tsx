@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { UserX, UserCheck, CreditCard } from "lucide-react";
+import { UserMinus, UserCheck, CreditCard } from "@phosphor-icons/react";
 import { Card } from "@/components/atoms/Card/Card";
 import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
@@ -9,15 +9,6 @@ import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { useAdminImpersonation } from "@/hooks/useAdminImpersonation";
 import { useGetV1GetUserCredits } from "@/app/api/__generated__/endpoints/credits/credits";
 
-/**
- * Admin control panel for managing user impersonation.
- *
- * Allows admins to:
- * - Enter a user ID to impersonate
- * - View current impersonation status
- * - Stop active impersonation
- * - See security warnings and instructions
- */
 export function AdminImpersonationPanel() {
   const [userIdInput, setUserIdInput] = useState("");
   const [error, setError] = useState("");
@@ -125,7 +116,7 @@ export function AdminImpersonationPanel() {
               <Button
                 onClick={handleStopImpersonation}
                 variant="secondary"
-                leftIcon={<UserX className="h-4 w-4" />}
+                leftIcon={<UserMinus className="h-4 w-4" />}
               >
                 Stop Impersonation
               </Button>

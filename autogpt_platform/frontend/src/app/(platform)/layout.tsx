@@ -1,5 +1,5 @@
 import { Navbar } from "@/components/layout/Navbar/Navbar";
-import { AdminImpersonationBanner } from "@/components/admin/AdminImpersonationBanner";
+import { AdminImpersonationBanner } from "./admin/components/AdminImpersonationBanner";
 import { ReactNode } from "react";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {

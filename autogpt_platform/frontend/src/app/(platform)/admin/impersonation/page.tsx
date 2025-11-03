@@ -1,15 +1,16 @@
-import { AdminImpersonationPanel } from "@/components/admin/AdminImpersonationPanel";
+import { AdminImpersonationPanel } from "../components/AdminImpersonationPanel";
+import { Text } from "@/components/atoms/Text/Text";
 
 export function AdminImpersonationPage() {
   return (
     <div className="container mx-auto space-y-6 py-6">
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight">
+        <Text variant="h1" className="text-3xl font-bold tracking-tight">
           User Impersonation
-        </h1>
-        <p className="text-gray-600">
+        </Text>
+        <Text variant="body" className="text-gray-600">
           Manage admin user impersonation for debugging and support purposes
-        </p>
+        </Text>
       </div>
 
       <AdminImpersonationPanel />

@@ -60,7 +60,7 @@ async function handleUrlEncodedRequest(
   );
 }
 
-async function handleRequestWithoutBody(
+async function handleGetDeleteRequest(
   method: string,
   backendUrl: string,
   req: NextRequest,
@@ -177,7 +177,7 @@ async function handler(
 
   try {
     if (method === "GET" || method === "DELETE") {
-      responseBody = await handleRequestWithoutBody(method, backendUrl, req);
+      responseBody = await handleGetDeleteRequest(method, backendUrl, req);
     } else if (contentType?.includes("application/json")) {
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
