@@ -30,14 +30,14 @@ export const StandardNodeBlock = ({
   return (
     <div
       className={cn(
-        "z-12 max-w-[370px] rounded-xl shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-sm",
+        "z-12 max-w-[370px] rounded-xlarge shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-sm",
         selected && "shadow-2xl ring-2 ring-slate-200",
         status && nodeStyleBasedOnStatus[status],
       )}
     >
-      <div className="rounded-xl bg-white">
+      <div className="rounded-xlarge bg-white">
         {/* Header */}
-        <div className="flex h-auto flex-col gap-2 rounded-xl border-b border-slate-200/50 bg-gradient-to-r from-slate-50/80 to-white/90 px-4 py-4">
+        <div className="flex h-auto flex-col gap-2 rounded-xlarge border-b border-slate-200/50 bg-gradient-to-r from-slate-50/80 to-white/90 px-4 py-4">
           {/* Upper section  */}
           <div className="flex items-center gap-2">
             <Text

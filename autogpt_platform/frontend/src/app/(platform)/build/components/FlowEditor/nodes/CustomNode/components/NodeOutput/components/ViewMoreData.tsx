@@ -97,16 +97,10 @@ export const ViewMoreData = ({
                     >
                       Data:
                     </Text>
-                    <div className="relative">
+                    <div className="relative space-y-2">
                       {value.map((item, index) => (
-                        <div
-                          key={index}
-                          className={cn(
-                            "rounded-xlarge border border-transparent from-zinc-100 to-white p-3 text-slate-700 [background-clip:padding-box,border-box] [background-image:linear-gradient(to_bottom_right,rgb(244_244_245),white),linear-gradient(to_bottom_right,rgb(228_228_231),rgb(250_250_250))] [background-origin:padding-box,border-box]",
-                            index < value.length - 1 && "mb-2",
-                          )}
-                        >
-                          <ContentRenderer value={item} />
+                        <div key={index}>
+                          <ContentRenderer value={item} shortContent={false} />
                         </div>
                       ))}
 

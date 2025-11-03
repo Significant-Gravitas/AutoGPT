@@ -1,17 +1,11 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { beautifyString, cn } from "@/lib/utils";
-import {
-  CaretDownIcon,
-  CopyIcon,
-  CheckIcon,
-  CaretLineDownIcon,
-} from "@phosphor-icons/react";
+import { CaretDownIcon, CopyIcon, CheckIcon } from "@phosphor-icons/react";
 import { NodeDataViewer } from "./components/NodeDataViewer/NodeDataViewer";
 import { ContentRenderer } from "./components/ContentRenderer";
 import { useNodeOutput } from "./useNodeOutput";
 import { ViewMoreData } from "./components/ViewMoreData";
-import { Separator } from "@/components/__legacy__/ui/separator";
 
 export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   const {
@@ -54,7 +48,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
             <div className="space-y-2">
               <Text variant="small-medium">Input</Text>
 
-              <ContentRenderer value={inputData} />
+              <ContentRenderer value={inputData} shortContent={false} />
 
               <div className="mt-1 flex justify-end gap-1">
                 <NodeDataViewer
@@ -103,9 +97,11 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     >
                       Data:
                     </Text>
-                    <div className="relative">
+                    <div className="relative space-y-2">
                       {value.map((item, index) => (
-                        <ContentRenderer key={index} value={item} />
+                        <div key={index}>
+                          <ContentRenderer value={item} shortContent={true} />
+                        </div>
                       ))}
 
                       <div className="mt-1 flex justify-end gap-1">
