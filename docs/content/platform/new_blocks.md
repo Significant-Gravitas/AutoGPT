@@ -20,13 +20,13 @@ Follow these steps to create and test a new block:
    Every block should contain the following:
 
    ```python
-   from backend.data.block import Block, BlockSchema, BlockOutput
+   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    ```
 
    Example for the Wikipedia summary block:
 
    ```python
-   from backend.data.block import Block, BlockSchema, BlockOutput
+   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
    from backend.utils.get_request import GetRequest
    import requests
 
@@ -42,12 +42,11 @@ Follow these steps to create and test a new block:
    Example:
 
    ```python
-   class Input(BlockSchema):
+   class Input(BlockSchemaInput):
        topic: str  # The topic to get the Wikipedia summary for
 
-   class Output(BlockSchema):
+   class Output(BlockSchemaOutput):
        summary: str  # The summary of the topic from Wikipedia
-       error: str  # Any error message if the request fails, error field needs to be named `error`.
    ```
 
 4. **Implement the `__init__` method, including test data and mocks:**
@@ -173,14 +172,14 @@ from backend.data.model import (
     Credentials,
 )
 
-from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 
 
 # API Key auth:
 class BlockWithAPIKeyAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
@@ -203,7 +202,7 @@ class BlockWithAPIKeyAuth(Block):
 
 # OAuth:
 class BlockWithOAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
@@ -226,7 +225,7 @@ class BlockWithOAuth(Block):
 
 # API Key auth + OAuth:
 class BlockWithAPIKeyAndOAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
