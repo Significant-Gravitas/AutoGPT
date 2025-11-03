@@ -614,9 +614,9 @@ custom_requests = Requests(
 )
 ```
 
-### Error Hanlding
+### Error Handling
 
-All blocks should have an error output that catches all reasonable errrors that a user can handle, wrap them in a value error, and re-raise. Dont catch things the system admin would need to fix like being out of money or unreachable addresses.
+All blocks should have an error output that catches all reasonable errors that a user can handle, wrap them in a ValueError, and re-raise. Don't catch things the system admin would need to fix like being out of money or unreachable addresses.  
 
 ### Data Models
 
