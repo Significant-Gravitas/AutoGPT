@@ -1,11 +1,17 @@
 import { WidgetProps } from "@rjsf/utils";
-import { InputType, mapJsonSchemaTypeToInputType } from "../helpers";
+import {
+  InputType,
+  mapJsonSchemaTypeToInputType,
+} from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { Input } from "@/components/atoms/Input/Input";
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
 
 export const TextInputWidget = (props: WidgetProps) => {
   const { schema, formContext } = props;
-  const { uiType } = formContext as { uiType: BlockUIType };
+  const { uiType, size = "small" } = formContext as {
+    uiType: BlockUIType;
+    size?: string;
+  };
 
   const mapped = mapJsonSchemaTypeToInputType(schema);
 
@@ -53,6 +59,9 @@ export const TextInputWidget = (props: WidgetProps) => {
     return props.onChange(config.handleChange(v));
   };
 
+  // Determine input size based on context
+  const inputSize = size === "large" ? "medium" : "small";
+
   if (uiType === BlockUIType.NOTE) {
     return (
       <Input
@@ -78,7 +87,7 @@ export const TextInputWidget = (props: WidgetProps) => {
       hideLabel={true}
       type={config.htmlType as any}
       label={""}
-      size="small"
+      size={inputSize as any}
       wrapperClassName="mb-0"
       value={props.value ?? ""}
       onChange={handleChange}
