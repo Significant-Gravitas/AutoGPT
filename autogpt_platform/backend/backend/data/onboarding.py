@@ -52,10 +52,36 @@ async def get_user_onboarding(user_id: str):
     )
 
 
+async def reset_user_onboarding(user_id: str):
+    return await UserOnboarding.prisma().upsert(
+        where={"userId": user_id},
+        data={
+            "create": UserOnboardingCreateInput(userId=user_id),
+            "update": {
+                "completedSteps": [],
+                "walletShown": False,
+                "notified": [],
+                "usageReason": None,
+                "integrations": [],
+                "otherIntegrations": None,
+                "selectedStoreListingVersionId": None,
+                "agentInput": prisma.Json({}),
+                "onboardingAgentExecutionId": None,
+                "agentRuns": 0,
+                "lastRunAt": None,
+                "consecutiveRunDays": 0,
+            },
+        },
+    )
+
+
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
+    onboarding = await get_user_onboarding(user_id)
     if data.completedSteps is not None:
-        update["completedSteps"] = list(set(data.completedSteps))
+        update["completedSteps"] = list(
+            set(data.completedSteps + onboarding.completedSteps)
+        )
         for step in (
             OnboardingStep.AGENT_NEW_RUN,
             OnboardingStep.MARKETPLACE_VISIT,
@@ -71,11 +97,11 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
             OnboardingStep.RUN_AGENTS_100,
         ):
             if step in data.completedSteps:
-                await reward_user(user_id, step)
-    if data.walletShown is not None:
+                await reward_user(user_id, step, onboarding)
+    if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified))
+        update["notified"] = list(set(data.notified + onboarding.notified))
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:
@@ -88,7 +114,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
-    if data.agentRuns is not None:
+    if data.agentRuns is not None and data.agentRuns > onboarding.agentRuns:
         update["agentRuns"] = data.agentRuns
     if data.lastRunAt is not None:
         update["lastRunAt"] = data.lastRunAt
@@ -104,7 +130,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     )
 
 
-async def reward_user(user_id: str, step: OnboardingStep):
+async def reward_user(user_id: str, step: OnboardingStep, onboarding: UserOnboarding):
     reward = 0
     match step:
         # Reward user when they clicked New Run during onboarding
@@ -137,8 +163,6 @@ async def reward_user(user_id: str, step: OnboardingStep):
 
     if reward == 0:
         return
-
-    onboarding = await get_user_onboarding(user_id)
 
     # Skip if already rewarded
     if step in onboarding.rewardedFor:

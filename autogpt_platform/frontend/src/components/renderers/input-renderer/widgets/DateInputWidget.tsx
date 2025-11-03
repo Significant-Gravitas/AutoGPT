@@ -3,12 +3,24 @@ import { WidgetProps } from "@rjsf/utils";
 import { DateInput } from "@/components/atoms/DateInput/DateInput";
 
 export const DateInputWidget = (props: WidgetProps) => {
-  const { value, onChange, disabled, readonly, placeholder, autofocus, id } =
-    props;
+  const {
+    value,
+    onChange,
+    disabled,
+    readonly,
+    placeholder,
+    autofocus,
+    id,
+    formContext,
+  } = props;
+  const { size = "small" } = formContext || {};
+
+  // Determine input size based on context
+  const inputSize = size === "large" ? "default" : "small";
 
   return (
     <DateInput
-      size="small"
+      size={inputSize as any}
       id={id}
       hideLabel={true}
       label={""}
