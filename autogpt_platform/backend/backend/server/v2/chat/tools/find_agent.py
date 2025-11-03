@@ -37,7 +37,7 @@ class FindAgentTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query describing what the user wants to accomplish",
+                    "description": "Search query describing what the user wants to accomplish. Use single keywords for best results.",
                 },
             },
             "required": ["query"],
@@ -105,7 +105,7 @@ class FindAgentTool(BaseTool):
             )
         if not agents:
             return NoResultsResponse(
-                message=f"No agents found matching '{query}'. Try different keywords or browse the marketplace.",
+                message=f"No agents found matching '{query}'. Try different keywords or browse the marketplace. If you have 3 consecutive find_agent tool calls results and found no agents. Please stop trying and ask the user if there is anything else you can help with.",
                 session_id=session_id,
                 suggestions=[
                     "Try more general terms",
@@ -119,7 +119,7 @@ class FindAgentTool(BaseTool):
             f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'"
         )
         return AgentCarouselResponse(
-            message=title,
+            message="Now you have found some options for the user to choose from. Please ask the user if they would like to use any of these agents. If they do, please call the get_agent_details tool for this agent.",
             title=title,
             agents=agents,
             count=len(agents),
