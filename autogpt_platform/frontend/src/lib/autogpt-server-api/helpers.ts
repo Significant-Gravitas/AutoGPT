@@ -323,7 +323,12 @@ export async function makeAuthenticatedFileUpload(
   const token = await getServerAuthToken();
 
   // Reuse existing header creation logic but exclude Content-Type for FormData
-  const headers = createRequestHeaders(token, false, "", originalRequest);
+  const headers = createRequestHeaders(
+    token,
+    false,
+    "application/json",
+    originalRequest,
+  );
 
   // Don't set Content-Type for FormData - let the browser set it with boundary
   const response = await fetch(url, {
