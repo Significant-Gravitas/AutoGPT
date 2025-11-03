@@ -63,7 +63,6 @@ export function CustomEdge({
   const { visualizeBeads } = useContext(BuilderContext) ?? {
     visualizeBeads: "no",
   };
-  const [isHovered, setIsHovered] = useState(false);
 
   const onEdgeRemoveClick = () => {
     deleteElements({ edges: [{ id }] });
@@ -185,8 +184,6 @@ export function CustomEdge({
         strokeOpacity={0}
         strokeWidth={20}
         className="data-sentry-unmask react-flow__edge-interaction"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       />
       <EdgeLabelRenderer>
         <div
@@ -198,10 +195,8 @@ export function CustomEdge({
           className="edge-label-renderer"
         >
           <button
-            className={`edge-label-button transition-opacity duration-200 ${isHovered ? "opacity-100" : "opacity-0"}`}
+            className={"edge-label-button transition-opacity duration-200 hover:opacity-100"}
             onClick={onEdgeRemoveClick}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
           >
             <X className="size-4" />
           </button>
