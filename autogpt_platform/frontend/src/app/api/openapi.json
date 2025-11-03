@@ -4840,7 +4840,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat",
-        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "getV2StreamChat",
         "security": [{ "HTTPBearer": [] }, { "HTTPBearer": [] }],
         "parameters": [
@@ -4859,6 +4859,16 @@
               "minLength": 1,
               "maxLength": 10000,
               "title": "Message"
+            }
+          },
+          {
+            "name": "is_user_message",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Is User Message"
             }
           }
         ],
