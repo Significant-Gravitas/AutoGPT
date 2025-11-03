@@ -42,7 +42,8 @@ export function SetupAnalytics(props: SetupProps) {
   const dataFastEnabled = isProductionDomain && hasAnalyticsConsent;
   // We collect analytics too for open source developers running the platform locally
   // BUT only with consent
-  const googleAnalyticsEnabled = (environment.isLocal() || isProductionDomain) && hasAnalyticsConsent;
+  const googleAnalyticsEnabled =
+    (environment.isLocal() || isProductionDomain) && hasAnalyticsConsent;
 
   if (currDataLayerName === undefined) {
     currDataLayerName = dataLayerName;

@@ -25,7 +25,9 @@ export function loadConsent(): ConsentPreferences {
       typeof parsed.analytics !== "boolean" ||
       typeof parsed.monitoring !== "boolean"
     ) {
-      console.warn("Invalid consent data in localStorage, resetting to defaults");
+      console.warn(
+        "Invalid consent data in localStorage, resetting to defaults",
+      );
       return DEFAULT_CONSENT;
     }
 
@@ -69,7 +71,9 @@ export function clearConsent(): void {
 /**
  * Check if user has given consent for a specific category
  */
-export function hasConsentFor(category: keyof Omit<ConsentPreferences, "hasConsented" | "timestamp">): boolean {
+export function hasConsentFor(
+  category: keyof Omit<ConsentPreferences, "hasConsented" | "timestamp">,
+): boolean {
   const consent = loadConsent();
   return consent.hasConsented && consent[category];
 }

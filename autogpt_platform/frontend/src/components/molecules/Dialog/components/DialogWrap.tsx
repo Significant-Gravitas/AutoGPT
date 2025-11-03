@@ -87,7 +87,10 @@ export function DialogWrap({
         <div className="flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}
-            className={cn("flex-1 overflow-y-auto overflow-x-hidden", scrollbarStyles)}
+            className={cn(
+              "flex-1 overflow-y-auto overflow-x-hidden",
+              scrollbarStyles,
+            )}
             style={{
               scrollbarGutter: "stable",
               marginRight: hasVerticalScrollbar ? "-14px" : "0px",

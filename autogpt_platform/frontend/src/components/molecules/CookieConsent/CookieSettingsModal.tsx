@@ -111,7 +111,11 @@ export function CookieSettingsModal({ isOpen, onClose }: Props) {
             <Button variant="ghost" size="small" onClick={handleAcceptAll}>
               Accept All
             </Button>
-            <Button variant="primary" size="small" onClick={handleSavePreferences}>
+            <Button
+              variant="primary"
+              size="small"
+              onClick={handleSavePreferences}
+            >
               Save Preferences
             </Button>
           </div>

@@ -34,22 +34,25 @@ export function useConsent() {
   /**
    * Update consent preferences
    */
-  const updateConsent = useCallback((updates: Partial<ConsentPreferences>) => {
-    const newConsent: ConsentPreferences = {
-      ...consent,
-      ...updates,
-      hasConsented: true,
-      timestamp: Date.now(),
-    };
-    setConsent(newConsent);
-    saveConsent(newConsent);
+  const updateConsent = useCallback(
+    (updates: Partial<ConsentPreferences>) => {
+      const newConsent: ConsentPreferences = {
+        ...consent,
+        ...updates,
+        hasConsented: true,
+        timestamp: Date.now(),
+      };
+      setConsent(newConsent);
+      saveConsent(newConsent);
 
-    // Trigger a page reload to apply consent changes
-    // This ensures analytics scripts are loaded/unloaded appropriately
-    if (typeof window !== "undefined") {
-      window.location.reload();
-    }
-  }, [consent]);
+      // Trigger a page reload to apply consent changes
+      // This ensures analytics scripts are loaded/unloaded appropriately
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    },
+    [consent],
+  );
 
   /**
    * Accept all non-essential cookies
