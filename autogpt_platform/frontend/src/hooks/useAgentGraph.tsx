@@ -653,6 +653,23 @@ export default function useAgentGraph(
     getToolFuncName,
   ]);
 
+  const resetEdgeBeads = useCallback(() => {
+    setXYEdges((edges) =>
+      edges.map(
+        (edge): CustomEdge => ({
+          ...edge,
+          data: {
+            ...edge.data,
+            edgeColor: edge.data?.edgeColor ?? "grey",
+            beadUp: 0,
+            beadDown: 0,
+            beadData: new Map(),
+          },
+        }),
+      ),
+    );
+  }, [setXYEdges]);
+
   const _saveAgent = useCallback(async () => {
     // FIXME: frontend IDs should be resolved better (e.g. returned from the server)
     // currently this relies on block_id and position
@@ -670,6 +687,7 @@ export default function useAgentGraph(
     let newSavedAgent: Graph;
     if (savedAgent && graphsEquivalent(savedAgent, payload)) {
       console.warn("No need to save: Graph is the same as version on server");
+      resetEdgeBeads();
       return savedAgent;
     } else {
       console.debug(
@@ -731,20 +749,7 @@ export default function useAgentGraph(
     );
 
     // Reset bead count
-    setXYEdges((edges) =>
-      edges.map(
-        (edge): CustomEdge => ({
-          ...edge,
-          data: {
-            ...edge.data,
-            edgeColor: edge.data?.edgeColor ?? "grey",
-            beadUp: 0,
-            beadDown: 0,
-            beadData: new Map(),
-          },
-        }),
-      ),
-    );
+    resetEdgeBeads();
     return newSavedAgent;
   }, [
     api,
@@ -757,6 +762,7 @@ export default function useAgentGraph(
     pathname,
     router,
     searchParams,
+    resetEdgeBeads,
   ]);
 
   const saveAgent = useCallback(async () => {
