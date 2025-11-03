@@ -1,13 +1,9 @@
-import Form from "@rjsf/core";
-import validator from "@rjsf/validator-ajv8";
 import { RJSFSchema } from "@rjsf/utils";
 import React from "react";
-import { widgets } from "./widgets";
-import { fields } from "./fields";
-import { templates } from "./templates";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockUIType } from "../../types";
+import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
 
 export const FormCreator = React.memo(
   ({
@@ -33,16 +29,17 @@ export const FormCreator = React.memo(
     const initialValues = getHardCodedValues(nodeId);
 
     return (
-      <Form
-        schema={jsonSchema}
-        validator={validator}
-        fields={fields}
-        templates={templates}
-        widgets={widgets}
-        formContext={{ nodeId: nodeId, uiType: uiType }}
-        onChange={handleChange}
+      <FormRenderer
+        jsonSchema={jsonSchema}
+        handleChange={handleChange}
         uiSchema={uiSchema}
-        formData={initialValues}
+        initialValues={initialValues}
+        formContext={{
+          nodeId: nodeId,
+          uiType: uiType,
+          showHandles: true,
+          size: "small",
+        }}
       />
     );
   },

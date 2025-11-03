@@ -3,20 +3,19 @@ import {
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
-import { isServerSide } from "@/lib/utils/is-server-side";
-import { getAgptServerBaseUrl } from "@/lib/env-config";
 
 import { transformDates } from "./date-transformer";
+import { environment } from "@/services/environment";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
 const getBaseUrl = (): string => {
-  if (!isServerSide()) {
+  if (!environment.isServerSide()) {
     return API_PROXY_BASE_URL;
   } else {
-    return getAgptServerBaseUrl();
+    return environment.getAGPTServerBaseUrl();
   }
 };
 
@@ -77,7 +76,7 @@ export const customMutator = async <
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   const fullUrl = `${baseUrl}${url}${queryString}`;
 
-  if (isServerSide()) {
+  if (environment.isServerSide()) {
     try {
       const token = await getServerAuthToken();
       const authHeaders = createRequestHeaders(token, !!data, contentType);
@@ -100,7 +99,7 @@ export const customMutator = async <
       response_data?.detail || response_data?.message || response.statusText;
 
     console.error(
-      `Request failed ${isServerSide() ? "on server" : "on client"}`,
+      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
       { status: response.status, url: fullUrl, data: response_data },
     );
 

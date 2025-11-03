@@ -1,11 +1,13 @@
 import logging
-from typing import Callable, Concatenate, ParamSpec, TypeVar, cast
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
+    get_child_graph_executions,
     get_execution_kv_data,
     get_graph_execution_meta,
     get_graph_executions,
@@ -27,6 +29,7 @@ from backend.data.graph import (
     get_graph,
     get_graph_metadata,
     get_node,
+    validate_graph_execution_permissions,
 )
 from backend.data.notifications import (
     clear_all_user_notification_batches,
@@ -39,6 +42,7 @@ from backend.data.notifications import (
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_user_by_id,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
@@ -56,8 +60,10 @@ from backend.util.service import (
 )
 from backend.util.settings import Config
 
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
 config = Config()
-_user_credit_model = get_user_credit_model()
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -66,23 +72,27 @@ R = TypeVar("R")
 async def _spend_credits(
     user_id: str, cost: int, metadata: UsageTransactionMetadata
 ) -> int:
-    return await _user_credit_model.spend_credits(user_id, cost, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.spend_credits(user_id, cost, metadata)
 
 
 async def _get_credits(user_id: str) -> int:
-    return await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_credits(user_id)
 
 
 class DatabaseManager(AppService):
-    def run_service(self) -> None:
-        logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
-        self.run_and_wait(db.connect())
-        super().run_service()
+    @asynccontextmanager
+    async def lifespan(self, app: "FastAPI"):
+        async with super().lifespan(app):
+            logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
+            await db.connect()
 
-    def cleanup(self):
-        super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
-        self.run_and_wait(db.disconnect())
+            logger.info(f"[{self.service_name}] ✅ Ready")
+            yield
+
+            logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+            await db.disconnect()
 
     async def health_check(self) -> str:
         if not db.is_connected():
@@ -112,6 +122,7 @@ class DatabaseManager(AppService):
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
     # Executions
+    get_child_graph_executions = _(get_child_graph_executions)
     get_graph_executions = _(get_graph_executions)
     get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution_meta = _(get_graph_execution_meta)
@@ -145,6 +156,7 @@ class DatabaseManager(AppService):
 
     # User Comms - async
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
+    get_user_by_id = _(get_user_by_id)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
@@ -165,6 +177,7 @@ class DatabaseManager(AppService):
     # Library
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
     # Store
     get_store_agents = _(get_store_agents)
@@ -208,6 +221,7 @@ class DatabaseManagerClient(AppServiceClient):
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
+    validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -222,6 +236,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
         return DatabaseManager
 
     create_graph_execution = d.create_graph_execution
+    get_child_graph_executions = d.get_child_graph_executions
     get_connected_output_nodes = d.get_connected_output_nodes
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
@@ -230,6 +245,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
+    get_user_by_id = d.get_user_by_id
     get_user_integrations = d.get_user_integrations
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output
@@ -262,6 +278,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # Library
     list_library_agents = d.list_library_agents
     add_store_agent_to_library = d.add_store_agent_to_library
+    validate_graph_execution_permissions = d.validate_graph_execution_permissions
 
     # Store
     get_store_agents = d.get_store_agents

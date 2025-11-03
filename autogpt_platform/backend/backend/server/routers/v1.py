@@ -11,7 +11,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -40,6 +39,7 @@ from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
     TransactionHistory,
+    UserCredit,
     get_auto_top_up,
     get_user_credit_model,
     set_auto_top_up,
@@ -52,6 +52,7 @@ from backend.data.onboarding import (
     get_recommended_agents,
     get_user_onboarding,
     onboarding_enabled,
+    reset_user_onboarding,
     update_user_onboarding,
 )
 from backend.data.user import (
@@ -84,6 +85,7 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
@@ -106,9 +108,6 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
-
-
-_user_credit_model = get_user_credit_model()
 
 # Define the API routes
 v1_router = APIRouter()
@@ -261,6 +260,16 @@ async def is_onboarding_enabled():
     return await onboarding_enabled()
 
 
+@v1_router.post(
+    "/onboarding/reset",
+    summary="Reset onboarding progress",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
+    return await reset_user_onboarding(user_id)
+
+
 ########################################################
 ##################### Blocks ###########################
 ########################################################
@@ -291,7 +300,7 @@ def _compute_blocks_sync() -> str:
     return dumps(result)
 
 
-@cached()
+@cached(ttl_seconds=3600)
 async def _get_cached_blocks() -> str:
     """
     Async cached function with thundering herd protection.
@@ -478,7 +487,8 @@ async def upload_file(
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, int]:
-    return {"credits": await _user_credit_model.get_credits(user_id)}
+    user_credit_model = await get_user_credit_model(user_id)
+    return {"credits": await user_credit_model.get_credits(user_id)}
 
 
 @v1_router.post(
@@ -490,9 +500,8 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
 ):
-    checkout_url = await _user_credit_model.top_up_intent(
-        user_id, request.credit_amount
-    )
+    user_credit_model = await get_user_credit_model(user_id)
+    checkout_url = await user_credit_model.top_up_intent(user_id, request.credit_amount)
     return {"checkout_url": checkout_url}
 
 
@@ -507,7 +516,8 @@ async def refund_top_up(
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
-    return await _user_credit_model.top_up_refund(user_id, transaction_key, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.top_up_refund(user_id, transaction_key, metadata)
 
 
 @v1_router.patch(
@@ -517,7 +527,8 @@ async def refund_top_up(
     dependencies=[Security(requires_user)],
 )
 async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
-    await _user_credit_model.fulfill_checkout(user_id=user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    await user_credit_model.fulfill_checkout(user_id=user_id)
     return Response(status_code=200)
 
 
@@ -531,18 +542,23 @@ async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
     if request.threshold < 0:
-        raise ValueError("Threshold must be greater than 0")
+        raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
-        raise ValueError("Amount must be greater than or equal to 500")
-    if request.amount < request.threshold:
-        raise ValueError("Amount must be greater than or equal to threshold")
+        raise HTTPException(
+            status_code=422, detail="Amount must be greater than or equal to 500"
+        )
+    if request.amount != 0 and request.amount < request.threshold:
+        raise HTTPException(
+            status_code=422, detail="Amount must be greater than or equal to threshold"
+        )
 
-    current_balance = await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    current_balance = await user_credit_model.get_credits(user_id)
 
     if current_balance < request.threshold:
-        await _user_credit_model.top_up_credits(user_id, request.amount)
+        await user_credit_model.top_up_credits(user_id, request.amount)
     else:
-        await _user_credit_model.top_up_credits(user_id, 0)
+        await user_credit_model.top_up_credits(user_id, 0)
 
     await set_auto_top_up(
         user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
@@ -590,15 +606,13 @@ async def stripe_webhook(request: Request):
         event["type"] == "checkout.session.completed"
         or event["type"] == "checkout.session.async_payment_succeeded"
     ):
-        await _user_credit_model.fulfill_checkout(
-            session_id=event["data"]["object"]["id"]
-        )
+        await UserCredit().fulfill_checkout(session_id=event["data"]["object"]["id"])
 
     if event["type"] == "charge.dispute.created":
-        await _user_credit_model.handle_dispute(event["data"]["object"])
+        await UserCredit().handle_dispute(event["data"]["object"])
 
     if event["type"] == "refund.created" or event["type"] == "charge.dispute.closed":
-        await _user_credit_model.deduct_credits(event["data"]["object"])
+        await UserCredit().deduct_credits(event["data"]["object"])
 
     return Response(status_code=200)
 
@@ -612,7 +626,8 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, str]:
-    return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
+    user_credit_model = await get_user_credit_model(user_id)
+    return {"url": await user_credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(
@@ -630,7 +645,8 @@ async def get_credit_history(
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
 
-    return await _user_credit_model.get_transaction_history(
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_transaction_history(
         user_id=user_id,
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
@@ -647,7 +663,8 @@ async def get_credit_history(
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[RefundRequest]:
-    return await _user_credit_model.get_refund_requests(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_refund_requests(user_id)
 
 
 ########################################################
@@ -869,7 +886,8 @@ async def execute_graph(
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> execution_db.GraphExecutionMeta:
-    current_balance = await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    current_balance = await user_credit_model.get_credits(user_id)
     if current_balance <= 0:
         raise HTTPException(
             status_code=402,
@@ -1121,7 +1139,7 @@ async def disable_execution_sharing(
 async def get_shared_execution(
     share_token: Annotated[
         str,
-        Path(regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
     ],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""

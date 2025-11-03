@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "../../processors/input-schema-pre-processor";
+import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
 import { CustomNodeData } from "./CustomNode";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -42,7 +42,7 @@ export const StickyNoteBlock = ({ data, id }: StickyNoteBlockType) => {
       style={{ transform: `rotate(${angle}deg)` }}
     >
       <Text variant="h3" className="tracking-tight text-slate-800">
-        Notes #{id}
+        Notes #{id.split("-")[0]}
       </Text>
       <FormCreator
         jsonSchema={preprocessInputSchema(data.inputSchema)}

@@ -6,7 +6,13 @@ from typing import Any, Literal
 import openai
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -54,7 +60,7 @@ def PerplexityCredentialsField() -> PerplexityCredentials:
 
 
 class PerplexityBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="The query to send to the Perplexity model.",
             placeholder="Enter your query here...",
@@ -78,14 +84,13 @@ class PerplexityBlock(Block):
             description="The maximum number of tokens to generate.",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         response: str = SchemaField(
             description="The response from the Perplexity model."
         )
         annotations: list[dict[str, Any]] = SchemaField(
             description="List of URL citations and annotations from the response."
         )
-        error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
         super().__init__(
