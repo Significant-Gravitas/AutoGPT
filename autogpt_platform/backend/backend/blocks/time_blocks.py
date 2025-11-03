@@ -7,7 +7,13 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.execution import UserContext
 from backend.data.model import SchemaField
 
@@ -131,7 +137,7 @@ class TimeISO8601Format(BaseModel):
 
 
 class GetCurrentTimeBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         trigger: str = SchemaField(
             description="Trigger any data to output the current time"
         )
@@ -141,7 +147,7 @@ class GetCurrentTimeBlock(Block):
             default=TimeStrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         time: str = SchemaField(
             description="Current time in the specified format (default: %H:%M:%S)"
         )
@@ -221,7 +227,7 @@ class DateISO8601Format(BaseModel):
 
 
 class GetCurrentDateBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         trigger: str = SchemaField(
             description="Trigger any data to output the current date"
         )
@@ -236,7 +242,7 @@ class GetCurrentDateBlock(Block):
             default=DateStrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         date: str = SchemaField(
             description="Current date in the specified format (default: YYYY-MM-DD)"
         )
@@ -332,7 +338,7 @@ class ISO8601Format(BaseModel):
 
 
 class GetCurrentDateAndTimeBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         trigger: str = SchemaField(
             description="Trigger any data to output the current date and time"
         )
@@ -342,7 +348,7 @@ class GetCurrentDateAndTimeBlock(Block):
             default=StrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         date_time: str = SchemaField(
             description="Current date and time in the specified format (default: YYYY-MM-DD HH:MM:SS)"
         )
@@ -419,7 +425,7 @@ class GetCurrentDateAndTimeBlock(Block):
 
 
 class CountdownTimerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input_message: Any = SchemaField(
             advanced=False,
             description="Message to output after the timer finishes",
@@ -442,7 +448,7 @@ class CountdownTimerBlock(Block):
             default=1,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output_message: Any = SchemaField(
             description="Message after the timer finishes"
         )

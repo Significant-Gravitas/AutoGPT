@@ -2,7 +2,13 @@
 Discord OAuth-based blocks.
 """
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import OAuth2Credentials, SchemaField
 
 from ._api import DiscordOAuthUser, get_current_user
@@ -21,12 +27,12 @@ class DiscordGetCurrentUserBlock(Block):
     This block requires Discord OAuth2 credentials (not bot tokens).
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordOAuthCredentialsInput = DiscordOAuthCredentialsField(
             ["identify"]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         user_id: str = SchemaField(description="The authenticated user's Discord ID")
         username: str = SchemaField(description="The user's username")
         avatar_url: str = SchemaField(description="URL to the user's avatar image")

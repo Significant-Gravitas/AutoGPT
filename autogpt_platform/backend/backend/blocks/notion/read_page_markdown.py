@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import OAuth2Credentials, SchemaField
 
 from ._api import NotionClient, blocks_to_markdown, extract_page_title
@@ -16,7 +22,7 @@ from ._auth import (
 class NotionReadPageMarkdownBlock(Block):
     """Read a Notion page and convert it to clean Markdown format."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: NotionCredentialsInput = NotionCredentialsField()
         page_id: str = SchemaField(
             description="Notion page ID. Must be accessible by the connected integration. You can get this from the page URL notion.so/A-Page-586edd711467478da59fe35e29a1ffab would be 586edd711467478da59fe35e29a1ffab",
@@ -26,10 +32,9 @@ class NotionReadPageMarkdownBlock(Block):
             default=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         markdown: str = SchemaField(description="Page content in Markdown format.")
         title: str = SchemaField(description="Page title.")
-        error: str = SchemaField(description="Error message if the operation failed.")
 
     def __init__(self):
         super().__init__(

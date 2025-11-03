@@ -10,7 +10,8 @@ from backend.data.block import (
     BlockCategory,
     BlockInput,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     BlockType,
 )
 from backend.data.dynamic_fields import (
@@ -142,7 +143,7 @@ class SmartDecisionMakerBlock(Block):
     A block that uses a language model to make smart decisions based on a given prompt.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="The prompt to send to the language model.",
             placeholder="Enter your prompt here...",
@@ -254,8 +255,7 @@ class SmartDecisionMakerBlock(Block):
 
             return set()
 
-    class Output(BlockSchema):
-        error: str = SchemaField(description="Error message if the API call failed.")
+    class Output(BlockSchemaOutput):
         tools: Any = SchemaField(description="The tools that are available to use.")
         finished: str = SchemaField(
             description="The finished message to display to the user."

@@ -906,6 +906,23 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/reset": {
+      "post": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Reset onboarding progress",
+        "operationId": "postV1Reset onboarding progress",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/blocks": {
       "get": {
         "tags": ["v1", "blocks"],

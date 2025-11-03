@@ -2,7 +2,13 @@ from typing import Any, Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -28,7 +34,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class UnrealTextToSpeechBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(
             description="The text to be converted to speech",
             placeholder="Enter the text you want to convert to speech",
@@ -45,9 +51,8 @@ class UnrealTextToSpeechBlock(Block):
             "any API key with sufficient permissions for the blocks it is used on.",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         mp3_url: str = SchemaField(description="The URL of the generated MP3 file")
-        error: str = SchemaField(description="Error message if the API call failed")
 
     def __init__(self):
         super().__init__(
