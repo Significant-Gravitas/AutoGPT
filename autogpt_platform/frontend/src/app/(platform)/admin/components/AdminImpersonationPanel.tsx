@@ -138,13 +138,23 @@ export function AdminImpersonationPanel() {
               <Alert variant="error">
                 <AlertDescription className="text-sm">
                   Error loading credits:{" "}
-                  {(creditsError as any)?.message || "Unknown error"}
+                  {creditsError &&
+                  typeof creditsError === "object" &&
+                  "message" in creditsError
+                    ? String(creditsError.message)
+                    : "Unknown error"}
                 </AlertDescription>
               </Alert>
             ) : creditsResponse?.data ? (
               <div className="space-y-1">
                 <p className="text-sm">
-                  <strong>{(creditsResponse.data as any)?.credits}</strong>{" "}
+                  <strong>
+                    {creditsResponse.data &&
+                    typeof creditsResponse.data === "object" &&
+                    "credits" in creditsResponse.data
+                      ? String(creditsResponse.data.credits)
+                      : "N/A"}
+                  </strong>{" "}
                   credits available
                   {isImpersonating && (
                     <span className="ml-2 text-amber-600">
