@@ -14,12 +14,12 @@ import { environment } from "@/services/environment";
 
 export default function LoginPage() {
   const {
+    user,
     form,
     feedback,
     turnstile,
     captchaKey,
     isLoading,
-    isLoggedIn,
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
@@ -30,7 +30,7 @@ export default function LoginPage() {
     handleCloseNotAllowedModal,
   } = useLoginPage();
 
-  if (isUserLoading || isLoggedIn) {
+  if (isUserLoading || user) {
     return <LoadingLogin />;
   }
 

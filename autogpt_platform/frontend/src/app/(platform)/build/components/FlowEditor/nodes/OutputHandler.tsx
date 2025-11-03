@@ -35,7 +35,7 @@ export const OutputHandler = ({
       >
         <Text
           variant="body"
-          className="flex items-center gap-2 font-medium text-slate-700"
+          className="flex items-center gap-2 !font-semibold text-slate-700"
         >
           Output{" "}
           <CaretDownIcon

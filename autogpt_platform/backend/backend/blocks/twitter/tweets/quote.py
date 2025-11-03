@@ -27,7 +27,7 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.data.model import SchemaField
 
 
@@ -62,7 +62,7 @@ class TwitterGetQuoteTweetsBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common Outputs that user commonly uses
         ids: list = SchemaField(description="All Tweet IDs ")
         texts: list = SchemaField(description="All Tweet texts")
@@ -78,7 +78,6 @@ class TwitterGetQuoteTweetsBlock(Block):
         )
 
         # error
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

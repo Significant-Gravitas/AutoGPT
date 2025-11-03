@@ -13,6 +13,7 @@ from typing import (
     Optional,
     Sequence,
     Type,
+    TypeAlias,
     TypeVar,
     cast,
     get_origin,
@@ -35,6 +36,7 @@ from .model import (
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    SchemaField,
     is_credentials_field_name,
 )
 
@@ -279,12 +281,40 @@ class BlockSchema(BaseModel):
         return cls.get_required_fields() - set(data)
 
 
-BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
-BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
+class BlockSchemaInput(BlockSchema):
+    """
+    Base schema class for block inputs.
+    All block input schemas should extend this class for consistency.
+    """
 
-
-class EmptySchema(BlockSchema):
     pass
+
+
+class BlockSchemaOutput(BlockSchema):
+    """
+    Base schema class for block outputs that includes a standard error field.
+    All block output schemas should extend this class to ensure consistent error handling.
+    """
+
+    error: str = SchemaField(
+        description="Error message if the operation failed", default=""
+    )
+
+
+BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchemaInput)
+BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchemaOutput)
+
+
+class EmptyInputSchema(BlockSchemaInput):
+    pass
+
+
+class EmptyOutputSchema(BlockSchemaOutput):
+    pass
+
+
+# For backward compatibility - will be deprecated
+EmptySchema = EmptyOutputSchema
 
 
 # --8<-- [start:BlockWebhookConfig]
@@ -344,8 +374,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         description: str = "",
         contributors: list[ContributorDetails] = [],
         categories: set[BlockCategory] | None = None,
-        input_schema: Type[BlockSchemaInputType] = EmptySchema,
-        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+        input_schema: Type[BlockSchemaInputType] = EmptyInputSchema,
+        output_schema: Type[BlockSchemaOutputType] = EmptyOutputSchema,
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockTestOutput | list[BlockTestOutput] | None = None,
         test_mock: dict[str, Any] | None = None,
@@ -546,6 +576,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         ]
 
 
+# Type alias for any block with standard input/output schemas
+AnyBlockSchema: TypeAlias = Block[BlockSchemaInput, BlockSchemaOutput]
+
+
 # ======================= Block Helper Functions ======================= #
 
 
@@ -556,7 +590,7 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 def is_block_auth_configured(
-    block_cls: type["Block[BlockSchema, BlockSchema]"],
+    block_cls: type[AnyBlockSchema],
 ) -> bool:
     """
     Check if a block has a valid authentication method configured at runtime.
@@ -592,11 +626,6 @@ def is_block_auth_configured(
         logger.debug(
             f"Block {block_cls.__name__} has only optional credential inputs"
             " - will work without credentials configured"
-        )
-    if len(credential_inputs) > 1:
-        logger.warning(
-            f"Block {block_cls.__name__} has multiple credential inputs: "
-            f"{', '.join(credential_inputs.keys())}"
         )
 
     # Check if the credential inputs for this block are correctly configured
@@ -717,7 +746,7 @@ async def initialize_blocks() -> None:
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
-def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
+def get_block(block_id: str) -> AnyBlockSchema | None:
     cls = get_blocks().get(block_id)
     return cls() if cls else None
 

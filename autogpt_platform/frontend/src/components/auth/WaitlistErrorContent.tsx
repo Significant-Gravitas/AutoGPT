@@ -1,50 +1,39 @@
 import { Button } from "../atoms/Button/Button";
 import { Text } from "../atoms/Text/Text";
 
-interface WaitlistErrorContentProps {
-  onClose: () => void;
-  closeButtonText?: string;
-  closeButtonVariant?: "primary" | "secondary";
+interface Props {
+  onBackToLogin?: () => void;
 }
 
-export function WaitlistErrorContent({
-  onClose,
-  closeButtonText = "Close",
-  closeButtonVariant = "primary",
-}: WaitlistErrorContentProps) {
+export function WaitlistErrorContent(props: Props) {
   return (
     <div className="flex flex-col items-center gap-6">
-      <Text variant="h3">Join the Waitlist</Text>
+      <Text variant="h3">We&apos;re in closed beta</Text>
       <div className="flex flex-col gap-4 text-center">
-        <Text variant="large-medium" className="text-center">
-          The AutoGPT Platform is currently in closed beta. Your email address
-          isn&apos;t on our current allowlist for early access.
-        </Text>
-        <Text variant="body" className="text-center">
-          Join our waitlist to get notified when we open up access!
+        <Text variant="large" className="text-center">
+          Looks like your email isn&apos;t in our early access list just yet.
+          Join the waitlist and we will let you know the moment we open up
+          access!
         </Text>
       </div>
-      <div className="flex gap-3">
+      <div className="flex gap-2">
         <Button
-          variant="secondary"
           onClick={() => {
             window.open("https://agpt.co/waitlist", "_blank");
           }}
         >
           Join Waitlist
         </Button>
-        <Button variant={closeButtonVariant} onClick={onClose}>
-          {closeButtonText}
-        </Button>
+        {props.onBackToLogin ? (
+          <Button variant="secondary" onClick={props.onBackToLogin}>
+            Back to Login
+          </Button>
+        ) : null}
       </div>
       <div className="flex flex-col gap-2">
         <Text variant="small" className="text-center text-muted-foreground">
-          Already signed up for the waitlist? Make sure you&apos;re using the
-          exact same email address you used when signing up.
-        </Text>
-        <Text variant="small" className="text-center text-muted-foreground">
-          If you&apos;re not sure which email you used or need help, contact us
-          at{" "}
+          Already joined? Double-check you are using the same email you signed
+          up with. Need a hand? Emails us at{" "}
           <a
             href="mailto:contact@agpt.co"
             className="underline hover:text-foreground"
@@ -58,7 +47,7 @@ export function WaitlistErrorContent({
             rel="noopener noreferrer"
             className="underline hover:text-foreground"
           >
-            reach out on Discord
+            message us on Discord
           </a>
         </Text>
       </div>

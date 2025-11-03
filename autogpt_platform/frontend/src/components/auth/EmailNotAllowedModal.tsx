@@ -14,7 +14,7 @@ export function EmailNotAllowedModal({ isOpen, onClose }: Props) {
     >
       <Dialog.Content>
         <div className="py-4">
-          <WaitlistErrorContent onClose={onClose} />
+          <WaitlistErrorContent />
         </div>
       </Dialog.Content>
     </Dialog>

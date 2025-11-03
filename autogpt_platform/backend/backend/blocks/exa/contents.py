@@ -3,7 +3,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -14,7 +15,7 @@ from .helpers import ContentSettings
 
 
 class ExaContentsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
@@ -27,7 +28,7 @@ class ExaContentsBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: list = SchemaField(
             description="List of document contents", default_factory=list
         )

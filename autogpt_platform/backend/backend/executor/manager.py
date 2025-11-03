@@ -369,7 +369,7 @@ async def _enqueue_next_nodes(
 
             # Incomplete input data, skip queueing the execution.
             if not next_node_input:
-                log_metadata.warning(f"Skipped queueing {suffix}")
+                log_metadata.info(f"Skipped queueing {suffix}")
                 return enqueued_executions
 
             # Input is complete, enqueue the execution.
@@ -1335,6 +1335,9 @@ class ExecutionManager(AppProcess):
         return self._run_client
 
     def run(self):
+        logger.info(
+            f"[{self.service_name}] 🆔 Pod assigned executor_id: {self.executor_id}"
+        )
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
 
         pool_size_gauge.set(self.pool_size)
@@ -1495,9 +1498,36 @@ class ExecutionManager(AppProcess):
         graph_exec_id = graph_exec_entry.graph_exec_id
         user_id = graph_exec_entry.user_id
         graph_id = graph_exec_entry.graph_id
+        parent_graph_exec_id = graph_exec_entry.parent_graph_exec_id
+
         logger.info(
-            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}"
+            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}, executor_id={self.executor_id}"
+            + (f", parent={parent_graph_exec_id}" if parent_graph_exec_id else "")
         )
+
+        # Check if parent execution is already terminated (prevents orphaned child executions)
+        if parent_graph_exec_id:
+            try:
+                parent_exec = get_db_client().get_graph_execution_meta(
+                    execution_id=parent_graph_exec_id,
+                    user_id=user_id,
+                )
+                if parent_exec and parent_exec.status == ExecutionStatus.TERMINATED:
+                    logger.info(
+                        f"[{self.service_name}] Skipping execution {graph_exec_id} - parent {parent_graph_exec_id} is TERMINATED"
+                    )
+                    # Mark this child as terminated since parent was stopped
+                    get_db_client().update_graph_execution_stats(
+                        graph_exec_id=graph_exec_id,
+                        status=ExecutionStatus.TERMINATED,
+                    )
+                    _ack_message(reject=False, requeue=False)
+                    return
+            except Exception as e:
+                logger.warning(
+                    f"[{self.service_name}] Could not check parent status for {graph_exec_id}: {e}"
+                )
+                # Continue execution if parent check fails (don't block on errors)
 
         # Check user rate limit before processing
         try:
@@ -1546,7 +1576,7 @@ class ExecutionManager(AppProcess):
             # Either someone else has it or Redis is unavailable
             if current_owner is not None:
                 logger.warning(
-                    f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}"
+                    f"[{self.service_name}] Graph {graph_exec_id} already running on pod {current_owner}, current executor_id={self.executor_id}"
                 )
                 _ack_message(reject=True, requeue=False)
             else:
@@ -1555,18 +1585,30 @@ class ExecutionManager(AppProcess):
                 )
                 _ack_message(reject=True, requeue=True)
             return
-        self._execution_locks[graph_exec_id] = cluster_lock
 
-        logger.info(
-            f"[{self.service_name}] Acquired cluster lock for {graph_exec_id} with executor {self.executor_id}"
-        )
+        # Wrap entire block after successful lock acquisition
+        try:
+            self._execution_locks[graph_exec_id] = cluster_lock
 
-        cancel_event = threading.Event()
+            logger.info(
+                f"[{self.service_name}] Successfully acquired cluster lock for {graph_exec_id}, executor_id={self.executor_id}"
+            )
 
-        future = self.executor.submit(
-            execute_graph, graph_exec_entry, cancel_event, cluster_lock
-        )
-        self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+            cancel_event = threading.Event()
+            future = self.executor.submit(
+                execute_graph, graph_exec_entry, cancel_event, cluster_lock
+            )
+            self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+        except Exception as e:
+            logger.warning(
+                f"[{self.service_name}] Failed to setup execution for {graph_exec_id}: {type(e).__name__}: {e}"
+            )
+            # Release cluster lock before requeue
+            cluster_lock.release()
+            if graph_exec_id in self._execution_locks:
+                del self._execution_locks[graph_exec_id]
+            _ack_message(reject=True, requeue=True)
+            return
         self._update_prompt_metrics()
 
         def _on_run_done(f: Future):
@@ -1586,6 +1628,9 @@ class ExecutionManager(AppProcess):
             finally:
                 # Release the cluster-wide execution lock
                 if graph_exec_id in self._execution_locks:
+                    logger.info(
+                        f"[{self.service_name}] Releasing cluster lock for {graph_exec_id}, executor_id={self.executor_id}"
+                    )
                     self._execution_locks[graph_exec_id].release()
                     del self._execution_locks[graph_exec_id]
                 self._cleanup_completed_runs()
@@ -1713,6 +1758,8 @@ class ExecutionManager(AppProcess):
         )
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
+
+        super().cleanup()
 
 
 # ------- UTILITIES ------- #

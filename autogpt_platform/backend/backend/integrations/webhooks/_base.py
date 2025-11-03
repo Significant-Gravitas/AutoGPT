@@ -105,11 +105,15 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         webhook = await integrations.get_webhook(webhook_id, include_relations=True)
         if webhook.triggered_nodes or webhook.triggered_presets:
             # Don't prune webhook if in use
+            logger.info(
+                f"Webhook #{webhook_id} kept as it has triggers in other graphs"
+            )
             return False
 
         if credentials:
             await self._deregister_webhook(webhook, credentials)
         await integrations.delete_webhook(user_id, webhook.id)
+        logger.info(f"Webhook #{webhook_id} deleted as it had no remaining triggers")
         return True
 
     # --8<-- [start:BaseWebhooksManager3]
