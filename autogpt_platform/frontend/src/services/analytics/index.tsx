@@ -6,7 +6,7 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
-import { hasConsentFor } from "@/lib/consent";
+import { consent } from "@/services/consent/cookies";
 import Script from "next/script";
 import { useEffect, useState } from "react";
 import { environment } from "../environment";
@@ -35,7 +35,7 @@ export function SetupAnalytics(props: SetupProps) {
 
   useEffect(() => {
     // Check consent on mount
-    setHasAnalyticsConsent(hasConsentFor("analytics"));
+    setHasAnalyticsConsent(consent.hasConsentFor("analytics"));
   }, []);
 
   // Datafa.st journey analytics only on production AND with consent

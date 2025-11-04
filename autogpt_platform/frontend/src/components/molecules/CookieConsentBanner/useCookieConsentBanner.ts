@@ -1,21 +1,21 @@
 "use client";
 
-import { useConsent } from "@/lib/consent";
 import { useState } from "react";
+import { useCookieConsent } from "./useCookieConsent";
 
 export function useCookieConsentBanner() {
-  const { consent, isLoaded, acceptAll, rejectAll } = useConsent();
+  const { consent, isLoaded, handleAcceptAll, handleRejectAll } =
+    useCookieConsent();
   const [showSettings, setShowSettings] = useState(false);
 
-  // Don't show banner if user has already consented or if not loaded yet
   const shouldShowBanner = isLoaded && !consent.hasConsented;
 
-  function handleAcceptAll() {
-    acceptAll();
+  function handleAcceptAllClick() {
+    handleAcceptAll();
   }
 
-  function handleRejectAll() {
-    rejectAll();
+  function handleRejectAllClick() {
+    handleRejectAll();
   }
 
   function handleOpenSettings() {
@@ -29,8 +29,8 @@ export function useCookieConsentBanner() {
   return {
     shouldShowBanner,
     showSettings,
-    handleAcceptAll,
-    handleRejectAll,
+    handleAcceptAll: handleAcceptAllClick,
+    handleRejectAll: handleRejectAllClick,
     handleOpenSettings,
     handleCloseSettings,
   };

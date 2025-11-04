@@ -2,8 +2,9 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { COOKIE_CATEGORIES } from "@/lib/consent";
+import { COOKIE_CATEGORIES } from "@/services/consent/cookies";
 import { CheckIcon } from "@phosphor-icons/react/dist/ssr";
 import { useCookieSettingsModal } from "./useCookieSettingsModal";
 
@@ -12,9 +13,6 @@ interface Props {
   onClose: () => void;
 }
 
-/**
- * Modal for managing cookie consent preferences
- */
 export function CookieSettingsModal({ isOpen, onClose }: Props) {
   const {
     analytics,
@@ -38,21 +36,26 @@ export function CookieSettingsModal({ isOpen, onClose }: Props) {
     >
       <Dialog.Content>
         <div className="space-y-6 pb-6">
-          {/* Essential Cookies */}
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 space-y-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                  <Text
+                    variant="body-medium"
+                    className="text-neutral-900 dark:text-neutral-100"
+                  >
                     {COOKIE_CATEGORIES.essential.name}
-                  </h3>
+                  </Text>
                   <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
                     Always Active
                   </span>
                 </div>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                <Text
+                  variant="body"
+                  className="text-neutral-600 dark:text-neutral-400"
+                >
                   {COOKIE_CATEGORIES.essential.description}
-                </p>
+                </Text>
               </div>
               <div className="flex items-center">
                 <CheckIcon className="h-5 w-5 text-green-600" weight="bold" />
@@ -62,16 +65,21 @@ export function CookieSettingsModal({ isOpen, onClose }: Props) {
 
           <div className="border-t border-neutral-200 dark:border-neutral-800" />
 
-          {/* Analytics Cookies */}
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 space-y-1">
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                <Text
+                  variant="body-medium"
+                  className="text-neutral-900 dark:text-neutral-100"
+                >
                   {COOKIE_CATEGORIES.analytics.name}
-                </h3>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                </Text>
+                <Text
+                  variant="body"
+                  className="text-neutral-600 dark:text-neutral-400"
+                >
                   {COOKIE_CATEGORIES.analytics.description}
-                </p>
+                </Text>
               </div>
               <Switch
                 checked={analytics}
@@ -83,16 +91,21 @@ export function CookieSettingsModal({ isOpen, onClose }: Props) {
 
           <div className="border-t border-neutral-200 dark:border-neutral-800" />
 
-          {/* Monitoring Cookies */}
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 space-y-1">
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                <Text
+                  variant="body-medium"
+                  className="text-neutral-900 dark:text-neutral-100"
+                >
                   {COOKIE_CATEGORIES.monitoring.name}
-                </h3>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                </Text>
+                <Text
+                  variant="body"
+                  className="text-neutral-600 dark:text-neutral-400"
+                >
                   {COOKIE_CATEGORIES.monitoring.description}
-                </p>
+                </Text>
               </div>
               <Switch
                 checked={monitoring}

@@ -1,27 +1,25 @@
 "use client";
 
-import { useConsent } from "@/lib/consent";
 import { useState, useEffect } from "react";
+import { useCookieConsent } from "../../useCookieConsent";
 
 interface Props {
   onClose: () => void;
 }
 
 export function useCookieSettingsModal({ onClose }: Props) {
-  const { consent, updateConsent } = useConsent();
+  const { consent, handleUpdateConsent } = useCookieConsent();
 
-  // Local state for toggle switches (before saving)
   const [analytics, setAnalytics] = useState(consent.analytics);
   const [monitoring, setMonitoring] = useState(consent.monitoring);
 
-  // Update local state if consent changes
   useEffect(() => {
     setAnalytics(consent.analytics);
     setMonitoring(consent.monitoring);
   }, [consent.analytics, consent.monitoring]);
 
   function handleSavePreferences() {
-    updateConsent({
+    handleUpdateConsent({
       analytics,
       monitoring,
     });
@@ -31,7 +29,7 @@ export function useCookieSettingsModal({ onClose }: Props) {
   function handleAcceptAll() {
     setAnalytics(true);
     setMonitoring(true);
-    updateConsent({
+    handleUpdateConsent({
       analytics: true,
       monitoring: true,
     });
@@ -41,7 +39,7 @@ export function useCookieSettingsModal({ onClose }: Props) {
   function handleRejectAll() {
     setAnalytics(false);
     setMonitoring(false);
-    updateConsent({
+    handleUpdateConsent({
       analytics: false,
       monitoring: false,
     });

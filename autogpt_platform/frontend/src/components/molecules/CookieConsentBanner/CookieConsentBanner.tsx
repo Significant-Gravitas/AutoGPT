@@ -1,14 +1,11 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { CookieIcon } from "@phosphor-icons/react/dist/ssr";
 import { useCookieConsentBanner } from "./useCookieConsentBanner";
-import { CookieSettingsModal } from "./CookieSettingsModal";
+import { CookieSettingsModal } from "./components/CookieSettingsModal/CookieSettingsModal";
 
-/**
- * Cookie consent banner for GDPR compliance
- * Displays at the bottom of the screen on first visit
- */
 export function CookieConsentBanner() {
   const {
     shouldShowBanner,
@@ -35,13 +32,19 @@ export function CookieConsentBanner() {
             <div className="flex flex-1 items-start gap-3">
               <CookieIcon className="mt-0.5 h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-300" />
               <div className="flex-1">
-                <h2 className="mb-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                <Text
+                  variant="body-medium"
+                  className="mb-1 text-neutral-900 dark:text-neutral-100"
+                >
                   We use cookies
-                </h2>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                </Text>
+                <Text
+                  variant="body"
+                  className="text-neutral-600 dark:text-neutral-400"
+                >
                   AutoGPT uses essential cookies for login and optional cookies
                   for analytics and error tracking to improve our service.
-                </p>
+                </Text>
               </div>
             </div>
 

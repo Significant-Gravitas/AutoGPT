@@ -5,7 +5,7 @@ import React from "react";
 import "./globals.css";
 
 import { Providers } from "@/app/providers";
-import { CookieConsentBanner } from "@/components/molecules/CookieConsent";
+import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
 import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
