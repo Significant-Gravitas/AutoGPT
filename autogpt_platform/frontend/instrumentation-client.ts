@@ -2,7 +2,7 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { hasConsentFor } from "@/lib/consent";
+import { consent } from "@/services/consent/cookies";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
@@ -13,7 +13,7 @@ const isDisabled = process.env.DISABLE_SENTRY === "true";
 const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 
 // Check for monitoring consent (includes session replay)
-const hasMonitoringConsent = hasConsentFor("monitoring");
+const hasMonitoringConsent = consent.hasConsentFor("monitoring");
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
