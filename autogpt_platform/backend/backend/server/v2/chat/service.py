@@ -8,14 +8,14 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 import backend.server.v2.chat.config
-from backend.server.v2.chat.data import (
+from backend.server.v2.chat.model import (
     ChatMessage,
     ChatSession,
     Usage,
     get_chat_session,
     upsert_chat_session,
 )
-from backend.server.v2.chat.models import (
+from backend.server.v2.chat.response_model import (
     StreamBaseResponse,
     StreamEnd,
     StreamError,

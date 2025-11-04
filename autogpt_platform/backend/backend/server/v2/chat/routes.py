@@ -7,7 +7,6 @@ from typing import Annotated
 from autogpt_libs import auth
 from fastapi import APIRouter, Depends, Query, Security
 from fastapi.responses import StreamingResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 import backend.server.v2.chat.service as chat_service
@@ -19,31 +18,9 @@ config = ChatConfig()
 
 logger = logging.getLogger(__name__)
 
-# Optional bearer token authentication
-optional_bearer = HTTPBearer(auto_error=False)
-
 router = APIRouter(
     tags=["chat"],
 )
-
-
-def get_optional_user_id(
-    credentials: HTTPAuthorizationCredentials | None = Security(optional_bearer),
-) -> str | None:
-    """Extracts the user ID from a bearer JWT if present, otherwise returns None for anonymous access."""
-    if not credentials:
-        return None
-
-    try:
-        # Parse JWT token to get user ID
-        from autogpt_libs.auth.jwt_utils import parse_jwt_token
-
-        payload = parse_jwt_token(credentials.credentials)
-        return payload.get("sub")
-    except Exception as e:
-        logger.debug(f"Auth token validation failed (anonymous access): {e}")
-        return None
-
 
 # ========== Request/Response Models ==========
 
@@ -73,7 +50,7 @@ class SessionDetailResponse(BaseModel):
     "/sessions",
 )
 async def create_session(
-    user_id: Annotated[str | None, Depends(get_optional_user_id)],
+    user_id: Annotated[str | None, Depends(auth.get_optional_user_id)],
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -103,7 +80,7 @@ async def create_session(
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Depends(get_optional_user_id)],
+    user_id: Annotated[str | None, Depends(auth.get_optional_user_id)],
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
@@ -136,7 +113,7 @@ async def get_session(
 async def stream_chat(
     session_id: str,
     message: Annotated[str, Query(min_length=1, max_length=10000)],
-    user_id: str | None = Depends(get_optional_user_id),
+    user_id: str | None = Depends(auth.get_optional_user_id),
     is_user_message: bool = Query(default=True),
 ):
     """

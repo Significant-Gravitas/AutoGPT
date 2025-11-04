@@ -4,7 +4,7 @@ from os import getenv
 import pytest
 
 import backend.server.v2.chat.service as chat_service
-from backend.server.v2.chat.models import (
+from backend.server.v2.chat.response_model import (
     StreamEnd,
     StreamError,
     StreamTextChunk,
