@@ -11,14 +11,21 @@ from pydantic import BaseModel
 
 from backend.data.diagnostics import (
     FailedExecutionDetail,
+    OrphanedScheduleDetail,
     RunningExecutionDetail,
+    ScheduleDetail,
+    ScheduleHealthMetrics,
     cleanup_orphaned_executions_bulk,
+    cleanup_orphaned_schedules_bulk,
     get_agent_diagnostics,
+    get_all_schedules_details,
     get_execution_diagnostics,
     get_failed_executions_details,
     get_long_running_executions_details,
     get_orphaned_executions_details,
+    get_orphaned_schedules_details,
     get_running_executions_details,
+    get_schedule_health_metrics,
     get_stuck_queued_executions_details,
     requeue_execution,
     requeue_executions_bulk,
@@ -549,6 +556,158 @@ async def cleanup_orphaned_executions(
         )
     except Exception as e:
         logger.exception(f"Error cleaning up orphaned executions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# SCHEDULE DIAGNOSTICS ENDPOINTS
+# ============================================================================
+
+
+class SchedulesListResponse(BaseModel):
+    """Response model for list of schedules"""
+
+    schedules: List[ScheduleDetail]
+    total: int
+
+
+class OrphanedSchedulesListResponse(BaseModel):
+    """Response model for list of orphaned schedules"""
+
+    schedules: List[OrphanedScheduleDetail]
+    total: int
+
+
+class ScheduleCleanupResponse(BaseModel):
+    """Response model for schedule cleanup operations"""
+
+    success: bool
+    deleted_count: int = 0
+    message: str
+
+
+@router.get(
+    "/diagnostics/schedules",
+    response_model=ScheduleHealthMetrics,
+    summary="Get Schedule Diagnostics",
+)
+async def get_schedule_diagnostics_endpoint():
+    """
+    Get comprehensive diagnostic information about schedule health.
+
+    Returns schedule metrics including:
+    - Total schedules (user vs system)
+    - Orphaned schedules by category
+    - Upcoming executions
+    """
+    try:
+        logger.info("Getting schedule diagnostics")
+
+        diagnostics = await get_schedule_health_metrics()
+
+        logger.info(
+            f"Schedule diagnostics: total={diagnostics.total_schedules}, "
+            f"user={diagnostics.user_schedules}, "
+            f"orphaned={diagnostics.total_orphaned}"
+        )
+
+        return diagnostics
+    except Exception as e:
+        logger.exception(f"Error getting schedule diagnostics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/diagnostics/schedules/all",
+    response_model=SchedulesListResponse,
+    summary="List All User Schedules",
+)
+async def list_all_schedules(
+    limit: int = 100,
+    offset: int = 0,
+):
+    """
+    Get detailed list of all user schedules (excludes system monitoring jobs).
+
+    Args:
+        limit: Maximum number of schedules to return (default 100)
+        offset: Number of schedules to skip (default 0)
+
+    Returns:
+        List of schedules with details
+    """
+    try:
+        logger.info(f"Listing all schedules (limit={limit}, offset={offset})")
+
+        schedules = await get_all_schedules_details(limit=limit, offset=offset)
+
+        # Get total count
+        diagnostics = await get_schedule_health_metrics()
+        total = diagnostics.user_schedules
+
+        return SchedulesListResponse(schedules=schedules, total=total)
+    except Exception as e:
+        logger.exception(f"Error listing all schedules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/diagnostics/schedules/orphaned",
+    response_model=OrphanedSchedulesListResponse,
+    summary="List Orphaned Schedules",
+)
+async def list_orphaned_schedules():
+    """
+    Get detailed list of orphaned schedules with orphan reasons.
+
+    Returns:
+        List of orphaned schedules categorized by orphan type
+    """
+    try:
+        logger.info("Listing orphaned schedules")
+
+        schedules = await get_orphaned_schedules_details()
+
+        return OrphanedSchedulesListResponse(schedules=schedules, total=len(schedules))
+    except Exception as e:
+        logger.exception(f"Error listing orphaned schedules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/diagnostics/schedules/cleanup-orphaned",
+    response_model=ScheduleCleanupResponse,
+    summary="Cleanup Orphaned Schedules",
+)
+async def cleanup_orphaned_schedules(
+    request: StopExecutionsRequest,  # Reuse for schedule_ids list
+    user: AuthUser = Security(requires_admin_user),
+):
+    """
+    Cleanup orphaned schedules by deleting from scheduler (admin only).
+
+    Args:
+        request: Contains list of schedule_ids to delete
+
+    Returns:
+        Number of schedules deleted and success message
+    """
+    try:
+        logger.info(
+            f"Admin {user.user_id} cleaning up {len(request.execution_ids)} orphaned schedules"
+        )
+
+        deleted_count = await cleanup_orphaned_schedules_bulk(
+            request.execution_ids, user.user_id
+        )
+
+        return ScheduleCleanupResponse(
+            success=deleted_count > 0,
+            deleted_count=deleted_count,
+            message=f"Deleted {deleted_count} of {len(request.execution_ids)} orphaned schedules",
+        )
+    except Exception as e:
+        logger.exception(f"Error cleaning up orphaned schedules: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

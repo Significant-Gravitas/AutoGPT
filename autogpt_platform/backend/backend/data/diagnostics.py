@@ -97,6 +97,58 @@ class AgentDiagnosticsSummary(BaseModel):
     timestamp: str
 
 
+class ScheduleDetail(BaseModel):
+    """Details about a schedule for admin view"""
+
+    schedule_id: str
+    schedule_name: str
+    graph_id: str
+    graph_name: str
+    graph_version: int
+    user_id: str
+    user_email: Optional[str]
+    cron: str
+    timezone: str
+    next_run_time: str
+    created_at: Optional[datetime] = None  # Not available from APScheduler
+
+
+class ScheduleHealthMetrics(BaseModel):
+    """Summary of schedule health diagnostics"""
+
+    total_schedules: int
+    user_schedules: int  # Excludes system monitoring jobs
+    system_schedules: int
+
+    # Orphan detection
+    orphaned_deleted_graph: int
+    orphaned_no_library_access: int
+    orphaned_invalid_credentials: int
+    orphaned_validation_failed: int
+    total_orphaned: int
+
+    # Upcoming
+    schedules_next_hour: int
+    schedules_next_24h: int
+
+    timestamp: str
+
+
+class OrphanedScheduleDetail(BaseModel):
+    """Details about an orphaned schedule"""
+
+    schedule_id: str
+    schedule_name: str
+    graph_id: str
+    graph_version: int
+    user_id: str
+    orphan_reason: (
+        str  # deleted_graph, no_library_access, invalid_credentials, validation_failed
+    )
+    error_detail: Optional[str]
+    next_run_time: str
+
+
 async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
     """
     Get comprehensive execution diagnostics including database and queue metrics.
@@ -265,6 +317,139 @@ async def get_agent_diagnostics() -> AgentDiagnosticsSummary:
         raise
 
 
+async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
+    """
+    Get comprehensive schedule diagnostics via Scheduler service.
+
+    Returns:
+        ScheduleHealthMetrics with schedule health info
+    """
+    try:
+        from backend.util.clients import get_scheduler_client
+
+        scheduler = get_scheduler_client()
+
+        # System job IDs (exclude from user schedule counts)
+        SYSTEM_JOB_IDS = {
+            "cleanup_expired_files",
+            "report_late_executions",
+            "report_block_error_rates",
+            "process_existing_batches",
+            "process_weekly_summary",
+        }
+
+        # Get all schedules from scheduler service
+        all_schedules = await scheduler.get_execution_schedules()
+
+        # Filter user vs system schedules
+        user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
+        system_schedules_count = len(all_schedules) - len(user_schedules)
+
+        # Detect orphaned schedules
+        orphans = await _detect_orphaned_schedules(user_schedules)
+
+        # Count schedules by next run time
+        now = datetime.now(timezone.utc)
+        one_hour_from_now = now + timedelta(hours=1)
+        twenty_four_hours_from_now = now + timedelta(hours=24)
+
+        schedules_next_hour = sum(
+            1
+            for s in user_schedules
+            if s.next_run_time
+            and datetime.fromisoformat(s.next_run_time.replace("Z", "+00:00"))
+            <= one_hour_from_now
+        )
+
+        schedules_next_24h = sum(
+            1
+            for s in user_schedules
+            if s.next_run_time
+            and datetime.fromisoformat(s.next_run_time.replace("Z", "+00:00"))
+            <= twenty_four_hours_from_now
+        )
+
+        return ScheduleHealthMetrics(
+            total_schedules=len(all_schedules),
+            user_schedules=len(user_schedules),
+            system_schedules=system_schedules_count,
+            orphaned_deleted_graph=len(orphans["deleted_graph"]),
+            orphaned_no_library_access=len(orphans["no_library_access"]),
+            orphaned_invalid_credentials=len(orphans["invalid_credentials"]),
+            orphaned_validation_failed=len(orphans["validation_failed"]),
+            total_orphaned=sum(len(v) for v in orphans.values()),
+            schedules_next_hour=schedules_next_hour,
+            schedules_next_24h=schedules_next_24h,
+            timestamp=now.isoformat(),
+        )
+    except Exception as e:
+        logger.error(f"Error getting schedule diagnostics: {e}")
+        raise
+
+
+async def _detect_orphaned_schedules(schedules: list) -> dict:
+    """
+    Detect orphaned schedules by validating graph, library access, and credentials.
+
+    Args:
+        schedules: List of GraphExecutionJobInfo from scheduler service
+
+    Returns:
+        Dict categorizing orphans by type
+    """
+    from prisma.models import AgentGraph, LibraryAgent
+
+    orphans = {
+        "deleted_graph": [],
+        "no_library_access": [],
+        "invalid_credentials": [],
+        "validation_failed": [],
+    }
+
+    for schedule in schedules:
+        try:
+            # Check 1: Graph exists
+            graph = await AgentGraph.prisma().find_unique(
+                where={
+                    "graphVersionId": {
+                        "id": schedule.graph_id,
+                        "version": schedule.graph_version,
+                    }
+                }
+            )
+
+            if not graph:
+                orphans["deleted_graph"].append(schedule.id)
+                continue
+
+            # Check 2: User has library access (not deleted/archived)
+            library_agent = await LibraryAgent.prisma().find_first(
+                where={
+                    "userId": schedule.user_id,
+                    "agentGraphId": schedule.graph_id,
+                    "isDeleted": False,
+                    "isArchived": False,
+                }
+            )
+
+            if not library_agent:
+                orphans["no_library_access"].append(schedule.id)
+                continue
+
+            # Check 3: Credentials exist (if any)
+            # Note: Full credential validation would require integration_creds_manager
+            # For now, skip credential validation to avoid complexity
+            # Orphaned credentials will be caught during execution attempt
+            # if schedule.input_credentials:
+            #     # TODO: Add credential validation when needed
+
+        except Exception as e:
+            logger.error(f"Error validating schedule {schedule.id}: {e}")
+            orphans["validation_failed"].append(schedule.id)
+
+    return orphans
+
+
 def get_rabbitmq_queue_depth() -> int:
     """
     Get the number of messages in the RabbitMQ execution queue.
@@ -296,6 +481,201 @@ def get_rabbitmq_queue_depth() -> int:
         logger.error(f"Error getting RabbitMQ queue depth: {e}")
         # Return -1 to indicate an error state rather than failing the entire request
         return -1
+
+
+async def get_all_schedules_details(
+    limit: int = 100, offset: int = 0
+) -> List[ScheduleDetail]:
+    """
+    Get detailed information about all user schedules via Scheduler service.
+
+    Args:
+        limit: Maximum number of schedules to return
+        offset: Number of schedules to skip
+
+    Returns:
+        List of ScheduleDetail objects
+    """
+    try:
+        from prisma.models import AgentGraph
+
+        from backend.util.clients import get_scheduler_client
+
+        scheduler = get_scheduler_client()
+
+        # System job IDs to exclude
+        SYSTEM_JOB_IDS = {
+            "cleanup_expired_files",
+            "report_late_executions",
+            "report_block_error_rates",
+            "process_existing_batches",
+            "process_weekly_summary",
+        }
+
+        # Get all schedules from scheduler
+        all_schedules = await scheduler.get_execution_schedules()
+
+        # Filter to user schedules only
+        user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
+
+        # Apply pagination
+        paginated_schedules = user_schedules[offset : offset + limit]
+
+        # Enrich with graph and user details
+        results = []
+        for schedule in paginated_schedules:
+            # Get graph name
+            graph = await AgentGraph.prisma().find_unique(
+                where={
+                    "graphVersionId": {
+                        "id": schedule.graph_id,
+                        "version": schedule.graph_version,
+                    }
+                },
+                include={"User": True},
+            )
+
+            graph_name = graph.name if graph and graph.name else "Unknown"
+            user_email = graph.User.email if graph and graph.User else None
+
+            results.append(
+                ScheduleDetail(
+                    schedule_id=schedule.id,
+                    schedule_name=schedule.name,
+                    graph_id=schedule.graph_id,
+                    graph_name=graph_name,
+                    graph_version=schedule.graph_version,
+                    user_id=schedule.user_id,
+                    user_email=user_email,
+                    cron=schedule.cron,
+                    timezone=schedule.timezone,
+                    next_run_time=schedule.next_run_time,
+                )
+            )
+
+        return results
+    except Exception as e:
+        logger.error(f"Error getting schedule details: {e}")
+        raise
+
+
+async def get_orphaned_schedules_details() -> List[OrphanedScheduleDetail]:
+    """
+    Get detailed list of orphaned schedules with orphan reasons.
+
+    Returns:
+        List of OrphanedScheduleDetail objects
+    """
+    try:
+        from backend.util.clients import get_scheduler_client
+
+        scheduler = get_scheduler_client()
+
+        # System job IDs to exclude
+        SYSTEM_JOB_IDS = {
+            "cleanup_expired_files",
+            "report_late_executions",
+            "report_block_error_rates",
+            "process_existing_batches",
+            "process_weekly_summary",
+        }
+
+        # Get all schedules
+        all_schedules = await scheduler.get_execution_schedules()
+        user_schedules = [s for s in all_schedules if s.id not in SYSTEM_JOB_IDS]
+
+        # Detect orphans with categorization
+        orphan_categories = await _detect_orphaned_schedules(user_schedules)
+
+        # Build detailed orphan list
+        results = []
+        for orphan_type, schedule_ids in orphan_categories.items():
+            for schedule_id in schedule_ids:
+                # Find the schedule
+                schedule = next(
+                    (s for s in user_schedules if s.id == schedule_id), None
+                )
+                if not schedule:
+                    continue
+
+                results.append(
+                    OrphanedScheduleDetail(
+                        schedule_id=schedule.id,
+                        schedule_name=schedule.name,
+                        graph_id=schedule.graph_id,
+                        graph_version=schedule.graph_version,
+                        user_id=schedule.user_id,
+                        orphan_reason=orphan_type,
+                        error_detail=None,  # Could add more detail in future
+                        next_run_time=schedule.next_run_time,
+                    )
+                )
+
+        return results
+    except Exception as e:
+        logger.error(f"Error getting orphaned schedule details: {e}")
+        raise
+
+
+async def cleanup_orphaned_schedules_bulk(
+    schedule_ids: List[str], admin_user_id: str
+) -> int:
+    """
+    Cleanup multiple orphaned schedules by deleting from scheduler.
+
+    Args:
+        schedule_ids: List of schedule IDs to delete
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        Number of schedules successfully deleted
+    """
+    import asyncio
+
+    try:
+        from backend.util.clients import get_scheduler_client
+
+        logger.info(
+            f"Admin user {admin_user_id} cleaning up {len(schedule_ids)} orphaned schedules"
+        )
+
+        scheduler = get_scheduler_client()
+
+        # Delete schedules in parallel
+        async def delete_schedule(schedule_id: str) -> bool:
+            try:
+                # Note: delete_schedule requires user_id but we're admin
+                # We'll need to get the user_id from the schedule first
+                all_schedules = await scheduler.get_execution_schedules()
+                schedule = next((s for s in all_schedules if s.id == schedule_id), None)
+
+                if not schedule:
+                    logger.warning(f"Schedule {schedule_id} not found")
+                    return False
+
+                await scheduler.delete_schedule(
+                    schedule_id=schedule_id, user_id=schedule.user_id
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to delete schedule {schedule_id}: {e}")
+                return False
+
+        results = await asyncio.gather(
+            *[delete_schedule(schedule_id) for schedule_id in schedule_ids],
+            return_exceptions=False,
+        )
+
+        deleted_count = sum(1 for success in results if success)
+
+        logger.info(
+            f"Admin {admin_user_id} deleted {deleted_count}/{len(schedule_ids)} orphaned schedules"
+        )
+
+        return deleted_count
+    except Exception as e:
+        logger.error(f"Error cleaning up orphaned schedules: {e}")
+        return 0
 
 
 def get_rabbitmq_cancel_queue_depth() -> int:

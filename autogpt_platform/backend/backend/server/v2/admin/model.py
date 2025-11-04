@@ -56,3 +56,24 @@ class AgentDiagnosticsResponse(BaseModel):
 
     agents_with_active_executions: int
     timestamp: str
+
+
+class ScheduleHealthMetrics(BaseModel):
+    """Response model for schedule diagnostics"""
+
+    total_schedules: int
+    user_schedules: int
+    system_schedules: int
+
+    # Orphan detection
+    orphaned_deleted_graph: int
+    orphaned_no_library_access: int
+    orphaned_invalid_credentials: int
+    orphaned_validation_failed: int
+    total_orphaned: int
+
+    # Upcoming
+    schedules_next_hour: int
+    schedules_next_24h: int
+
+    timestamp: str

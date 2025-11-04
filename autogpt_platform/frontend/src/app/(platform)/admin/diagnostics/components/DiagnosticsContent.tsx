@@ -13,10 +13,18 @@ import { ArrowClockwise } from "@phosphor-icons/react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useDiagnosticsContent } from "./useDiagnosticsContent";
 import { ExecutionsTable } from "./ExecutionsTable";
+import { SchedulesTable } from "./SchedulesTable";
 
 export function DiagnosticsContent() {
-  const { executionData, agentData, isLoading, isError, error, refresh } =
-    useDiagnosticsContent();
+  const {
+    executionData,
+    agentData,
+    scheduleData,
+    isLoading,
+    isError,
+    error,
+    refresh,
+  } = useDiagnosticsContent();
 
   const [activeTab, setActiveTab] = useState<
     "all" | "orphaned" | "failed" | "long-running" | "stuck-queued"
@@ -66,98 +74,132 @@ export function DiagnosticsContent() {
       </div>
 
       {/* Alert Cards for Critical Issues */}
-      {executionData && (
-        <div className="grid gap-4 md:grid-cols-3">
-          {/* Orphaned Executions Alert */}
-          {(executionData.orphaned_running > 0 ||
-            executionData.orphaned_queued > 0) && (
-            <div
-              className="cursor-pointer transition-all hover:scale-105"
-              onClick={() => setActiveTab("orphaned")}
-            >
-              <Card className="border-orange-300 bg-orange-50">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-orange-800">
-                    Orphaned Executions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-orange-900">
-                    {executionData.orphaned_running +
-                      executionData.orphaned_queued}
-                  </p>
-                  <p className="text-sm text-orange-700">
-                    {executionData.orphaned_running} running,{" "}
-                    {executionData.orphaned_queued} queued ({">"}24h old)
-                  </p>
-                  <p className="mt-2 text-xs text-orange-600">
-                    Click to view →
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+      <div className="grid gap-4 md:grid-cols-3">
+        {executionData && (
+          <>
+            {/* Orphaned Executions Alert */}
+            {(executionData.orphaned_running > 0 ||
+              executionData.orphaned_queued > 0) && (
+              <div
+                className="cursor-pointer transition-all hover:scale-105"
+                onClick={() => setActiveTab("orphaned")}
+              >
+                <Card className="border-orange-300 bg-orange-50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-orange-800">
+                      Orphaned Executions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-3xl font-bold text-orange-900">
+                      {executionData.orphaned_running +
+                        executionData.orphaned_queued}
+                    </p>
+                    <p className="text-sm text-orange-700">
+                      {executionData.orphaned_running} running,{" "}
+                      {executionData.orphaned_queued} queued ({">"}24h old)
+                    </p>
+                    <p className="mt-2 text-xs text-orange-600">
+                      Click to view →
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
-          {/* Failed Executions Alert */}
-          {executionData.failed_count_24h > 0 && (
-            <div
-              className="cursor-pointer transition-all hover:scale-105"
-              onClick={() => setActiveTab("failed")}
-            >
-              <Card className="border-red-300 bg-red-50">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-red-800">
-                    Failed Executions (24h)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-red-900">
-                    {executionData.failed_count_24h}
-                  </p>
-                  <p className="text-sm text-red-700">
-                    {executionData.failed_count_1h} in last hour (
-                    {executionData.failure_rate_24h.toFixed(1)}/hr rate)
-                  </p>
-                  <p className="mt-2 text-xs text-red-600">Click to view →</p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+            {/* Failed Executions Alert */}
+            {executionData.failed_count_24h > 0 && (
+              <div
+                className="cursor-pointer transition-all hover:scale-105"
+                onClick={() => setActiveTab("failed")}
+              >
+                <Card className="border-red-300 bg-red-50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-red-800">
+                      Failed Executions (24h)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-3xl font-bold text-red-900">
+                      {executionData.failed_count_24h}
+                    </p>
+                    <p className="text-sm text-red-700">
+                      {executionData.failed_count_1h} in last hour (
+                      {executionData.failure_rate_24h.toFixed(1)}/hr rate)
+                    </p>
+                    <p className="mt-2 text-xs text-red-600">Click to view →</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
-          {/* Long-Running Alert */}
-          {executionData.stuck_running_24h > 0 && (
-            <div
-              className="cursor-pointer transition-all hover:scale-105"
-              onClick={() => setActiveTab("long-running")}
-            >
-              <Card className="border-yellow-300 bg-yellow-50">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-yellow-800">
-                    Long-Running Executions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold text-yellow-900">
-                    {executionData.stuck_running_24h}
-                  </p>
-                  <p className="text-sm text-yellow-700">
-                    Running {">"}24h (oldest:{" "}
-                    {executionData.oldest_running_hours
-                      ? `${Math.floor(executionData.oldest_running_hours)}h`
-                      : "N/A"}
-                    )
-                  </p>
-                  <p className="mt-2 text-xs text-yellow-600">
-                    Click to view →
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </div>
-      )}
+            {/* Long-Running Alert */}
+            {executionData.stuck_running_24h > 0 && (
+              <>
+                <div
+                  className="cursor-pointer transition-all hover:scale-105"
+                  onClick={() => setActiveTab("long-running")}
+                >
+                  <Card className="border-yellow-300 bg-yellow-50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-yellow-800">
+                        Long-Running Executions
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold text-yellow-900">
+                        {executionData.stuck_running_24h}
+                      </p>
+                      <p className="text-sm text-yellow-700">
+                        Running {">"}24h (oldest:{" "}
+                        {executionData.oldest_running_hours
+                          ? `${Math.floor(executionData.oldest_running_hours)}h`
+                          : "N/A"}
+                        )
+                      </p>
+                      <p className="mt-2 text-xs text-yellow-600">
+                        Click to view →
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </>
+            )}
 
-      <div className="grid gap-6 md:grid-cols-2">
+            {/* Orphaned Schedules Alert */}
+            {scheduleData && scheduleData.total_orphaned > 0 && (
+              <div
+                className="cursor-pointer transition-all hover:scale-105"
+                onClick={() => setActiveTab("all")}
+              >
+                <Card className="border-purple-300 bg-purple-50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-purple-800">
+                      Orphaned Schedules
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-3xl font-bold text-purple-900">
+                      {scheduleData.total_orphaned}
+                    </p>
+                    <p className="text-sm text-purple-700">
+                      {scheduleData.orphaned_deleted_graph > 0 &&
+                        `${scheduleData.orphaned_deleted_graph} deleted graph, `}
+                      {scheduleData.orphaned_no_library_access > 0 &&
+                        `${scheduleData.orphaned_no_library_access} no access`}
+                    </p>
+                    <p className="mt-2 text-xs text-purple-600">
+                      Click to view schedules →
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Execution Queue Status</CardTitle>
@@ -314,6 +356,63 @@ export function DiagnosticsContent() {
             )}
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Schedules</CardTitle>
+            <CardDescription>
+              Scheduled agent executions and health
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {scheduleData ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      User Schedules
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {scheduleData.user_schedules}
+                    </p>
+                    {scheduleData.total_orphaned > 0 && (
+                      <p className="text-xs text-orange-600">
+                        {scheduleData.total_orphaned} orphaned
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
+                    <div className="h-6 w-6 rounded-full bg-purple-500"></div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      Next Hour
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {scheduleData.schedules_next_hour}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {scheduleData.schedules_next_24h} in next 24h
+                    </p>
+                  </div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+                    <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                  </div>
+                </div>
+
+                <div className="text-xs text-gray-400">
+                  Last updated:{" "}
+                  {new Date(scheduleData.timestamp).toLocaleString()}
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500">No data available</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -395,6 +494,19 @@ export function DiagnosticsContent() {
                 failed_count_24h: executionData.failed_count_24h,
                 stuck_running_24h: executionData.stuck_running_24h,
                 stuck_queued_1h: executionData.stuck_queued_1h,
+              }
+            : undefined
+        }
+      />
+
+      {/* Add Schedules Table */}
+      <SchedulesTable
+        onRefresh={refresh}
+        diagnosticsData={
+          scheduleData
+            ? {
+                total_orphaned: scheduleData.total_orphaned,
+                user_schedules: scheduleData.user_schedules,
               }
             : undefined
         }

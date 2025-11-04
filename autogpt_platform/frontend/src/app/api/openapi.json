@@ -4370,6 +4370,140 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/diagnostics/schedules": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Get Schedule Diagnostics",
+        "description": "Get comprehensive diagnostic information about schedule health.\n\nReturns schedule metrics including:\n- Total schedules (user vs system)\n- Orphaned schedules by category\n- Upcoming executions",
+        "operationId": "getV2Get schedule diagnostics",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleHealthMetrics"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/schedules/all": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List All User Schedules",
+        "description": "Get detailed list of all user schedules (excludes system monitoring jobs).\n\nArgs:\n    limit: Maximum number of schedules to return (default 100)\n    offset: Number of schedules to skip (default 0)\n\nReturns:\n    List of schedules with details",
+        "operationId": "getV2List all user schedules",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulesListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/schedules/orphaned": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List Orphaned Schedules",
+        "description": "Get detailed list of orphaned schedules with orphan reasons.\n\nReturns:\n    List of orphaned schedules categorized by orphan type",
+        "operationId": "getV2List orphaned schedules",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrphanedSchedulesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/schedules/cleanup-orphaned": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Cleanup Orphaned Schedules",
+        "description": "Cleanup orphaned schedules by deleting from scheduler (admin only).\n\nArgs:\n    request: Contains list of schedule_ids to delete\n\nReturns:\n    Number of schedules deleted and success message",
+        "operationId": "postV2Cleanup orphaned schedules",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StopExecutionsRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleCleanupResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/diagnostics/executions/cleanup-all-orphaned": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
@@ -7610,6 +7744,48 @@
         ],
         "title": "OnboardingStep"
       },
+      "OrphanedScheduleDetail": {
+        "properties": {
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "schedule_name": { "type": "string", "title": "Schedule Name" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "orphan_reason": { "type": "string", "title": "Orphan Reason" },
+          "error_detail": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Detail"
+          },
+          "next_run_time": { "type": "string", "title": "Next Run Time" }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "schedule_name",
+          "graph_id",
+          "graph_version",
+          "user_id",
+          "orphan_reason",
+          "error_detail",
+          "next_run_time"
+        ],
+        "title": "OrphanedScheduleDetail",
+        "description": "Details about an orphaned schedule"
+      },
+      "OrphanedSchedulesListResponse": {
+        "properties": {
+          "schedules": {
+            "items": { "$ref": "#/components/schemas/OrphanedScheduleDetail" },
+            "type": "array",
+            "title": "Schedules"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["schedules", "total"],
+        "title": "OrphanedSchedulesListResponse",
+        "description": "Response model for list of orphaned schedules"
+      },
       "Pagination": {
         "properties": {
           "total_items": {
@@ -8200,6 +8376,21 @@
         "title": "RunningExecutionsListResponse",
         "description": "Response model for list of running executions"
       },
+      "ScheduleCleanupResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "deleted_count": {
+            "type": "integer",
+            "title": "Deleted Count",
+            "default": 0
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["success", "message"],
+        "title": "ScheduleCleanupResponse",
+        "description": "Response model for schedule cleanup operations"
+      },
       "ScheduleCreationRequest": {
         "properties": {
           "graph_version": {
@@ -8229,6 +8420,111 @@
         "type": "object",
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
+      },
+      "ScheduleDetail": {
+        "properties": {
+          "schedule_id": { "type": "string", "title": "Schedule Id" },
+          "schedule_name": { "type": "string", "title": "Schedule Name" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": { "type": "string", "title": "Graph Name" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "cron": { "type": "string", "title": "Cron" },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "next_run_time": { "type": "string", "title": "Next Run Time" },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "schedule_name",
+          "graph_id",
+          "graph_name",
+          "graph_version",
+          "user_id",
+          "user_email",
+          "cron",
+          "timezone",
+          "next_run_time"
+        ],
+        "title": "ScheduleDetail",
+        "description": "Details about a schedule for admin view"
+      },
+      "ScheduleHealthMetrics": {
+        "properties": {
+          "total_schedules": { "type": "integer", "title": "Total Schedules" },
+          "user_schedules": { "type": "integer", "title": "User Schedules" },
+          "system_schedules": {
+            "type": "integer",
+            "title": "System Schedules"
+          },
+          "orphaned_deleted_graph": {
+            "type": "integer",
+            "title": "Orphaned Deleted Graph"
+          },
+          "orphaned_no_library_access": {
+            "type": "integer",
+            "title": "Orphaned No Library Access"
+          },
+          "orphaned_invalid_credentials": {
+            "type": "integer",
+            "title": "Orphaned Invalid Credentials"
+          },
+          "orphaned_validation_failed": {
+            "type": "integer",
+            "title": "Orphaned Validation Failed"
+          },
+          "total_orphaned": { "type": "integer", "title": "Total Orphaned" },
+          "schedules_next_hour": {
+            "type": "integer",
+            "title": "Schedules Next Hour"
+          },
+          "schedules_next_24h": {
+            "type": "integer",
+            "title": "Schedules Next 24H"
+          },
+          "timestamp": { "type": "string", "title": "Timestamp" }
+        },
+        "type": "object",
+        "required": [
+          "total_schedules",
+          "user_schedules",
+          "system_schedules",
+          "orphaned_deleted_graph",
+          "orphaned_no_library_access",
+          "orphaned_invalid_credentials",
+          "orphaned_validation_failed",
+          "total_orphaned",
+          "schedules_next_hour",
+          "schedules_next_24h",
+          "timestamp"
+        ],
+        "title": "ScheduleHealthMetrics",
+        "description": "Summary of schedule health diagnostics"
+      },
+      "SchedulesListResponse": {
+        "properties": {
+          "schedules": {
+            "items": { "$ref": "#/components/schemas/ScheduleDetail" },
+            "type": "array",
+            "title": "Schedules"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["schedules", "total"],
+        "title": "SchedulesListResponse",
+        "description": "Response model for list of schedules"
       },
       "SearchResponse": {
         "properties": {
