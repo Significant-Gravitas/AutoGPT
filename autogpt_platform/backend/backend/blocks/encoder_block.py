@@ -51,4 +51,3 @@ This is a "quoted" string."""
             .replace("'", "\\'")  # Escape single quotes
         )
         yield "encoded_text", encoded_text
-
