@@ -1,14 +1,16 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
-import { useChatStream, type StreamChunk } from "@/hooks/useChatStream";
+import { useChatStream } from "@/hooks/useChatStream";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { ChatMessageData } from "@/components/molecules/ChatMessage/useChatMessage";
 import {
   parseToolResponse,
-  extractCredentialsNeeded,
   isValidMessage,
   isToolCallArray,
+  createUserMessage,
+  filterAuthMessages,
 } from "./helpers";
+import { createStreamEventDispatcher } from "./createStreamEventDispatcher";
 
 interface UseChatContainerArgs {
   sessionId: string | null;
@@ -145,265 +147,32 @@ export function useChatContainer({
         return;
       }
 
-      // Add user message immediately (only if it's a user message)
-      const userMessage: ChatMessageData = {
-        type: "message",
-        role: "user",
-        content,
-        timestamp: new Date(),
-      };
-
-      // Remove any pending credentials_needed or login_needed messages when user sends a new message
-      // This prevents them from persisting after the user has taken action
-      // Only add user message to UI if isUserMessage is true
+      // Update message state: add user message and remove stale auth prompts
       if (isUserMessage) {
-        setMessages((prev) => {
-          const filtered = prev.filter(
-            (msg) =>
-              msg.type !== "credentials_needed" && msg.type !== "login_needed",
-          );
-          return [...filtered, userMessage];
-        });
+        const userMessage = createUserMessage(content);
+        setMessages((prev) => [...filterAuthMessages(prev), userMessage]);
       } else {
         // For system messages, just remove the login/credentials prompts
-        setMessages((prev) =>
-          prev.filter(
-            (msg) =>
-              msg.type !== "credentials_needed" && msg.type !== "login_needed",
-          ),
-        );
+        setMessages((prev) => filterAuthMessages(prev));
       }
 
-      // Clear streaming chunks and reset text flag
+      // Clear streaming state
       setStreamingChunks([]);
       streamingChunksRef.current = [];
       setHasTextChunks(false);
 
+      // Create event dispatcher with all handler dependencies
+      const dispatcher = createStreamEventDispatcher({
+        setHasTextChunks,
+        setStreamingChunks,
+        streamingChunksRef,
+        setMessages,
+        sessionId,
+      });
+
       try {
-        // Stream the response
-        await sendStreamMessage(
-          sessionId,
-          content,
-          function handleChunk(chunk: StreamChunk) {
-            if (chunk.type === "text_chunk" && chunk.content) {
-              setHasTextChunks(true); // Mark that we have text chunks
-              setStreamingChunks((prev) => {
-                const updated = [...prev, chunk.content!];
-                streamingChunksRef.current = updated;
-                return updated;
-              });
-            } else if (chunk.type === "text_ended") {
-              // Save the completed text as an assistant message before clearing
-              console.log("[Text Ended] Saving streamed text as assistant message");
-              const completedText = streamingChunksRef.current.join("");
-
-              if (completedText.trim()) {
-                const assistantMessage: ChatMessageData = {
-                  type: "message",
-                  role: "assistant",
-                  content: completedText,
-                  timestamp: new Date(),
-                };
-                setMessages((prev) => [...prev, assistantMessage]);
-              }
-
-              // Clear streaming state
-              setStreamingChunks([]);
-              streamingChunksRef.current = [];
-              setHasTextChunks(false);
-            } else if (chunk.type === "tool_call_start") {
-              // Show ToolCallMessage immediately when tool execution starts
-              // Use the tool_id from the backend to match with tool_response later
-              const toolCallMessage: ChatMessageData = {
-                type: "tool_call",
-                toolId: chunk.tool_id || `tool-${Date.now()}-${chunk.idx || 0}`,
-                toolName: chunk.tool_name || "Executing...",
-                arguments: chunk.arguments || {},
-                timestamp: new Date(),
-              };
-              setMessages((prev) => [...prev, toolCallMessage]);
-
-              console.log("[Tool Call Start]", {
-                toolId: toolCallMessage.toolId,
-                toolName: toolCallMessage.toolName,
-                timestamp: new Date().toISOString(),
-              });
-            } else if (chunk.type === "tool_response") {
-              console.log("[Tool Response] Received:", {
-                toolId: chunk.tool_id,
-                toolName: chunk.tool_name,
-                timestamp: new Date().toISOString(),
-              });
-
-              // Find the matching tool_call to get the tool name if missing
-              let toolName = chunk.tool_name || "unknown";
-              if (!chunk.tool_name || chunk.tool_name === "unknown") {
-                setMessages((prev) => {
-                  const matchingToolCall = [...prev]
-                    .reverse()
-                    .find(
-                      (msg) =>
-                        msg.type === "tool_call" &&
-                        msg.toolId === chunk.tool_id,
-                    );
-                  if (
-                    matchingToolCall &&
-                    matchingToolCall.type === "tool_call"
-                  ) {
-                    toolName = matchingToolCall.toolName;
-                  }
-                  return prev;
-                });
-              }
-
-              // Use helper function to parse tool response
-              const responseMessage = parseToolResponse(
-                chunk.result!,
-                chunk.tool_id!,
-                toolName,
-                new Date(),
-              );
-
-              // If helper returns null (setup_requirements), handle credentials
-              if (!responseMessage) {
-                // Parse for credentials check
-                let parsedResult: Record<string, unknown> | null = null;
-                try {
-                  parsedResult =
-                    typeof chunk.result === "string"
-                      ? JSON.parse(chunk.result)
-                      : (chunk.result as Record<string, unknown>);
-                } catch {
-                  parsedResult = null;
-                }
-
-                // Check if this is get_required_setup_info with missing credentials
-                if (
-                  chunk.tool_name === "get_required_setup_info" &&
-                  chunk.success &&
-                  parsedResult
-                ) {
-                  const credentialsMessage =
-                    extractCredentialsNeeded(parsedResult);
-                  if (credentialsMessage) {
-                    setMessages((prev) => [...prev, credentialsMessage]);
-                  }
-                }
-
-                // Don't add message if setup_requirements
-                return;
-              }
-
-              // Replace the tool_call message with matching tool_id
-              setMessages((prev) => {
-                // Find the tool_call with the matching tool_id
-                const toolCallIndex = prev.findIndex(
-                  (msg) =>
-                    msg.type === "tool_call" && msg.toolId === chunk.tool_id,
-                );
-
-                if (toolCallIndex !== -1) {
-                  const newMessages = [...prev];
-                  newMessages[toolCallIndex] = responseMessage;
-
-                  console.log(
-                    "[Tool Response] Replaced tool_call with matching tool_id:",
-                    chunk.tool_id,
-                    "at index:",
-                    toolCallIndex,
-                  );
-                  return newMessages;
-                }
-
-                console.warn(
-                  "[Tool Response] No tool_call found with tool_id:",
-                  chunk.tool_id,
-                  "appending instead",
-                );
-                return [...prev, responseMessage];
-              });
-            } else if (
-              chunk.type === "login_needed" ||
-              chunk.type === "need_login"
-            ) {
-              // Add login needed message
-              const loginNeededMessage: ChatMessageData = {
-                type: "login_needed",
-                message:
-                  chunk.message ||
-                  "Please sign in to use chat and agent features",
-                sessionId: chunk.session_id || sessionId,
-                agentInfo: chunk.agent_info,
-                timestamp: new Date(),
-              };
-              setMessages((prev) => [...prev, loginNeededMessage]);
-            } else if (chunk.type === "stream_end") {
-              // Convert streaming chunks into a completed assistant message
-              // This provides seamless transition without flash or resize
-              // Use ref to get the latest chunks value (not stale closure value)
-              const completedContent = streamingChunksRef.current.join("");
-
-              if (completedContent) {
-                const assistantMessage: ChatMessageData = {
-                  type: "message",
-                  role: "assistant",
-                  content: completedContent,
-                  timestamp: new Date(),
-                };
-
-                // Add the completed assistant message to local state
-                // It will be visible immediately while backend updates
-                setMessages((prev) => {
-                  const updated = [...prev, assistantMessage];
-
-                  // Log final state using current messages from state
-                  console.log("[Stream End] Final state:", {
-                    localMessages: updated.map((m) => ({
-                      type: m.type,
-                      ...(m.type === "message" && {
-                        role: m.role,
-                        contentLength: m.content.length,
-                      }),
-                      ...(m.type === "tool_call" && {
-                        toolId: m.toolId,
-                        toolName: m.toolName,
-                      }),
-                      ...(m.type === "tool_response" && {
-                        toolId: m.toolId,
-                        toolName: m.toolName,
-                        success: m.success,
-                      }),
-                    })),
-                    streamingChunks: streamingChunksRef.current,
-                    timestamp: new Date().toISOString(),
-                  });
-
-                  return updated;
-                });
-              }
-
-              // Clear streaming state immediately now that we have the message
-              setStreamingChunks([]);
-              streamingChunksRef.current = [];
-              setHasTextChunks(false);
-
-              // Messages are now in local state and will be displayed
-              // No need to refresh from backend - local state is the source of truth
-              console.log(
-                "[Stream End] Stream complete, messages in local state",
-              );
-            } else if (chunk.type === "error") {
-              const errorMessage =
-                chunk.message || chunk.content || "An error occurred";
-              console.error("Stream error:", errorMessage);
-              toast.error("Chat Error", {
-                description: errorMessage,
-              });
-            }
-            // TODO: Handle usage for display
-          },
-          isUserMessage,
-        );
+        // Stream the response using the event dispatcher
+        await sendStreamMessage(sessionId, content, dispatcher, isUserMessage);
       } catch (err) {
         console.error("Failed to send message:", err);
         const errorMessage =
@@ -413,7 +182,7 @@ export function useChatContainer({
         });
       }
     },
-    [sessionId, sendStreamMessage, onRefreshSession],
+    [sessionId, sendStreamMessage],
   );
 
   return {
