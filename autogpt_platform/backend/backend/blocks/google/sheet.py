@@ -39,8 +39,8 @@ class GoogleSheetsReadTestBlock(Block):
             id="5724e902-3635-47e9-a108-aaa0263a4388",
             description="This block reads data from a Google Sheets spreadsheet.",
             categories={BlockCategory.DATA},
-            input_schema=GoogleSheetsReadBlock.Input,
-            output_schema=GoogleSheetsReadBlock.Output,
+            input_schema=GoogleSheetsReadTestBlock.Input,
+            output_schema=GoogleSheetsReadTestBlock.Output,
             test_input={
                 "drive_id": "1234567890",
                 "range": "Sheet1!A1:B2",
