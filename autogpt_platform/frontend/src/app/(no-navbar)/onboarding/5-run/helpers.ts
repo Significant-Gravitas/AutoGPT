@@ -32,16 +32,12 @@ type IsRunDisabledParams = {
   agent: GraphMeta | null;
   isRunning: boolean;
   agentInputs: InputValues | null | undefined;
-  credentialsValid: boolean;
-  credentialsLoaded: boolean;
 };
 
 export function isRunDisabled({
   agent,
   isRunning,
   agentInputs,
-  credentialsValid,
-  credentialsLoaded,
 }: IsRunDisabledParams) {
   const hasEmptyInput = Object.values(agentInputs || {}).some(
     (value) => String(value).trim() === "",
@@ -50,8 +46,6 @@ export function isRunDisabled({
   if (hasEmptyInput) return true;
   if (!agent) return true;
   if (isRunning) return true;
-  if (!credentialsValid) return true;
-  if (!credentialsLoaded) return true;
 
   return false;
 }

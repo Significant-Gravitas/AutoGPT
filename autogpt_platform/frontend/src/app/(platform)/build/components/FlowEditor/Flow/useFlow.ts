@@ -27,6 +27,9 @@ export const useFlow = () => {
   const setIsGraphRunning = useGraphStore(
     useShallow((state) => state.setIsGraphRunning),
   );
+  const setGraphSchemas = useGraphStore(
+    useShallow((state) => state.setGraphSchemas),
+  );
   const [{ flowID, flowVersion, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
@@ -83,6 +86,14 @@ export const useFlow = () => {
   }, [nodes, blocks]);
 
   useEffect(() => {
+    // load graph schemas
+    if (graph) {
+      setGraphSchemas(
+        graph.input_schema as Record<string, any> | null,
+        graph.credentials_input_schema as Record<string, any> | null,
+      );
+    }
+
     // adding nodes
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
@@ -128,6 +139,7 @@ export const useFlow = () => {
     return () => {
       useNodeStore.getState().setNodes([]);
       useEdgeStore.getState().setConnections([]);
+      useGraphStore.getState().reset();
       setIsGraphRunning(false);
     };
   }, []);

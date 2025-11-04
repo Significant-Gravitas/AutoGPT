@@ -1,4 +1,4 @@
-from backend.data.block import BlockOutput, BlockSchema
+from backend.data.block import BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import APIKeyCredentials, SchemaField
 
 from ._api import (
@@ -13,16 +13,15 @@ from .base import Slant3DBlockBase
 class Slant3DSlicerBlock(Slant3DBlockBase):
     """Block for slicing 3D model files"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         file_url: str = SchemaField(
             description="URL of the 3D model file to slice (STL)"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         message: str = SchemaField(description="Response message")
         price: float = SchemaField(description="Calculated price for printing")
-        error: str = SchemaField(description="Error message if slicing failed")
 
     def __init__(self):
         super().__init__(

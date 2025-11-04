@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "../../processors/input-schema-pre-processor";
+import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
 import { CustomNodeData } from "./CustomNode";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";

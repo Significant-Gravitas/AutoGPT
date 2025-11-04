@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from backend.data.block import BlockSchema
+from backend.data.block import BlockSchemaInput
 from backend.data.model import SchemaField
 
 # -------------- Tweets -----------------
@@ -255,7 +255,7 @@ class ListFieldsFilter(BaseModel):
 
 
 # ---------  [Input Types] -------------
-class TweetExpansionInputs(BlockSchema):
+class TweetExpansionInputs(BlockSchemaInput):
 
     expansions: ExpansionFilter | None = SchemaField(
         description="Choose what extra information you want to get with your tweets. For example:\n- Select 'Media_Keys' to get media details\n- Select 'Author_User_ID' to get user information\n- Select 'Place_ID' to get location details",
@@ -300,7 +300,7 @@ class TweetExpansionInputs(BlockSchema):
     )
 
 
-class DMEventExpansionInputs(BlockSchema):
+class DMEventExpansionInputs(BlockSchemaInput):
     expansions: DMEventExpansionFilter | None = SchemaField(
         description="Select expansions to include related data objects in the 'includes' section.",
         placeholder="Enter expansions",
@@ -337,7 +337,7 @@ class DMEventExpansionInputs(BlockSchema):
     )
 
 
-class UserExpansionInputs(BlockSchema):
+class UserExpansionInputs(BlockSchemaInput):
     expansions: UserExpansionsFilter | None = SchemaField(
         description="Choose what extra information you want to get with user data. Currently only 'pinned_tweet_id' is available to see a user's pinned tweet.",
         placeholder="Select extra user information to include",
@@ -360,7 +360,7 @@ class UserExpansionInputs(BlockSchema):
     )
 
 
-class SpaceExpansionInputs(BlockSchema):
+class SpaceExpansionInputs(BlockSchemaInput):
     expansions: SpaceExpansionsFilter | None = SchemaField(
         description="Choose additional information you want to get with your Twitter Spaces:\n- Select 'Invited_Users' to see who was invited\n- Select 'Speakers' to see who can speak\n- Select 'Creator' to get details about who made the Space\n- Select 'Hosts' to see who's hosting\n- Select 'Topics' to see Space topics",
         placeholder="Pick what extra information you want to see about the Space",
@@ -383,7 +383,7 @@ class SpaceExpansionInputs(BlockSchema):
     )
 
 
-class ListExpansionInputs(BlockSchema):
+class ListExpansionInputs(BlockSchemaInput):
     expansions: ListExpansionsFilter | None = SchemaField(
         description="Choose what extra information you want to get with your Twitter Lists:\n- Select 'List_Owner_ID' to get details about who owns the list\n\nThis will let you see more details about the list owner when you also select user fields below.",
         placeholder="Pick what extra list information you want to see",
@@ -406,7 +406,7 @@ class ListExpansionInputs(BlockSchema):
     )
 
 
-class TweetTimeWindowInputs(BlockSchema):
+class TweetTimeWindowInputs(BlockSchemaInput):
     start_time: datetime | None = SchemaField(
         description="Start time in YYYY-MM-DDTHH:mm:ssZ format",
         placeholder="Enter start time",

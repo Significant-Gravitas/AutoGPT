@@ -5,12 +5,19 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
-from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
+from prisma.models import (
+    AgentGraph,
+    AgentNode,
+    AgentNodeLink,
+    LibraryAgent,
+    StoreListingVersion,
+)
 from prisma.types import (
     AgentGraphCreateInput,
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
+    LibraryAgentWhereInput,
     StoreListingVersionWhereInput,
 )
 from pydantic import BaseModel, Field, create_model
@@ -30,10 +37,12 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
+from backend.util.exceptions import GraphNotInLibraryError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
 from .block import (
+    AnyBlockSchema,
     Block,
     BlockInput,
     BlockSchema,
@@ -82,7 +91,7 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
-    def block(self) -> "Block[BlockSchema, BlockSchema] | _UnknownBlockBase":
+    def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
         """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:
@@ -1100,6 +1109,58 @@ async def delete_graph(graph_id: str, user_id: str) -> int:
     if entries_count:
         logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
     return entries_count
+
+
+async def validate_graph_execution_permissions(
+    graph_id: str, user_id: str, graph_version: Optional[int] = None
+) -> None:
+    """
+    Validate that a user has permission to execute a specific graph.
+
+    This function performs comprehensive authorization checks and raises specific
+    exceptions for different types of failures to enable appropriate error handling.
+
+    Args:
+        graph_id: The ID of the graph to check
+        user_id: The ID of the user
+        graph_version: Optional specific version to check. If None (recommended),
+                      performs version-agnostic check allowing execution of any
+                      version as long as the graph is in the user's library.
+                      This is important for sub-graphs that may reference older
+                      versions no longer in the library.
+
+    Raises:
+        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived)
+        NotAuthorizedError: If the user lacks execution permissions for other reasons
+    """
+
+    # Step 1: Check library membership (raises specific GraphNotInLibraryError)
+    where_clause: LibraryAgentWhereInput = {
+        "userId": user_id,
+        "agentGraphId": graph_id,
+        "isDeleted": False,
+        "isArchived": False,
+    }
+
+    if graph_version is not None:
+        where_clause["agentGraphVersion"] = graph_version
+
+    count = await LibraryAgent.prisma().count(where=where_clause)
+    if count == 0:
+        raise GraphNotInLibraryError(
+            f"Graph #{graph_id} is not accessible in your library"
+        )
+
+    # Step 2: Check execution-specific permissions (raises generic NotAuthorizedError)
+    # Additional authorization checks beyond library membership:
+    # 1. Check if user has execution credits (future)
+    # 2. Check if graph is suspended/disabled (future)
+    # 3. Check rate limiting rules (future)
+    # 4. Check organization-level permissions (future)
+
+    # For now, library membership is sufficient for execution permission
+    # Future enhancements can add more granular permission checks here
+    # When adding new checks, raise NotAuthorizedError for non-library issues
 
 
 async def create_graph(graph: Graph, user_id: str) -> GraphModel:

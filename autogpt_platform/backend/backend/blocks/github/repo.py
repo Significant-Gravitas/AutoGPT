@@ -2,7 +2,13 @@ import base64
 
 from typing_extensions import TypedDict
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from ._api import get_api
@@ -16,14 +22,14 @@ from ._auth import (
 
 
 class GithubListTagsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class TagItem(TypedDict):
             name: str
             url: str
@@ -34,7 +40,6 @@ class GithubListTagsBlock(Block):
         tags: list[TagItem] = SchemaField(
             description="List of tags with their name and file tree browser URL"
         )
-        error: str = SchemaField(description="Error message if listing tags failed")
 
     def __init__(self):
         super().__init__(
@@ -111,14 +116,14 @@ class GithubListTagsBlock(Block):
 
 
 class GithubListBranchesBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class BranchItem(TypedDict):
             name: str
             url: str
@@ -130,7 +135,6 @@ class GithubListBranchesBlock(Block):
         branches: list[BranchItem] = SchemaField(
             description="List of branches with their name and file tree browser URL"
         )
-        error: str = SchemaField(description="Error message if listing branches failed")
 
     def __init__(self):
         super().__init__(
@@ -207,7 +211,7 @@ class GithubListBranchesBlock(Block):
 
 
 class GithubListDiscussionsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -217,7 +221,7 @@ class GithubListDiscussionsBlock(Block):
             description="Number of discussions to fetch", default=5
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class DiscussionItem(TypedDict):
             title: str
             url: str
@@ -323,14 +327,14 @@ class GithubListDiscussionsBlock(Block):
 
 
 class GithubListReleasesBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class ReleaseItem(TypedDict):
             name: str
             url: str
@@ -342,7 +346,6 @@ class GithubListReleasesBlock(Block):
         releases: list[ReleaseItem] = SchemaField(
             description="List of releases with their name and file tree browser URL"
         )
-        error: str = SchemaField(description="Error message if listing releases failed")
 
     def __init__(self):
         super().__init__(
@@ -414,7 +417,7 @@ class GithubListReleasesBlock(Block):
 
 
 class GithubReadFileBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -430,7 +433,7 @@ class GithubReadFileBlock(Block):
             default="master",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         text_content: str = SchemaField(
             description="Content of the file (decoded as UTF-8 text)"
         )
@@ -438,7 +441,6 @@ class GithubReadFileBlock(Block):
             description="Raw base64-encoded content of the file"
         )
         size: int = SchemaField(description="The size of the file (in bytes)")
-        error: str = SchemaField(description="Error message if the file reading failed")
 
     def __init__(self):
         super().__init__(
@@ -501,7 +503,7 @@ class GithubReadFileBlock(Block):
 
 
 class GithubReadFolderBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -517,7 +519,7 @@ class GithubReadFolderBlock(Block):
             default="master",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class DirEntry(TypedDict):
             name: str
             path: str
@@ -625,7 +627,7 @@ class GithubReadFolderBlock(Block):
 
 
 class GithubMakeBranchBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -640,7 +642,7 @@ class GithubMakeBranchBlock(Block):
             placeholder="source_branch_name",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Status of the branch creation operation")
         error: str = SchemaField(
             description="Error message if the branch creation failed"
@@ -705,7 +707,7 @@ class GithubMakeBranchBlock(Block):
 
 
 class GithubDeleteBranchBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -716,7 +718,7 @@ class GithubDeleteBranchBlock(Block):
             placeholder="branch_name",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Status of the branch deletion operation")
         error: str = SchemaField(
             description="Error message if the branch deletion failed"
@@ -766,7 +768,7 @@ class GithubDeleteBranchBlock(Block):
 
 
 class GithubCreateFileBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -789,7 +791,7 @@ class GithubCreateFileBlock(Block):
             default="Create new file",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         url: str = SchemaField(description="URL of the created file")
         sha: str = SchemaField(description="SHA of the commit")
         error: str = SchemaField(
@@ -868,7 +870,7 @@ class GithubCreateFileBlock(Block):
 
 
 class GithubUpdateFileBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -891,10 +893,9 @@ class GithubUpdateFileBlock(Block):
             default="Update file",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         url: str = SchemaField(description="URL of the updated file")
         sha: str = SchemaField(description="SHA of the commit")
-        error: str = SchemaField(description="Error message if the file update failed")
 
     def __init__(self):
         super().__init__(
@@ -974,7 +975,7 @@ class GithubUpdateFileBlock(Block):
 
 
 class GithubCreateRepositoryBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         name: str = SchemaField(
             description="Name of the repository to create",
@@ -998,7 +999,7 @@ class GithubCreateRepositoryBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         url: str = SchemaField(description="URL of the created repository")
         clone_url: str = SchemaField(description="Git clone URL of the repository")
         error: str = SchemaField(
@@ -1077,14 +1078,14 @@ class GithubCreateRepositoryBlock(Block):
 
 
 class GithubListStargazersBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class StargazerItem(TypedDict):
             username: str
             url: str
