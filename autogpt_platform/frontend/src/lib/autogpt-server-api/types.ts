@@ -1143,6 +1143,10 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
     return DataType.CREDENTIALS;
   }
 
+  if ("type" in schema && schema.type === "google-drive-picker") {
+    return DataType.GOOGLE_DRIVE_PICKER;
+  }
+
   // enum == SELECT
   if ("enum" in schema) {
     return DataType.SELECT;

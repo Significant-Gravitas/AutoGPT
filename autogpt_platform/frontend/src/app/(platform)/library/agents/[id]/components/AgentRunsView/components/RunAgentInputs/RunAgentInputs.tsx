@@ -56,10 +56,6 @@ export function RunAgentInputs({
 
   let innerInputElement: React.ReactNode = null;
   switch (dataType) {
-    case DataType.GOOGLE_DRIVE_PICKER:
-      console.log("Rendering Google Drive Picker", schema, value);
-      innerInputElement = <div></div>;
-      break;
     case DataType.NUMBER:
       innerInputElement = (
         <DSInput

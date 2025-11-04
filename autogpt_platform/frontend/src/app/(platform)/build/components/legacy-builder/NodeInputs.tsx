@@ -372,11 +372,13 @@ export const NodeGenericInputField: FC<{
         />
       );
     case DataType.GOOGLE_DRIVE_PICKER:
-      <GoogleDrivePicker
-        onPicked={console.log}
-        onCanceled={() => console.error("Google Drive Picker canceled")}
-        onError={console.error}
-      />;
+      return (
+        <GoogleDrivePicker
+          onPicked={console.log}
+          onCanceled={() => console.error("Google Drive Picker canceled")}
+          onError={console.error}
+        />
+      );
 
     case DataType.DATE:
     case DataType.TIME:
