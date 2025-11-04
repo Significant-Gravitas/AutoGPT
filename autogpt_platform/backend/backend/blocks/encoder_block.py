@@ -1,5 +1,4 @@
 import codecs
-import uuid
 
 from backend.data.block import (
     Block,
@@ -44,6 +43,13 @@ This is a "quoted" string."""
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        encoded_text = codecs.encode(input_data.text, "unicode_escape").decode("ascii")
+        # Escape only common special characters, preserving unicode characters
+        encoded_text = (input_data.text
+                       .replace('\\', '\\\\')  # Escape backslashes first
+                       .replace('\n', '\\n')   # Escape newlines
+                       .replace('\r', '\\r')   # Escape carriage returns
+                       .replace('\t', '\\t')   # Escape tabs
+                       .replace('"', '\\"')    # Escape double quotes
+                       .replace("'", "\\'"))   # Escape single quotes
         yield "encoded_text", encoded_text
 
