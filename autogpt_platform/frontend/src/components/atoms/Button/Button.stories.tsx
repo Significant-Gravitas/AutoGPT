@@ -24,6 +24,7 @@ const meta: Meta<typeof Button> = {
         "destructive",
         "outline",
         "ghost",
+        "link",
         "loading",
       ],
       description: "Button style variant",
@@ -91,6 +92,13 @@ export const Ghost: Story = {
   args: {
     variant: "ghost",
     children: "Ghost Button",
+  },
+};
+
+export const LinkVariant: Story = {
+  args: {
+    variant: "link",
+    children: "Go to documentation",
   },
 };
 
