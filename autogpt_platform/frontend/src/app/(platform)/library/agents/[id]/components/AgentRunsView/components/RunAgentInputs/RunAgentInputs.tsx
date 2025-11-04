@@ -19,6 +19,7 @@ import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
+import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -55,6 +56,10 @@ export function RunAgentInputs({
 
   let innerInputElement: React.ReactNode = null;
   switch (dataType) {
+    case DataType.GOOGLE_DRIVE_PICKER:
+      console.log("Rendering Google Drive Picker", schema, value);
+      innerInputElement = <div></div>;
+      break;
     case DataType.NUMBER:
       innerInputElement = (
         <DSInput

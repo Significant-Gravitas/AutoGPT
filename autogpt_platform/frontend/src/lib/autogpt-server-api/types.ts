@@ -80,6 +80,7 @@ export enum DataType {
   KEY_VALUE = "key-value",
   ARRAY = "array",
   TABLE = "table",
+  GOOGLE_DRIVE_PICKER = "google-drive-picker",
 }
 
 export type BlockIOSubSchemaMeta = {
@@ -114,6 +115,11 @@ export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   const?: Array<string>;
   default?: Array<string>;
   secret?: boolean;
+};
+
+export type GoogleDrivePickerField = BlockIOSubSchemaMeta & {
+  type: "object";
+  allow_folder_selection?: boolean;
 };
 
 // Table cell values are typically primitives

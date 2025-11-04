@@ -253,6 +253,55 @@ def SecretField(
     )
 
 
+class GoogleDrivePicker:
+
+    def __init__(self, allow_folder_selection: Optional[bool] = None):
+        self.allow_folder_selection = allow_folder_selection
+
+    @classmethod
+    def parse_value(cls, value: Any) -> GoogleDrivePicker:
+        if isinstance(value, GoogleDrivePicker):
+            return value
+        return GoogleDrivePicker(allow_folder_selection=value)
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> dict[str, Any]:
+        return {
+            "type": "google-drive-picker",
+        }
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        validate_fun = core_schema.no_info_plain_validator_function(cls.parse_value)
+        return core_schema.json_or_python_schema(
+            json_schema=validate_fun,
+            python_schema=validate_fun,
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda val: {"allow_folder_selection": val.allow_folder_selection}
+            ),
+        )
+
+
+def GoogleDrivePickerField(
+    allow_folder_selection: Optional[bool] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    placeholder: Optional[str] = None,
+    **kwargs,
+):
+    return SchemaField(
+        GoogleDrivePicker(allow_folder_selection=allow_folder_selection),
+        title=title,
+        description=description,
+        placeholder=placeholder,
+        **kwargs,
+    )
+
+
 def SchemaField(
     default: T | PydanticUndefinedType = PydanticUndefined,
     *args,
