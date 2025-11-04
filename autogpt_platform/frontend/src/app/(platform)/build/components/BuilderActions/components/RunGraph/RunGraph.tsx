@@ -50,7 +50,7 @@ export const RunGraph = () => {
       <RunInputDialog
         isOpen={openRunInputDialog}
         setIsOpen={setOpenRunInputDialog}
-        runFor="run"
+        purpose="run"
       />
     </>
   );

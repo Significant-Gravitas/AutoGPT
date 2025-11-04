@@ -40,7 +40,7 @@ export const ScheduleGraph = () => {
       <RunInputDialog
         isOpen={openScheduleInputDialog}
         setIsOpen={setOpenScheduleInputDialog}
-        runFor="schedule"
+        purpose="schedule"
       />
       <CronSchedulerDialog
         open={openCronSchedulerDialog}

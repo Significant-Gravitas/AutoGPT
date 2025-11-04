@@ -12,11 +12,11 @@ import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog"
 export const RunInputDialog = ({
   isOpen,
   setIsOpen,
-  runFor,
+  purpose,
 }: {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
-  runFor: "run" | "schedule";
+  purpose: "run" | "schedule";
 }) => {
   const hasInputs = useGraphStore((state) => state.hasInputs);
   const hasCredentials = useGraphStore((state) => state.hasCredentials);
@@ -40,12 +40,12 @@ export const RunInputDialog = ({
   return (
     <>
       <Dialog
-        title="Run Agent"
+        title={purpose === "run" ? "Run Agent" : "Schedule Run"}
         controlled={{
           isOpen,
           set: setIsOpen,
         }}
-        styling={{ maxWidth: "700px" }}
+        styling={{ maxWidth: "600px", minWidth: "600px" }}
       >
         <Dialog.Content>
           <div className="space-y-6 p-1">
@@ -97,7 +97,7 @@ export const RunInputDialog = ({
 
             {/* Action Button */}
             <div className="flex justify-end pt-2">
-              {runFor === "run" && (
+              {purpose === "run" && (
                 <Button
                   variant="primary"
                   size="large"
@@ -109,7 +109,7 @@ export const RunInputDialog = ({
                   <span className="font-semibold">Manual Run</span>
                 </Button>
               )}
-              {runFor === "schedule" && (
+              {purpose === "schedule" && (
                 <Button
                   variant="primary"
                   size="large"
