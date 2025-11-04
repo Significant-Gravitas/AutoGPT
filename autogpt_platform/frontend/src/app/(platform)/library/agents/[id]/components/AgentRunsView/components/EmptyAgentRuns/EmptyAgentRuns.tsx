@@ -53,13 +53,15 @@ export function EmptyAgentRuns({
               You don&apos;t have any runs
             </Text>
             <Text variant="large" className="sentry-unmask">
-              Get started with creating a run, and you&apos;ll see information here
+              Get started with creating a run, and you&apos;ll see information
+              here
             </Text>
           </div>
           <RunAgentModal
             triggerSlot={
               <Button variant="primary" size="large" className="w-full">
-                <PlusIcon size={20} /> <span className="sentry-unmask">New Run</span>
+                <PlusIcon size={20} />{" "}
+                <span className="sentry-unmask">New Run</span>
               </Button>
             }
             agent={agent}
