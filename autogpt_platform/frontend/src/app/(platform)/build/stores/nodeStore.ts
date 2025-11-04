@@ -6,6 +6,8 @@ import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
 import { Node } from "@/app/api/__generated__/models/node";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
+import { useHistoryStore } from "./historyStore";
+import { useEdgeStore } from "./edgeStore";
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -44,10 +46,26 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     set((state) => ({
       nodeCounter: state.nodeCounter + 1,
     })),
-  onNodesChange: (changes) =>
+  onNodesChange: (changes) => {
+    const prevState = {
+      nodes: get().nodes,
+      connections: useEdgeStore.getState().connections,
+    };
+    const shouldTrack = changes.some(
+      (change) =>
+        change.type === "remove" ||
+        change.type === "add" ||
+        (change.type === "position" && change.dragging === false),
+    );
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
-    })),
+    }));
+
+    if (shouldTrack) {
+      useHistoryStore.getState().pushState(prevState);
+    }
+  },
+
   addNode: (node) =>
     set((state) => ({
       nodes: [...state.nodes, node],
@@ -66,12 +84,20 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       nodes: [...state.nodes, customNode],
     }));
   },
-  updateNodeData: (nodeId, data) =>
+  updateNodeData: (nodeId, data) => {
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n,
       ),
-    })),
+    }));
+
+    const newState = {
+      nodes: get().nodes,
+      connections: useEdgeStore.getState().connections,
+    };
+
+    useHistoryStore.getState().pushState(newState);
+  },
   toggleAdvanced: (nodeId: string) =>
     set((state) => ({
       nodeAdvancedStates: {
