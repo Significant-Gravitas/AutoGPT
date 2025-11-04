@@ -463,20 +463,24 @@ def get_rabbitmq_queue_depth() -> int:
         rabbitmq = SyncRabbitMQ(config)
         rabbitmq.connect()
 
-        # Use passive queue_declare to get queue info without modifying it
-        if rabbitmq._channel:
-            method_frame = rabbitmq._channel.queue_declare(
-                queue=GRAPH_EXECUTION_QUEUE_NAME, passive=True
-            )
-        else:
-            raise RuntimeError("RabbitMQ channel not initialized")
+        try:
+            # Use passive queue_declare to get queue info without modifying it
+            if rabbitmq._channel:
+                method_frame = rabbitmq._channel.queue_declare(
+                    queue=GRAPH_EXECUTION_QUEUE_NAME, passive=True
+                )
+            else:
+                raise RuntimeError("RabbitMQ channel not initialized")
 
-        message_count = method_frame.method.message_count
-
-        # Clean up connection
-        rabbitmq.disconnect()
-
-        return message_count
+            return method_frame.method.message_count
+        finally:
+            # Always clean up connection, even on error
+            try:
+                rabbitmq.disconnect()
+            except Exception as disconnect_err:
+                logger.warning(
+                    f"Failed to close RabbitMQ connection after queue depth check: {disconnect_err}"
+                )
     except Exception as e:
         logger.error(f"Error getting RabbitMQ queue depth: {e}")
         # Return -1 to indicate an error state rather than failing the entire request
@@ -693,20 +697,24 @@ def get_rabbitmq_cancel_queue_depth() -> int:
         rabbitmq = SyncRabbitMQ(config)
         rabbitmq.connect()
 
-        # Use passive queue_declare to get queue info without modifying it
-        if rabbitmq._channel:
-            method_frame = rabbitmq._channel.queue_declare(
-                queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME, passive=True
-            )
-        else:
-            raise RuntimeError("RabbitMQ channel not initialized")
+        try:
+            # Use passive queue_declare to get queue info without modifying it
+            if rabbitmq._channel:
+                method_frame = rabbitmq._channel.queue_declare(
+                    queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME, passive=True
+                )
+            else:
+                raise RuntimeError("RabbitMQ channel not initialized")
 
-        message_count = method_frame.method.message_count
-
-        # Clean up connection
-        rabbitmq.disconnect()
-
-        return message_count
+            return method_frame.method.message_count
+        finally:
+            # Always clean up connection, even on error
+            try:
+                rabbitmq.disconnect()
+            except Exception as disconnect_err:
+                logger.warning(
+                    f"Failed to close RabbitMQ connection after cancel queue check: {disconnect_err}"
+                )
     except Exception as e:
         logger.error(f"Error getting RabbitMQ cancel queue depth: {e}")
         # Return -1 to indicate an error state rather than failing the entire request
@@ -1011,15 +1019,15 @@ async def get_failed_executions_details(
 
 async def stop_execution(execution_id: str, admin_user_id: str) -> bool:
     """
-    Stop a single active execution by sending cancel signal.
-    Admin-only operation for executions likely active in executor.
+    Stop a single execution by sending cancel signal AND updating DB.
+    Admin-only operation that works for both active and young orphaned executions.
 
     Args:
         execution_id: ID of the execution to stop
         admin_user_id: ID of the admin user performing the operation
 
     Returns:
-        True if cancel signal was sent successfully, False otherwise
+        True if execution was stopped successfully, False otherwise
     """
     try:
         logger.info(f"Admin user {admin_user_id} stopping execution {execution_id}")
@@ -1033,17 +1041,30 @@ async def stop_execution(execution_id: str, admin_user_id: str) -> bool:
             logger.error(f"Execution {execution_id} not found")
             return False
 
-        # Send cancel signal directly to RabbitMQ
-        # The executor will handle the cancellation and update status
-        queue_client = await get_async_execution_queue()
-        await queue_client.publish_message(
-            routing_key="",
-            message=CancelExecutionEvent(graph_exec_id=execution_id).model_dump_json(),
-            exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+        # Send cancel signal to RabbitMQ (for active executions)
+        try:
+            queue_client = await get_async_execution_queue()
+            await queue_client.publish_message(
+                routing_key="",
+                message=CancelExecutionEvent(
+                    graph_exec_id=execution_id
+                ).model_dump_json(),
+                exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send cancel signal for {execution_id}: {e}")
+
+        # ALSO update DB directly (handles young orphans from executor restarts)
+        await AgentGraphExecution.prisma().update(
+            where={"id": execution_id},
+            data={
+                "executionStatus": AgentExecutionStatus.FAILED,
+                "updatedAt": datetime.now(timezone.utc),
+            },
         )
 
         logger.info(
-            f"Admin {admin_user_id} sent cancel signal for execution {execution_id}"
+            f"Admin {admin_user_id} stopped execution {execution_id} (sent cancel + updated DB)"
         )
         return True
     except Exception as e:
@@ -1131,20 +1152,103 @@ async def stop_executions_bulk(execution_ids: List[str], admin_user_id: str) -> 
                 logger.error(f"Failed to send cancel for {exec_id}: {e}")
                 return False
 
-        results = await asyncio.gather(
+        # Send cancel signals in parallel
+        await asyncio.gather(
             *[send_cancel_signal(exec.id) for exec in executions],
-            return_exceptions=False,
+            return_exceptions=True,  # Don't fail if some signals fail
         )
 
-        stopped_count = sum(1 for success in results if success)
+        # ALSO update DB status directly (don't rely on executor)
+        # This ensures executions are marked FAILED even if executor is down
+        result = await AgentGraphExecution.prisma().update_many(
+            where={"id": {"in": execution_ids}},
+            data={
+                "executionStatus": AgentExecutionStatus.FAILED,
+                "updatedAt": datetime.now(timezone.utc),
+            },
+        )
 
         logger.info(
-            f"Admin {admin_user_id} sent cancel signals for {stopped_count}/{len(execution_ids)} executions"
+            f"Admin {admin_user_id} stopped {result} executions (sent cancel signals + updated DB)"
         )
 
-        return stopped_count
+        return result
     except Exception as e:
         logger.error(f"Error stopping executions in bulk: {e}")
+        return 0
+
+
+async def stop_all_long_running_executions(admin_user_id: str) -> int:
+    """
+    Stop ALL long-running executions (RUNNING >24h) by sending cancel signals.
+
+    Args:
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        Number of executions for which cancel signals were sent
+    """
+    import asyncio
+
+    try:
+        logger.info(f"Admin user {admin_user_id} stopping ALL long-running executions")
+
+        # Find all long-running executions
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        executions = await AgentGraphExecution.prisma().find_many(
+            where={
+                "executionStatus": AgentExecutionStatus.RUNNING,
+                "createdAt": {"lt": cutoff},
+            }
+        )
+
+        if not executions:
+            logger.info("No long-running executions to stop")
+            return 0
+
+        queue_client = await get_async_execution_queue()
+
+        # Send cancel signals in parallel
+        async def send_cancel_signal(exec_id: str) -> bool:
+            try:
+                await queue_client.publish_message(
+                    routing_key="",
+                    message=CancelExecutionEvent(
+                        graph_exec_id=exec_id
+                    ).model_dump_json(),
+                    exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to send cancel for {exec_id}: {e}")
+                return False
+
+        # Send cancel signals in parallel
+        await asyncio.gather(
+            *[send_cancel_signal(exec.id) for exec in executions],
+            return_exceptions=True,  # Don't fail if some signals fail
+        )
+
+        # ALSO update DB status directly (don't rely on executor)
+        # This ensures executions are marked FAILED even if executor restarted
+        result = await AgentGraphExecution.prisma().update_many(
+            where={
+                "executionStatus": AgentExecutionStatus.RUNNING,
+                "createdAt": {"lt": cutoff},
+            },
+            data={
+                "executionStatus": AgentExecutionStatus.FAILED,
+                "updatedAt": datetime.now(timezone.utc),
+            },
+        )
+
+        logger.info(
+            f"Admin {admin_user_id} stopped {result} long-running executions (sent cancel signals + updated DB)"
+        )
+
+        return result
+    except Exception as e:
+        logger.error(f"Error stopping all long-running executions: {e}")
         return 0
 
 
@@ -1183,6 +1287,46 @@ async def cleanup_orphaned_executions_bulk(
         return result
     except Exception as e:
         logger.error(f"Error cleaning up orphaned executions in bulk: {e}")
+        return 0
+
+
+async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
+    """
+    Cleanup ALL stuck queued executions (QUEUED >1h) by updating DB status.
+    Operates on all stuck queued executions, not just paginated results.
+
+    Args:
+        admin_user_id: ID of the admin user performing the operation
+
+    Returns:
+        Number of executions successfully cleaned up
+    """
+    try:
+        logger.info(
+            f"Admin user {admin_user_id} cleaning up ALL stuck queued executions"
+        )
+
+        # Find all stuck queued executions (>1h old)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        result = await AgentGraphExecution.prisma().update_many(
+            where={
+                "executionStatus": AgentExecutionStatus.QUEUED,
+                "createdAt": {"lt": one_hour_ago},
+            },
+            data={
+                "executionStatus": AgentExecutionStatus.FAILED,
+                "updatedAt": datetime.now(timezone.utc),
+            },
+        )
+
+        logger.info(
+            f"Admin {admin_user_id} marked {result} stuck queued executions as FAILED in DB"
+        )
+
+        return result
+    except Exception as e:
+        logger.error(f"Error cleaning up all stuck queued executions: {e}")
         return 0
 
 

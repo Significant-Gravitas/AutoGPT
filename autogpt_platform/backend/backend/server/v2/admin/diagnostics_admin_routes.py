@@ -15,6 +15,7 @@ from backend.data.diagnostics import (
     RunningExecutionDetail,
     ScheduleDetail,
     ScheduleHealthMetrics,
+    cleanup_all_stuck_queued_executions,
     cleanup_orphaned_executions_bulk,
     cleanup_orphaned_schedules_bulk,
     get_agent_diagnostics,
@@ -29,6 +30,7 @@ from backend.data.diagnostics import (
     get_stuck_queued_executions_details,
     requeue_execution,
     requeue_executions_bulk,
+    stop_all_long_running_executions,
     stop_execution,
     stop_executions_bulk,
 )
@@ -716,6 +718,36 @@ async def cleanup_orphaned_schedules(
 
 
 @router.post(
+    "/diagnostics/executions/stop-all-long-running",
+    response_model=StopExecutionResponse,
+    summary="Stop ALL Long-Running Executions",
+)
+async def stop_all_long_running_executions_endpoint(
+    user: AuthUser = Security(requires_admin_user),
+):
+    """
+    Stop ALL long-running executions (RUNNING >24h) by sending cancel signals (admin only).
+    Operates on entire dataset, not limited to pagination.
+
+    Returns:
+        Number of executions stopped and success message
+    """
+    try:
+        logger.info(f"Admin {user.user_id} stopping ALL long-running executions")
+
+        stopped_count = await stop_all_long_running_executions(user.user_id)
+
+        return StopExecutionResponse(
+            success=stopped_count > 0,
+            stopped_count=stopped_count,
+            message=f"Stopped {stopped_count} long-running executions",
+        )
+    except Exception as e:
+        logger.exception(f"Error stopping all long-running executions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
     "/diagnostics/executions/cleanup-all-orphaned",
     response_model=StopExecutionResponse,
     summary="Cleanup ALL Orphaned Executions",
@@ -767,6 +799,36 @@ async def cleanup_all_orphaned_executions(
         )
     except Exception as e:
         logger.exception(f"Error cleaning up all orphaned executions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/diagnostics/executions/cleanup-all-stuck-queued",
+    response_model=StopExecutionResponse,
+    summary="Cleanup ALL Stuck Queued Executions",
+)
+async def cleanup_all_stuck_queued_executions_endpoint(
+    user: AuthUser = Security(requires_admin_user),
+):
+    """
+    Cleanup ALL stuck queued executions (QUEUED >1h) by updating DB status (admin only).
+    Operates on entire dataset, not limited to pagination.
+
+    Returns:
+        Number of executions cleaned up and success message
+    """
+    try:
+        logger.info(f"Admin {user.user_id} cleaning up ALL stuck queued executions")
+
+        cleaned_count = await cleanup_all_stuck_queued_executions(user.user_id)
+
+        return StopExecutionResponse(
+            success=cleaned_count > 0,
+            stopped_count=cleaned_count,
+            message=f"Cleaned up {cleaned_count} stuck queued executions",
+        )
+    except Exception as e:
+        logger.exception(f"Error cleaning up all stuck queued executions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

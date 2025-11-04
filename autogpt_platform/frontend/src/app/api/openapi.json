@@ -4504,12 +4504,60 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/admin/diagnostics/executions/stop-all-long-running": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Stop ALL Long-Running Executions",
+        "description": "Stop ALL long-running executions (RUNNING >24h) by sending cancel signals (admin only).\nOperates on entire dataset, not limited to pagination.\n\nReturns:\n    Number of executions stopped and success message",
+        "operationId": "postV2Stop all long-running executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/diagnostics/executions/cleanup-all-orphaned": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Cleanup ALL Orphaned Executions",
         "description": "Cleanup ALL orphaned executions (>24h old) by directly updating DB status.\nOperates on all executions, not just paginated results.\n\nReturns:\n    Number of executions cleaned up and success message",
         "operationId": "postV2Cleanup all orphaned executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/admin/diagnostics/executions/cleanup-all-stuck-queued": {
+      "post": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "Cleanup ALL Stuck Queued Executions",
+        "description": "Cleanup ALL stuck queued executions (QUEUED >1h) by updating DB status (admin only).\nOperates on entire dataset, not limited to pagination.\n\nReturns:\n    Number of executions cleaned up and success message",
+        "operationId": "postV2Cleanup all stuck queued executions",
         "responses": {
           "200": {
             "description": "Successful Response",

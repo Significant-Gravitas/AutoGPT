@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, Activity } from "lucide-react";
+import { Users, DollarSign } from "lucide-react";
+import { PulseIcon } from "@phosphor-icons/react/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -19,7 +20,7 @@ const sidebarLinkGroups = [
       {
         text: "System Diagnostics",
         href: "/admin/diagnostics",
-        icon: <Activity className="h-6 w-6" />,
+        icon: <PulseIcon className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",

@@ -42,8 +42,10 @@ import {
   useGetV2ListStuckQueuedExecutions,
   usePostV2StopSingleExecution,
   usePostV2StopMultipleExecutions,
+  usePostV2StopAllLongRunningExecutions,
   usePostV2CleanupOrphanedExecutions,
   usePostV2CleanupAllOrphanedExecutions,
+  usePostV2CleanupAllStuckQueuedExecutions,
   usePostV2RequeueStuckExecution,
   usePostV2RequeueMultipleStuckExecutions,
   usePostV2RequeueAllStuckQueuedExecutions,
@@ -217,6 +219,16 @@ export function ExecutionsTable({
   const { mutateAsync: cleanupAllOrphaned, isPending: isCleaningUpAll } =
     usePostV2CleanupAllOrphanedExecutions();
 
+  const {
+    mutateAsync: cleanupAllStuckQueued,
+    isPending: isCleaningUpAllStuckQueued,
+  } = usePostV2CleanupAllStuckQueuedExecutions();
+
+  const {
+    mutateAsync: stopAllLongRunning,
+    isPending: isStoppingAllLongRunning,
+  } = usePostV2StopAllLongRunningExecutions();
+
   const isStopping =
     isStoppingSingle ||
     isStoppingMultiple ||
@@ -224,7 +236,9 @@ export function ExecutionsTable({
     isRequeuingSingle ||
     isRequeueingMultiple ||
     isRequeueingAll ||
-    isCleaningUpAll;
+    isCleaningUpAll ||
+    isCleaningUpAllStuckQueued ||
+    isStoppingAllLongRunning;
 
   // Calculate which executions are orphaned (>24h old based on created_at)
   const now = new Date();
@@ -343,18 +357,25 @@ export function ExecutionsTable({
           }
         } else if (stopMode === "cleanup") {
           // Cleanup executions
-          if (
-            stopTarget === "all" &&
-            (activeTab === "orphaned" || activeTab === "stuck-queued")
-          ) {
-            // Use ALL endpoint for orphaned/stuck-queued tabs
+          if (stopTarget === "all" && activeTab === "orphaned") {
+            // Use ALL endpoint for orphaned tab (>24h old)
             const result = await cleanupAllOrphaned();
 
             toast({
               title: "Success",
               description:
                 (result.data as any)?.message ||
-                `Cleaned up ${(result.data as any)?.stopped_count || 0} executions`,
+                `Cleaned up ${(result.data as any)?.stopped_count || 0} orphaned executions`,
+            });
+          } else if (stopTarget === "all" && activeTab === "stuck-queued") {
+            // Use ALL endpoint for stuck-queued tab (>1h old)
+            const result = await cleanupAllStuckQueued();
+
+            toast({
+              title: "Success",
+              description:
+                (result.data as any)?.message ||
+                `Cleaned up ${(result.data as any)?.stopped_count || 0} stuck queued executions`,
             });
           } else {
             // Selected or other tabs
@@ -375,54 +396,64 @@ export function ExecutionsTable({
             });
           }
         } else {
-          // Stop - intelligently split between active and orphaned
-          const activeIds: string[] = [];
-          const orphanedIdsToCleanup: string[] = [];
+          // Stop - handle long-running ALL or split active/orphaned
+          if (stopTarget === "all" && activeTab === "long-running") {
+            // Use ALL endpoint for long-running tab
+            const result = await stopAllLongRunning();
 
-          const allIds =
-            stopTarget === "selected"
-              ? Array.from(selectedIds)
-              : executions.map((e: RunningExecutionDetail) => e.execution_id);
+            toast({
+              title: "Success",
+              description:
+                (result.data as any)?.message ||
+                `Stopped ${(result.data as any)?.stopped_count || 0} long-running executions`,
+            });
+          } else {
+            // Stop selected - intelligently split between active and orphaned
+            const activeIds: string[] = [];
+            const orphanedIdsToCleanup: string[] = [];
 
-          // Split into active vs orphaned
-          allIds.forEach((id: string) => {
-            if (orphanedIds.has(id)) {
-              orphanedIdsToCleanup.push(id);
-            } else {
-              activeIds.push(id);
-            }
-          });
+            const allIds = Array.from(selectedIds);
 
-          // Execute both operations in parallel
-          const results = await Promise.all([
-            activeIds.length > 0
-              ? stopMultipleExecutions({
-                  data: { execution_ids: activeIds },
-                })
-              : Promise.resolve(null),
-            orphanedIdsToCleanup.length > 0
-              ? cleanupOrphanedExecutions({
-                  data: { execution_ids: orphanedIdsToCleanup },
-                })
-              : Promise.resolve(null),
-          ]);
+            // Split into active vs orphaned
+            allIds.forEach((id: string) => {
+              if (orphanedIds.has(id)) {
+                orphanedIdsToCleanup.push(id);
+              } else {
+                activeIds.push(id);
+              }
+            });
 
-          const stoppedCount = results[0]
-            ? (results[0].data as any)?.stopped_count || 0
-            : 0;
-          const cleanedCount = results[1]
-            ? (results[1].data as any)?.stopped_count || 0
-            : 0;
+            // Execute both operations in parallel
+            const results = await Promise.all([
+              activeIds.length > 0
+                ? stopMultipleExecutions({
+                    data: { execution_ids: activeIds },
+                  })
+                : Promise.resolve(null),
+              orphanedIdsToCleanup.length > 0
+                ? cleanupOrphanedExecutions({
+                    data: { execution_ids: orphanedIdsToCleanup },
+                  })
+                : Promise.resolve(null),
+            ]);
 
-          toast({
-            title: "Success",
-            description:
-              stoppedCount > 0 && cleanedCount > 0
-                ? `Stopped ${stoppedCount} active and cleaned ${cleanedCount} orphaned executions`
-                : stoppedCount > 0
-                  ? `Stopped ${stoppedCount} execution(s)`
-                  : `Cleaned ${cleanedCount} orphaned execution(s)`,
-          });
+            const stoppedCount = results[0]
+              ? (results[0].data as any)?.stopped_count || 0
+              : 0;
+            const cleanedCount = results[1]
+              ? (results[1].data as any)?.stopped_count || 0
+              : 0;
+
+            toast({
+              title: "Success",
+              description:
+                stoppedCount > 0 && cleanedCount > 0
+                  ? `Stopped ${stoppedCount} active and cleaned ${cleanedCount} orphaned executions`
+                  : stoppedCount > 0
+                    ? `Stopped ${stoppedCount} execution(s)`
+                    : `Cleaned ${cleanedCount} orphaned execution(s)`,
+            });
+          }
         }
       }
 
@@ -493,28 +524,22 @@ export function ExecutionsTable({
                     )}
                   </Button>
                 )}
-                {activeTab !== "stuck-queued" && (
+                {/* Only show Stop All for specific tabs, not "all" tab */}
+                {activeTab === "long-running" && total > 0 && (
                   <Button
                     variant="destructive"
                     size="small"
                     onClick={() => confirmStop("all", "stop")}
-                    disabled={isStopping || total === 0}
+                    disabled={isStopping}
                   >
                     <StopCircleIcon className="mr-2 h-4 w-4" />
-                    Stop All ({total})
-                    {diagnosticsData &&
-                      activeTab === "all" &&
-                      diagnosticsData.orphaned_running +
-                        diagnosticsData.orphaned_queued >
-                        0 && (
-                        <span className="ml-1 text-xs text-orange-200">
-                          (
-                          {diagnosticsData.orphaned_running +
-                            diagnosticsData.orphaned_queued}{" "}
-                          orphaned)
-                        </span>
-                      )}
+                    Stop All Long-Running ({total})
                   </Button>
+                )}
+                {activeTab === "failed" && selectedIds.size === 0 && (
+                  <div className="px-3 text-sm text-gray-500">
+                    View-only (select to delete)
+                  </div>
                 )}
                 <Button
                   variant="outline"
