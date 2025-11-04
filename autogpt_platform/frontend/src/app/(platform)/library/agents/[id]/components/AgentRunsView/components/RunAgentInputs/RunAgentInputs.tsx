@@ -1,10 +1,15 @@
-import React from "react";
 import { format } from "date-fns";
+import React from "react";
 
 import { Input as DSInput } from "@/components/atoms/Input/Input";
 import { Select as DSSelect } from "@/components/atoms/Select/Select";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 // Removed shadcn Select usage in favor of DS Select for time picker
+import { Button } from "@/components/atoms/Button/Button";
+import { FileInput } from "@/components/atoms/FileInput/FileInput";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
+import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import {
   BlockIOObjectSubSchema,
   BlockIOSubSchema,
@@ -13,13 +18,13 @@ import {
   determineDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
-import { FileInput } from "@/components/atoms/FileInput/FileInput";
-import { useRunAgentInputs } from "./useRunAgentInputs";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
+<<<<<<< Updated upstream
 import { Button } from "@/components/atoms/Button/Button";
 import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
+=======
+import { useRunAgentInputs } from "./useRunAgentInputs";
+>>>>>>> Stashed changes
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -90,6 +95,17 @@ export function RunAgentInputs({
           value={value ?? ""}
           placeholder={placeholder || "Enter text"}
           onChange={(e) => onChange((e.target as HTMLInputElement).value)}
+          {...props}
+        />
+      );
+      break;
+
+    case DataType.GOOGLE_DRIVE_PICKER:
+      innerInputElement = (
+        <GoogleDrivePicker
+          onPicked={console.log}
+          onCanceled={() => console.error("Google Drive Picker canceled")}
+          onError={console.error}
           {...props}
         />
       );

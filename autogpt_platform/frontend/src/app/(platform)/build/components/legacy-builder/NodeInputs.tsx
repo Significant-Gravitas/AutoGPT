@@ -1,18 +1,15 @@
+import {
+  ConnectionData,
+  CustomNodeData,
+} from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { Calendar } from "@/components/__legacy__/ui/calendar";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
-import { beautifyString, cn } from "@/lib/utils";
-import { Node, useNodeId, useNodesData } from "@xyflow/react";
-import {
-  ConnectionData,
-  CustomNodeData,
-} from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
-import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
 import {
   BlockIOArraySubSchema,
   BlockIOBooleanSubSchema,
@@ -29,22 +26,21 @@ import {
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
+import { beautifyString, cn } from "@/lib/utils";
+import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+import { Node, useNodeId, useNodesData } from "@xyflow/react";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
 import React, {
   FC,
   useCallback,
   useEffect,
   useMemo,
-  useState,
   useRef,
+  useState,
 } from "react";
 import { Button } from "../../../../../components/__legacy__/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../../../../components/__legacy__/ui/select";
+import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input";
 import {
   MultiSelector,
   MultiSelectorContent,
@@ -53,11 +49,16 @@ import {
   MultiSelectorList,
   MultiSelectorTrigger,
 } from "../../../../../components/__legacy__/ui/multiselect";
-import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input";
-import NodeHandle from "./NodeHandle";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../../components/__legacy__/ui/select";
 import { Switch } from "../../../../../components/atoms/Switch/Switch";
 import { NodeTableInput } from "../../../../../components/node-table-input";
+import NodeHandle from "./NodeHandle";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -370,6 +371,12 @@ export const NodeGenericInputField: FC<{
           handleInputChange={handleInputChange}
         />
       );
+    case DataType.GOOGLE_DRIVE_PICKER:
+      <GoogleDrivePicker
+        onPicked={console.log}
+        onCanceled={() => console.error("Google Drive Picker canceled")}
+        onError={console.error}
+      />;
 
     case DataType.DATE:
     case DataType.TIME:
