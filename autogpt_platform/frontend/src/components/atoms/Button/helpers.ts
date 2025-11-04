@@ -18,7 +18,6 @@ export const extendedButtonVariants = cva(
         ghost:
           "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
         icon: "bg-white text-black border border-zinc-600 hover:bg-zinc-100 rounded-[96px] disabled:opacity-1 !min-w-0",
-        link: "",
       },
       size: {
         small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem]",
