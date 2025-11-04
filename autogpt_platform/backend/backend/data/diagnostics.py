@@ -978,6 +978,11 @@ async def get_failed_executions_details(
 
         results = []
         for exec in executions:
+            # Extract error from stats JSON field
+            error_message = None
+            if exec.stats and isinstance(exec.stats, dict):
+                error_message = exec.stats.get("error")
+
             results.append(
                 FailedExecutionDetail(
                     execution_id=exec.id,
@@ -994,7 +999,7 @@ async def get_failed_executions_details(
                     created_at=exec.createdAt,
                     started_at=exec.startedAt,
                     failed_at=exec.updatedAt,
-                    error_message=getattr(exec, "error", None),
+                    error_message=error_message,
                 )
             )
 

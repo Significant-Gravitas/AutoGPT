@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from autogpt_libs.auth import requires_admin_user
@@ -281,10 +281,14 @@ async def list_failed_executions(
         )
 
         # Get total count for pagination
-        from backend.data.diagnostics import get_execution_diagnostics as get_diag
-
-        diagnostics = await get_diag()
-        total = diagnostics.failed_count_24h if hours == 24 else len(executions)
+        # Always count actual total for given hours parameter
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        total = await AgentGraphExecution.prisma().count(
+            where={
+                "executionStatus": AgentExecutionStatus.FAILED,
+                "updatedAt": {"gte": cutoff},
+            }
+        )
 
         return FailedExecutionsListResponse(executions=executions, total=total)
     except Exception as e:
