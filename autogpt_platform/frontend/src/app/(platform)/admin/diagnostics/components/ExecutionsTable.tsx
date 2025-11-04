@@ -258,14 +258,16 @@ export function ExecutionsTable({
   );
   const hasOrphanedSelected = selectedOrphanedIds.length > 0;
 
-  // Show error toast if fetching fails
-  if (error) {
-    toast({
-      title: "Error",
-      description: "Failed to fetch running executions",
-      variant: "destructive",
-    });
-  }
+  // Show error toast if fetching fails (in useEffect to avoid render side-effects)
+  React.useEffect(() => {
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch executions",
+        variant: "destructive",
+      });
+    }
+  }, [error]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
