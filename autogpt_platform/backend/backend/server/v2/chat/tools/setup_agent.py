@@ -43,7 +43,7 @@ class SetupAgentTool(BaseTool):
 
     @property
     def name(self) -> str:
-        return "setup_agent"
+        return "schedule_agent"
 
     @property
     def description(self) -> str:

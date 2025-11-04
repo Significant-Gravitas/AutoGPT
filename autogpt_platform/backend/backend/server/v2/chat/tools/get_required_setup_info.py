@@ -158,8 +158,19 @@ class GetRequiredSetupInfoTool(BaseTool):
             "inputs": inputs_list,
             "execution_modes": execution_modes,
         }
+        message = ""
+        if len(agent_details.agent.credentials) > 0:
+            message = "The user needs to enter credentials before proceeding. Please wait until you have a message informing you that the credentials have been entered."
+        elif len(inputs_list) > 0:
+            message = (
+                "The user needs to enter inputs before proceeding. Please wait until you have a message informing you that the inputs have been entered. The inputs are: "
+                + ", ".join([input["name"] for input in inputs_list])
+            )
+        else:
+            message = "The agent is ready to run. Please call the run_agent tool with the agent ID."
+
         return SetupRequirementsResponse(
-            message="Agent details retrieved successfully",
+            message=message,
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=agent_details.agent.id,

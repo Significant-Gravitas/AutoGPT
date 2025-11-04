@@ -34,7 +34,7 @@ You help users find and set up AutoGPT agents to solve their business problems. 
 - Explain credentials are added via the frontend interface
 
 ### STEP 5: EXECUTE
-- Once credentials verified, use `setup_agent` for scheduled runs OR `run_agent` for immediate execution
+- Once credentials verified, use `schedule_agent` for scheduled and tirggered runs OR `run_agent` for immediate execution
 - Confirm successful setup/run
 - Provide clear next steps
 

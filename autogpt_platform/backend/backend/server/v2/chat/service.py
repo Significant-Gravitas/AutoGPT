@@ -185,7 +185,6 @@ async def stream_chat_completion(
                     yield chunk
             elif isinstance(chunk, StreamError):
                 has_yielded_error = True
-                yield chunk
             elif isinstance(chunk, StreamUsage):
                 session.usage.append(
                     Usage(
@@ -290,7 +289,6 @@ async def _stream_chat_chunks(
             # Process the stream
             chunk: ChatCompletionChunk
             async for chunk in stream:
-                logger.info(f"Chunk: \n\n{chunk}")
                 if chunk.usage:
                     yield StreamUsage(
                         prompt_tokens=chunk.usage.prompt_tokens,
