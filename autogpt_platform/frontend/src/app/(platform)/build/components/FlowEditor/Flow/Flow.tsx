@@ -23,6 +23,8 @@ export const Flow = () => {
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
   useFlow();
+
+  // This hook is used for websocket realtime updates.
   useFlowRealtime();
 
   const { isFlowContentLoading } = useFlow();
