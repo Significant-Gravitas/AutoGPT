@@ -105,6 +105,7 @@ export const LinkVariant: Story = {
 // Loading states
 export const Loading: Story = {
   args: {
+    variant: "primary",
     loading: true,
     children: "Saving...",
   },
@@ -113,6 +114,22 @@ export const Loading: Story = {
       description: {
         story:
           "Use contextual loading text that reflects the action being performed (e.g., 'Computing...', 'Processing...', 'Saving...', 'Uploading...', 'Deleting...')",
+      },
+    },
+  },
+};
+
+export const LoadingLink: Story = {
+  args: {
+    variant: "link",
+    loading: true,
+    children: "Loading link",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Link buttons inherit the secondary link styling while respecting the loading state.",
       },
     },
   },
@@ -606,6 +623,20 @@ function renderAllVariants() {
               </Button>
               <Button variant="icon" size="icon" disabled>
                 <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-zinc-800">
+              Link
+            </div>
+            <div className="flex flex-col gap-8">
+              <Button variant="link">Read documentation</Button>
+              <Button variant="link" loading>
+                Loading link
+              </Button>
+              <Button variant="link" disabled>
+                Disabled link
               </Button>
             </div>
           </div>
