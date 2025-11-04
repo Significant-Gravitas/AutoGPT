@@ -1,5 +1,3 @@
-import codecs
-
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -24,7 +22,7 @@ class TextEncoderBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="3681f9ef-9558-54fe-95d8-81e768034342",  # Fixed UUID4 format
+            id="3681f9ef-9558-54fe-95d8-81e768034342",
             description="Encodes a string by adding escape sequences for special characters",
             categories={BlockCategory.TEXT},
             input_schema=TextEncoderBlock.Input,
@@ -44,12 +42,13 @@ This is a "quoted" string."""
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         # Escape only common special characters, preserving unicode characters
-        encoded_text = (input_data.text
-                       .replace('\\', '\\\\')  # Escape backslashes first
-                       .replace('\n', '\\n')   # Escape newlines
-                       .replace('\r', '\\r')   # Escape carriage returns
-                       .replace('\t', '\\t')   # Escape tabs
-                       .replace('"', '\\"')    # Escape double quotes
-                       .replace("'", "\\'"))   # Escape single quotes
+        encoded_text = (
+            input_data.text.replace("\\", "\\\\")  # Escape backslashes first
+            .replace("\n", "\\n")  # Escape newlines
+            .replace("\r", "\\r")  # Escape carriage returns
+            .replace("\t", "\\t")  # Escape tabs
+            .replace('"', '\\"')  # Escape double quotes
+            .replace("'", "\\'")  # Escape single quotes
+        )
         yield "encoded_text", encoded_text
 
