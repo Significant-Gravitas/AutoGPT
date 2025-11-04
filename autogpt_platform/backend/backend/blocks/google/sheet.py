@@ -1,10 +1,6 @@
-from backend.blocks.google._auth import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    GoogleCredentials,
-    GoogleCredentialsField,
-    GoogleCredentialsInput,
-)
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
 from backend.blocks.io import (
     Block,
     BlockCategory,
@@ -12,18 +8,30 @@ from backend.blocks.io import (
     BlockSchemaInput,
     SchemaField,
 )
-from backend.data.model import GoogleDrivePicker, GoogleDrivePickerField
+from backend.data.model import GoogleDriveFile, GoogleDrivePickerField
 from backend.sdk import BlockSchemaOutput
 
 
 class GoogleSheetsReadTestBlock(Block):
+    """
+    Reads data from a Google Sheets spreadsheet.
+
+    Uses the Google Drive Picker to select a spreadsheet, which provides
+    the OAuth access token needed to read the sheet data.
+    """
+
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
-        drive_id: GoogleDrivePicker = GoogleDrivePickerField(
-            allow_folder_selection=True,
-            description="The Google Sheets file to read from",
+
+        range: str = SchemaField(
+            default="Sheet1!A1:Z1000",
+            description="Range to read (e.g., 'Sheet1!A1:Z1000')",
+            placeholder="Sheet1!A1:Z1000",
         )
 
     class Output(BlockSchemaOutput):
@@ -41,36 +49,47 @@ class GoogleSheetsReadTestBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsReadTestBlock.Input,
             output_schema=GoogleSheetsReadTestBlock.Output,
-            test_input={
-                "drive_id": "1234567890",
-                "range": "Sheet1!A1:B2",
-                "credentials": TEST_CREDENTIALS_INPUT,
-            },
-            test_credentials=TEST_CREDENTIALS,
-            test_output=[
-                (
-                    "result",
-                    [
-                        ["Name", "Score"],
-                        ["Alice", "85"],
-                    ],
-                ),
-            ],
-            test_mock={
-                "_read_sheet": lambda *args, **kwargs: [
-                    ["Name", "Score"],
-                    ["Alice", "85"],
-                ],
-            },
         )
 
-    async def run(
-        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
-    ) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        """
+        Read data from a Google Sheets spreadsheet using the access token
+        from the Drive Picker.
+        """
+        try:
+            # Validate that we have the necessary data
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
 
-        yield "result", input_data.drive_id
+            if not input_data.spreadsheet.access_token:
+                yield "error", "No access token available. Please re-select the file."
+                return
 
-    def _read_sheet(self, service, spreadsheet_id: str, range: str) -> list[list[str]]:
+            spreadsheet_id = input_data.spreadsheet.id
+
+            # Create credentials from the access token provided by the picker
+            credentials = Credentials(token=input_data.spreadsheet.access_token)
+
+            # Build the Sheets API service
+            service = build(
+                "sheets", "v4", credentials=credentials, cache_discovery=False
+            )
+
+            # Read the sheet data
+            values = self._read_sheet(service, spreadsheet_id, input_data.range)
+
+            yield "result", values
+
+        except Exception as e:
+            yield "error", f"Failed to read Google Sheet: {str(e)}"
+
+    def _read_sheet(
+        self, service, spreadsheet_id: str, range_str: str
+    ) -> list[list[str]]:
+        """Helper method to read sheet data"""
         sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range).execute()
+        result = (
+            sheet.values().get(spreadsheetId=spreadsheet_id, range=range_str).execute()
+        )
         return result.get("values", [])

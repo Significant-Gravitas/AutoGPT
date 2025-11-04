@@ -91,16 +91,72 @@ export function RunAgentInputs({
       );
       break;
 
-    case DataType.GOOGLE_DRIVE_PICKER:
+    case DataType.GOOGLE_DRIVE_PICKER: {
+      const pickerSchema = schema as any;
+      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
+        pickerSchema.google_drive_picker_config || {};
+
+      const isMultiSelect = config.multiselect || false;
+      const currentFiles = isMultiSelect
+        ? Array.isArray(value)
+          ? value
+          : []
+        : value
+          ? [value]
+          : [];
+
       innerInputElement = (
-        <GoogleDrivePicker
-          onPicked={console.log}
-          onCanceled={() => console.error("Google Drive Picker canceled")}
-          onError={console.error}
-          {...props}
-        />
+        <div className="flex w-full flex-col gap-2">
+          <GoogleDrivePicker
+            multiselect={config.multiselect || false}
+            views={(config.allowed_views as any) || ["DOCS"]}
+            scopes={
+              config.scopes || ["https://www.googleapis.com/auth/drive.file"]
+            }
+            buttonText={placeholder || "Choose from Google Drive"}
+            disabled={props.disabled}
+            onPicked={(files) => {
+              const convertedFiles = files.map((f) => ({
+                id: f.id,
+                name: f.name,
+                mimeType: f.mimeType,
+                url: f.url,
+                iconUrl: f.iconUrl,
+                isFolder: f.mimeType === "application/vnd.google-apps.folder",
+                accessToken: f.accessToken,
+              }));
+
+              const newValue = isMultiSelect
+                ? convertedFiles
+                : convertedFiles[0];
+              onChange(newValue);
+            }}
+            onCanceled={() => {}}
+            onError={(error) => {
+              console.error("Google Drive Picker error:", error);
+            }}
+          />
+
+          {/* Display Selected Files */}
+          {currentFiles.length > 0 && (
+            <div className="space-y-1 text-sm">
+              {currentFiles.map((file: any, idx: number) => (
+                <div
+                  key={file.id || idx}
+                  className="flex items-center gap-2 text-gray-600 dark:text-gray-400"
+                >
+                  {file.iconUrl && (
+                    <img src={file.iconUrl} alt="" className="h-4 w-4" />
+                  )}
+                  <span className="truncate">{file.name || file.id}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       );
       break;
+    }
 
     case DataType.BOOLEAN:
       innerInputElement = (

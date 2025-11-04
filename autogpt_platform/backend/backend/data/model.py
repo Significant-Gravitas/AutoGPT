@@ -253,51 +253,121 @@ def SecretField(
     )
 
 
-class GoogleDrivePicker:
+class GoogleDriveFile(BaseModel):
+    """Represents a single file/folder picked from Google Drive"""
 
-    def __init__(self, allow_folder_selection: Optional[bool] = None):
-        self.allow_folder_selection = allow_folder_selection
+    model_config = ConfigDict(populate_by_name=True)
 
-    @classmethod
-    def parse_value(cls, value: Any) -> GoogleDrivePicker:
-        if isinstance(value, GoogleDrivePicker):
-            return value
-        return GoogleDrivePicker(allow_folder_selection=value)
-
-    @classmethod
-    def __get_pydantic_json_schema__(
-        cls, source_type: Any, handler: GetCoreSchemaHandler
-    ) -> dict[str, Any]:
-        return {
-            "type": "google-drive-picker",
-        }
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: GetCoreSchemaHandler
-    ) -> CoreSchema:
-        validate_fun = core_schema.no_info_plain_validator_function(cls.parse_value)
-        return core_schema.json_or_python_schema(
-            json_schema=validate_fun,
-            python_schema=validate_fun,
-            serialization=core_schema.plain_serializer_function_ser_schema(
-                lambda val: {"allow_folder_selection": val.allow_folder_selection}
-            ),
-        )
+    id: str = Field(description="Google Drive file/folder ID")
+    name: Optional[str] = Field(None, description="File/folder name")
+    mime_type: Optional[str] = Field(
+        None,
+        alias="mimeType",
+        description="MIME type (e.g., application/vnd.google-apps.document)",
+    )
+    url: Optional[str] = Field(None, description="URL to open the file")
+    icon_url: Optional[str] = Field(None, alias="iconUrl", description="Icon URL")
+    is_folder: Optional[bool] = Field(
+        None, alias="isFolder", description="Whether this is a folder"
+    )
+    access_token: Optional[str] = Field(
+        None,
+        alias="accessToken",
+        description="OAuth access token from the picker (frontend only)",
+    )
 
 
 def GoogleDrivePickerField(
-    allow_folder_selection: Optional[bool] = None,
+    multiselect: bool = False,
+    allow_folder_selection: bool = False,
+    allowed_views: Optional[
+        list[
+            Literal[
+                "DOCS",
+                "DOCUMENTS",
+                "SPREADSHEETS",
+                "PRESENTATIONS",
+                "DOCS_IMAGES",
+                "FOLDERS",
+            ]
+        ]
+    ] = None,
+    allowed_mime_types: Optional[list[str]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
     **kwargs,
-):
+) -> Any:
+    """
+    Creates a Google Drive Picker input field.
+
+    Args:
+        multiselect: Allow selecting multiple files/folders (default: False)
+        allow_folder_selection: Allow selecting folders (default: False)
+        allowed_views: List of view types to show in picker (default: ["DOCS"])
+        allowed_mime_types: Filter by MIME types (e.g., ["application/pdf"])
+        title: Field title shown in UI
+        description: Field description/help text
+        placeholder: Placeholder text for the button
+        **kwargs: Additional SchemaField arguments (advanced, hidden, etc.)
+
+    Returns:
+        Field definition that produces:
+        - Single GoogleDriveFile when multiselect=False
+        - list[GoogleDriveFile] when multiselect=True
+
+    Example:
+        >>> class MyBlock(Block):
+        ...     class Input(BlockSchema):
+        ...         document: GoogleDriveFile = GoogleDrivePickerField(
+        ...             title="Select Document",
+        ...             allowed_views=["DOCUMENTS"],
+        ...         )
+        ...
+        ...         files: list[GoogleDriveFile] = GoogleDrivePickerField(
+        ...             title="Select Multiple Files",
+        ...             multiselect=True,
+        ...             allow_folder_selection=True,
+        ...         )
+    """
+    # Build configuration that will be sent to frontend
+    picker_config = {
+        "multiselect": multiselect,
+        "allow_folder_selection": allow_folder_selection,
+        "allowed_views": allowed_views or ["DOCS"],
+    }
+
+    # Add optional configurations
+    if allowed_mime_types:
+        picker_config["allowed_mime_types"] = allowed_mime_types
+
+    # Determine required scopes based on config
+    if allow_folder_selection:
+        # Full drive access needed for folders
+        picker_config["scopes"] = ["https://www.googleapis.com/auth/drive"]
+    else:
+        # File-level access only
+        picker_config["scopes"] = [
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive.readonly",
+        ]
+
+    # Add to json_schema_extra for frontend consumption
+    field_schema_extra = {
+        "format": "google-drive-picker",
+        "google_drive_picker_config": picker_config,
+    }
+
+    # Set appropriate default value
+    default_value = [] if multiselect else None
+
     return SchemaField(
-        GoogleDrivePicker(allow_folder_selection=allow_folder_selection),
+        default=default_value,
         title=title,
         description=description,
-        placeholder=placeholder,
+        placeholder=placeholder or "Choose from Google Drive",
+        json_schema_extra=field_schema_extra,
+        advanced=False,
         **kwargs,
     )
 
