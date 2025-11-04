@@ -115,6 +115,7 @@ export const AgentInfo = ({
         Want to use this agent locally?{" "}
         <button
           onClick={() => handleDownload(agentId, name)}
+          disabled={isDownloadingAgent}
           className="underline"
         >
           Download here.
