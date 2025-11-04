@@ -111,7 +111,7 @@ export const AgentInfo = ({
       )}
 
       {/* Download section */}
-      <p className="mt-6 text-zinc-600 dark:text-zinc-400 lg:mt-10">
+      <p className="mt-6 text-zinc-600 dark:text-zinc-400 lg:mt-12">
         Want to use this agent locally?{" "}
         <button
           onClick={() => handleDownload(agentId, name)}
