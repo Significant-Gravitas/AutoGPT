@@ -130,8 +130,11 @@ async def stream_chat_completion(
     has_yielded_end = False
     has_yielded_error = False
     has_done_tool_call = False
+    has_received_text = False
     text_streaming_ended = False
     messages_to_add: list[ChatMessage] = []
+    should_retry = False
+
     try:
         async for chunk in _stream_chat_chunks(
             session=session,
@@ -140,30 +143,17 @@ async def stream_chat_completion(
 
             if isinstance(chunk, StreamTextChunk):
                 assistant_response.content += chunk.content
+                has_received_text = True
                 yield chunk
             elif isinstance(chunk, StreamToolCallStart):
-                # Emit text_ended before first tool call
-                if not text_streaming_ended:
+                # Emit text_ended before first tool call, but only if we've received text
+                if has_received_text and not text_streaming_ended:
                     yield StreamTextEnded()
                     text_streaming_ended = True
                 yield chunk
-            # elif isinstance(chunk, StreamToolCall):
-            #     messages_to_add.append(
-            #         ChatMessage(
-            #             role="assistant",
-            #             content="",
-            #             tool_calls=[
-            #                 {
-            #                     "id": chunk.tool_id,
-            #                     "type": "function",
-            #                     "function": {
-            #                         "name": chunk.tool_name,
-            #                         "arguments": chunk.arguments,
-            #                     },
-            #                 }
-            #             ],
-            #         )
-            #     )
+            elif isinstance(chunk, StreamToolCall):
+                # Just pass on the tool call notification
+                pass
             elif isinstance(chunk, StreamToolExecutionResult):
                 result_content = (
                     chunk.result
@@ -178,6 +168,11 @@ async def stream_chat_completion(
                     )
                 )
                 has_done_tool_call = True
+                # Track if any tool execution failed
+                if not chunk.success:
+                    logger.warning(
+                        f"Tool {chunk.tool_name} (ID: {chunk.tool_id}) execution failed"
+                    )
                 yield chunk
             elif isinstance(chunk, StreamEnd):
                 if not has_done_tool_call:
@@ -197,23 +192,34 @@ async def stream_chat_completion(
                 logger.error(f"Unknown chunk type: {type(chunk)}", exc_info=True)
     except Exception as e:
         logger.error(f"Error during stream: {e!s}", exc_info=True)
-        if assistant_response.content or assistant_response.tool_calls:
-            messages_to_add.append(assistant_response)
 
-        session.messages.extend(messages_to_add)
-        await upsert_chat_session(session)
+        # Check if this is a retryable error (JSON parsing, incomplete tool calls, etc.)
+        is_retryable = isinstance(e, (orjson.JSONDecodeError, KeyError, TypeError))
 
-        if retry_count < config.max_retries:
-            async for chunk in stream_chat_completion(
-                session_id=session.session_id,
-                user_id=user_id,
-                retry_count=retry_count + 1,
-            ):
-                yield chunk
+        if is_retryable and retry_count < config.max_retries:
+            logger.info(
+                f"Retryable error encountered. Attempt {retry_count + 1}/{config.max_retries}"
+            )
+            should_retry = True
         else:
+            # Non-retryable error or max retries exceeded
+            # Save any partial progress before reporting error
+            if assistant_response.content or assistant_response.tool_calls:
+                messages_to_add.append(assistant_response)
+            session.messages.extend(messages_to_add)
+            await upsert_chat_session(session)
+
             if not has_yielded_error:
+                error_message = str(e)
+                if not is_retryable:
+                    error_message = f"Non-retryable error: {error_message}"
+                elif retry_count >= config.max_retries:
+                    error_message = (
+                        f"Max retries ({config.max_retries}) exceeded: {error_message}"
+                    )
+
                 error_response = StreamError(
-                    message=str(e),
+                    message=error_message,
                     timestamp=datetime.now(UTC).isoformat(),
                 )
                 yield error_response
@@ -221,28 +227,41 @@ async def stream_chat_completion(
                 yield StreamEnd(
                     timestamp=datetime.now(UTC).isoformat(),
                 )
+            return
 
-    finally:
-        # We always upsert the session even if an error occurs
-        # So we dont lose track of tool call executions
+    # Handle retry outside of exception handler to avoid nesting
+    if should_retry and retry_count < config.max_retries:
         logger.info(
-            f"Upserting session: {session.session_id} with user id {session.user_id}"
+            f"Retrying stream_chat_completion for session {session_id}, attempt {retry_count + 1}"
         )
-        # Only append assistant response if it has content or tool calls
-        # to avoid saving empty messages on errors
-        if assistant_response.content or assistant_response.tool_calls:
-            messages_to_add.append(assistant_response)
-        session.messages.extend(messages_to_add)
-        await upsert_chat_session(session)
-        # If we haven't done a tool call, stream the chat completion again to get the tool call
-        if has_done_tool_call:
-            logger.info(
-                "No tool call done, streaming chat completion again to get the tool call"
-            )
-            async for chunk in stream_chat_completion(
-                session_id=session.session_id, user_id=user_id
-            ):
-                yield chunk
+        async for chunk in stream_chat_completion(
+            session_id=session.session_id,
+            user_id=user_id,
+            retry_count=retry_count + 1,
+        ):
+            yield chunk
+        return  # Exit after retry to avoid double-saving in finally block
+
+    # Normal completion path - save session and handle tool call continuation
+    logger.info(
+        f"Upserting session: {session.session_id} with user id {session.user_id}"
+    )
+    # Only append assistant response if it has content or tool calls
+    # to avoid saving empty messages on errors
+    if assistant_response.content or assistant_response.tool_calls:
+        messages_to_add.append(assistant_response)
+    session.messages.extend(messages_to_add)
+    await upsert_chat_session(session)
+
+    # If we did a tool call, stream the chat completion again to get the next response
+    if has_done_tool_call:
+        logger.info(
+            "Tool call executed, streaming chat completion again to get assistant response"
+        )
+        async for chunk in stream_chat_completion(
+            session_id=session.session_id, user_id=user_id
+        ):
+            yield chunk
 
 
 async def _stream_chat_chunks(
@@ -285,6 +304,8 @@ async def _stream_chat_chunks(
             tool_calls: list[dict[str, Any]] = []
             active_tool_call_idx: int | None = None
             finish_reason: str | None = None
+            # Track which tool call indices have had their start event emitted
+            emitted_start_for_idx: set[int] = set()
 
             # Process the stream
             chunk: ChatCompletionChunk
@@ -318,27 +339,12 @@ async def _stream_chat_chunks(
                     if delta.tool_calls:
                         for tc_chunk in delta.tool_calls:
                             idx = tc_chunk.index
-                            if active_tool_call_idx is None:
-                                active_tool_call_idx = idx
-                                yield StreamToolCallStart(
-                                    idx=idx,
-                                    timestamp=datetime.now(UTC).isoformat(),
-                                )
 
-                            # When we start receiving a new tool call (higher index),
-                            # yield the previous one since it's now complete
-                            # (OpenAI streams tool calls with incrementing indices)
-                            if active_tool_call_idx != idx:
-                                yield StreamToolCallStart(
-                                    idx=idx,
-                                    timestamp=datetime.now(UTC).isoformat(),
-                                )
-                                yield_idx = idx - 1
-                                async for tc in _yield_tool_call(
-                                    tool_calls, yield_idx, session
-                                ):
-                                    yield tc
-                                # Update to track the new active tool call
+                            # Update active tool call index if needed
+                            if (
+                                active_tool_call_idx is None
+                                or active_tool_call_idx != idx
+                            ):
                                 active_tool_call_idx = idx
 
                             # Ensure we have a tool call object at this index
@@ -366,21 +372,37 @@ async def _stream_chat_chunks(
                                     tool_calls[idx]["function"][
                                         "arguments"
                                     ] += tc_chunk.function.arguments
+
+                            # Emit StreamToolCallStart only after we have the tool call ID
+                            if (
+                                idx not in emitted_start_for_idx
+                                and tool_calls[idx]["id"]
+                            ):
+                                yield StreamToolCallStart(
+                                    tool_id=tool_calls[idx]["id"],
+                                    timestamp=datetime.now(UTC).isoformat(),
+                                )
+                                emitted_start_for_idx.add(idx)
             logger.info(f"Stream complete. Finish reason: {finish_reason}")
 
-            # Yield the final tool call if any were accumulated
-            if active_tool_call_idx is not None and active_tool_call_idx < len(
-                tool_calls
-            ):
-                async for tc in _yield_tool_call(
-                    tool_calls, active_tool_call_idx, session
-                ):
-                    yield tc
-            elif active_tool_call_idx is not None:
-                logger.warning(
-                    f"Active tool call index {active_tool_call_idx} out of bounds "
-                    f"(tool_calls length: {len(tool_calls)})"
-                )
+            # Yield all accumulated tool calls after the stream is complete
+            # This ensures all tool call arguments have been fully received
+            for idx, tool_call in enumerate(tool_calls):
+                try:
+                    async for tc in _yield_tool_call(tool_calls, idx, session):
+                        yield tc
+                except (orjson.JSONDecodeError, KeyError, TypeError) as e:
+                    logger.error(
+                        f"Failed to parse tool call {idx}: {e}",
+                        exc_info=True,
+                        extra={"tool_call": tool_call},
+                    )
+                    yield StreamError(
+                        message=f"Invalid tool call arguments for tool {tool_call.get('function', {}).get('name', 'unknown')}: {e}",
+                        timestamp=datetime.now(UTC).isoformat(),
+                    )
+                    # Re-raise to trigger retry logic in the parent function
+                    raise
 
             yield StreamEnd(
                 timestamp=datetime.now(UTC).isoformat(),
@@ -405,26 +427,17 @@ async def _yield_tool_call(
     session: ChatSession,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """
-    Yield a tool call.
+    Yield a tool call and its execution result.
+
+    Raises:
+        orjson.JSONDecodeError: If tool call arguments cannot be parsed as JSON
+        KeyError: If expected tool call fields are missing
+        TypeError: If tool call structure is invalid
     """
     logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
 
-    # Parse tool call arguments with error handling
-    try:
-        arguments = orjson.loads(tool_calls[yield_idx]["function"]["arguments"])
-    except (orjson.JSONDecodeError, KeyError, TypeError) as e:
-        logger.error(
-            f"Failed to parse tool call arguments: {e}",
-            exc_info=True,
-            extra={
-                "tool_call": tool_calls[yield_idx],
-            },
-        )
-        yield StreamError(
-            message=f"Invalid tool call arguments: {e}",
-            timestamp=datetime.now(UTC).isoformat(),
-        )
-        return
+    # Parse tool call arguments - exceptions will propagate to caller
+    arguments = orjson.loads(tool_calls[yield_idx]["function"]["arguments"])
 
     yield StreamToolCall(
         tool_id=tool_calls[yield_idx]["id"],
