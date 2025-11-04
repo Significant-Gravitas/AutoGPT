@@ -4,7 +4,7 @@ import { useNewSaveControl } from "../../../NewControlPanel/NewSaveControl/useNe
 import { useState } from "react";
 
 export const useScheduleGraph = () => {
-  const { onSubmit: onSaveGraph, isLoading: isSaving } = useNewSaveControl({
+  const { onSubmit: onSaveGraph } = useNewSaveControl({
     showToast: false,
   });
   const hasInputs = useGraphStore(useShallow((state) => state.hasInputs));

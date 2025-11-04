@@ -22,7 +22,7 @@ export const useCronSchedulerDialog = ({
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>("");
 
-  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
+  const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
     flowExecutionID: parseAsString,
