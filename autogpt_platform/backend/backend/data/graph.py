@@ -18,7 +18,6 @@ from prisma.types import (
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
     LibraryAgentWhereInput,
-    StoreListingVersionWhereInput,
 )
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
@@ -923,18 +922,8 @@ async def get_graph(
         return None
 
     if graph.userId != user_id:
-        store_listing_filter: StoreListingVersionWhereInput = {
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "submissionStatus": SubmissionStatus.APPROVED,
-        }
-        if version is not None:
-            store_listing_filter["agentGraphVersion"] = version
-
         # For access, the graph must be owned by the user or listed in the store
-        if not await StoreListingVersion.prisma().find_first(
-            where=store_listing_filter, order={"agentGraphVersion": "desc"}
-        ):
+        if not is_graph_published_in_marketplace(graph_id, graph.version):
             return None
 
     if include_subgraphs or for_export:
@@ -978,14 +967,7 @@ async def get_graph_as_admin(
     # For access, the graph must be owned by the user or listed in the store
     if graph is None or (
         graph.userId != user_id
-        and not (
-            await StoreListingVersion.prisma().find_first(
-                where={
-                    "agentGraphId": graph_id,
-                    "agentGraphVersion": version or graph.version,
-                }
-            )
-        )
+        and not is_graph_published_in_marketplace(graph_id, version or graph.version)
     ):
         return None
 
@@ -1112,7 +1094,7 @@ async def delete_graph(graph_id: str, user_id: str) -> int:
 
 
 async def validate_graph_execution_permissions(
-    graph_id: str, user_id: str, graph_version: Optional[int] = None
+    user_id: str, graph_id: str, graph_version: int, is_sub_graph: bool = False
 ) -> None:
     """
     Validate that a user has permission to execute a specific graph.
@@ -1120,47 +1102,92 @@ async def validate_graph_execution_permissions(
     This function performs comprehensive authorization checks and raises specific
     exceptions for different types of failures to enable appropriate error handling.
 
+    ## Logic
+    A user can execute a graph if any of these is true:
+    1. They own the graph and some version of it is still listed in their library
+    2. The graph is published in the marketplace and listed in their library
+    3. The graph is published in the marketplace and is being executed as a sub-agent
+
     Args:
         graph_id: The ID of the graph to check
         user_id: The ID of the user
-        graph_version: Optional specific version to check. If None (recommended),
-                      performs version-agnostic check allowing execution of any
-                      version as long as the graph is in the user's library.
-                      This is important for sub-graphs that may reference older
-                      versions no longer in the library.
+        graph_version: The version of the graph to check
+        is_sub_agent: Whether this is being executed as a sub-graph.
+            If `True`, the graph isn't required to be in the user's Library.
 
     Raises:
         GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived)
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
+    # Step 1: Check if user owns this graph
+    user_owns_graph = await get_graph_metadata(graph_id, graph_version) is not None
 
-    # Step 1: Check library membership (raises specific GraphNotInLibraryError)
+    # Step 2: Check if agent is in the library *and not deleted*
     where_clause: LibraryAgentWhereInput = {
         "userId": user_id,
         "agentGraphId": graph_id,
         "isDeleted": False,
-        "isArchived": False,
     }
 
     if graph_version is not None:
         where_clause["agentGraphVersion"] = graph_version
 
-    count = await LibraryAgent.prisma().count(where=where_clause)
-    if count == 0:
+    user_has_in_library = await LibraryAgent.prisma().count(where=where_clause) > 0
+
+    # Step 3: Apply permission logic
+    if user_owns_graph and user_has_in_library:
+        pass
+
+    # Step 4: If not owned, check if published in marketplace
+    elif (
+        is_marketplace_published := await is_graph_published_in_marketplace(
+            graph_id, graph_version
+        )
+    ) and user_has_in_library:
+        pass
+
+    # Step 5: Still allow execution of sub-graph if not in Library
+    elif is_marketplace_published and is_sub_graph:
+        pass
+
+    else:
+        # None of the permission conditions are met
         raise GraphNotInLibraryError(
             f"Graph #{graph_id} is not accessible in your library"
         )
 
-    # Step 2: Check execution-specific permissions (raises generic NotAuthorizedError)
-    # Additional authorization checks beyond library membership:
+    # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
+    # Additional authorization checks beyond the above:
     # 1. Check if user has execution credits (future)
     # 2. Check if graph is suspended/disabled (future)
     # 3. Check rate limiting rules (future)
     # 4. Check organization-level permissions (future)
 
-    # For now, library membership is sufficient for execution permission
-    # Future enhancements can add more granular permission checks here
-    # When adding new checks, raise NotAuthorizedError for non-library issues
+    # For now, the above check logic is sufficient for execution permission.
+    # Future enhancements can add more granular permission checks here.
+    # When adding new checks, raise NotAuthorizedError for non-library issues.
+
+
+async def is_graph_published_in_marketplace(graph_id: str, graph_version: int) -> bool:
+    """
+    Check if a graph is published in the marketplace.
+
+    Params:
+        graph_id: The ID of the graph to check
+        graph_version: The version of the graph to check
+
+    Returns:
+        True if the graph is published and approved in the marketplace, False otherwise
+    """
+    marketplace_listing = await StoreListingVersion.prisma().find_first(
+        where={
+            "agentGraphId": graph_id,
+            "agentGraphVersion": graph_version,
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        }
+    )
+    return marketplace_listing is not None
 
 
 async def create_graph(graph: Graph, user_id: str) -> GraphModel:
