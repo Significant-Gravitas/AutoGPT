@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from backend.data.graph import get_graph
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.v2.chat.tools.get_required_setup_info import (
     GetRequiredSetupInfoTool,
 )
@@ -43,7 +44,7 @@ class SetupAgentTool(BaseTool):
 
     @property
     def name(self) -> str:
-        return "setup_agent"
+        return "schedule_agent"
 
     @property
     def description(self) -> str:
@@ -193,6 +194,48 @@ class SetupAgentTool(BaseTool):
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
 
+        # Map required credentials (schema field names) to actual user credential IDs
+        # credentials param contains CredentialsMetaInput with schema field names as keys
+        # We need to find the user's actual credentials that match the provider/type
+        creds_manager = IntegrationCredentialsManager()
+        user_credentials = await creds_manager.store.get_all_creds(user_id)
+
+        # Build a mapping from schema field name -> actual credential ID
+        resolved_credentials: dict[str, CredentialsMetaInput] = {}
+        missing_credentials: list[str] = []
+
+        for field_name, cred_meta in credentials.items():
+            # Find a matching credential from the user's credentials
+            matching_cred = next(
+                (
+                    c
+                    for c in user_credentials
+                    if c.provider == cred_meta.provider and c.type == cred_meta.type
+                ),
+                None,
+            )
+
+            if matching_cred:
+                # Use the actual credential ID instead of the schema field name
+                # Create a new CredentialsMetaInput with the actual credential ID
+                # but keep the same provider/type from the original meta
+                resolved_credentials[field_name] = CredentialsMetaInput(
+                    id=matching_cred.id,
+                    provider=cred_meta.provider,
+                    type=cred_meta.type,
+                    title=cred_meta.title,
+                )
+            else:
+                missing_credentials.append(
+                    f"{cred_meta.title} ({cred_meta.provider}/{cred_meta.type})"
+                )
+
+        if missing_credentials:
+            return ErrorResponse(
+                message=f"Cannot execute agent: missing {len(missing_credentials)} required credential(s). You need to call the get_required_setup_info tool to setup the credentials.",
+                session_id=session_id,
+            )
+
         result = await get_scheduler_client().add_execution_schedule(
             user_id=user_id,
             graph_id=library_agent.graph_id,
@@ -200,7 +243,7 @@ class SetupAgentTool(BaseTool):
             name=name,
             cron=cron,
             input_data=inputs,
-            input_credentials=credentials,
+            input_credentials=resolved_credentials,
             user_timezone=user_timezone,
         )
 
@@ -210,7 +253,7 @@ class SetupAgentTool(BaseTool):
                 result.next_run_time, user_timezone
             )
         return ExecutionStartedResponse(
-            message="Agent execution started",
+            message="Agent execution successfully scheduled. Do not run this tool again unless specifically asked to run the agent again.",
             session_id=session_id,
             execution_id=result.id,
             graph_id=library_agent.graph_id,

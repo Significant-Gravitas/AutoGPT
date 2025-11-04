@@ -39,7 +39,7 @@ class StreamToolCallStart(StreamBaseResponse):
     """Tool call started notification."""
 
     type: ResponseType = ResponseType.TOOL_CALL_START
-    idx: int = Field(..., description="Index of the tool call")
+    tool_id: str = Field(..., description="Unique tool call ID")
 
 
 class StreamToolCall(StreamBaseResponse):

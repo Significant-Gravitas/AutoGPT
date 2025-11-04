@@ -4,7 +4,9 @@ import logging
 from typing import Any
 
 from backend.data.graph import get_graph
+from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.get_required_setup_info import (
     GetRequiredSetupInfoTool,
@@ -142,15 +144,96 @@ class RunAgentTool(BaseTool):
         else:
             library_agent = existing_library_agent
 
+        # Build credentials mapping for the graph
+        graph_credentials_inputs: dict[str, CredentialsMetaInput] = {}
+
+        # Get aggregated credentials requirements from the graph
+        aggregated_creds = graph.aggregate_credentials_inputs()
+        logger.debug(
+            f"Matching credentials for graph {graph.id}: {len(aggregated_creds)} required"
+        )
+
+        if aggregated_creds:
+            # Get all available credentials for the user
+            creds_manager = IntegrationCredentialsManager()
+            available_creds = await creds_manager.store.get_all_creds(user_id)
+
+            # Track unmatched credentials for error reporting
+            missing_creds: list[str] = []
+
+            # For each required credential field, find a matching user credential
+            # field_info.provider is a frozenset because aggregate_credentials_inputs()
+            # combines requirements from multiple nodes. A credential matches if its
+            # provider is in the set of acceptable providers.
+            for credential_field_name, (
+                credential_requirements,
+                _node_fields,
+            ) in aggregated_creds.items():
+                # Find first matching credential by provider and type
+                matching_cred = next(
+                    (
+                        cred
+                        for cred in available_creds
+                        if cred.provider in credential_requirements.provider
+                        and cred.type in credential_requirements.supported_types
+                    ),
+                    None,
+                )
+
+                if matching_cred:
+                    # Use Pydantic validation to ensure type safety
+                    try:
+                        graph_credentials_inputs[credential_field_name] = (
+                            CredentialsMetaInput(
+                                id=matching_cred.id,
+                                provider=matching_cred.provider,  # type: ignore
+                                type=matching_cred.type,
+                                title=matching_cred.title,
+                            )
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to create CredentialsMetaInput for field '{credential_field_name}': "
+                            f"provider={matching_cred.provider}, type={matching_cred.type}, "
+                            f"credential_id={matching_cred.id}",
+                            exc_info=True,
+                        )
+                        missing_creds.append(
+                            f"{credential_field_name} (validation failed: {e})"
+                        )
+                else:
+                    missing_creds.append(
+                        f"{credential_field_name} "
+                        f"(requires provider in {list(credential_requirements.provider)}, "
+                        f"type in {list(credential_requirements.supported_types)})"
+                    )
+
+            # Fail fast if any required credentials are missing
+            if missing_creds:
+                logger.warning(
+                    f"Cannot execute agent - missing credentials: {missing_creds}"
+                )
+                return ErrorResponse(
+                    message=f"Cannot execute agent: missing {len(missing_creds)} required credential(s). You need to call the get_required_setup_info tool to setup the credentials."
+                    f"Please set up the following credentials: {', '.join(missing_creds)}",
+                    session_id=session_id,
+                    details={"missing_credentials": missing_creds},
+                )
+
+            logger.info(
+                f"Credential matching complete: {len(graph_credentials_inputs)}/{len(aggregated_creds)} matched"
+            )
+
         # At this point we know the user is ready to run the agent
         # So we can execute the agent
         execution = await execution_utils.add_graph_execution(
             graph_id=library_agent.graph_id,
             user_id=user_id,
             inputs=inputs,
+            graph_credentials_inputs=graph_credentials_inputs,
         )
         return ExecutionStartedResponse(
-            message="Agent execution started",
+            message="Agent execution successfully started. Do not run this tool again unless specifically asked to run the agent again.",
             session_id=session_id,
             execution_id=execution.id,
             graph_id=library_agent.graph_id,
