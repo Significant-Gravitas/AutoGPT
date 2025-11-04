@@ -2,6 +2,9 @@
   "name": "frontend",
   "version": "0.3.4",
   "private": true,
+  "engines": {
+    "node": "22.18.0"
+  },
   "scripts": {
     "dev": "pnpm run generate:api:force && next dev --turbo",
     "build": "next build",
