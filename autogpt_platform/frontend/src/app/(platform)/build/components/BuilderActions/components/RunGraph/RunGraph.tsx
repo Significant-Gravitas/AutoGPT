@@ -6,6 +6,11 @@ import { useShallow } from "zustand/react/shallow";
 import { StopIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 
 export const RunGraph = () => {
   const {
@@ -21,24 +26,31 @@ export const RunGraph = () => {
 
   return (
     <>
-      <Button
-        variant="primary"
-        size="large"
-        className={cn(
-          "relative min-w-44 border-none bg-gradient-to-r from-purple-500 to-pink-500 text-lg",
-        )}
-        onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
-      >
-        {!isGraphRunning && !isSaving ? (
-          <PlayIcon className="mr-1 size-5" />
-        ) : (
-          <StopIcon className="mr-1 size-5" />
-        )}
-        {isGraphRunning || isSaving ? "Stop Agent" : "Run Agent"}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="primary"
+            size="large"
+            className={cn(
+              "relative min-w-0 border-none bg-gradient-to-r from-purple-500 to-pink-500 text-lg",
+            )}
+            onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
+          >
+            {!isGraphRunning && !isSaving ? (
+              <PlayIcon className="size-6" />
+            ) : (
+              <StopIcon className="size-6" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {isGraphRunning ? "Stop agent" : "Run agent"}
+        </TooltipContent>
+      </Tooltip>
       <RunInputDialog
         isOpen={openRunInputDialog}
         setIsOpen={setOpenRunInputDialog}
+        runFor="run"
       />
     </>
   );
