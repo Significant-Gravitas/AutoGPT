@@ -8,7 +8,6 @@ import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
 import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import {
   BlockIOObjectSubSchema,
@@ -19,12 +18,8 @@ import {
   TableRow,
 } from "@/lib/autogpt-server-api/types";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
-<<<<<<< Updated upstream
-import { Button } from "@/components/atoms/Button/Button";
 import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
-=======
 import { useRunAgentInputs } from "./useRunAgentInputs";
->>>>>>> Stashed changes
 
 /**
  * A generic prop structure for the TypeBasedInput.
