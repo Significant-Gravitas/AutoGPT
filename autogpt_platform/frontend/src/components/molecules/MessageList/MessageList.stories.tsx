@@ -427,8 +427,7 @@ export const MixedConversation: Story = {
           },
         ],
         agentName: "Email Automation",
-        message:
-          "To run Email Automation, you need to add credentials.",
+        message: "To run Email Automation, you need to add credentials.",
         timestamp: new Date(Date.now() - 8 * 60 * 1000),
       },
       {

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { Gear, CaretDown, CaretRight } from "@phosphor-icons/react";
+import { Wrench, Spinner, CaretDown, CaretUp } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { getToolDisplayName } from "@/lib/chat/tool-display-names";
 import type { ToolArguments } from "@/types/chat";
 
 export interface ToolCallMessageProps {
@@ -22,55 +23,86 @@ export function ToolCallMessage({
   return (
     <div
       className={cn(
-        "flex gap-3 rounded-lg border border-purple-200 bg-purple-50 p-4 dark:border-purple-900 dark:bg-purple-950",
+        "overflow-hidden rounded-lg border transition-all duration-200",
+        "border-neutral-200 dark:border-neutral-700",
+        "bg-white dark:bg-neutral-900",
+        "animate-in fade-in-50 slide-in-from-top-1",
         className,
       )}
     >
-      {/* Icon */}
-      <div className="flex-shrink-0">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500">
-          <Gear size={20} weight="bold" className="animate-spin text-white" />
+      {/* Header */}
+      <div
+        className={cn(
+          "flex items-center justify-between px-3 py-2",
+          "bg-gradient-to-r from-neutral-50 to-neutral-100 dark:from-neutral-800/20 dark:to-neutral-700/20",
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <Wrench
+            size={16}
+            weight="bold"
+            className="text-neutral-500 dark:text-neutral-400"
+          />
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            {getToolDisplayName(toolName)}
+          </span>
+          <div className="ml-2 flex items-center gap-1.5">
+            <Spinner
+              size={16}
+              weight="bold"
+              className="animate-spin text-blue-500"
+            />
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">
+              Executing...
+            </span>
+          </div>
         </div>
+
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="rounded p-1 hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50"
+          aria-label={isExpanded ? "Collapse details" : "Expand details"}
+        >
+          {isExpanded ? (
+            <CaretUp
+              size={16}
+              weight="bold"
+              className="text-neutral-600 dark:text-neutral-400"
+            />
+          ) : (
+            <CaretDown
+              size={16}
+              weight="bold"
+              className="text-neutral-600 dark:text-neutral-400"
+            />
+          )}
+        </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 space-y-2">
-        <div className="flex items-center gap-2">
+      {/* Expandable Content */}
+      {isExpanded && (
+        <div className="px-4 py-3">
+          {args && Object.keys(args).length > 0 && (
+            <div className="mb-3">
+              <div className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                Parameters:
+              </div>
+              <div className="rounded-md bg-neutral-50 p-3 dark:bg-neutral-800">
+                <pre className="overflow-x-auto text-xs text-neutral-700 dark:text-neutral-300">
+                  {JSON.stringify(args, null, 2)}
+                </pre>
+              </div>
+            </div>
+          )}
+
           <Text
-            variant="body"
-            className="font-semibold text-purple-900 dark:text-purple-100"
+            variant="small"
+            className="text-neutral-500 dark:text-neutral-400"
           >
-            Executing: {toolName}
+            Tool ID: {toolId.slice(0, 8)}...
           </Text>
         </div>
-
-        {/* Expandable arguments */}
-        {args && Object.keys(args).length > 0 && (
-          <div>
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center gap-1 text-sm text-purple-700 hover:text-purple-900 dark:text-purple-300 dark:hover:text-purple-100"
-            >
-              {isExpanded ? (
-                <CaretDown size={16} weight="bold" />
-              ) : (
-                <CaretRight size={16} weight="bold" />
-              )}
-              {isExpanded ? "Hide" : "Show"} parameters
-            </button>
-
-            {isExpanded && (
-              <pre className="mt-2 overflow-x-auto rounded-md bg-purple-100 p-3 text-xs text-purple-900 dark:bg-purple-900 dark:text-purple-100">
-                {JSON.stringify(args, null, 2)}
-              </pre>
-            )}
-          </div>
-        )}
-
-        <Text variant="small" className="text-purple-600 dark:text-purple-400">
-          Tool ID: {toolId.slice(0, 8)}...
-        </Text>
-      </div>
+      )}
     </div>
   );
 }

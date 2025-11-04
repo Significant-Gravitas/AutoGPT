@@ -4,9 +4,11 @@ import {
   CheckCircle,
   XCircle,
   CaretDown,
-  CaretRight,
+  CaretUp,
+  Wrench,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { getToolDisplayName } from "@/lib/chat/tool-display-names";
 import type { ToolResult } from "@/types/chat";
 
 export interface ToolResponseMessageProps {
@@ -15,6 +17,51 @@ export interface ToolResponseMessageProps {
   result: ToolResult;
   success?: boolean;
   className?: string;
+}
+
+// Check if result should be hidden (special response types)
+function shouldHideResult(result: ToolResult): boolean {
+  try {
+    const resultString =
+      typeof result === "string" ? result : JSON.stringify(result);
+    const parsed = JSON.parse(resultString);
+
+    // Hide raw JSON for these special types
+    if (parsed.type === "agent_carousel") return true;
+    if (parsed.type === "execution_started") return true;
+    if (parsed.type === "setup_requirements") return true;
+    if (parsed.type === "no_results") return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// Get a friendly summary for special response types
+function getResultSummary(result: ToolResult): string | null {
+  try {
+    const resultString =
+      typeof result === "string" ? result : JSON.stringify(result);
+    const parsed = JSON.parse(resultString);
+
+    if (parsed.type === "agent_carousel") {
+      return `Found ${parsed.agents?.length || parsed.count || 0} agents${parsed.query ? ` matching "${parsed.query}"` : ""}`;
+    }
+    if (parsed.type === "execution_started") {
+      return `Started execution${parsed.execution_id ? ` (ID: ${parsed.execution_id.slice(0, 8)}...)` : ""}`;
+    }
+    if (parsed.type === "setup_requirements") {
+      return "Retrieved setup requirements";
+    }
+    if (parsed.type === "no_results") {
+      return parsed.message || "No results found";
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function ToolResponseMessage({
@@ -26,122 +73,128 @@ export function ToolResponseMessage({
 }: ToolResponseMessageProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const isObjectResult = typeof result === "object";
-  const resultString = isObjectResult
-    ? JSON.stringify(result, null, 2)
-    : result;
+  const hideResult = shouldHideResult(result);
+  const resultSummary = getResultSummary(result);
+  const resultString =
+    typeof result === "object"
+      ? JSON.stringify(result, null, 2)
+      : String(result);
   const shouldTruncate = resultString.length > 200;
 
   return (
     <div
       className={cn(
-        "flex gap-3 rounded-lg border p-4",
+        "overflow-hidden rounded-lg border transition-all duration-200",
         success
-          ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950"
-          : "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950",
+          ? "border-neutral-200 dark:border-neutral-700"
+          : "border-red-200 dark:border-red-800",
+        "bg-white dark:bg-neutral-900",
+        "animate-in fade-in-50 slide-in-from-top-1",
         className,
       )}
     >
-      {/* Icon */}
-      <div className="flex-shrink-0">
-        <div
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-full",
-            success ? "bg-green-500" : "bg-red-500",
-          )}
-        >
-          {success ? (
-            <CheckCircle size={20} weight="fill" className="text-white" />
-          ) : (
-            <XCircle size={20} weight="fill" className="text-white" />
-          )}
+      {/* Header */}
+      <div
+        className={cn(
+          "flex items-center justify-between px-3 py-2",
+          "bg-gradient-to-r",
+          success
+            ? "from-neutral-50 to-neutral-100 dark:from-neutral-800/20 dark:to-neutral-700/20"
+            : "from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20",
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <Wrench
+            size={16}
+            weight="bold"
+            className="text-neutral-500 dark:text-neutral-400"
+          />
+          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            {getToolDisplayName(toolName)}
+          </span>
+          <div className="ml-2 flex items-center gap-1.5">
+            {success ? (
+              <CheckCircle size={16} weight="fill" className="text-green-500" />
+            ) : (
+              <XCircle size={16} weight="fill" className="text-red-500" />
+            )}
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">
+              {success ? "Completed" : "Error"}
+            </span>
+          </div>
         </div>
+
+        {!hideResult && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="rounded p-1 hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50"
+            aria-label={isExpanded ? "Collapse details" : "Expand details"}
+          >
+            {isExpanded ? (
+              <CaretUp
+                size={16}
+                weight="bold"
+                className="text-neutral-600 dark:text-neutral-400"
+              />
+            ) : (
+              <CaretDown
+                size={16}
+                weight="bold"
+                className="text-neutral-600 dark:text-neutral-400"
+              />
+            )}
+          </button>
+        )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 space-y-2">
-        <div className="flex items-center gap-2">
-          <Text
-            variant="body"
+      {/* Expandable Content */}
+      {isExpanded && !hideResult && (
+        <div className="px-4 py-3">
+          <div className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">
+            Result:
+          </div>
+          <div
             className={cn(
-              "font-semibold",
+              "rounded-md p-3",
               success
-                ? "text-green-900 dark:text-green-100"
-                : "text-red-900 dark:text-red-100",
+                ? "bg-green-50 dark:bg-green-900/20"
+                : "bg-red-50 dark:bg-red-900/20",
             )}
           >
-            {success ? "Completed" : "Failed"}: {toolName}
+            <pre
+              className={cn(
+                "whitespace-pre-wrap text-xs",
+                success
+                  ? "text-green-800 dark:text-green-200"
+                  : "text-red-800 dark:text-red-200",
+              )}
+            >
+              {shouldTruncate && !isExpanded
+                ? `${resultString.slice(0, 200)}...`
+                : resultString}
+            </pre>
+          </div>
+
+          <Text
+            variant="small"
+            className="mt-2 text-neutral-500 dark:text-neutral-400"
+          >
+            Tool ID: {toolId.slice(0, 8)}...
           </Text>
         </div>
+      )}
 
-        {/* Result */}
-        <div>
-          {shouldTruncate && !isExpanded ? (
-            <>
-              <pre
-                className={cn(
-                  "overflow-x-auto rounded-md p-3 text-xs",
-                  success
-                    ? "bg-green-100 text-green-900 dark:bg-green-900 dark:text-green-100"
-                    : "bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-100",
-                )}
-              >
-                {resultString.slice(0, 200)}...
-              </pre>
-              <button
-                onClick={() => setIsExpanded(true)}
-                className={cn(
-                  "mt-2 flex items-center gap-1 text-sm",
-                  success
-                    ? "text-green-700 hover:text-green-900 dark:text-green-300 dark:hover:text-green-100"
-                    : "text-red-700 hover:text-red-900 dark:text-red-300 dark:hover:text-red-100",
-                )}
-              >
-                <CaretDown size={16} weight="bold" />
-                Show full result
-              </button>
-            </>
-          ) : (
-            <>
-              <pre
-                className={cn(
-                  "overflow-x-auto rounded-md p-3 text-xs",
-                  success
-                    ? "bg-green-100 text-green-900 dark:bg-green-900 dark:text-green-100"
-                    : "bg-red-100 text-red-900 dark:bg-red-900 dark:text-red-100",
-                )}
-              >
-                {resultString}
-              </pre>
-              {shouldTruncate && isExpanded && (
-                <button
-                  onClick={() => setIsExpanded(false)}
-                  className={cn(
-                    "mt-2 flex items-center gap-1 text-sm",
-                    success
-                      ? "text-green-700 hover:text-green-900 dark:text-green-300 dark:hover:text-green-100"
-                      : "text-red-700 hover:text-red-900 dark:text-red-300 dark:hover:text-red-100",
-                  )}
-                >
-                  <CaretRight size={16} weight="bold" />
-                  Show less
-                </button>
-              )}
-            </>
-          )}
+      {/* Summary for special response types */}
+      {hideResult && resultSummary && (
+        <div className="px-4 py-2">
+          <Text
+            variant="small"
+            className="text-neutral-600 dark:text-neutral-400"
+          >
+            {resultSummary}
+          </Text>
         </div>
-
-        <Text
-          variant="small"
-          className={
-            success
-              ? "text-green-600 dark:text-green-400"
-              : "text-red-600 dark:text-red-400"
-          }
-        >
-          Tool ID: {toolId.slice(0, 8)}...
-        </Text>
-      </div>
+      )}
     </div>
   );
 }

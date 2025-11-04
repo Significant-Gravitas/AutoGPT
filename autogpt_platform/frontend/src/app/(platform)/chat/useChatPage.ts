@@ -46,7 +46,12 @@ export function useChatPage(): UseChatPageResult {
       // 2. Haven't already created one this mount
       // 3. Not currently creating
       // 4. We don't already have a sessionId
-      if (!urlSessionId && !hasCreatedSessionRef.current && !isCreating && !sessionIdFromHook) {
+      if (
+        !urlSessionId &&
+        !hasCreatedSessionRef.current &&
+        !isCreating &&
+        !sessionIdFromHook
+      ) {
         console.log("[autoCreateSession] Creating new session");
         hasCreatedSessionRef.current = true;
         createSession().catch((err) => {
@@ -54,7 +59,10 @@ export function useChatPage(): UseChatPageResult {
           hasCreatedSessionRef.current = false; // Reset on error to allow retry
         });
       } else if (sessionIdFromHook) {
-        console.log("[autoCreateSession] Skipping - already have sessionId:", sessionIdFromHook);
+        console.log(
+          "[autoCreateSession] Skipping - already have sessionId:",
+          sessionIdFromHook,
+        );
       }
     },
     [urlSessionId, isCreating, sessionIdFromHook, createSession],

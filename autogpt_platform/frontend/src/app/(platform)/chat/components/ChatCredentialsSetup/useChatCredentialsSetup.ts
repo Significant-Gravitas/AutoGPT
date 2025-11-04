@@ -13,12 +13,12 @@ export function useChatCredentialsSetup(credentials: CredentialInfo[]) {
       if (credentials.length === 0) return false;
       return credentials.every((cred) => selectedCredentials[cred.provider]);
     },
-    [credentials, selectedCredentials]
+    [credentials, selectedCredentials],
   );
 
   function handleCredentialSelect(
     provider: string,
-    credential?: CredentialsMetaInput
+    credential?: CredentialsMetaInput,
   ) {
     if (credential) {
       setSelectedCredentials((prev) => ({

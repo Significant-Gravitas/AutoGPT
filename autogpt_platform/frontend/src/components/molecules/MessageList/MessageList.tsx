@@ -38,7 +38,11 @@ export function MessageList({
       <div className="space-y-0">
         {/* Render all persisted messages */}
         {messages.map((message, index) => (
-          <ChatMessage key={index} message={message} onSendMessage={onSendMessage} />
+          <ChatMessage
+            key={index}
+            message={message}
+            onSendMessage={onSendMessage}
+          />
         ))}
 
         {/* Render streaming message if active */}

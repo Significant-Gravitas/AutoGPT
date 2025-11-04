@@ -25,7 +25,7 @@ interface Props {
 }
 
 function createSchemaFromCredentialInfo(
-  credential: CredentialInfo
+  credential: CredentialInfo,
 ): BlockIOCredentialsSubSchema {
   return {
     type: "object",
@@ -57,14 +57,14 @@ export function ChatCredentialsSetup({
         onAllCredentialsComplete();
       }
     },
-    [isAllComplete, onAllCredentialsComplete]
+    [isAllComplete, onAllCredentialsComplete],
   );
 
   return (
     <Card
       className={cn(
         "mx-4 my-2 overflow-hidden border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950",
-        className
+        className,
       )}
     >
       <div className="flex items-start gap-4 p-6">
@@ -96,7 +96,7 @@ export function ChatCredentialsSetup({
                   className={cn(
                     "relative rounded-lg border border-orange-200 bg-white p-4 dark:border-orange-800 dark:bg-orange-900/20",
                     isSelected &&
-                      "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/30"
+                      "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/30",
                   )}
                 >
                   <div className="mb-2 flex items-center justify-between">

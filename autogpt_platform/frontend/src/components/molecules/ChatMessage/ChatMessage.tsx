@@ -56,9 +56,12 @@ export function ChatMessage({
   }
 
   function handleAllCredentialsComplete() {
-    // Send a user message saying credentials are configured
+    // Send a user message that explicitly asks to retry the setup
+    // This ensures the LLM calls get_required_setup_info again and proceeds with execution
     if (onSendMessage) {
-      onSendMessage("Credentials have been configured. Ready to proceed.");
+      onSendMessage(
+        "I've configured the required credentials. Please check if everything is ready and proceed with setting up the agent.",
+      );
     }
     // Optionally dismiss the credentials prompt
     if (onDismissCredentials) {

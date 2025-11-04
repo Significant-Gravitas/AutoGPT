@@ -231,7 +231,10 @@ export function MarkdownContent({ content, className }: MarkdownContentProps) {
           ),
           // Horizontal rule
           hr: ({ ...props }) => (
-            <hr className="my-3 border-zinc-300 dark:border-zinc-700" {...props} />
+            <hr
+              className="my-3 border-zinc-300 dark:border-zinc-700"
+              {...props}
+            />
           ),
           // Tables
           table: ({ children, ...props }) => (

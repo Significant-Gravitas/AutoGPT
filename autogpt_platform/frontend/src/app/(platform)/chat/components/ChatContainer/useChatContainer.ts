@@ -58,7 +58,10 @@ export function useChatContainer({
         // Include messages with content OR tool_calls (tool_call messages have empty content)
         const content = String(msg.content || "").trim();
         const toolCalls = msg.tool_calls;
-        return content.length > 0 || (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0);
+        return (
+          content.length > 0 ||
+          (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0)
+        );
       })
       .map((msg: Record<string, unknown>): ChatMessageData | null => {
         const content = String(msg.content || "");
@@ -68,7 +71,12 @@ export function useChatContainer({
         const toolCalls = msg.tool_calls;
 
         // Validate tool_calls structure if present
-        if (role === "assistant" && toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
+        if (
+          role === "assistant" &&
+          toolCalls &&
+          isToolCallArray(toolCalls) &&
+          toolCalls.length > 0
+        ) {
           // Skip tool_call messages from persisted history
           // We only show tool_calls during live streaming, not from history
           // The tool_response that follows it is what we want to display
@@ -86,7 +94,7 @@ export function useChatContainer({
             content,
             (msg.tool_call_id as string) || "",
             "unknown",
-            timestamp
+            timestamp,
           );
 
           // parseToolResponse returns null for setup_requirements
@@ -144,7 +152,16 @@ export function useChatContainer({
         content,
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, userMessage]);
+
+      // Remove any pending credentials_needed or login_needed messages when user sends a new message
+      // This prevents them from persisting after the user has taken action
+      setMessages((prev) => {
+        const filtered = prev.filter(
+          (msg) =>
+            msg.type !== "credentials_needed" && msg.type !== "login_needed",
+        );
+        return [...filtered, userMessage];
+      });
 
       // Clear streaming chunks and reset text flag
       setStreamingChunks([]);
@@ -172,17 +189,19 @@ export function useChatContainer({
               setHasTextChunks(false);
             } else if (chunk.type === "tool_call_start") {
               // Show ToolCallMessage immediately when tool execution starts
+              // Use the tool_id from the backend to match with tool_response later
               const toolCallMessage: ChatMessageData = {
                 type: "tool_call",
-                toolId: `tool-${Date.now()}-${chunk.idx || 0}`,
-                toolName: "Executing...",
-                arguments: {},
+                toolId: chunk.tool_id || `tool-${Date.now()}-${chunk.idx || 0}`,
+                toolName: chunk.tool_name || "Executing...",
+                arguments: chunk.arguments || {},
                 timestamp: new Date(),
               };
               setMessages((prev) => [...prev, toolCallMessage]);
 
               console.log("[Tool Call Start]", {
                 toolId: toolCallMessage.toolId,
+                toolName: toolCallMessage.toolName,
                 timestamp: new Date().toISOString(),
               });
             } else if (chunk.type === "tool_response") {
@@ -197,7 +216,7 @@ export function useChatContainer({
                 chunk.result!,
                 chunk.tool_id!,
                 chunk.tool_name!,
-                new Date()
+                new Date(),
               );
 
               // If helper returns null (setup_requirements), handle credentials
@@ -219,7 +238,8 @@ export function useChatContainer({
                   chunk.success &&
                   parsedResult
                 ) {
-                  const credentialsMessage = extractCredentialsNeeded(parsedResult);
+                  const credentialsMessage =
+                    extractCredentialsNeeded(parsedResult);
                   if (credentialsMessage) {
                     setMessages((prev) => [...prev, credentialsMessage]);
                   }
@@ -229,22 +249,32 @@ export function useChatContainer({
                 return;
               }
 
-              // Replace the most recent tool_call message with the response
+              // Replace the tool_call message with matching tool_id
               setMessages((prev) => {
-                const toolCallIndex = [...prev]
-                  .reverse()
-                  .findIndex((msg) => msg.type === "tool_call");
+                // Find the tool_call with the matching tool_id
+                const toolCallIndex = prev.findIndex(
+                  (msg) =>
+                    msg.type === "tool_call" && msg.toolId === chunk.tool_id,
+                );
 
                 if (toolCallIndex !== -1) {
-                  const actualIndex = prev.length - 1 - toolCallIndex;
                   const newMessages = [...prev];
-                  newMessages[actualIndex] = responseMessage;
+                  newMessages[toolCallIndex] = responseMessage;
 
-                  console.log("[Tool Response] Replaced tool_call at index:", actualIndex);
+                  console.log(
+                    "[Tool Response] Replaced tool_call with matching tool_id:",
+                    chunk.tool_id,
+                    "at index:",
+                    toolCallIndex,
+                  );
                   return newMessages;
                 }
 
-                console.warn("[Tool Response] No tool_call found to replace, appending");
+                console.warn(
+                  "[Tool Response] No tool_call found with tool_id:",
+                  chunk.tool_id,
+                  "appending instead",
+                );
                 return [...prev, responseMessage];
               });
             } else if (chunk.type === "login_needed") {
@@ -257,27 +287,6 @@ export function useChatContainer({
               };
               setMessages((prev) => [...prev, loginNeededMessage]);
             } else if (chunk.type === "stream_end") {
-              console.log("[Stream End] Final state:", {
-                localMessages: messages.map((m) => ({
-                  type: m.type,
-                  ...(m.type === "message" && {
-                    role: m.role,
-                    contentLength: m.content.length,
-                  }),
-                  ...(m.type === "tool_call" && {
-                    toolId: m.toolId,
-                    toolName: m.toolName,
-                  }),
-                  ...(m.type === "tool_response" && {
-                    toolId: m.toolId,
-                    toolName: m.toolName,
-                    success: m.success,
-                  }),
-                })),
-                streamingChunks: streamingChunksRef.current,
-                timestamp: new Date().toISOString(),
-              });
-
               // Convert streaming chunks into a completed assistant message
               // This provides seamless transition without flash or resize
               // Use ref to get the latest chunks value (not stale closure value)
@@ -293,7 +302,33 @@ export function useChatContainer({
 
                 // Add the completed assistant message to local state
                 // It will be visible immediately while backend updates
-                setMessages((prev) => [...prev, assistantMessage]);
+                setMessages((prev) => {
+                  const updated = [...prev, assistantMessage];
+
+                  // Log final state using current messages from state
+                  console.log("[Stream End] Final state:", {
+                    localMessages: updated.map((m) => ({
+                      type: m.type,
+                      ...(m.type === "message" && {
+                        role: m.role,
+                        contentLength: m.content.length,
+                      }),
+                      ...(m.type === "tool_call" && {
+                        toolId: m.toolId,
+                        toolName: m.toolName,
+                      }),
+                      ...(m.type === "tool_response" && {
+                        toolId: m.toolId,
+                        toolName: m.toolName,
+                        success: m.success,
+                      }),
+                    })),
+                    streamingChunks: streamingChunksRef.current,
+                    timestamp: new Date().toISOString(),
+                  });
+
+                  return updated;
+                });
               }
 
               // Clear streaming state immediately now that we have the message
@@ -303,7 +338,9 @@ export function useChatContainer({
 
               // Messages are now in local state and will be displayed
               // No need to refresh from backend - local state is the source of truth
-              console.log("[Stream End] Stream complete, messages in local state");
+              console.log(
+                "[Stream End] Stream complete, messages in local state",
+              );
             } else if (chunk.type === "error") {
               const errorMessage =
                 chunk.message || chunk.content || "An error occurred";

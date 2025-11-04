@@ -7,9 +7,7 @@ import type { ToolResult } from "@/types/chat";
  * @param msg - The message to validate
  * @returns True if the message has valid structure
  */
-export function isValidMessage(
-  msg: unknown
-): msg is Record<string, unknown> {
+export function isValidMessage(msg: unknown): msg is Record<string, unknown> {
   if (typeof msg !== "object" || msg === null) {
     return false;
   }
@@ -35,9 +33,7 @@ export function isValidMessage(
  * @param value - The value to validate
  * @returns True if value is a valid tool_calls array
  */
-export function isToolCallArray(
-  value: unknown
-): value is Array<{
+export function isToolCallArray(value: unknown): value is Array<{
   id: string;
   type: string;
   function: { name: string; arguments: string };
@@ -60,7 +56,7 @@ export function isToolCallArray(
       "name" in item.function &&
       typeof item.function.name === "string" &&
       "arguments" in item.function &&
-      typeof item.function.arguments === "string"
+      typeof item.function.arguments === "string",
   );
 }
 
@@ -70,9 +66,7 @@ export function isToolCallArray(
  * @param value - The value to validate
  * @returns True if value is a valid agents array
  */
-export function isAgentArray(
-  value: unknown
-): value is Array<{
+export function isAgentArray(value: unknown): value is Array<{
   id: string;
   name: string;
   description: string;
@@ -92,7 +86,7 @@ export function isAgentArray(
       typeof item.name === "string" &&
       "description" in item &&
       typeof item.description === "string" &&
-      (!("version" in item) || typeof item.version === "number")
+      (!("version" in item) || typeof item.version === "number"),
   );
 }
 
@@ -275,9 +269,7 @@ export function isMissingCredentials(
   }
 
   // Check that all values are objects
-  return Object.values(value).every(
-    (v) => typeof v === "object" && v !== null,
-  );
+  return Object.values(value).every((v) => typeof v === "object" && v !== null);
 }
 
 /**
@@ -286,9 +278,7 @@ export function isMissingCredentials(
  * @param value - The value to validate
  * @returns True if the value contains valid setup info
  */
-export function isSetupInfo(
-  value: unknown,
-): value is {
+export function isSetupInfo(value: unknown): value is {
   user_readiness?: Record<string, unknown>;
   agent_name?: string;
 } {
@@ -297,8 +287,7 @@ export function isSetupInfo(
     value !== null &&
     (!("user_readiness" in value) ||
       typeof (value as any).user_readiness === "object") &&
-    (!("agent_name" in value) ||
-      typeof (value as any).agent_name === "string")
+    (!("agent_name" in value) || typeof (value as any).agent_name === "string")
   );
 }
 
@@ -312,7 +301,7 @@ export function isSetupInfo(
  * @returns ChatMessageData for credentials_needed, or null if no credentials needed
  */
 export function extractCredentialsNeeded(
-  parsedResult: Record<string, unknown>
+  parsedResult: Record<string, unknown>,
 ): ChatMessageData | null {
   try {
     const setupInfo = parsedResult?.setup_info as
@@ -336,7 +325,12 @@ export function extractCredentialsNeeded(
           (credInfo.provider_name as string) ||
           (credInfo.provider as string) ||
           "Unknown Provider",
-        credentialType: (credInfo.type as "api_key" | "oauth2" | "user_password" | "host_scoped") || "api_key",
+        credentialType:
+          (credInfo.type as
+            | "api_key"
+            | "oauth2"
+            | "user_password"
+            | "host_scoped") || "api_key",
         title:
           (credInfo.title as string) ||
           `${(credInfo.provider_name as string) || (credInfo.provider as string)} credentials`,

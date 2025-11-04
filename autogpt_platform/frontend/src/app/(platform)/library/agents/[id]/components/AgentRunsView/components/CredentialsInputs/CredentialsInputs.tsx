@@ -135,7 +135,8 @@ export const CredentialsInput: FC<{
   const scopesRef = useRef<string | undefined>(undefined);
 
   // Compute current values
-  const currentProvider = credentials && "provider" in credentials ? credentials.provider : "";
+  const currentProvider =
+    credentials && "provider" in credentials ? credentials.provider : "";
   const currentScopes = schema.credentials_scopes?.join(",");
 
   // Only update refs when values actually change
@@ -151,9 +152,7 @@ export const CredentialsInput: FC<{
   const stableScopes = scopesRef.current;
 
   // Setup OAuth hooks with generated API endpoints (only when provider is stable)
-  const {
-    refetch: initiateOauthFlow,
-  } = useGetV1InitiateOauthFlow(
+  const { refetch: initiateOauthFlow } = useGetV1InitiateOauthFlow(
     stableProvider,
     {
       scopes: stableScopes,
@@ -166,7 +165,8 @@ export const CredentialsInput: FC<{
     },
   );
 
-  const { mutateAsync: oAuthCallbackMutation } = usePostV1ExchangeOauthCodeForTokens();
+  const { mutateAsync: oAuthCallbackMutation } =
+    usePostV1ExchangeOauthCodeForTokens();
 
   // Report loaded state to parent
   useEffect(() => {
@@ -306,7 +306,9 @@ export const CredentialsInput: FC<{
           onSelectCredentials({
             id: credData.id,
             type: "oauth2",
-            title: ("title" in credData ? credData.title : undefined) || `${providerName} account`,
+            title:
+              ("title" in credData ? credData.title : undefined) ||
+              `${providerName} account`,
             provider,
           });
         }
@@ -339,7 +341,13 @@ export const CredentialsInput: FC<{
       },
       5 * 60 * 1000,
     );
-  }, [initiateOauthFlow, oAuthCallbackMutation, stableProvider, providerName, onSelectCredentials]);
+  }, [
+    initiateOauthFlow,
+    oAuthCallbackMutation,
+    stableProvider,
+    providerName,
+    onSelectCredentials,
+  ]);
 
   const ProviderIcon = providerIcons[provider] || fallbackIcon;
   const modals = (

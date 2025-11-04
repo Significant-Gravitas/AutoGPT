@@ -118,7 +118,7 @@ export function useChatStream(): UseChatStreamResult {
         eventSourceRef.current = eventSource;
 
         // Listen for abort signal
-        abortController.signal.addEventListener('abort', () => {
+        abortController.signal.addEventListener("abort", () => {
           eventSource.close();
           eventSourceRef.current = null;
         });
