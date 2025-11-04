@@ -389,17 +389,36 @@ export function DiagnosticsContent() {
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div>
                     <p className="text-sm font-medium text-gray-500">
-                      Next Hour
+                      Upcoming Runs (1h)
                     </p>
                     <p className="text-3xl font-bold">
-                      {scheduleData.schedules_next_hour}
+                      {scheduleData.total_runs_next_hour}
                     </p>
                     <p className="text-xs text-gray-600">
-                      {scheduleData.schedules_next_24h} in next 24h
+                      from {scheduleData.schedules_next_hour} schedule
+                      {scheduleData.schedules_next_hour !== 1 ? "s" : ""}
                     </p>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
                     <div className="h-6 w-6 rounded-full bg-blue-500"></div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">
+                      Upcoming Runs (24h)
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {scheduleData.total_runs_next_24h}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      from {scheduleData.schedules_next_24h} schedule
+                      {scheduleData.schedules_next_24h !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                    <div className="h-6 w-6 rounded-full bg-green-500"></div>
                   </div>
                 </div>
 

@@ -127,9 +127,13 @@ class ScheduleHealthMetrics(BaseModel):
     orphaned_validation_failed: int
     total_orphaned: int
 
-    # Upcoming
+    # Upcoming schedules (unique count)
     schedules_next_hour: int
     schedules_next_24h: int
+
+    # Upcoming execution runs (total count)
+    total_runs_next_hour: int
+    total_runs_next_24h: int
 
     timestamp: str
 
@@ -369,6 +373,14 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
             <= twenty_four_hours_from_now
         )
 
+        # Calculate total execution runs (not just unique schedules)
+        total_runs_next_hour = _calculate_total_runs(
+            user_schedules, now, one_hour_from_now
+        )
+        total_runs_next_24h = _calculate_total_runs(
+            user_schedules, now, twenty_four_hours_from_now
+        )
+
         return ScheduleHealthMetrics(
             total_schedules=len(all_schedules),
             user_schedules=len(user_schedules),
@@ -380,11 +392,60 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
             total_orphaned=sum(len(v) for v in orphans.values()),
             schedules_next_hour=schedules_next_hour,
             schedules_next_24h=schedules_next_24h,
+            total_runs_next_hour=total_runs_next_hour,
+            total_runs_next_24h=total_runs_next_24h,
             timestamp=now.isoformat(),
         )
     except Exception as e:
         logger.error(f"Error getting schedule diagnostics: {e}")
         raise
+
+
+def _calculate_total_runs(
+    schedules: list, start_time: datetime, end_time: datetime
+) -> int:
+    """
+    Calculate total number of scheduled executions in time window.
+
+    Args:
+        schedules: List of GraphExecutionJobInfo with cron expressions
+        start_time: Start of time window
+        end_time: End of time window
+
+    Returns:
+        Total number of execution runs across all schedules
+    """
+    from croniter import croniter
+
+    total_runs = 0
+
+    for schedule in schedules:
+        try:
+            # Create cron iterator
+            iter = croniter(schedule.cron, start_time)
+
+            # Count occurrences in window (with safety limit)
+            count = 0
+            max_iterations = 2000  # Safety limit (e.g., every-minute for 24h = 1440)
+
+            while count < max_iterations:
+                try:
+                    next_run = iter.get_next(datetime)
+                    if next_run > end_time:
+                        break
+                    count += 1
+                except Exception:
+                    # Handle edge cases like invalid cron progression
+                    break
+
+            total_runs += count
+
+        except Exception as e:
+            logger.warning(f"Failed to parse cron expression '{schedule.cron}': {e}")
+            # Skip this schedule if cron is invalid
+            continue
+
+    return total_runs
 
 
 async def _detect_orphaned_schedules(schedules: list) -> dict:

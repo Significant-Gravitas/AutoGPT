@@ -8541,6 +8541,14 @@
             "type": "integer",
             "title": "Schedules Next 24H"
           },
+          "total_runs_next_hour": {
+            "type": "integer",
+            "title": "Total Runs Next Hour"
+          },
+          "total_runs_next_24h": {
+            "type": "integer",
+            "title": "Total Runs Next 24H"
+          },
           "timestamp": { "type": "string", "title": "Timestamp" }
         },
         "type": "object",
@@ -8555,6 +8563,8 @@
           "total_orphaned",
           "schedules_next_hour",
           "schedules_next_24h",
+          "total_runs_next_hour",
+          "total_runs_next_24h",
           "timestamp"
         ],
         "title": "ScheduleHealthMetrics",
