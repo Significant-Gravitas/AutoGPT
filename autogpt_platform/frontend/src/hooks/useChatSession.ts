@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   usePostV2CreateSession,
+  postV2CreateSession,
   useGetV2GetSession,
   usePatchV2SessionAssignUser,
   getGetV2GetSessionQueryKey,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { storage, Key } from "@/services/storage/local-storage";
+import { isValidUUID } from "@/lib/utils";
 
 interface UseChatSessionArgs {
   urlSessionId?: string | null;
@@ -16,6 +19,7 @@ interface UseChatSessionArgs {
 
 interface UseChatSessionResult {
   session: SessionDetailResponse | null;
+  sessionId: string | null; // Direct access to session ID state
   messages: SessionDetailResponse["messages"];
   isLoading: boolean;
   isCreating: boolean;
@@ -26,8 +30,6 @@ interface UseChatSessionResult {
   claimSession: (sessionId: string) => Promise<void>;
   clearSession: () => void;
 }
-
-const SESSION_STORAGE_KEY = "chat_session_id";
 
 export function useChatSession({
   urlSessionId,
@@ -42,31 +44,27 @@ export function useChatSession({
   useEffect(
     function initializeSessionId() {
       if (urlSessionId) {
-        // Validate UUID format (basic validation)
-        const uuidRegex =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!uuidRegex.test(urlSessionId)) {
+        // Validate UUID format
+        if (!isValidUUID(urlSessionId)) {
           console.error("Invalid session ID format:", urlSessionId);
           toast.error("Invalid session ID", {
             description:
               "The session ID in the URL is not valid. Starting a new session...",
           });
           setSessionId(null);
-          localStorage.removeItem(SESSION_STORAGE_KEY);
+          storage.clean(Key.CHAT_SESSION_ID);
           return;
         }
 
         setSessionId(urlSessionId);
-        localStorage.setItem(SESSION_STORAGE_KEY, urlSessionId);
+        storage.set(Key.CHAT_SESSION_ID, urlSessionId);
       } else {
-        const storedSessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+        const storedSessionId = storage.get(Key.CHAT_SESSION_ID);
         if (storedSessionId) {
           // Validate stored session ID as well
-          const uuidRegex =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (!uuidRegex.test(storedSessionId)) {
+          if (!isValidUUID(storedSessionId)) {
             console.error("Invalid stored session ID:", storedSessionId);
-            localStorage.removeItem(SESSION_STORAGE_KEY);
+            storage.clean(Key.CHAT_SESSION_ID);
             setSessionId(null);
           } else {
             setSessionId(storedSessionId);
@@ -87,7 +85,7 @@ export function useChatSession({
     error: createError,
   } = usePostV2CreateSession();
 
-  // Get session query (only runs when sessionId is set AND we didn't just create it)
+  // Get session query - runs for any valid session (URL or locally created)
   const {
     data: sessionData,
     isLoading: isLoadingSession,
@@ -95,7 +93,7 @@ export function useChatSession({
     refetch,
   } = useGetV2GetSession(sessionId || "", {
     query: {
-      enabled: !!sessionId && !!urlSessionId, // Only fetch if session ID came from URL
+      enabled: !!sessionId, // Fetch whenever we have a session ID
       staleTime: 30000, // Consider data fresh for 30 seconds
       retry: 1,
       // Error handling is done in useChatPage via the error state
@@ -106,22 +104,28 @@ export function useChatSession({
   const { mutateAsync: claimSessionMutation } = usePatchV2SessionAssignUser();
 
   // Extract session from response with type guard
-  // For new sessions that we just created, create a minimal session object
-  // Only do this for sessions we JUST created, not for stale localStorage sessions
-  const session: SessionDetailResponse | null =
-    sessionData?.status === 200
-      ? sessionData.data
-      : sessionId &&
-          !urlSessionId &&
-          sessionId === justCreatedSessionIdRef.current
-        ? {
-            id: sessionId,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            user_id: null,
-            messages: [],
-          }
-        : null;
+  // Once we have session data from the backend, use it
+  // While waiting for the first fetch, create a minimal object for just-created sessions
+  const session: SessionDetailResponse | null = useMemo(() => {
+    // If we have real session data from GET query, use it
+    if (sessionData?.status === 200) {
+      return sessionData.data;
+    }
+
+    // If we just created a session and are waiting for the first fetch, create a minimal object
+    // This prevents a blank page while the GET query loads
+    if (sessionId && justCreatedSessionIdRef.current === sessionId) {
+      return {
+        id: sessionId,
+        user_id: null, // Placeholder - actual value set by backend during creation
+        messages: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      } as SessionDetailResponse;
+    }
+
+    return null;
+  }, [sessionData, sessionId]);
 
   const messages = session?.messages || [];
 
@@ -154,7 +158,10 @@ export function useChatSession({
     async function createSession(): Promise<string> {
       try {
         setError(null);
-        const response = await createSessionMutation();
+        // Call the API function directly with empty body to satisfy Content-Type: application/json
+        const response = await postV2CreateSession({
+          body: JSON.stringify({}),
+        });
 
         // Type guard to ensure we have a successful response
         if (response.status !== 200) {
@@ -164,7 +171,7 @@ export function useChatSession({
         const newSessionId = response.data.id;
 
         setSessionId(newSessionId);
-        localStorage.setItem(SESSION_STORAGE_KEY, newSessionId);
+        storage.set(Key.CHAT_SESSION_ID, newSessionId);
 
         // Mark this session as "just created" so we can create a minimal object for it
         justCreatedSessionIdRef.current = newSessionId;
@@ -196,7 +203,7 @@ export function useChatSession({
       try {
         setError(null);
         setSessionId(id);
-        localStorage.setItem(SESSION_STORAGE_KEY, id);
+        storage.set(Key.CHAT_SESSION_ID, id);
 
         // Attempt to fetch the session to verify it exists
         const result = await refetch();
@@ -204,7 +211,7 @@ export function useChatSession({
         // If session doesn't exist (404), clear it and throw error
         if (!result.data || result.isError) {
           console.warn("Session not found on server, clearing local state");
-          localStorage.removeItem(SESSION_STORAGE_KEY);
+          storage.clean(Key.CHAT_SESSION_ID);
           setSessionId(null);
           throw new Error("Session not found");
         }
@@ -220,7 +227,11 @@ export function useChatSession({
 
   const refreshSession = useCallback(
     async function refreshSession() {
-      if (!sessionId) return;
+      // Refresh session data from backend (works for all sessions now)
+      if (!sessionId) {
+        console.log("[refreshSession] Skipping - no session ID");
+        return;
+      }
 
       try {
         setError(null);
@@ -293,12 +304,13 @@ export function useChatSession({
   const clearSession = useCallback(function clearSession() {
     setSessionId(null);
     setError(null);
-    localStorage.removeItem(SESSION_STORAGE_KEY);
+    storage.clean(Key.CHAT_SESSION_ID);
     justCreatedSessionIdRef.current = null;
   }, []);
 
   return {
     session,
+    sessionId, // Return direct access to sessionId state
     messages,
     isLoading,
     isCreating,

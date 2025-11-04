@@ -1,8 +1,14 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { useChatStream, type StreamChunk } from "@/hooks/useChatStream";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { ChatMessageData } from "@/components/molecules/ChatMessage/useChatMessage";
+import {
+  parseToolResponse,
+  extractCredentialsNeeded,
+  isValidMessage,
+  isToolCallArray,
+} from "./helpers";
 
 interface UseChatContainerArgs {
   sessionId: string | null;
@@ -30,38 +36,39 @@ export function useChatContainer({
   // Track streaming chunks in a ref so we can access the latest value in callbacks
   const streamingChunksRef = useRef<string[]>([]);
 
-  // Track when tool calls were displayed to ensure minimum visibility time
-  const toolCallTimestamps = useRef<Map<string, number>>(new Map());
-
   const { error, sendMessage: sendStreamMessage } = useChatStream();
 
   // Show streaming UI when we have text chunks, independent of connection state
   // This keeps the StreamingMessage visible during the transition to persisted message
   const isStreaming = hasTextChunks;
 
-  // Convert initial messages to our format, filtering out empty messages
-  const allMessages: ChatMessageData[] = [
-    ...initialMessages
+  /**
+   * Convert initial messages to our format, filtering out empty messages.
+   * Memoized to prevent expensive re-computation on every render.
+   */
+  const allMessages = useMemo((): ChatMessageData[] => {
+    const processedInitialMessages = initialMessages
       .filter((msg: Record<string, unknown>) => {
+        // Validate message structure first
+        if (!isValidMessage(msg)) {
+          console.warn("Invalid message structure from backend:", msg);
+          return false;
+        }
+
         // Include messages with content OR tool_calls (tool_call messages have empty content)
         const content = String(msg.content || "").trim();
-        const toolCalls = msg.tool_calls as unknown[] | undefined;
-        return content.length > 0 || (toolCalls && toolCalls.length > 0);
+        const toolCalls = msg.tool_calls;
+        return content.length > 0 || (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0);
       })
       .map((msg: Record<string, unknown>): ChatMessageData | null => {
         const content = String(msg.content || "");
         const role = String(msg.role || "assistant").toLowerCase();
 
         // Check if this is a tool_call message (assistant message with tool_calls)
-        const toolCalls = msg.tool_calls as
-          | Array<{
-              id: string;
-              type: string;
-              function: { name: string; arguments: string };
-            }>
-          | undefined;
+        const toolCalls = msg.tool_calls;
 
-        if (role === "assistant" && toolCalls && toolCalls.length > 0) {
+        // Validate tool_calls structure if present
+        if (role === "assistant" && toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
           // Skip tool_call messages from persisted history
           // We only show tool_calls during live streaming, not from history
           // The tool_response that follows it is what we want to display
@@ -70,76 +77,25 @@ export function useChatContainer({
 
         // Check if this is a tool response message (role="tool")
         if (role === "tool") {
-          // Try to parse the content as JSON to detect structured responses
-          try {
-            const parsed = JSON.parse(content);
-            if (parsed && typeof parsed === "object" && parsed.type) {
-              // Handle no_results
-              if (parsed.type === "no_results") {
-                return {
-                  type: "no_results",
-                  message: parsed.message || "No results found",
-                  suggestions: parsed.suggestions || [],
-                  sessionId: parsed.session_id,
-                  timestamp: msg.timestamp
-                    ? new Date(msg.timestamp as string)
-                    : undefined,
-                };
-              }
+          const timestamp = msg.timestamp
+            ? new Date(msg.timestamp as string)
+            : undefined;
 
-              // Handle agent_carousel
-              if (
-                parsed.type === "agent_carousel" &&
-                Array.isArray(parsed.agents)
-              ) {
-                return {
-                  type: "agent_carousel",
-                  agents: parsed.agents,
-                  totalCount: parsed.total_count,
-                  timestamp: msg.timestamp
-                    ? new Date(msg.timestamp as string)
-                    : undefined,
-                };
-              }
+          // Use helper function to parse tool response
+          const toolResponse = parseToolResponse(
+            content,
+            (msg.tool_call_id as string) || "",
+            "unknown",
+            timestamp
+          );
 
-              // Handle execution_started
-              if (parsed.type === "execution_started") {
-                return {
-                  type: "execution_started",
-                  executionId: parsed.execution_id || "",
-                  agentName: parsed.agent_name,
-                  message: parsed.message,
-                  timestamp: msg.timestamp
-                    ? new Date(msg.timestamp as string)
-                    : undefined,
-                };
-              }
-            }
-
-            // Generic tool response - not a specialized type
-            return {
-              type: "tool_response",
-              toolId: (msg.tool_call_id as string) || "",
-              toolName: "unknown",
-              result: parsed,
-              success: true,
-              timestamp: msg.timestamp
-                ? new Date(msg.timestamp as string)
-                : undefined,
-            };
-          } catch {
-            // Not valid JSON, treat as string result
-            return {
-              type: "tool_response",
-              toolId: (msg.tool_call_id as string) || "",
-              toolName: "unknown",
-              result: content,
-              success: true,
-              timestamp: msg.timestamp
-                ? new Date(msg.timestamp as string)
-                : undefined,
-            };
+          // parseToolResponse returns null for setup_requirements
+          // In that case, skip this message (it should be handled during streaming)
+          if (!toolResponse) {
+            return null;
           }
+
+          return toolResponse;
         }
 
         // Return as regular message
@@ -152,10 +108,28 @@ export function useChatContainer({
             : undefined,
         };
       })
-      .filter((msg): msg is ChatMessageData => msg !== null), // Remove null entries
-    ...messages,
-  ];
+      .filter((msg): msg is ChatMessageData => msg !== null); // Remove null entries
 
+    return [...processedInitialMessages, ...messages];
+  }, [initialMessages, messages]);
+
+  /**
+   * Send a message and handle the streaming response.
+   *
+   * Message Flow:
+   * 1. User message added immediately to local state
+   * 2. text_chunk events accumulate in streaming box
+   * 3. text_ended closes streaming box
+   * 4. tool_call_start shows ToolCallMessage (spinning gear)
+   * 5. tool_response replaces ToolCallMessage with ToolResponseMessage (result)
+   * 6. stream_end finalizes, saves to backend, triggers refresh
+   *
+   * State Management:
+   * - Local `messages` state tracks only new messages during streaming
+   * - `streamingChunks` accumulates text as it arrives
+   * - `streamingChunksRef` prevents stale closures in async handlers
+   * - On stream_end, local messages cleared and replaced by refreshed initialMessages
+   */
   const sendMessage = useCallback(
     async function sendMessage(content: string) {
       if (!sessionId) {
@@ -176,8 +150,6 @@ export function useChatContainer({
       setStreamingChunks([]);
       streamingChunksRef.current = [];
       setHasTextChunks(false);
-      // Clear any pending tool call timestamps
-      toolCallTimestamps.current.clear();
 
       try {
         // Stream the response
@@ -192,206 +164,89 @@ export function useChatContainer({
                 streamingChunksRef.current = updated;
                 return updated;
               });
-            } else if (chunk.type === "tool_call") {
-              // Record the timestamp when this tool call was displayed
-              toolCallTimestamps.current.set(chunk.tool_id!, Date.now());
-
-              // Add tool call message
+            } else if (chunk.type === "text_ended") {
+              // Close the streaming text box
+              console.log("[Text Ended] Closing streaming text box");
+              setStreamingChunks([]);
+              streamingChunksRef.current = [];
+              setHasTextChunks(false);
+            } else if (chunk.type === "tool_call_start") {
+              // Show ToolCallMessage immediately when tool execution starts
               const toolCallMessage: ChatMessageData = {
                 type: "tool_call",
-                toolId: chunk.tool_id!,
-                toolName: chunk.tool_name!,
-                arguments: chunk.arguments,
+                toolId: `tool-${Date.now()}-${chunk.idx || 0}`,
+                toolName: "Executing...",
+                arguments: {},
                 timestamp: new Date(),
               };
               setMessages((prev) => [...prev, toolCallMessage]);
-            } else if (chunk.type === "tool_response") {
-              // Parse the tool response first so it's available for all checks
-              let parsedResult: Record<string, unknown> | null = null;
-              try {
-                parsedResult =
-                  typeof chunk.result === "string"
-                    ? JSON.parse(chunk.result)
-                    : (chunk.result as Record<string, unknown>);
-              } catch {
-                // If parsing fails, we'll use the generic tool response
-                parsedResult = null;
-              }
 
-              // Ensure tool call was visible for at least 500ms
-              const MIN_DISPLAY_TIME = 500; // milliseconds
-              const toolCallTime = toolCallTimestamps.current.get(
+              console.log("[Tool Call Start]", {
+                toolId: toolCallMessage.toolId,
+                timestamp: new Date().toISOString(),
+              });
+            } else if (chunk.type === "tool_response") {
+              console.log("[Tool Response] Received:", {
+                toolId: chunk.tool_id,
+                toolName: chunk.tool_name,
+                timestamp: new Date().toISOString(),
+              });
+
+              // Use helper function to parse tool response
+              const responseMessage = parseToolResponse(
+                chunk.result!,
                 chunk.tool_id!,
+                chunk.tool_name!,
+                new Date()
               );
 
-              const processToolResponse = async () => {
-                if (toolCallTime) {
-                  const elapsed = Date.now() - toolCallTime;
-                  const remainingTime = MIN_DISPLAY_TIME - elapsed;
-
-                  if (remainingTime > 0) {
-                    await new Promise((resolve) =>
-                      setTimeout(resolve, remainingTime),
-                    );
-                  }
-
-                  // Clean up the timestamp
-                  toolCallTimestamps.current.delete(chunk.tool_id!);
-                }
-
-                // Create the appropriate message based on response type
-                let responseMessage: ChatMessageData;
-
-                if (parsedResult && typeof parsedResult === "object") {
-                  const responseType = parsedResult.type as string | undefined;
-
-                  // Handle no_results response
-                  if (responseType === "no_results") {
-                    responseMessage = {
-                      type: "no_results",
-                      message:
-                        (parsedResult.message as string) || "No results found",
-                      suggestions: (parsedResult.suggestions as string[]) || [],
-                      sessionId: parsedResult.session_id as string | undefined,
-                      timestamp: new Date(),
-                    };
-                  } else if (responseType === "agent_carousel") {
-                    // Handle agent_carousel response
-                    const agentsData = parsedResult.agents as Array<{
-                      id: string;
-                      name: string;
-                      description: string;
-                      version?: number;
-                    }>;
-                    if (agentsData && Array.isArray(agentsData)) {
-                      responseMessage = {
-                        type: "agent_carousel",
-                        agents: agentsData,
-                        totalCount: parsedResult.total_count as
-                          | number
-                          | undefined,
-                        timestamp: new Date(),
-                      };
-                    } else {
-                      // Fallback to generic if agents array is invalid
-                      responseMessage = {
-                        type: "tool_response",
-                        toolId: chunk.tool_id!,
-                        toolName: chunk.tool_name!,
-                        result: chunk.result!,
-                        success: chunk.success,
-                        timestamp: new Date(),
-                      };
-                    }
-                  } else if (responseType === "execution_started") {
-                    // Handle execution_started response
-                    responseMessage = {
-                      type: "execution_started",
-                      executionId: (parsedResult.execution_id as string) || "",
-                      agentName: parsedResult.agent_name as string | undefined,
-                      message: parsedResult.message as string | undefined,
-                      timestamp: new Date(),
-                    };
-                  } else {
-                    // Generic tool response
-                    responseMessage = {
-                      type: "tool_response",
-                      toolId: chunk.tool_id!,
-                      toolName: chunk.tool_name!,
-                      result: chunk.result!,
-                      success: chunk.success,
-                      timestamp: new Date(),
-                    };
-                  }
-                } else {
-                  // Generic tool response if parsing failed
-                  responseMessage = {
-                    type: "tool_response",
-                    toolId: chunk.tool_id!,
-                    toolName: chunk.tool_name!,
-                    result: chunk.result!,
-                    success: chunk.success,
-                    timestamp: new Date(),
-                  };
-                }
-
-                // Replace the tool_call message with the response message
-                setMessages((prev) => {
-                  // Find and replace the tool_call message with the same tool_id
-                  const toolCallIndex = prev.findIndex(
-                    (msg) =>
-                      msg.type === "tool_call" && msg.toolId === chunk.tool_id,
-                  );
-
-                  if (toolCallIndex !== -1) {
-                    // Replace the tool_call with the response
-                    const newMessages = [...prev];
-                    newMessages[toolCallIndex] = responseMessage;
-                    return newMessages;
-                  } else {
-                    // Tool call not found (shouldn't happen), just append
-                    return [...prev, responseMessage];
-                  }
-                });
-              };
-
-              // Process the tool response with potential delay
-              processToolResponse();
-
-              // Check if this is get_required_setup_info and has missing credentials
-              if (
-                chunk.tool_name === "get_required_setup_info" &&
-                chunk.success &&
-                parsedResult
-              ) {
+              // If helper returns null (setup_requirements), handle credentials
+              if (!responseMessage) {
+                // Parse for credentials check
+                let parsedResult: Record<string, unknown> | null = null;
                 try {
-                  const setupInfo = parsedResult?.setup_info as
-                    | Record<string, unknown>
-                    | undefined;
-                  const userReadiness = setupInfo?.user_readiness as
-                    | Record<string, unknown>
-                    | undefined;
-                  const missingCreds = userReadiness?.missing_credentials as
-                    | Record<string, Record<string, unknown>>
-                    | undefined;
+                  parsedResult =
+                    typeof chunk.result === "string"
+                      ? JSON.parse(chunk.result)
+                      : (chunk.result as Record<string, unknown>);
+                } catch {
+                  parsedResult = null;
+                }
 
-                  // If there are missing credentials, show a prompt
-                  if (missingCreds && Object.keys(missingCreds).length > 0) {
-                    // Get the first missing credential to show
-                    const firstCredKey = Object.keys(missingCreds)[0];
-                    const credInfo = missingCreds[firstCredKey];
-
-                    const credentialsMessage: ChatMessageData = {
-                      type: "credentials_needed",
-                      provider: (credInfo.provider as string) || "unknown",
-                      providerName:
-                        (credInfo.provider_name as string) ||
-                        (credInfo.provider as string) ||
-                        "Unknown Provider",
-                      credentialType: (credInfo.type as string) || "api_key",
-                      title:
-                        (credInfo.title as string) ||
-                        (setupInfo?.agent_name as string) ||
-                        "this agent",
-                      message: `To run ${(setupInfo?.agent_name as string) || "this agent"}, you need to add ${(credInfo.provider_name as string) || (credInfo.provider as string)} credentials.`,
-                      scopes: credInfo.scopes as string[] | undefined,
-                      timestamp: new Date(),
-                    };
+                // Check if this is get_required_setup_info with missing credentials
+                if (
+                  chunk.tool_name === "get_required_setup_info" &&
+                  chunk.success &&
+                  parsedResult
+                ) {
+                  const credentialsMessage = extractCredentialsNeeded(parsedResult);
+                  if (credentialsMessage) {
                     setMessages((prev) => [...prev, credentialsMessage]);
                   }
-                } catch (err) {
-                  console.error(
-                    "Failed to parse setup info for credentials check:",
-                    err,
-                  );
-                  toast.error("Failed to parse credential requirements", {
-                    description:
-                      err instanceof Error
-                        ? err.message
-                        : "Could not process setup information",
-                  });
                 }
+
+                // Don't add message if setup_requirements
+                return;
               }
+
+              // Replace the most recent tool_call message with the response
+              setMessages((prev) => {
+                const toolCallIndex = [...prev]
+                  .reverse()
+                  .findIndex((msg) => msg.type === "tool_call");
+
+                if (toolCallIndex !== -1) {
+                  const actualIndex = prev.length - 1 - toolCallIndex;
+                  const newMessages = [...prev];
+                  newMessages[actualIndex] = responseMessage;
+
+                  console.log("[Tool Response] Replaced tool_call at index:", actualIndex);
+                  return newMessages;
+                }
+
+                console.warn("[Tool Response] No tool_call found to replace, appending");
+                return [...prev, responseMessage];
+              });
             } else if (chunk.type === "login_needed") {
               // Add login needed message
               const loginNeededMessage: ChatMessageData = {
@@ -402,6 +257,27 @@ export function useChatContainer({
               };
               setMessages((prev) => [...prev, loginNeededMessage]);
             } else if (chunk.type === "stream_end") {
+              console.log("[Stream End] Final state:", {
+                localMessages: messages.map((m) => ({
+                  type: m.type,
+                  ...(m.type === "message" && {
+                    role: m.role,
+                    contentLength: m.content.length,
+                  }),
+                  ...(m.type === "tool_call" && {
+                    toolId: m.toolId,
+                    toolName: m.toolName,
+                  }),
+                  ...(m.type === "tool_response" && {
+                    toolId: m.toolId,
+                    toolName: m.toolName,
+                    success: m.success,
+                  }),
+                })),
+                streamingChunks: streamingChunksRef.current,
+                timestamp: new Date().toISOString(),
+              });
+
               // Convert streaming chunks into a completed assistant message
               // This provides seamless transition without flash or resize
               // Use ref to get the latest chunks value (not stale closure value)
@@ -415,12 +291,9 @@ export function useChatContainer({
                   timestamp: new Date(),
                 };
 
-                // Replace ALL local messages with just the completed message
-                // This prevents duplicates when initialMessages updates from backend
-                setMessages([assistantMessage]);
-              } else {
-                // No text content, just clear all local messages
-                setMessages([]);
+                // Add the completed assistant message to local state
+                // It will be visible immediately while backend updates
+                setMessages((prev) => [...prev, assistantMessage]);
               }
 
               // Clear streaming state immediately now that we have the message
@@ -428,12 +301,24 @@ export function useChatContainer({
               streamingChunksRef.current = [];
               setHasTextChunks(false);
 
-              // Refresh session data in background, then clear local messages
-              // The completed message from initialMessages will replace our local one
-              onRefreshSession().then(() => {
-                setMessages([]);
-                toolCallTimestamps.current.clear();
-              });
+              // Refresh session data from backend, then clear local messages
+              // The backend-persisted messages in initialMessages will replace our local ones
+              onRefreshSession()
+                .then(() => {
+                  // Clear local messages, but keep UI-only message types that aren't persisted by backend
+                  setMessages((prev) =>
+                    prev.filter((msg) =>
+                      // Keep UI-only message types
+                      msg.type === "credentials_needed" ||
+                      msg.type === "login_needed" ||
+                      msg.type === "no_results" ||
+                      msg.type === "agent_carousel"
+                    )
+                  );
+                })
+                .catch((err) => {
+                  console.error("[Stream End] Failed to refresh session:", err);
+                });
             } else if (chunk.type === "error") {
               const errorMessage =
                 chunk.message || chunk.content || "An error occurred";

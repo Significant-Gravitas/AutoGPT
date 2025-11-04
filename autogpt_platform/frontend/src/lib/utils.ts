@@ -420,3 +420,10 @@ export function isEmpty(value: any): boolean {
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/** Validate UUID v4 format */
+export function isValidUUID(value: string): boolean {
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
+}

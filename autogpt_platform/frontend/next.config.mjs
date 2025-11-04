@@ -10,6 +10,7 @@ const nextConfig = {
       "upload.wikimedia.org",
       "storage.googleapis.com",
 
+      "example.com",
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
     ],

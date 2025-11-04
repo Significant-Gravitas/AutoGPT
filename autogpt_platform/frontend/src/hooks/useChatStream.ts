@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import type { ToolArguments, ToolResult } from "@/types/chat";
 
@@ -8,7 +8,9 @@ const INITIAL_RETRY_DELAY = 1000; // 1 second
 export interface StreamChunk {
   type:
     | "text_chunk"
+    | "text_ended"
     | "tool_call"
+    | "tool_call_start"
     | "tool_response"
     | "login_needed"
     | "credentials_needed"
@@ -24,6 +26,7 @@ export interface StreamChunk {
   arguments?: ToolArguments;
   result?: ToolResult;
   success?: boolean;
+  idx?: number; // Index for tool_call_start
   // Login needed fields
   session_id?: string;
   // Credentials needed fields
@@ -52,8 +55,15 @@ export function useChatStream(): UseChatStreamResult {
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryCountRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const stopStreaming = useCallback(function stopStreaming() {
+    // Abort any ongoing operations
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
@@ -66,6 +76,13 @@ export function useChatStream(): UseChatStreamResult {
     setIsStreaming(false);
   }, []);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopStreaming();
+    };
+  }, [stopStreaming]);
+
   const sendMessage = useCallback(
     async function sendMessage(
       sessionId: string,
@@ -74,6 +91,15 @@ export function useChatStream(): UseChatStreamResult {
     ) {
       // Stop any existing stream
       stopStreaming();
+
+      // Create abort controller for this request
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      // Check if already aborted
+      if (abortController.signal.aborted) {
+        return Promise.reject(new Error("Request aborted"));
+      }
 
       // Reset retry count for new message
       retryCountRef.current = 0;
@@ -90,6 +116,12 @@ export function useChatStream(): UseChatStreamResult {
         // Create EventSource for SSE (connects to our Next.js proxy)
         const eventSource = new EventSource(url);
         eventSourceRef.current = eventSource;
+
+        // Listen for abort signal
+        abortController.signal.addEventListener('abort', () => {
+          eventSource.close();
+          eventSourceRef.current = null;
+        });
 
         // Handle incoming messages
         eventSource.onmessage = function handleMessage(event) {
