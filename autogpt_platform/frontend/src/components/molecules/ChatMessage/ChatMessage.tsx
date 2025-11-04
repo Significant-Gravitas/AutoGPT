@@ -2,10 +2,11 @@ import { cn } from "@/lib/utils";
 import { Robot, User } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { MessageBubble } from "@/components/atoms/MessageBubble/MessageBubble";
+import { MarkdownContent } from "@/components/atoms/MarkdownContent/MarkdownContent";
 import { ToolCallMessage } from "@/components/molecules/ToolCallMessage/ToolCallMessage";
 import { ToolResponseMessage } from "@/components/molecules/ToolResponseMessage/ToolResponseMessage";
 import { LoginPrompt } from "@/components/molecules/LoginPrompt/LoginPrompt";
-import { CredentialsNeededPrompt } from "@/components/molecules/CredentialsNeededPrompt/CredentialsNeededPrompt";
+import { ChatCredentialsSetup } from "@/app/(platform)/chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
 import { NoResultsMessage } from "@/components/molecules/NoResultsMessage/NoResultsMessage";
 import { AgentCarouselMessage } from "@/components/molecules/AgentCarouselMessage/AgentCarouselMessage";
 import { ExecutionStartedMessage } from "@/components/molecules/ExecutionStartedMessage/ExecutionStartedMessage";
@@ -16,6 +17,7 @@ export interface ChatMessageProps {
   className?: string;
   onDismissLogin?: () => void;
   onDismissCredentials?: () => void;
+  onSendMessage?: (content: string) => void;
 }
 
 export function ChatMessage({
@@ -23,6 +25,7 @@ export function ChatMessage({
   className,
   onDismissLogin,
   onDismissCredentials,
+  onSendMessage,
 }: ChatMessageProps) {
   const router = useRouter();
   const {
@@ -52,10 +55,15 @@ export function ChatMessage({
     }
   }
 
-  function handleSetupCredentials() {
-    // For now, redirect to integrations page
-    // TODO: Deep link to specific provider when backend provides agent/block context
-    router.push("/integrations");
+  function handleAllCredentialsComplete() {
+    // Send a user message saying credentials are configured
+    if (onSendMessage) {
+      onSendMessage("Credentials have been configured. Ready to proceed.");
+    }
+    // Optionally dismiss the credentials prompt
+    if (onDismissCredentials) {
+      onDismissCredentials();
+    }
   }
 
   function handleCancelCredentials() {
@@ -68,13 +76,11 @@ export function ChatMessage({
   // Render credentials needed messages
   if (isCredentialsNeeded && message.type === "credentials_needed") {
     return (
-      <CredentialsNeededPrompt
-        provider={message.provider}
-        providerName={message.providerName}
-        credentialType={message.credentialType}
-        title={message.title}
+      <ChatCredentialsSetup
+        credentials={message.credentials}
+        agentName={message.agentName}
         message={message.message}
-        onSetupCredentials={handleSetupCredentials}
+        onAllCredentialsComplete={handleAllCredentialsComplete}
         onCancel={handleCancelCredentials}
         className={className}
       />
@@ -184,7 +190,7 @@ export function ChatMessage({
         {/* Message Content */}
         <div className={cn("flex max-w-[70%] flex-col", isUser && "items-end")}>
           <MessageBubble variant={isUser ? "user" : "assistant"}>
-            <div className="whitespace-pre-wrap">{message.content}</div>
+            <MarkdownContent content={message.content} />
           </MessageBubble>
 
           {/* Timestamp */}

@@ -239,12 +239,17 @@ export const WithCredentialsPrompt: Story = {
       },
       {
         type: "credentials_needed" as const,
-        provider: "github",
-        providerName: "GitHub",
-        credentialType: "oauth2",
-        title: "GitHub Integration Agent",
+        credentials: [
+          {
+            provider: "github",
+            providerName: "GitHub",
+            credentialType: "oauth2" as const,
+            title: "GitHub Integration",
+          },
+        ],
+        agentName: "GitHub Integration Agent",
         message:
-          "To run the GitHub Integration Agent, you need to add GitHub credentials.",
+          "To run GitHub Integration Agent, you need to add credentials.",
         timestamp: new Date(Date.now() - 2 * 60 * 1000),
       },
     ],
@@ -413,12 +418,17 @@ export const MixedConversation: Story = {
       },
       {
         type: "credentials_needed" as const,
-        provider: "gmail",
-        providerName: "Gmail",
-        credentialType: "oauth2",
-        title: "Email Automation",
+        credentials: [
+          {
+            provider: "gmail",
+            providerName: "Gmail",
+            credentialType: "oauth2" as const,
+            title: "Gmail Integration",
+          },
+        ],
+        agentName: "Email Automation",
         message:
-          "To run the Email Automation agent, you need to add Gmail credentials.",
+          "To run Email Automation, you need to add credentials.",
         timestamp: new Date(Date.now() - 8 * 60 * 1000),
       },
       {

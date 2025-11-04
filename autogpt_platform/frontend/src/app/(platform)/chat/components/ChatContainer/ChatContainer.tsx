@@ -48,6 +48,7 @@ export function ChatContainer({
           messages={messages}
           streamingChunks={streamingChunks}
           isStreaming={isStreaming}
+          onSendMessage={sendMessage}
           className="flex-1"
         />
       )}

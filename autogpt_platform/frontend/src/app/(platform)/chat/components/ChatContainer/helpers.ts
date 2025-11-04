@@ -325,26 +325,29 @@ export function extractCredentialsNeeded(
       | Record<string, Record<string, unknown>>
       | undefined;
 
-    // If there are missing credentials, create the message
+    // If there are missing credentials, create the message with ALL credentials
     if (missingCreds && Object.keys(missingCreds).length > 0) {
-      // Get the first missing credential to show
-      const firstCredKey = Object.keys(missingCreds)[0];
-      const credInfo = missingCreds[firstCredKey];
+      const agentName = (setupInfo?.agent_name as string) || "this agent";
 
-      return {
-        type: "credentials_needed",
+      // Map all missing credentials to the array format
+      const credentials = Object.values(missingCreds).map((credInfo) => ({
         provider: (credInfo.provider as string) || "unknown",
         providerName:
           (credInfo.provider_name as string) ||
           (credInfo.provider as string) ||
           "Unknown Provider",
-        credentialType: (credInfo.type as string) || "api_key",
+        credentialType: (credInfo.type as "api_key" | "oauth2" | "user_password" | "host_scoped") || "api_key",
         title:
           (credInfo.title as string) ||
-          (setupInfo?.agent_name as string) ||
-          "this agent",
-        message: `To run ${(setupInfo?.agent_name as string) || "this agent"}, you need to add ${(credInfo.provider_name as string) || (credInfo.provider as string)} credentials.`,
+          `${(credInfo.provider_name as string) || (credInfo.provider as string)} credentials`,
         scopes: credInfo.scopes as string[] | undefined,
+      }));
+
+      return {
+        type: "credentials_needed",
+        credentials,
+        message: `To run ${agentName}, you need to add ${credentials.length === 1 ? "credentials" : `${credentials.length} credentials`}.`,
+        agentName,
         timestamp: new Date(),
       };
     }

@@ -301,24 +301,9 @@ export function useChatContainer({
               streamingChunksRef.current = [];
               setHasTextChunks(false);
 
-              // Refresh session data from backend, then clear local messages
-              // The backend-persisted messages in initialMessages will replace our local ones
-              onRefreshSession()
-                .then(() => {
-                  // Clear local messages, but keep UI-only message types that aren't persisted by backend
-                  setMessages((prev) =>
-                    prev.filter((msg) =>
-                      // Keep UI-only message types
-                      msg.type === "credentials_needed" ||
-                      msg.type === "login_needed" ||
-                      msg.type === "no_results" ||
-                      msg.type === "agent_carousel"
-                    )
-                  );
-                })
-                .catch((err) => {
-                  console.error("[Stream End] Failed to refresh session:", err);
-                });
+              // Messages are now in local state and will be displayed
+              // No need to refresh from backend - local state is the source of truth
+              console.log("[Stream End] Stream complete, messages in local state");
             } else if (chunk.type === "error") {
               const errorMessage =
                 chunk.message || chunk.content || "An error occurred";

@@ -10,6 +10,7 @@ export interface MessageListProps {
   isStreaming?: boolean;
   className?: string;
   onStreamComplete?: () => void;
+  onSendMessage?: (content: string) => void;
 }
 
 export function MessageList({
@@ -18,6 +19,7 @@ export function MessageList({
   isStreaming = false,
   className,
   onStreamComplete,
+  onSendMessage,
 }: MessageListProps) {
   const { messagesEndRef, messagesContainerRef } = useMessageList({
     messageCount: messages.length,
@@ -36,7 +38,7 @@ export function MessageList({
       <div className="space-y-0">
         {/* Render all persisted messages */}
         {messages.map((message, index) => (
-          <ChatMessage key={index} message={message} />
+          <ChatMessage key={index} message={message} onSendMessage={onSendMessage} />
         ))}
 
         {/* Render streaming message if active */}

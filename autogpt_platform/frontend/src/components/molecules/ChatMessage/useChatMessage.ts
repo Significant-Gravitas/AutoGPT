@@ -31,12 +31,15 @@ export type ChatMessageData =
     }
   | {
       type: "credentials_needed";
-      provider: string;
-      providerName: string;
-      credentialType: string;
-      title: string;
+      credentials: Array<{
+        provider: string;
+        providerName: string;
+        credentialType: "api_key" | "oauth2" | "user_password" | "host_scoped";
+        title: string;
+        scopes?: string[];
+      }>;
       message: string;
-      scopes?: string[];
+      agentName?: string;
       timestamp?: string | Date;
     }
   | {
