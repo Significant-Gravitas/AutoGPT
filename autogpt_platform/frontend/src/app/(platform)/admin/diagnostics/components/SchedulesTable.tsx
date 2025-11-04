@@ -97,7 +97,12 @@ export function SchedulesTable({
   const activeQuery =
     activeTab === "orphaned" ? orphanedSchedulesQuery : allSchedulesQuery;
 
-  const { data: schedulesResponse, isLoading, error, refetch } = activeQuery;
+  const {
+    data: schedulesResponse,
+    isLoading,
+    error: _error,
+    refetch,
+  } = activeQuery;
 
   const schedules =
     (schedulesResponse?.data as any)?.schedules || ([] as any[]);
