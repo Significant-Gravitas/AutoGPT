@@ -13,6 +13,7 @@ export interface StreamChunk {
     | "tool_call_start"
     | "tool_response"
     | "login_needed"
+    | "need_login"
     | "credentials_needed"
     | "error"
     | "usage"
@@ -29,6 +30,11 @@ export interface StreamChunk {
   idx?: number; // Index for tool_call_start
   // Login needed fields
   session_id?: string;
+  agent_info?: {
+    graph_id: string;
+    name: string;
+    trigger_type: string;
+  };
   // Credentials needed fields
   provider?: string;
   provider_name?: string;
@@ -45,6 +51,7 @@ interface UseChatStreamResult {
     sessionId: string,
     message: string,
     onChunk: (chunk: StreamChunk) => void,
+    isUserMessage?: boolean,
   ) => Promise<void>;
   stopStreaming: () => void;
 }
@@ -88,6 +95,7 @@ export function useChatStream(): UseChatStreamResult {
       sessionId: string,
       message: string,
       onChunk: (chunk: StreamChunk) => void,
+      isUserMessage: boolean = true,
     ) {
       // Stop any existing stream
       stopStreaming();
@@ -111,7 +119,7 @@ export function useChatStream(): UseChatStreamResult {
         // EventSource doesn't support custom headers, so we use a Next.js API route
         // that acts as a proxy and adds authentication headers server-side
         // This matches the pattern from PR #10905 where SSE went through the same server
-        const url = `/api/chat/sessions/${sessionId}/stream?message=${encodeURIComponent(message)}`;
+        const url = `/api/chat/sessions/${sessionId}/stream?message=${encodeURIComponent(message)}&is_user_message=${isUserMessage}`;
 
         // Create EventSource for SSE (connects to our Next.js proxy)
         const eventSource = new EventSource(url);
@@ -171,7 +179,7 @@ export function useChatStream(): UseChatStreamResult {
 
             retryTimeoutRef.current = setTimeout(() => {
               // Retry by recursively calling sendMessage
-              sendMessage(sessionId, message, onChunk).catch((err) => {
+              sendMessage(sessionId, message, onChunk, isUserMessage).catch((err) => {
                 console.error("Retry failed:", err);
               });
             }, retryDelay);

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
 import { Key, Check, Warning } from "@phosphor-icons/react";
@@ -50,10 +50,22 @@ export function ChatCredentialsSetup({
   const { selectedCredentials, isAllComplete, handleCredentialSelect } =
     useChatCredentialsSetup(credentials);
 
+  // Track if we've already called completion to prevent double calls
+  const hasCalledCompleteRef = useRef(false);
+
+  // Reset the completion flag when credentials change (new credential setup flow)
+  useEffect(
+    function resetCompletionFlag() {
+      hasCalledCompleteRef.current = false;
+    },
+    [credentials],
+  );
+
   // Auto-call completion when all credentials are configured
   useEffect(
     function autoCompleteWhenReady() {
-      if (isAllComplete) {
+      if (isAllComplete && !hasCalledCompleteRef.current) {
+        hasCalledCompleteRef.current = true;
         onAllCredentialsComplete();
       }
     },

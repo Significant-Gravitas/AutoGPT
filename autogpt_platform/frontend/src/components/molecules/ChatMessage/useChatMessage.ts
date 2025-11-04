@@ -27,6 +27,11 @@ export type ChatMessageData =
       type: "login_needed";
       message: string;
       sessionId: string;
+      agentInfo?: {
+        graph_id: string;
+        name: string;
+        trigger_type: string;
+      };
       timestamp?: string | Date;
     }
   | {

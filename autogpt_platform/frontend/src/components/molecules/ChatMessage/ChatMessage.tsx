@@ -1,15 +1,17 @@
 import { cn } from "@/lib/utils";
-import { Robot, User } from "@phosphor-icons/react";
+import { Robot, User, CheckCircle } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
+import { useCallback } from "react";
 import { MessageBubble } from "@/components/atoms/MessageBubble/MessageBubble";
 import { MarkdownContent } from "@/components/atoms/MarkdownContent/MarkdownContent";
 import { ToolCallMessage } from "@/components/molecules/ToolCallMessage/ToolCallMessage";
 import { ToolResponseMessage } from "@/components/molecules/ToolResponseMessage/ToolResponseMessage";
-import { LoginPrompt } from "@/components/molecules/LoginPrompt/LoginPrompt";
+import { AuthPromptWidget } from "@/components/molecules/AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "@/app/(platform)/chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
 import { NoResultsMessage } from "@/components/molecules/NoResultsMessage/NoResultsMessage";
 import { AgentCarouselMessage } from "@/components/molecules/AgentCarouselMessage/AgentCarouselMessage";
 import { ExecutionStartedMessage } from "@/components/molecules/ExecutionStartedMessage/ExecutionStartedMessage";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
 
 export interface ChatMessageProps {
@@ -17,7 +19,7 @@ export interface ChatMessageProps {
   className?: string;
   onDismissLogin?: () => void;
   onDismissCredentials?: () => void;
-  onSendMessage?: (content: string) => void;
+  onSendMessage?: (content: string, isUserMessage?: boolean) => void;
 }
 
 export function ChatMessage({
@@ -28,6 +30,7 @@ export function ChatMessage({
   onSendMessage,
 }: ChatMessageProps) {
   const router = useRouter();
+  const { user } = useSupabase();
   const {
     formattedTimestamp,
     isUser,
@@ -55,19 +58,22 @@ export function ChatMessage({
     }
   }
 
-  function handleAllCredentialsComplete() {
-    // Send a user message that explicitly asks to retry the setup
-    // This ensures the LLM calls get_required_setup_info again and proceeds with execution
-    if (onSendMessage) {
-      onSendMessage(
-        "I've configured the required credentials. Please check if everything is ready and proceed with setting up the agent.",
-      );
-    }
-    // Optionally dismiss the credentials prompt
-    if (onDismissCredentials) {
-      onDismissCredentials();
-    }
-  }
+  const handleAllCredentialsComplete = useCallback(
+    function handleAllCredentialsComplete() {
+      // Send a user message that explicitly asks to retry the setup
+      // This ensures the LLM calls get_required_setup_info again and proceeds with execution
+      if (onSendMessage) {
+        onSendMessage(
+          "I've configured the required credentials. Please check if everything is ready and proceed with setting up the agent.",
+        );
+      }
+      // Optionally dismiss the credentials prompt
+      if (onDismissCredentials) {
+        onDismissCredentials();
+      }
+    },
+    [onSendMessage, onDismissCredentials],
+  );
 
   function handleCancelCredentials() {
     // Dismiss the credentials prompt
@@ -92,13 +98,41 @@ export function ChatMessage({
 
   // Render login needed messages
   if (isLoginNeeded && message.type === "login_needed") {
+    // If user is already logged in, show success message instead of auth prompt
+    if (user) {
+      return (
+        <div className={cn("px-4 py-2", className)}>
+          <div className="my-4 overflow-hidden rounded-lg border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 dark:border-green-800 dark:from-green-950/30 dark:to-emerald-950/30">
+            <div className="px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-600">
+                  <CheckCircle size={20} weight="fill" className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                    Successfully Authenticated
+                  </h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    You're now signed in and ready to continue
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Show auth prompt if not logged in
     return (
-      <LoginPrompt
-        message={message.message}
-        onLogin={handleLogin}
-        onContinueAsGuest={handleContinueAsGuest}
-        className={className}
-      />
+      <div className={cn("px-4 py-2", className)}>
+        <AuthPromptWidget
+          message={message.message}
+          sessionId={message.sessionId}
+          agentInfo={message.agentInfo}
+          returnUrl="/chat"
+        />
+      </div>
     );
   }
 

@@ -14,6 +14,7 @@ export async function GET(
   const { sessionId } = await params;
   const searchParams = request.nextUrl.searchParams;
   const message = searchParams.get("message");
+  const isUserMessage = searchParams.get("is_user_message");
 
   if (!message) {
     return new Response("Missing message parameter", { status: 400 });
@@ -30,6 +31,11 @@ export async function GET(
       backendUrl,
     );
     streamUrl.searchParams.set("message", message);
+
+    // Pass is_user_message parameter if provided
+    if (isUserMessage !== null) {
+      streamUrl.searchParams.set("is_user_message", isUserMessage);
+    }
 
     // Forward request to backend with auth header
     const headers: Record<string, string> = {

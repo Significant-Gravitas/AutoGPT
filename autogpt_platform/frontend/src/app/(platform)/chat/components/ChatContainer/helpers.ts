@@ -182,13 +182,14 @@ export function parseToolResponse(
   if (parsedResult && typeof parsedResult === "object") {
     const responseType = parsedResult.type as string | undefined;
 
-    // Handle no_results response
+    // Handle no_results response - treat as a successful tool response
     if (responseType === "no_results") {
       return {
-        type: "no_results",
-        message: (parsedResult.message as string) || "No results found",
-        suggestions: (parsedResult.suggestions as string[]) || [],
-        sessionId: parsedResult.session_id as string | undefined,
+        type: "tool_response",
+        toolId,
+        toolName,
+        result: parsedResult.message || "No results found",
+        success: true,
         timestamp: timestamp || new Date(),
       };
     }
@@ -217,6 +218,25 @@ export function parseToolResponse(
         executionId: (parsedResult.execution_id as string) || "",
         agentName: parsedResult.agent_name as string | undefined,
         message: parsedResult.message as string | undefined,
+        timestamp: timestamp || new Date(),
+      };
+    }
+
+    // Handle need_login response
+    if (responseType === "need_login") {
+      return {
+        type: "login_needed",
+        message:
+          (parsedResult.message as string) ||
+          "Please sign in to use chat and agent features",
+        sessionId: (parsedResult.session_id as string) || "",
+        agentInfo: parsedResult.agent_info as
+          | {
+              graph_id: string;
+              name: string;
+              trigger_type: string;
+            }
+          | undefined,
         timestamp: timestamp || new Date(),
       };
     }

@@ -21,7 +21,7 @@ interface UseChatContainerResult {
   streamingChunks: string[];
   isStreaming: boolean;
   error: Error | null;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, isUserMessage?: boolean) => Promise<void>;
 }
 
 export function useChatContainer({
@@ -139,13 +139,13 @@ export function useChatContainer({
    * - On stream_end, local messages cleared and replaced by refreshed initialMessages
    */
   const sendMessage = useCallback(
-    async function sendMessage(content: string) {
+    async function sendMessage(content: string, isUserMessage: boolean = true) {
       if (!sessionId) {
         console.error("Cannot send message: no session ID");
         return;
       }
 
-      // Add user message immediately
+      // Add user message immediately (only if it's a user message)
       const userMessage: ChatMessageData = {
         type: "message",
         role: "user",
@@ -155,13 +155,24 @@ export function useChatContainer({
 
       // Remove any pending credentials_needed or login_needed messages when user sends a new message
       // This prevents them from persisting after the user has taken action
-      setMessages((prev) => {
-        const filtered = prev.filter(
-          (msg) =>
-            msg.type !== "credentials_needed" && msg.type !== "login_needed",
+      // Only add user message to UI if isUserMessage is true
+      if (isUserMessage) {
+        setMessages((prev) => {
+          const filtered = prev.filter(
+            (msg) =>
+              msg.type !== "credentials_needed" && msg.type !== "login_needed",
+          );
+          return [...filtered, userMessage];
+        });
+      } else {
+        // For system messages, just remove the login/credentials prompts
+        setMessages((prev) =>
+          prev.filter(
+            (msg) =>
+              msg.type !== "credentials_needed" && msg.type !== "login_needed",
+          ),
         );
-        return [...filtered, userMessage];
-      });
+      }
 
       // Clear streaming chunks and reset text flag
       setStreamingChunks([]);
@@ -182,8 +193,21 @@ export function useChatContainer({
                 return updated;
               });
             } else if (chunk.type === "text_ended") {
-              // Close the streaming text box
-              console.log("[Text Ended] Closing streaming text box");
+              // Save the completed text as an assistant message before clearing
+              console.log("[Text Ended] Saving streamed text as assistant message");
+              const completedText = streamingChunksRef.current.join("");
+
+              if (completedText.trim()) {
+                const assistantMessage: ChatMessageData = {
+                  type: "message",
+                  role: "assistant",
+                  content: completedText,
+                  timestamp: new Date(),
+                };
+                setMessages((prev) => [...prev, assistantMessage]);
+              }
+
+              // Clear streaming state
               setStreamingChunks([]);
               streamingChunksRef.current = [];
               setHasTextChunks(false);
@@ -211,11 +235,32 @@ export function useChatContainer({
                 timestamp: new Date().toISOString(),
               });
 
+              // Find the matching tool_call to get the tool name if missing
+              let toolName = chunk.tool_name || "unknown";
+              if (!chunk.tool_name || chunk.tool_name === "unknown") {
+                setMessages((prev) => {
+                  const matchingToolCall = [...prev]
+                    .reverse()
+                    .find(
+                      (msg) =>
+                        msg.type === "tool_call" &&
+                        msg.toolId === chunk.tool_id,
+                    );
+                  if (
+                    matchingToolCall &&
+                    matchingToolCall.type === "tool_call"
+                  ) {
+                    toolName = matchingToolCall.toolName;
+                  }
+                  return prev;
+                });
+              }
+
               // Use helper function to parse tool response
               const responseMessage = parseToolResponse(
                 chunk.result!,
                 chunk.tool_id!,
-                chunk.tool_name!,
+                toolName,
                 new Date(),
               );
 
@@ -277,12 +322,18 @@ export function useChatContainer({
                 );
                 return [...prev, responseMessage];
               });
-            } else if (chunk.type === "login_needed") {
+            } else if (
+              chunk.type === "login_needed" ||
+              chunk.type === "need_login"
+            ) {
               // Add login needed message
               const loginNeededMessage: ChatMessageData = {
                 type: "login_needed",
-                message: chunk.message || "Authentication required to continue",
+                message:
+                  chunk.message ||
+                  "Please sign in to use chat and agent features",
                 sessionId: chunk.session_id || sessionId,
+                agentInfo: chunk.agent_info,
                 timestamp: new Date(),
               };
               setMessages((prev) => [...prev, loginNeededMessage]);
@@ -351,6 +402,7 @@ export function useChatContainer({
             }
             // TODO: Handle usage for display
           },
+          isUserMessage,
         );
       } catch (err) {
         console.error("Failed to send message:", err);

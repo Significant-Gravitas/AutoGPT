@@ -208,26 +208,6 @@ export const WithToolResponses: Story = {
   },
 };
 
-export const WithLoginPrompt: Story = {
-  args: {
-    messages: [
-      {
-        type: "message" as const,
-        role: "user" as const,
-        content: "Run this agent for me",
-        timestamp: new Date(Date.now() - 3 * 60 * 1000),
-      },
-      {
-        type: "login_needed" as const,
-        message:
-          "To run agents and save your chat history, please log in to your account.",
-        sessionId: "session-123",
-        timestamp: new Date(Date.now() - 2 * 60 * 1000),
-      },
-    ],
-  },
-};
-
 export const WithCredentialsPrompt: Story = {
   args: {
     messages: [

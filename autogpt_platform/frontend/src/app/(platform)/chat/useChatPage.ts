@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useChatSession } from "@/hooks/useChatSession";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useChatStream } from "@/hooks/useChatStream";
 
 interface UseChatPageResult {
   session: ReturnType<typeof useChatSession>["session"];
@@ -18,9 +20,14 @@ interface UseChatPageResult {
 export function useChatPage(): UseChatPageResult {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const urlSessionId = searchParams.get("session");
+  // Support both 'session' and 'session_id' query parameters
+  const urlSessionId =
+    searchParams.get("session_id") || searchParams.get("session");
   const [isOnline, setIsOnline] = useState(true);
   const hasCreatedSessionRef = useRef(false);
+  const hasClaimedSessionRef = useRef(false);
+  const { user } = useSupabase();
+  const { sendMessage: sendStreamMessage } = useChatStream();
 
   const {
     session,
@@ -31,6 +38,7 @@ export function useChatPage(): UseChatPageResult {
     error,
     createSession,
     refreshSession,
+    claimSession,
     clearSession: clearSessionBase,
   } = useChatSession({
     urlSessionId,
@@ -68,9 +76,54 @@ export function useChatPage(): UseChatPageResult {
     [urlSessionId, isCreating, sessionIdFromHook, createSession],
   );
 
-  // Note: Session claiming is handled explicitly by UI components when needed
-  // - Locally created sessions: backend sets user_id from JWT automatically
-  // - URL sessions: claiming happens in specific user flows, not automatically
+  // Auto-claim session if user is logged in and session has no user_id
+  useEffect(
+    function autoClaimSession() {
+      // Only claim if:
+      // 1. We have a session loaded
+      // 2. Session has no user_id (anonymous session)
+      // 3. User is logged in
+      // 4. Haven't already claimed this session
+      // 5. Not currently loading
+      if (
+        session &&
+        !session.user_id &&
+        user &&
+        !hasClaimedSessionRef.current &&
+        !isLoading &&
+        sessionIdFromHook
+      ) {
+        console.log("[autoClaimSession] Claiming anonymous session for user");
+        hasClaimedSessionRef.current = true;
+        claimSession(sessionIdFromHook)
+          .then(() => {
+            console.log(
+              "[autoClaimSession] Session claimed successfully, sending login notification",
+            );
+            // Send login notification message to backend after successful claim
+            // This notifies the agent that the user has logged in
+            sendStreamMessage(
+              sessionIdFromHook,
+              "User has successfully logged in.",
+              () => {
+                // Empty chunk handler - we don't need to process responses for this system message
+              },
+              false, // isUserMessage = false
+            ).catch((err) => {
+              console.error(
+                "[autoClaimSession] Failed to send login notification:",
+                err,
+              );
+            });
+          })
+          .catch((err) => {
+            console.error("[autoClaimSession] Failed to claim session:", err);
+            hasClaimedSessionRef.current = false; // Reset on error to allow retry
+          });
+      }
+    },
+    [session, user, isLoading, sessionIdFromHook, claimSession, sendStreamMessage],
+  );
 
   // Monitor online/offline status
   useEffect(function monitorNetworkStatus() {
@@ -102,7 +155,10 @@ export function useChatPage(): UseChatPageResult {
 
   function clearSession() {
     clearSessionBase();
-    // Remove session from URL
+    // Reset the created session flag so a new session can be created
+    hasCreatedSessionRef.current = false;
+    hasClaimedSessionRef.current = false;
+    // Remove session from URL and trigger new session creation
     router.push("/chat");
   }
 
