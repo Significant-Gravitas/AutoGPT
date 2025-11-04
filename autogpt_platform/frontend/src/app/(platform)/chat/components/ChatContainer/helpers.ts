@@ -2,6 +2,36 @@ import type { ChatMessageData } from "@/components/molecules/ChatMessage/useChat
 import type { ToolResult } from "@/types/chat";
 
 /**
+ * Creates a user message object with current timestamp.
+ *
+ * @param content - The message content
+ * @returns A ChatMessageData object of type "message" with role "user"
+ */
+export function createUserMessage(content: string): ChatMessageData {
+  return {
+    type: "message",
+    role: "user",
+    content,
+    timestamp: new Date(),
+  };
+}
+
+/**
+ * Filters out authentication-related messages (credentials_needed, login_needed).
+ * Used when sending a new message to remove stale authentication prompts.
+ *
+ * @param messages - Array of chat messages
+ * @returns Filtered array without authentication prompt messages
+ */
+export function filterAuthMessages(
+  messages: ChatMessageData[],
+): ChatMessageData[] {
+  return messages.filter(
+    (msg) => msg.type !== "credentials_needed" && msg.type !== "login_needed",
+  );
+}
+
+/**
  * Type guard to validate message structure from backend.
  *
  * @param msg - The message to validate
@@ -188,7 +218,7 @@ export function parseToolResponse(
         type: "tool_response",
         toolId,
         toolName,
-        result: parsedResult.message || "No results found",
+        result: (parsedResult.message as string) || "No results found",
         success: true,
         timestamp: timestamp || new Date(),
       };
