@@ -19,6 +19,8 @@ export const useRunInputDialog = ({
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
   );
+
+  const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [credentialValues, setCredentialValues] = useState<
     Record<string, CredentialsMetaInput>
@@ -104,5 +106,7 @@ export const useRunInputDialog = ({
     handleInputChange,
     handleCredentialChange,
     handleManualRun,
+    openCronSchedulerDialog,
+    setOpenCronSchedulerDialog,
   };
 };
