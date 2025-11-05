@@ -36,7 +36,7 @@ from backend.monitoring import (
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
-    GraphNotInLibraryError,
+    GraphNotAccessibleError,
     NotAuthorizedError,
     NotFoundError,
 )
@@ -160,10 +160,10 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
-    except GraphNotInLibraryError as e:
+    except GraphNotAccessibleError as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.warning(
-            f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
+            f"Scheduled execution blocked for inaccessible graph {args.graph_id} "
             f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
         )
         # Clean up orphaned schedules for this graph
@@ -178,8 +178,9 @@ async def _execute_graph(**kwargs):
 
 async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> None:
     """
-    Clean up orphaned schedules for a specific graph when execution fails with GraphNotInLibraryError.
-    This happens when an agent is deleted but schedules still exist.
+    Clean up orphaned schedules for a specific graph when execution fails with GraphNotAccessibleError.
+    This happens when an agent is pulled from the Marketplace or deleted
+    but schedules still exist.
     """
     # Use scheduler client to access the scheduler service
     scheduler_client = get_scheduler_client()

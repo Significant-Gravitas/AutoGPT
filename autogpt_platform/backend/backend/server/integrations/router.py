@@ -49,7 +49,7 @@ from backend.server.integrations.models import (
 from backend.server.v2.library.db import set_preset_webhook, update_preset
 from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import (
-    GraphNotInLibraryError,
+    GraphNotAccessibleError,
     MissingConfigError,
     NeedConfirmation,
     NotFoundError,
@@ -441,10 +441,10 @@ async def _execute_webhook_node_trigger(
             graph_version=node.graph_version,
             nodes_input_masks={node.id: {"payload": payload}},
         )
-    except GraphNotInLibraryError as e:
+    except GraphNotAccessibleError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
-            f"deleted/archived graph #{node.graph_id} (node #{node.id}): {e}"
+            f"inaccessible graph #{node.graph_id} (triggered node #{node.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
         await _cleanup_orphaned_webhook_for_graph(
@@ -504,10 +504,10 @@ async def _execute_webhook_preset_trigger(
             graph_credentials_inputs=preset.credentials,
             nodes_input_masks={trigger_node.id: {**preset.inputs, "payload": payload}},
         )
-    except GraphNotInLibraryError as e:
+    except GraphNotAccessibleError as e:
         logger.warning(
             f"Webhook #{webhook_id} execution blocked for "
-            f"deleted/archived graph #{preset.graph_id} (preset #{preset.id}): {e}"
+            f"inaccessible graph #{preset.graph_id} (preset #{preset.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
         await _cleanup_orphaned_webhook_for_graph(
@@ -564,8 +564,9 @@ async def _cleanup_orphaned_webhook_for_graph(
     graph_id: str, user_id: str, webhook_id: str
 ) -> None:
     """
-    Clean up orphaned webhook connections for a specific graph when execution fails with GraphNotInLibraryError.
-    This happens when an agent is deleted but webhook triggers still exist.
+    Clean up orphaned webhook connections for a specific graph when execution fails with GraphNotAccessibleError.
+    This happens when an agent is pulled from the Marketplace or deleted
+    but webhook triggers still exist.
     """
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)

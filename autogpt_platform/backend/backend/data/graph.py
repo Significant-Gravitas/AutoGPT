@@ -36,7 +36,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
-from backend.util.exceptions import GraphNotInLibraryError
+from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
@@ -1118,7 +1118,8 @@ async def validate_graph_execution_permissions(
             If `True`, the graph isn't required to be in the user's Library.
 
     Raises:
-        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived)
+        GraphNotAccessibleError: If the graph is not accessible to the user.
+        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived).
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
     graph, library_agent = await asyncio.gather(
@@ -1142,16 +1143,15 @@ async def validate_graph_execution_permissions(
 
     # Step 3: Apply permission logic
     if not (
-        (
-            user_owns_graph
-            or await is_graph_published_in_marketplace(graph_id, graph_version)
-        )
-        and (user_has_in_library or is_sub_graph)
+        user_owns_graph
+        or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
-        # None of the permission conditions are met
-        raise GraphNotInLibraryError(
-            f"Graph #{graph_id} is not accessible in your library"
+        raise GraphNotAccessibleError(
+            f"You do not have access to graph #{graph_id} v{graph_version}: "
+            "it is not owned by you and not available in the Marketplace"
         )
+    elif not (user_has_in_library or is_sub_graph):
+        raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
     # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:
