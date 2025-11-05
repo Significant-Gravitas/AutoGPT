@@ -289,7 +289,6 @@ def create_feature_flag_dependency(
         # For routes that don't require authentication, use anonymous context
         check_user_id = user_id or "anonymous"
 
-        # Check if LaunchDarkly is configured before trying to use it
         if not is_configured():
             logger.debug(
                 f"LaunchDarkly not configured, using default {flag_key.value}={default}"
@@ -313,12 +312,10 @@ def create_feature_flag_dependency(
             if not is_enabled:
                 raise HTTPException(status_code=404, detail="Feature not available")
         except Exception as e:
-            # If LaunchDarkly fails for any reason, use default
             logger.warning(
                 f"LaunchDarkly error for flag {flag_key.value}: {e}, using default={default}"
             )
-            if not default:
-                raise HTTPException(status_code=404, detail="Feature not available")
+            raise HTTPException(status_code=500, detail="Failed to check feature flag")
 
     return check_feature_flag
 
