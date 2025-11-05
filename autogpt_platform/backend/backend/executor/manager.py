@@ -1490,7 +1490,7 @@ class ExecutionManager(AppProcess):
             # Connection can be lost, so always get a fresh channel
             channel = self.run_client.get_channel()
             if reject:
-                if requeue and self.config.requeue_by_republishing:
+                if requeue and settings.config.requeue_by_republishing:
                     # Send rejected message to back of queue using republishing
                     def _republish_to_back():
                         # First republish to back of queue
@@ -1521,7 +1521,6 @@ class ExecutionManager(AppProcess):
         # Check if we can accept more runs
         self._cleanup_completed_runs()
         if len(self.active_graph_runs) >= self.pool_size:
-            # Send pool-full messages to back of queue for fair distribution
             _ack_message(reject=True, requeue=True)
             return
 
@@ -1586,7 +1585,6 @@ class ExecutionManager(AppProcess):
                     f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
-                # Send rate-limited messages to back of queue to prevent blocking other users
                 _ack_message(reject=True, requeue=True)
                 return
 

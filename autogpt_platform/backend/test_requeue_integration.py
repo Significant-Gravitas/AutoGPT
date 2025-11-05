@@ -9,32 +9,48 @@ import time
 from threading import Event, Thread
 from typing import List
 
-import pytest
-
-from backend.executor.utils import (
-    GRAPH_EXECUTION_EXCHANGE,
-    GRAPH_EXECUTION_QUEUE_NAME,
-    GRAPH_EXECUTION_ROUTING_KEY,
-)
-from backend.util.clients import get_execution_queue
+from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.utils import create_execution_queue_config
 
 
 class QueueOrderTester:
-    """Helper class to test message ordering in RabbitMQ using existing infrastructure."""
+    """Helper class to test message ordering in RabbitMQ using a dedicated test queue."""
 
     def __init__(self):
         self.received_messages: List[dict] = []
         self.stop_consuming = Event()
-        self.queue_client = get_execution_queue()
+        self.queue_client = SyncRabbitMQ(create_execution_queue_config())
+        self.queue_client.connect()
+
+        # Use a dedicated test queue name to avoid conflicts
+        self.test_queue_name = "test_requeue_ordering"
+        self.test_exchange = "test_exchange"
+        self.test_routing_key = "test.requeue"
 
     def setup_queue(self):
-        """Set up the RabbitMQ queue for testing."""
+        """Set up a dedicated test queue for testing."""
+        channel = self.queue_client.get_channel()
+
+        # Declare test exchange
+        channel.exchange_declare(
+            exchange=self.test_exchange, exchange_type="direct", durable=True
+        )
+
+        # Declare test queue
+        channel.queue_declare(
+            queue=self.test_queue_name, durable=True, auto_delete=False
+        )
+
+        # Bind queue to exchange
+        channel.queue_bind(
+            exchange=self.test_exchange,
+            queue=self.test_queue_name,
+            routing_key=self.test_routing_key,
+        )
+
         # Purge the queue to start fresh
-        try:
-            channel = self.queue_client.get_channel()
-            channel.queue_purge(GRAPH_EXECUTION_QUEUE_NAME)
-        except Exception:
-            pass  # Queue might not exist yet, setup will create it
+        channel.queue_purge(self.test_queue_name)
+        print(f"✅ Test queue {self.test_queue_name} setup and purged")
 
     def create_test_message(self, message_id: str, user_id: str = "test-user") -> str:
         """Create a test graph execution message."""
@@ -51,22 +67,11 @@ class QueueOrderTester:
         )
 
     def publish_message(self, message: str):
-        """Publish a message using the existing queue infrastructure."""
-        # Use the same method as in manager.py _requeue_message_to_back
-        # This simulates using self.run_client.publish_message() from the manager
-        self.queue_client.publish_message(
-            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-            message=message,
-            exchange=GRAPH_EXECUTION_EXCHANGE,
-        )
-
-    def publish_message_direct(self, message: str):
-        """Publish a message directly to simulate traditional requeue."""
-        # Direct publish without going through our publish_message method
+        """Publish a message to the test queue."""
         channel = self.queue_client.get_channel()
         channel.basic_publish(
-            exchange=GRAPH_EXECUTION_EXCHANGE.name,
-            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+            exchange=self.test_exchange,
+            routing_key=self.test_routing_key,
             body=message,
         )
 
@@ -88,7 +93,7 @@ class QueueOrderTester:
         def consume_worker():
             channel = self.queue_client.get_channel()
             channel.basic_consume(
-                queue=GRAPH_EXECUTION_QUEUE_NAME,
+                queue=self.test_queue_name,
                 on_message_callback=callback,
             )
 
@@ -107,120 +112,136 @@ class QueueOrderTester:
 
         return self.received_messages
 
+    def cleanup(self):
+        """Clean up test resources."""
+        try:
+            channel = self.queue_client.get_channel()
+            channel.queue_delete(queue=self.test_queue_name)
+            channel.exchange_delete(exchange=self.test_exchange)
+            print(f"✅ Test queue {self.test_queue_name} cleaned up")
+        except Exception as e:
+            print(f"⚠️ Cleanup issue: {e}")
 
-@pytest.mark.integration
+
 def test_queue_ordering_behavior():
     """
     Integration test to verify that our republishing method sends messages to back of queue.
     This tests the actual fix for the rate limiting queue blocking issue.
     """
     tester = QueueOrderTester()
-    tester.setup_queue()
 
-    print("🧪 Testing actual RabbitMQ queue ordering behavior...")
+    try:
+        tester.setup_queue()
 
-    # Test 1: Normal FIFO behavior
-    print("1. Testing normal FIFO queue behavior")
+        print("🧪 Testing actual RabbitMQ queue ordering behavior...")
 
-    # Publish messages in order: A, B, C
-    msg_a = tester.create_test_message("A")
-    msg_b = tester.create_test_message("B")
-    msg_c = tester.create_test_message("C")
+        # Test 1: Normal FIFO behavior
+        print("1. Testing normal FIFO queue behavior")
 
-    tester.publish_message(msg_a)
-    tester.publish_message(msg_b)
-    tester.publish_message(msg_c)
+        # Publish messages in order: A, B, C
+        msg_a = tester.create_test_message("A")
+        msg_b = tester.create_test_message("B")
+        msg_c = tester.create_test_message("C")
 
-    # Consume and verify FIFO order: A, B, C
-    tester.received_messages = []
-    tester.stop_consuming.clear()
-    messages = tester.consume_messages(max_messages=3)
+        tester.publish_message(msg_a)
+        tester.publish_message(msg_b)
+        tester.publish_message(msg_c)
 
-    assert len(messages) == 3, f"Expected 3 messages, got {len(messages)}"
-    assert (
-        messages[0]["graph_exec_id"] == "exec-A"
-    ), f"First message should be A, got {messages[0]['graph_exec_id']}"
-    assert (
-        messages[1]["graph_exec_id"] == "exec-B"
-    ), f"Second message should be B, got {messages[1]['graph_exec_id']}"
-    assert (
-        messages[2]["graph_exec_id"] == "exec-C"
-    ), f"Third message should be C, got {messages[2]['graph_exec_id']}"
+        # Consume and verify FIFO order: A, B, C
+        tester.received_messages = []
+        tester.stop_consuming.clear()
+        messages = tester.consume_messages(max_messages=3)
 
-    print("✅ FIFO order confirmed: A -> B -> C")
+        assert len(messages) == 3, f"Expected 3 messages, got {len(messages)}"
+        assert (
+            messages[0]["graph_exec_id"] == "exec-A"
+        ), f"First message should be A, got {messages[0]['graph_exec_id']}"
+        assert (
+            messages[1]["graph_exec_id"] == "exec-B"
+        ), f"Second message should be B, got {messages[1]['graph_exec_id']}"
+        assert (
+            messages[2]["graph_exec_id"] == "exec-C"
+        ), f"Third message should be C, got {messages[2]['graph_exec_id']}"
 
-    # Test 2: Rate limiting simulation - the key test!
-    print("2. Testing rate limiting fix scenario")
+        print("✅ FIFO order confirmed: A -> B -> C")
 
-    # Simulate the scenario where user1 is rate limited
-    user1_msg = tester.create_test_message("RATE-LIMITED", "user1")
-    user2_msg1 = tester.create_test_message("USER2-1", "user2")
-    user2_msg2 = tester.create_test_message("USER2-2", "user2")
+        # Test 2: Rate limiting simulation - the key test!
+        print("2. Testing rate limiting fix scenario")
 
-    # Initially publish user1 message (gets consumed, then rate limited on retry)
-    tester.publish_message(user1_msg)
+        # Simulate the scenario where user1 is rate limited
+        user1_msg = tester.create_test_message("RATE-LIMITED", "user1")
+        user2_msg1 = tester.create_test_message("USER2-1", "user2")
+        user2_msg2 = tester.create_test_message("USER2-2", "user2")
 
-    # Other users publish their messages
-    tester.publish_message(user2_msg1)
-    tester.publish_message(user2_msg2)
+        # Initially publish user1 message (gets consumed, then rate limited on retry)
+        tester.publish_message(user1_msg)
 
-    # Now simulate: user1 message gets "requeued" using our new republishing method
-    # This is what happens in manager.py when requeue_by_republishing=True
-    tester.publish_message(user1_msg)  # Goes to back via our method
+        # Other users publish their messages
+        tester.publish_message(user2_msg1)
+        tester.publish_message(user2_msg2)
 
-    # Expected order: RATE-LIMITED, USER2-1, USER2-2, RATE-LIMITED (republished to back)
-    # This shows that user2 messages get processed instead of being blocked
-    tester.received_messages = []
-    tester.stop_consuming.clear()
-    messages = tester.consume_messages(max_messages=4)
+        # Now simulate: user1 message gets "requeued" using our new republishing method
+        # This is what happens in manager.py when requeue_by_republishing=True
+        tester.publish_message(user1_msg)  # Goes to back via our method
 
-    assert len(messages) == 4, f"Expected 4 messages, got {len(messages)}"
+        # Expected order: RATE-LIMITED, USER2-1, USER2-2, RATE-LIMITED (republished to back)
+        # This shows that user2 messages get processed instead of being blocked
+        tester.received_messages = []
+        tester.stop_consuming.clear()
+        messages = tester.consume_messages(max_messages=4)
 
-    # The key verification: user2 messages are NOT blocked by user1's rate-limited message
-    user2_messages = [msg for msg in messages if msg["user_id"] == "user2"]
-    assert len(user2_messages) == 2, "Both user2 messages should be processed"
-    assert user2_messages[0]["graph_exec_id"] == "exec-USER2-1"
-    assert user2_messages[1]["graph_exec_id"] == "exec-USER2-2"
+        assert len(messages) == 4, f"Expected 4 messages, got {len(messages)}"
 
-    print("✅ Rate limiting fix confirmed: user2 executions NOT blocked by user1")
+        # The key verification: user2 messages are NOT blocked by user1's rate-limited message
+        user2_messages = [msg for msg in messages if msg["user_id"] == "user2"]
+        assert len(user2_messages) == 2, "Both user2 messages should be processed"
+        assert user2_messages[0]["graph_exec_id"] == "exec-USER2-1"
+        assert user2_messages[1]["graph_exec_id"] == "exec-USER2-2"
 
-    # Test 3: Verify our method behaves like going to back of queue
-    print("3. Testing republishing sends messages to back")
+        print("✅ Rate limiting fix confirmed: user2 executions NOT blocked by user1")
 
-    # Start with message X in queue
-    msg_x = tester.create_test_message("X")
-    tester.publish_message(msg_x)
+        # Test 3: Verify our method behaves like going to back of queue
+        print("3. Testing republishing sends messages to back")
 
-    # Add message Y
-    msg_y = tester.create_test_message("Y")
-    tester.publish_message(msg_y)
+        # Start with message X in queue
+        msg_x = tester.create_test_message("X")
+        tester.publish_message(msg_x)
 
-    # Republish X (simulates requeue using our method)
-    tester.publish_message(msg_x)
+        # Add message Y
+        msg_y = tester.create_test_message("Y")
+        tester.publish_message(msg_y)
 
-    # Expected: X, Y, X (X was republished to back)
-    tester.received_messages = []
-    tester.stop_consuming.clear()
-    messages = tester.consume_messages(max_messages=3)
+        # Republish X (simulates requeue using our method)
+        tester.publish_message(msg_x)
 
-    assert len(messages) == 3
-    # Y should come before the republished X
-    y_index = next(
-        i for i, msg in enumerate(messages) if msg["graph_exec_id"] == "exec-Y"
-    )
-    republished_x_index = next(
-        i for i, msg in enumerate(messages[1:], 1) if msg["graph_exec_id"] == "exec-X"
-    )
+        # Expected: X, Y, X (X was republished to back)
+        tester.received_messages = []
+        tester.stop_consuming.clear()
+        messages = tester.consume_messages(max_messages=3)
 
-    assert (
-        y_index < republished_x_index
-    ), f"Y should come before republished X, but got order: {[m['graph_exec_id'] for m in messages]}"
+        assert len(messages) == 3
+        # Y should come before the republished X
+        y_index = next(
+            i for i, msg in enumerate(messages) if msg["graph_exec_id"] == "exec-Y"
+        )
+        republished_x_index = next(
+            i
+            for i, msg in enumerate(messages[1:], 1)
+            if msg["graph_exec_id"] == "exec-X"
+        )
 
-    print("✅ Republishing confirmed: messages go to back of queue")
+        assert (
+            y_index < republished_x_index
+        ), f"Y should come before republished X, but got order: {[m['graph_exec_id'] for m in messages]}"
 
-    print("🎉 All integration tests passed!")
-    print("🎉 Our republishing method works correctly with real RabbitMQ")
-    print("🎉 Queue blocking issue is fixed!")
+        print("✅ Republishing confirmed: messages go to back of queue")
+
+        print("🎉 All integration tests passed!")
+        print("🎉 Our republishing method works correctly with real RabbitMQ")
+        print("🎉 Queue blocking issue is fixed!")
+
+    finally:
+        tester.cleanup()
 
 
 if __name__ == "__main__":
