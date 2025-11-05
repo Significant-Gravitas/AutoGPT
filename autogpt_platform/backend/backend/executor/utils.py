@@ -512,6 +512,8 @@ async def validate_and_construct_node_execution_input(
         user_id=user_id,
         version=graph_version,
         include_subgraphs=True,
+        # Execution/access permission is checked by validate_graph_execution_permissions
+        skip_access_check=True,
     )
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")

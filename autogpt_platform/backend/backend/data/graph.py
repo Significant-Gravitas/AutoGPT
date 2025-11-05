@@ -17,7 +17,6 @@ from prisma.types import (
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
-    LibraryAgentWhereInput,
 )
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
@@ -896,9 +895,11 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 async def get_graph(
     graph_id: str,
     version: int | None = None,
+    *,
     user_id: str | None = None,
     for_export: bool = False,
     include_subgraphs: bool = False,
+    skip_access_check: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -921,7 +922,7 @@ async def get_graph(
     if graph is None:
         return None
 
-    if graph.userId != user_id:
+    if not skip_access_check and graph.userId != user_id:
         # For access, the graph must be owned by the user or listed in the store
         if not is_graph_published_in_marketplace(graph_id, graph.version):
             return None
@@ -1112,7 +1113,7 @@ async def validate_graph_execution_permissions(
         graph_id: The ID of the graph to check
         user_id: The ID of the user
         graph_version: The version of the graph to check
-        is_sub_agent: Whether this is being executed as a sub-graph.
+        is_sub_graph: Whether this is being executed as a sub-graph.
             If `True`, the graph isn't required to be in the user's Library.
 
     Raises:
@@ -1120,19 +1121,23 @@ async def validate_graph_execution_permissions(
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
     # Step 1: Check if user owns this graph
-    user_owns_graph = await get_graph_metadata(graph_id, graph_version) is not None
+    user_owns_graph = (
+        graph := await AgentGraph.prisma().find_unique(
+            where={"graphVersionId": {"id": graph_id, "version": graph_version}}
+        )
+    ) and graph.userId == user_id
 
     # Step 2: Check if agent is in the library *and not deleted*
-    where_clause: LibraryAgentWhereInput = {
-        "userId": user_id,
-        "agentGraphId": graph_id,
-        "isDeleted": False,
-    }
-
-    if graph_version is not None:
-        where_clause["agentGraphVersion"] = graph_version
-
-    user_has_in_library = await LibraryAgent.prisma().count(where=where_clause) > 0
+    user_has_in_library = (
+        await LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+            }
+        )
+        is not None
+    )
 
     # Step 3: Apply permission logic
     if user_owns_graph and user_has_in_library:
@@ -1204,7 +1209,7 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
-    graph = await get_graph(graph_id, graph_version, user_id, True)
+    graph = await get_graph(graph_id, graph_version, user_id=user_id, for_export=True)
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
