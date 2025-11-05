@@ -1,14 +1,14 @@
 "use client";
-import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
-import { useMainAgentPage } from "./useMainAgentPage";
-import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
 import { Separator } from "@/components/__legacy__/ui/separator";
+import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
+import { AgentImages } from "../AgentImages/AgentImage";
+import { AgentInfo } from "../AgentInfo/AgentInfo";
+import { AgentPageLoading } from "../AgentPageLoading";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
-import { AgentPageLoading } from "../AgentPageLoading";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { AgentInfo } from "../AgentInfo/AgentInfo";
-import { AgentImages } from "../AgentImages/AgentImage";
+import { useMainAgentPage } from "./useMainAgentPage";
 
 type MainAgentPageProps = {
   params: MarketplaceAgentPageParams;
@@ -65,7 +65,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
   }
 
   const breadcrumbs = [
-    { name: "Markertplace", link: "/marketplace" },
+    { name: "Marketplace", link: "/marketplace" },
     {
       name: agent.creator,
       link: `/marketplace/creator/${encodeURIComponent(agent.creator)}`,
