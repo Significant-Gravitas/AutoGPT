@@ -4,8 +4,13 @@ import { useChatPage } from "./useChatPage";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatErrorState } from "./components/ChatErrorState/ChatErrorState";
 import { ChatLoadingState } from "./components/ChatLoadingState/ChatLoadingState";
+import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-function ChatPage() {
+export default function ChatPage() {
+  const isChatEnabled = useGetFlag(Flag.CHAT);
+  const router = useRouter();
   const {
     messages,
     isLoading,
@@ -16,6 +21,16 @@ function ChatPage() {
     clearSession,
     refreshSession,
   } = useChatPage();
+
+  useEffect(() => {
+    if (isChatEnabled === false) {
+      router.push("/404");
+    }
+  }, [isChatEnabled, router]);
+
+  if (isChatEnabled === null || isChatEnabled === false) {
+    return null;
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -41,8 +56,8 @@ function ChatPage() {
 
       {/* Main Content */}
       <main className="container mx-auto flex flex-1 flex-col overflow-hidden">
-        {/* Loading State */}
-        {(isLoading || isCreating) && (
+        {/* Loading State - show when explicitly loading/creating OR when we don't have a session yet and no error */}
+        {(isLoading || isCreating || (!sessionId && !error)) && (
           <ChatLoadingState
             message={isCreating ? "Creating session..." : "Loading..."}
           />
@@ -66,5 +81,3 @@ function ChatPage() {
     </div>
   );
 }
-
-export default ChatPage;
