@@ -263,14 +263,14 @@ export function Wallet() {
     if (prevCompletedCount === null || !walletRef.current) {
       return;
     }
-    // Fix confetti appearing in the top left corner
-    const rect = walletRef.current.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) {
-      return;
-    }
     setTimeout(() => {
       fetchCredits();
       if (!walletRef.current) {
+        return;
+      }
+      // Fix confetti appearing in the top left corner
+      const rect = walletRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
         return;
       }
       party.confetti(walletRef.current, {
