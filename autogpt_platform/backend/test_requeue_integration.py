@@ -265,5 +265,86 @@ def test_queue_ordering_behavior():
         tester.cleanup()
 
 
+def test_traditional_requeue_behavior():
+    """
+    Test that traditional requeue (basic_nack with requeue=True) sends messages to FRONT of queue.
+    This validates our hypothesis about why queue blocking occurs.
+    """
+    tester = QueueOrderTester()
+
+    try:
+        tester.setup_queue()
+        print("🧪 Testing traditional requeue behavior (basic_nack with requeue=True)")
+
+        # Step 1: Publish message A
+        msg_a = tester.create_test_message("A")
+        tester.publish_message(msg_a)
+
+        # Step 2: Publish message B
+        msg_b = tester.create_test_message("B")
+        tester.publish_message(msg_b)
+
+        # Step 3: Consume message A and requeue it using traditional method
+        channel = tester.queue_client.get_channel()
+        method_frame, header_frame, body = channel.basic_get(
+            queue=tester.test_queue_name, auto_ack=False
+        )
+
+        assert method_frame is not None, "Should have received message A"
+        consumed_msg = json.loads(body.decode())
+        assert (
+            consumed_msg["graph_exec_id"] == "exec-A"
+        ), f"Should have consumed message A, got {consumed_msg['graph_exec_id']}"
+
+        # Traditional requeue: basic_nack with requeue=True (sends to FRONT)
+        channel.basic_nack(delivery_tag=method_frame.delivery_tag, requeue=True)
+        print(f"🔄 Traditional requeue (to FRONT): {consumed_msg['graph_exec_id']}")
+
+        # Step 4: Consume all messages using basic_get for reliability
+        received_messages = []
+
+        # Get first message
+        method_frame, header_frame, body = channel.basic_get(
+            queue=tester.test_queue_name, auto_ack=True
+        )
+        if method_frame:
+            msg = json.loads(body.decode())
+            received_messages.append(msg)
+
+        # Get second message
+        method_frame, header_frame, body = channel.basic_get(
+            queue=tester.test_queue_name, auto_ack=True
+        )
+        if method_frame:
+            msg = json.loads(body.decode())
+            received_messages.append(msg)
+
+        # CRITICAL ASSERTION: Traditional requeue should put A at FRONT
+        # Expected order: A (requeued to front), B
+        assert (
+            len(received_messages) == 2
+        ), f"Expected 2 messages, got {len(received_messages)}"
+
+        first_msg = received_messages[0]["graph_exec_id"]
+        second_msg = received_messages[1]["graph_exec_id"]
+
+        # This is the critical test: requeued message A should come BEFORE B
+        assert (
+            first_msg == "exec-A"
+        ), f"Traditional requeue should put A at FRONT, but first message was: {first_msg}"
+        assert (
+            second_msg == "exec-B"
+        ), f"B should come after requeued A, but second message was: {second_msg}"
+
+        print(
+            "✅ HYPOTHESIS CONFIRMED: Traditional requeue sends messages to FRONT of queue"
+        )
+        print(f"   Order: {first_msg} (requeued to front) → {second_msg}")
+        print("   This explains why rate-limited messages block other users!")
+
+    finally:
+        tester.cleanup()
+
+
 if __name__ == "__main__":
     test_queue_ordering_behavior()
