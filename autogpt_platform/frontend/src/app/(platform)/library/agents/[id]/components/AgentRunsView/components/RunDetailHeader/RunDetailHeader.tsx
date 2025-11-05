@@ -7,6 +7,7 @@ import {
   StopIcon,
   PlayIcon,
   ArrowSquareOutIcon,
+  InfoIcon,
 } from "@phosphor-icons/react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import moment from "moment";
@@ -16,6 +17,12 @@ import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ShareRunButton } from "../ShareRunButton/ShareRunButton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 
 type Props = {
   agent: LibraryAgent;
@@ -159,10 +166,32 @@ export function RunDetailHeader({
               {typeof run.stats?.correctness_score === "number" && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
-                    Success Estimate:{" "}
-                    {Math.round(run.stats.correctness_score * 100)}%
-                  </Text>
+                  <div className="flex items-center gap-1">
+                    <Text variant="small" className="!text-zinc-600">
+                      Success Estimate:{" "}
+                      {Math.round(run.stats.correctness_score * 100)}%
+                    </Text>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <InfoIcon className="size-3 cursor-help text-zinc-400 hover:text-zinc-600" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs text-xs">
+                            AI-generated estimate of how well this execution
+                            achieved its intended purpose. This score indicates
+                            {run.stats.correctness_score >= 0.8
+                              ? " the agent was highly successful."
+                              : run.stats.correctness_score >= 0.6
+                                ? " the agent was mostly successful with minor issues."
+                                : run.stats.correctness_score >= 0.4
+                                  ? " the agent was partially successful with some gaps."
+                                  : " the agent had limited success with significant issues."}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                 </>
               )}
             </div>

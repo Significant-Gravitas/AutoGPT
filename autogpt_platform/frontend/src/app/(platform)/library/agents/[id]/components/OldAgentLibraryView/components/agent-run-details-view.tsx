@@ -347,14 +347,14 @@ export function AgentRunDetailsView({
                       <TooltipContent>
                         <p className="max-w-xs">
                           AI-generated estimate of how well this execution
-                          achieved its intended purpose.
+                          achieved its intended purpose. This score indicates
                           {run.stats.correctness_score >= 0.8
-                            ? " Highly successful execution."
+                            ? " the agent was highly successful."
                             : run.stats.correctness_score >= 0.6
-                              ? " Mostly successful with minor issues."
+                              ? " the agent was mostly successful with minor issues."
                               : run.stats.correctness_score >= 0.4
-                                ? " Partially successful with some gaps."
-                                : " Limited success with significant issues."}
+                                ? " the agent was partially successful with some gaps."
+                                : " the agent had limited success with significant issues."}
                         </p>
                       </TooltipContent>
                     </Tooltip>
