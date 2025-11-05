@@ -7,12 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.llm import LLMResponse
+from backend.blocks.llm import LlmModel, LLMResponse
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
-    _call_llm_direct,
     generate_activity_status_for_execution,
 )
 
@@ -373,25 +372,24 @@ class TestLLMCall:
     """Tests for LLM calling functionality."""
 
     @pytest.mark.asyncio
-    async def test_call_llm_direct_success(self):
-        """Test successful LLM call."""
+    async def test_structured_llm_call_success(self):
+        """Test successful structured LLM call."""
         from pydantic import SecretStr
 
         from backend.data.model import APIKeyCredentials
+        from backend.util.llm_utils import structured_llm_call
 
-        mock_response = LLMResponse(
-            raw_response={},
-            prompt=[],
-            response="Agent successfully processed user input and generated response.",
-            tool_calls=None,
-            prompt_tokens=50,
-            completion_tokens=20,
-        )
-
-        with patch(
-            "backend.executor.activity_status_generator.llm_call"
-        ) as mock_llm_call:
-            mock_llm_call.return_value = mock_response
+        with patch("backend.util.llm_utils.llm_call") as mock_llm_call, patch(
+            "backend.util.llm_utils.secrets.token_hex", return_value="test123"
+        ):
+            mock_llm_call.return_value = LLMResponse(
+                raw_response={},
+                prompt=[],
+                response='<json_output id="test123">{"activity_status": "Test completed successfully", "correctness_score": 0.9}</json_output>',
+                tool_calls=None,
+                prompt_tokens=50,
+                completion_tokens=20,
+            )
 
             credentials = APIKeyCredentials(
                 id="test",
@@ -401,26 +399,42 @@ class TestLLMCall:
             )
 
             prompt = [{"role": "user", "content": "Test prompt"}]
+            expected_format = {
+                "activity_status": "User-friendly summary",
+                "correctness_score": "Float score from 0.0 to 1.0",
+            }
 
-            result = await _call_llm_direct(credentials, prompt)
-
-            assert (
-                result
-                == "Agent successfully processed user input and generated response."
+            result = await structured_llm_call(
+                credentials=credentials,
+                llm_model=LlmModel.GPT4O_MINI,
+                prompt=prompt,
+                expected_format=expected_format,
             )
-            mock_llm_call.assert_called_once()
+
+            assert result["activity_status"] == "Test completed successfully"
+            assert result["correctness_score"] == 0.9
+            mock_llm_call.assert_called()
 
     @pytest.mark.asyncio
-    async def test_call_llm_direct_no_response(self):
-        """Test LLM call with no response."""
+    async def test_structured_llm_call_validation_error(self):
+        """Test structured LLM call with validation error."""
         from pydantic import SecretStr
 
         from backend.data.model import APIKeyCredentials
+        from backend.util.llm_utils import structured_llm_call
 
-        with patch(
-            "backend.executor.activity_status_generator.llm_call"
-        ) as mock_llm_call:
-            mock_llm_call.return_value = None
+        with patch("backend.util.llm_utils.llm_call") as mock_llm_call, patch(
+            "backend.util.llm_utils.secrets.token_hex", return_value="test123"
+        ):
+            # Return invalid JSON that will fail validation (missing required field)
+            mock_llm_call.return_value = LLMResponse(
+                raw_response={},
+                prompt=[],
+                response='<json_output id="test123">{"activity_status": "Test completed successfully"}</json_output>',
+                tool_calls=None,
+                prompt_tokens=50,
+                completion_tokens=20,
+            )
 
             credentials = APIKeyCredentials(
                 id="test",
@@ -430,10 +444,21 @@ class TestLLMCall:
             )
 
             prompt = [{"role": "user", "content": "Test prompt"}]
+            expected_format = {
+                "activity_status": "User-friendly summary",
+                "correctness_score": "Float score from 0.0 to 1.0",
+            }
 
-            result = await _call_llm_direct(credentials, prompt)
-
-            assert result == "Unable to generate activity summary"
+            with pytest.raises(
+                RuntimeError, match="Failed to get valid structured response"
+            ):
+                await structured_llm_call(
+                    credentials=credentials,
+                    llm_model=LlmModel.GPT4O_MINI,
+                    prompt=prompt,
+                    expected_format=expected_format,
+                    retry=1,  # Use fewer retries for faster test
+                )
 
 
 class TestGenerateActivityStatusForExecution:
@@ -461,7 +486,7 @@ class TestGenerateActivityStatusForExecution:
         ) as mock_get_block, patch(
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
-            "backend.executor.activity_status_generator._call_llm_direct"
+            "backend.executor.activity_status_generator.structured_llm_call"
         ) as mock_llm, patch(
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
@@ -469,9 +494,10 @@ class TestGenerateActivityStatusForExecution:
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-            mock_llm.return_value = (
-                "I analyzed your data and provided the requested insights."
-            )
+            mock_llm.return_value = {
+                "activity_status": "I analyzed your data and provided the requested insights.",
+                "correctness_score": 0.85,
+            }
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -482,7 +508,12 @@ class TestGenerateActivityStatusForExecution:
                 user_id="test_user",
             )
 
-            assert result == "I analyzed your data and provided the requested insights."
+            assert result is not None
+            assert (
+                result["activity_status"]
+                == "I analyzed your data and provided the requested insights."
+            )
+            assert result["correctness_score"] == 0.85
             mock_db_client.get_node_executions.assert_called_once()
             mock_db_client.get_graph_metadata.assert_called_once()
             mock_db_client.get_graph.assert_called_once()
@@ -574,7 +605,7 @@ class TestGenerateActivityStatusForExecution:
         ) as mock_get_block, patch(
             "backend.executor.activity_status_generator.Settings"
         ) as mock_settings, patch(
-            "backend.executor.activity_status_generator._call_llm_direct"
+            "backend.executor.activity_status_generator.structured_llm_call"
         ) as mock_llm, patch(
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
@@ -582,7 +613,10 @@ class TestGenerateActivityStatusForExecution:
 
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
-            mock_llm.return_value = "Agent completed execution."
+            mock_llm.return_value = {
+                "activity_status": "Agent completed execution.",
+                "correctness_score": 0.8,
+            }
 
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -593,9 +627,11 @@ class TestGenerateActivityStatusForExecution:
                 user_id="test_user",
             )
 
-            assert result == "Agent completed execution."
+            assert result is not None
+            assert result["activity_status"] == "Agent completed execution."
+            assert result["correctness_score"] == 0.8
             # Should use fallback graph name in prompt
-            call_args = mock_llm.call_args[0][1]  # prompt argument
+            call_args = mock_llm.call_args[1]["prompt"]  # prompt argument
             assert "Graph test_graph" in call_args[1]["content"]
 
 
