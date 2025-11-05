@@ -18,8 +18,8 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 )
 from pydantic import BaseModel
 
+from backend.data.redis_client import get_redis_async
 from backend.server.v2.chat.config import ChatConfig
-from backend.util.cache import get_async_redis
 from backend.util.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
@@ -158,7 +158,7 @@ async def get_chat_session(
 ) -> ChatSession | None:
     """Get a chat session by ID."""
     redis_key = f"chat:session:{session_id}"
-    async_redis = await get_async_redis()
+    async_redis = await get_redis_async()
 
     raw_session: bytes | None = await async_redis.get(redis_key)
 
@@ -188,7 +188,7 @@ async def upsert_chat_session(
 
     redis_key = f"chat:session:{session.session_id}"
 
-    async_redis = await get_async_redis()
+    async_redis = await get_redis_async()
     resp = await async_redis.setex(
         redis_key, config.session_ttl, session.model_dump_json()
     )

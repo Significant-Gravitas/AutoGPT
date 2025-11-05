@@ -32,7 +32,7 @@ messages = [
 ]
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_serialization_deserialization():
     s = ChatSession.new(user_id="abc123")
     s.messages = messages
@@ -42,7 +42,7 @@ async def test_chatsession_serialization_deserialization():
     assert s2.model_dump() == s.model_dump()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_redis_storage():
 
     s = ChatSession.new(user_id=None)
@@ -58,7 +58,7 @@ async def test_chatsession_redis_storage():
     assert s2 == s
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_redis_storage_user_id_mismatch():
 
     s = ChatSession.new(user_id="abc123")

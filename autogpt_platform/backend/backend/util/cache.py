@@ -20,8 +20,6 @@ from functools import wraps
 from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
 from redis import ConnectionPool, Redis
-from redis.asyncio import ConnectionPool as AsyncConnectionPool
-from redis.asyncio import Redis as AsyncRedis
 
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
@@ -62,63 +60,6 @@ def _get_cache_pool() -> ConnectionPool:
 
 
 redis = Redis(connection_pool=_get_cache_pool())
-
-_async_cache_pools: dict[asyncio.AbstractEventLoop, AsyncConnectionPool] = {}
-
-
-@conn_retry("Redis", "Acquiring async cache connection pool")
-async def _get_async_cache_pool() -> AsyncConnectionPool:
-    """Get or create an async connection pool for the current event loop."""
-    global _async_cache_pools
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        raise RuntimeError("No running event loop")
-
-    if loop not in _async_cache_pools:
-        _async_cache_pools[loop] = AsyncConnectionPool(
-            host=settings.config.redis_host,
-            port=settings.config.redis_port,
-            password=settings.config.redis_password or None,
-            decode_responses=False,  # Binary mode for pickle
-            max_connections=50,
-            socket_keepalive=True,
-            socket_connect_timeout=5,
-            retry_on_timeout=True,
-        )
-    return _async_cache_pools[loop]
-
-
-# Store async Redis clients per event loop to avoid event loop conflicts
-_async_redis_clients: dict[asyncio.AbstractEventLoop, AsyncRedis] = {}
-_async_redis_locks: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
-
-
-async def get_async_redis() -> AsyncRedis:
-    """Get or create an async Redis client for the current event loop."""
-    global _async_redis_clients, _async_redis_locks
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        raise RuntimeError("No running event loop")
-
-    # Get or create lock for this event loop
-    if loop not in _async_redis_locks:
-        _async_redis_locks[loop] = asyncio.Lock()
-
-    lock = _async_redis_locks[loop]
-
-    # Check if we need to create a new client
-    if loop not in _async_redis_clients:
-        async with lock:
-            # Double-checked locking to handle multiple awaiters
-            if loop not in _async_redis_clients:
-                pool = await _get_async_cache_pool()
-                _async_redis_clients[loop] = AsyncRedis(connection_pool=pool)
-
-    return _async_redis_clients[loop]
 
 
 @dataclass
