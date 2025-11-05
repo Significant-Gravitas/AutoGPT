@@ -328,9 +328,7 @@ export function Wallet() {
         <div className="relative inline-block">
           <button
             ref={walletRef}
-            className={cn(
-              "group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm",
-            )}
+            className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
             onClick={onWalletOpen}
           >
             <WalletIcon size={20} className="inline-block md:hidden" />
@@ -340,7 +338,7 @@ export function Wallet() {
                 {formatCredits(credits)}
               </span>
               {completedCount !== null && completedCount < totalCount && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600" />
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
               )}
               <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
                 <Text variant="body-medium">
