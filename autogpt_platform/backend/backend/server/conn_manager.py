@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, Set
 
 from fastapi import WebSocket
@@ -36,7 +37,7 @@ class ConnectionManager:
         if user_conns is not None:
             user_conns.discard(websocket)
             if not user_conns:
-                del self.user_connections[user_id]
+                self.user_connections.pop(user_id, None)
 
     async def subscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
@@ -110,9 +111,14 @@ class ConnectionManager:
             data=payload,
         ).model_dump_json()
 
-        connections = self.user_connections.get(user_id, set())
-        for connection in connections:
-            await connection.send_text(message)
+        connections = tuple(self.user_connections.get(user_id, set()))
+        if not connections:
+            return 0
+
+        await asyncio.gather(
+            *(connection.send_text(message) for connection in connections),
+            return_exceptions=True
+        )
 
         return len(connections)
 
