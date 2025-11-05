@@ -6,7 +6,7 @@ Tests actual RabbitMQ behavior to verify that republishing sends messages to bac
 
 import json
 import time
-from threading import Event, Thread
+from threading import Event
 from typing import List
 
 from backend.data.rabbitmq import SyncRabbitMQ
@@ -90,8 +90,20 @@ class QueueOrderTester:
                 print(f"Error processing message: {e}")
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
-        def consume_worker():
-            channel = self.queue_client.get_channel()
+        # Use synchronous consumption with blocking
+        channel = self.queue_client.get_channel()
+
+        # Check if there are messages in the queue first
+        method_frame, header_frame, body = channel.basic_get(
+            queue=self.test_queue_name, auto_ack=False
+        )
+        if method_frame:
+            # There are messages, set up consumer
+            channel.basic_nack(
+                delivery_tag=method_frame.delivery_tag, requeue=True
+            )  # Put message back
+
+            # Set up consumer
             channel.basic_consume(
                 queue=self.test_queue_name,
                 on_message_callback=callback,
@@ -102,13 +114,22 @@ class QueueOrderTester:
             while (
                 not self.stop_consuming.is_set()
                 and (time.time() - start_time) < timeout
+                and len(self.received_messages) < max_messages
             ):
-                channel.connection.process_data_events(time_limit=0.1)
+                try:
+                    channel.connection.process_data_events(time_limit=0.1)
+                except Exception as e:
+                    print(f"Error during consumption: {e}")
+                    break
 
-        # Run consumer in background thread
-        consumer_thread = Thread(target=consume_worker, daemon=True)
-        consumer_thread.start()
-        consumer_thread.join(timeout)
+            # Cancel the consumer
+            try:
+                channel.cancel()
+            except Exception:
+                pass
+        else:
+            # No messages in queue - this might be expected for some tests
+            pass
 
         return self.received_messages
 
