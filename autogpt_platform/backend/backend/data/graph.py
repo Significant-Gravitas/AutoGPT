@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from collections import defaultdict
@@ -1120,42 +1121,33 @@ async def validate_graph_execution_permissions(
         GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived)
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
-    # Step 1: Check if user owns this graph
-    user_owns_graph = (
-        graph := await AgentGraph.prisma().find_unique(
+    graph, library_agent = await asyncio.gather(
+        AgentGraph.prisma().find_unique(
             where={"graphVersionId": {"id": graph_id, "version": graph_version}}
-        )
-    ) and graph.userId == user_id
-
-    # Step 2: Check if agent is in the library *and not deleted*
-    user_has_in_library = (
-        await LibraryAgent.prisma().find_first(
+        ),
+        LibraryAgent.prisma().find_first(
             where={
                 "userId": user_id,
                 "agentGraphId": graph_id,
                 "isDeleted": False,
             }
-        )
-        is not None
+        ),
     )
 
+    # Step 1: Check if user owns this graph
+    user_owns_graph = graph and graph.userId == user_id
+
+    # Step 2: Check if agent is in the library *and not deleted*
+    user_has_in_library = library_agent is not None
+
     # Step 3: Apply permission logic
-    if user_owns_graph and user_has_in_library:
-        pass
-
-    # Step 4: If not owned, check if published in marketplace
-    elif (
-        is_marketplace_published := await is_graph_published_in_marketplace(
-            graph_id, graph_version
+    if not (
+        (
+            user_owns_graph
+            or await is_graph_published_in_marketplace(graph_id, graph_version)
         )
-    ) and user_has_in_library:
-        pass
-
-    # Step 5: Still allow execution of sub-graph if not in Library
-    elif is_marketplace_published and is_sub_graph:
-        pass
-
-    else:
+        and (user_has_in_library or is_sub_graph)
+    ):
         # None of the permission conditions are met
         raise GraphNotInLibraryError(
             f"Graph #{graph_id} is not accessible in your library"
