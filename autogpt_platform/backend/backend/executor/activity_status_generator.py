@@ -13,12 +13,11 @@ except ImportError:
 
 from pydantic import SecretStr
 
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import AIStructuredResponseGeneratorBlock, LlmModel
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.llm_utils import structured_llm_call
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
@@ -259,15 +258,36 @@ async def generate_activity_status_for_execution(
             "correctness_score": "Float score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose",
         }
 
-        # Make structured LLM call
-        response = await structured_llm_call(
-            credentials=credentials,
-            llm_model=LlmModel.GPT4O_MINI,
-            prompt=prompt,
+        # Use existing AIStructuredResponseGeneratorBlock for structured LLM call
+        structured_block = AIStructuredResponseGeneratorBlock()
+
+        # Convert credentials to the format expected by AIStructuredResponseGeneratorBlock
+        credentials_input = {
+            "provider": credentials.provider,
+            "id": credentials.id,
+            "type": credentials.type,
+            "title": credentials.title,
+        }
+
+        structured_input = AIStructuredResponseGeneratorBlock.Input(
+            prompt=prompt[1]["content"],  # User prompt content
+            sys_prompt=prompt[0]["content"],  # System prompt content
             expected_format=expected_format,
+            model=LlmModel.GPT4O_MINI,
+            credentials=credentials_input,  # type: ignore
             max_tokens=150,
             retry=3,
         )
+
+        # Execute the structured LLM call
+        async for output_name, output_data in structured_block.run(
+            structured_input, credentials=credentials
+        ):
+            if output_name == "response":
+                response = output_data
+                break
+        else:
+            raise RuntimeError("Failed to get response from structured LLM call")
 
         # Create typed response with validation
         correctness_score = float(response["correctness_score"])
