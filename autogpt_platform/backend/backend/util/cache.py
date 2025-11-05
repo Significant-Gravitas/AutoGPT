@@ -121,23 +121,6 @@ async def get_async_redis() -> AsyncRedis:
     return _async_redis_clients[loop]
 
 
-# For backward compatibility, create a proxy object that lazily initializes
-class AsyncRedisProxy:
-    """Proxy for async Redis that lazily initializes the connection."""
-
-    def __getattr__(self, name):
-        # This will be called when any method is accessed
-        async def async_method(*args, **kwargs):
-            client = await get_async_redis()
-            method = getattr(client, name)
-            return await method(*args, **kwargs)
-
-        return async_method
-
-
-async_redis = AsyncRedisProxy()
-
-
 @dataclass
 class CachedValue:
     """Wrapper for cached values with timestamp to avoid tuple ambiguity."""
