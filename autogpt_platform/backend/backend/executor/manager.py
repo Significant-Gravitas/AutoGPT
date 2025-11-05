@@ -54,7 +54,9 @@ from backend.executor.activity_status_generator import (
 from backend.executor.utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_EXCHANGE,
     GRAPH_EXECUTION_QUEUE_NAME,
+    GRAPH_EXECUTION_ROUTING_KEY,
     CancelExecutionEvent,
     ExecutionOutputEntry,
     LogMetadata,
@@ -1289,6 +1291,24 @@ class ExecutionManager(AppProcess):
 
         self._execution_locks = {}
 
+    def _requeue_message_to_back(self, body: bytes):
+        """
+        Requeue a message to the back of the queue using the existing publish infrastructure.
+        This prevents rate-limited messages from blocking other users' executions.
+        """
+        try:
+            self.run_client.publish_message(
+                routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+                message=body.decode(),  # publish_message expects string, not bytes
+                exchange=GRAPH_EXECUTION_EXCHANGE,
+            )
+            logger.debug(f"[{self.service_name}] Message requeued to back of queue")
+        except Exception as e:
+            logger.error(
+                f"[{self.service_name}] Failed to requeue message to back: {e}"
+            )
+            raise
+
     @property
     def cancel_thread(self) -> threading.Thread:
         if self._cancel_thread is None:
@@ -1459,14 +1479,32 @@ class ExecutionManager(AppProcess):
 
         @func_retry
         def _ack_message(reject: bool, requeue: bool):
-            """Acknowledge or reject the message based on execution status."""
+            """
+            Acknowledge or reject the message based on execution status.
+
+            Args:
+                reject: Whether to reject the message
+                requeue: Whether to requeue the message
+            """
 
             # Connection can be lost, so always get a fresh channel
             channel = self.run_client.get_channel()
             if reject:
-                channel.connection.add_callback_threadsafe(
-                    lambda: channel.basic_nack(delivery_tag, requeue=requeue)
-                )
+                if requeue and self.config.requeue_by_republishing:
+                    # Send rejected message to back of queue using republishing
+                    def _republish_to_back():
+                        # First republish to back of queue
+                        self._requeue_message_to_back(body)
+                        # Then reject without requeue (message already republished)
+                        channel.basic_nack(delivery_tag, requeue=False)
+                        logger.info("Message requeued to back of queue")
+
+                    channel.connection.add_callback_threadsafe(_republish_to_back)
+                else:
+                    # Traditional requeue (goes to front) or no requeue
+                    channel.connection.add_callback_threadsafe(
+                        lambda: channel.basic_nack(delivery_tag, requeue=requeue)
+                    )
             else:
                 channel.connection.add_callback_threadsafe(
                     lambda: channel.basic_ack(delivery_tag)
@@ -1483,6 +1521,7 @@ class ExecutionManager(AppProcess):
         # Check if we can accept more runs
         self._cleanup_completed_runs()
         if len(self.active_graph_runs) >= self.pool_size:
+            # Send pool-full messages to back of queue for fair distribution
             _ack_message(reject=True, requeue=True)
             return
 
@@ -1547,6 +1586,7 @@ class ExecutionManager(AppProcess):
                     f"[{self.service_name}] Rate limit exceeded for user {user_id} on graph {graph_id}: "
                     f"{current_running_count}/{settings.config.max_concurrent_graph_executions_per_user} running executions"
                 )
+                # Send rate-limited messages to back of queue to prevent blocking other users
                 _ack_message(reject=True, requeue=True)
                 return
 
