@@ -10,7 +10,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { storage, Key } from "@/services/storage/local-storage";
-import { isValidUUID } from "@/lib/utils";
+import { isValidUUID } from "@/app/(platform)/chat/helpers";
 
 interface UseChatSessionArgs {
   urlSessionId?: string | null;
