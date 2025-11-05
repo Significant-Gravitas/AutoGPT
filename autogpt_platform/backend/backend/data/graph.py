@@ -925,7 +925,7 @@ async def get_graph(
 
     if not skip_access_check and graph.userId != user_id:
         # For access, the graph must be owned by the user or listed in the store
-        if not is_graph_published_in_marketplace(graph_id, graph.version):
+        if not await is_graph_published_in_marketplace(graph_id, graph.version):
             return None
 
     if include_subgraphs or for_export:
@@ -969,7 +969,9 @@ async def get_graph_as_admin(
     # For access, the graph must be owned by the user or listed in the store
     if graph is None or (
         graph.userId != user_id
-        and not is_graph_published_in_marketplace(graph_id, version or graph.version)
+        and not await is_graph_published_in_marketplace(
+            graph_id, version or graph.version
+        )
     ):
         return None
 
