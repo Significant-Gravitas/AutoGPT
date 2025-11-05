@@ -13,7 +13,7 @@ from backend.sdk import (
 )
 
 from ._config import exa
-from .helpers import ContentSettings
+from .helpers import ContentSettings, to_camel_case_dict
 
 
 class ExaSearchBlock(Block):
@@ -94,7 +94,7 @@ class ExaSearchBlock(Block):
             "query": input_data.query,
             "useAutoprompt": input_data.use_auto_prompt,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.model_dump(),
+            "contents": to_camel_case_dict(input_data.contents.model_dump()),
         }
 
         date_field_mapping = {
