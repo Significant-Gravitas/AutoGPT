@@ -156,6 +156,15 @@ export function RunDetailHeader({
                   </Text>
                 </>
               )}
+              {typeof run.stats?.correctness_score === "number" && (
+                <>
+                  <span className="mx-1 inline-block text-zinc-200">|</span>
+                  <Text variant="small" className="!text-zinc-600">
+                    Success Estimate:{" "}
+                    {Math.round(run.stats.correctness_score * 100)}%
+                  </Text>
+                </>
+              )}
             </div>
           ) : scheduleRecurrence ? (
             <Text variant="small" className="mt-1 !text-zinc-600">
