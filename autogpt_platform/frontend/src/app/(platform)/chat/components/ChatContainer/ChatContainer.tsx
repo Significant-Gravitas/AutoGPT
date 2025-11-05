@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import { ChatInput } from "@/components/atoms/ChatInput/ChatInput";
-import { MessageList } from "@/components/molecules/MessageList/MessageList";
-import { QuickActionsWelcome } from "@/components/molecules/QuickActionsWelcome/QuickActionsWelcome";
+import { ChatInput } from "@/app/(platform)/chat/components/ChatInput/ChatInput";
+import { MessageList } from "@/app/(platform)/chat/components/MessageList/MessageList";
+import { QuickActionsWelcome } from "@/app/(platform)/chat/components/QuickActionsWelcome/QuickActionsWelcome";
 import { useChatContainer } from "./useChatContainer";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 

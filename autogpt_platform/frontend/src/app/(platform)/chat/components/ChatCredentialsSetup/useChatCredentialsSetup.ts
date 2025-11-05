@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import type { CredentialInfo } from "./ChatCredentialsSetup";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api";
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
-import { Key, Check, Warning } from "@phosphor-icons/react";
+import { KeyIcon, CheckIcon, WarningIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useChatCredentialsSetup } from "./useChatCredentialsSetup";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
@@ -41,10 +41,10 @@ function createSchemaFromCredentialInfo(
 
 export function ChatCredentialsSetup({
   credentials,
-  agentName,
+  agentName: _agentName,
   message,
   onAllCredentialsComplete,
-  onCancel,
+  onCancel: _onCancel,
   className,
 }: Props) {
   const { selectedCredentials, isAllComplete, handleCredentialSelect } =
@@ -81,7 +81,7 @@ export function ChatCredentialsSetup({
     >
       <div className="flex items-start gap-4 p-6">
         <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-orange-500">
-          <Key size={24} weight="bold" className="text-white" />
+          <KeyIcon size={24} weight="bold" className="text-white" />
         </div>
         <div className="flex-1">
           <Text
@@ -114,13 +114,13 @@ export function ChatCredentialsSetup({
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {isSelected ? (
-                        <Check
+                        <CheckIcon
                           size={20}
                           className="text-green-500"
                           weight="bold"
                         />
                       ) : (
-                        <Warning
+                        <WarningIcon
                           size={20}
                           className="text-orange-500"
                           weight="bold"

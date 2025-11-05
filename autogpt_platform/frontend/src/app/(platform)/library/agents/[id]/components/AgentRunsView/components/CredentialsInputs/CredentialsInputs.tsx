@@ -1,5 +1,9 @@
 import { Button } from "@/components/atoms/Button/Button";
-import { Key, Plus, UserPlus } from "@phosphor-icons/react";
+import {
+  IconKey,
+  IconKeyPlus,
+  IconUserPlus,
+} from "@/components/__legacy__/ui/icons";
 import {
   Select,
   SelectContent,
@@ -9,11 +13,7 @@ import {
   SelectValue,
 } from "@/components/__legacy__/ui/select";
 import useCredentials from "@/hooks/useCredentials";
-import {
-  useGetV1InitiateOauthFlow,
-  usePostV1ExchangeOauthCodeForTokens,
-} from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { LoginResponse } from "@/app/api/__generated__/models/loginResponse";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -21,7 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getHostFromUrl } from "@/lib/utils/url";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
-import { FC, useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { FC, useEffect, useMemo, useState } from "react";
 import {
   FaDiscord,
   FaGithub,
@@ -128,45 +128,8 @@ export const CredentialsInput: FC<{
     useState<AbortController | null>(null);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
 
+  const api = useBackendAPI();
   const credentials = useCredentials(schema, siblingInputs);
-
-  // Use refs to track previous values and only recompute when they actually change
-  const providerRef = useRef("");
-  const scopesRef = useRef<string | undefined>(undefined);
-
-  // Compute current values
-  const currentProvider =
-    credentials && "provider" in credentials ? credentials.provider : "";
-  const currentScopes = schema.credentials_scopes?.join(",");
-
-  // Only update refs when values actually change
-  if (currentProvider !== providerRef.current) {
-    providerRef.current = currentProvider;
-  }
-  if (currentScopes !== scopesRef.current) {
-    scopesRef.current = currentScopes;
-  }
-
-  // Use stable ref values for hooks
-  const stableProvider = providerRef.current;
-  const stableScopes = scopesRef.current;
-
-  // Setup OAuth hooks with generated API endpoints (only when provider is stable)
-  const { refetch: initiateOauthFlow } = useGetV1InitiateOauthFlow(
-    stableProvider,
-    {
-      scopes: stableScopes,
-    },
-    {
-      query: {
-        enabled: false,
-        select: (res) => res.data as LoginResponse,
-      },
-    },
-  );
-
-  const { mutateAsync: oAuthCallbackMutation } =
-    usePostV1ExchangeOauthCodeForTokens();
 
   // Report loaded state to parent
   useEffect(() => {
@@ -235,17 +198,12 @@ export const CredentialsInput: FC<{
     oAuthCallback,
   } = credentials;
 
-  const handleOAuthLogin = useCallback(async () => {
+  async function handleOAuthLogin() {
     setOAuthError(null);
-
-    // Use the generated API hook to initiate OAuth flow
-    const { data } = await initiateOauthFlow();
-    if (!data || !data.login_url || !data.state_token) {
-      setOAuthError("Failed to initiate OAuth flow");
-      return;
-    }
-
-    const { login_url, state_token } = data;
+    const { login_url, state_token } = await api.oAuthLogin(
+      provider,
+      schema.credentials_scopes,
+    );
     setOAuth2FlowInProgress(true);
     const popup = window.open(login_url, "_blank", "popup=true");
 
@@ -290,28 +248,14 @@ export const CredentialsInput: FC<{
 
       try {
         console.debug("Processing OAuth callback");
-        // Use the generated API hook for OAuth callback
-        const result = await oAuthCallbackMutation({
-          provider,
-          data: {
-            code: e.data.code,
-            state_token: e.data.state,
-          },
-        });
-
+        const credentials = await oAuthCallback(e.data.code, e.data.state);
         console.debug("OAuth callback processed successfully");
-        // Extract credential data from response
-        const credData = result.status === 200 ? result.data : null;
-        if (credData && "id" in credData) {
-          onSelectCredentials({
-            id: credData.id,
-            type: "oauth2",
-            title:
-              ("title" in credData ? credData.title : undefined) ||
-              `${providerName} account`,
-            provider,
-          });
-        }
+        onSelectCredentials({
+          id: credentials.id,
+          type: "oauth2",
+          title: credentials.title,
+          provider,
+        });
       } catch (error) {
         console.error("Error in OAuth callback:", error);
         setOAuthError(
@@ -341,13 +285,7 @@ export const CredentialsInput: FC<{
       },
       5 * 60 * 1000,
     );
-  }, [
-    initiateOauthFlow,
-    oAuthCallbackMutation,
-    stableProvider,
-    providerName,
-    onSelectCredentials,
-  ]);
+  }
 
   const ProviderIcon = providerIcons[provider] || fallbackIcon;
   const modals = (
@@ -506,7 +444,7 @@ export const CredentialsInput: FC<{
             .map((credentials, index) => (
               <SelectItem key={index} value={credentials.id}>
                 <ProviderIcon className="mr-2 inline h-4 w-4" />
-                <Key className="mr-1.5 inline" size={16} />
+                <IconKey className="mr-1.5 inline" />
                 {credentials.title}
               </SelectItem>
             ))}
@@ -515,7 +453,7 @@ export const CredentialsInput: FC<{
             .map((credentials, index) => (
               <SelectItem key={index} value={credentials.id}>
                 <ProviderIcon className="mr-2 inline h-4 w-4" />
-                <UserPlus className="mr-1.5 inline" size={16} />
+                <IconUserPlus className="mr-1.5 inline" />
                 {credentials.title}
               </SelectItem>
             ))}
@@ -524,32 +462,32 @@ export const CredentialsInput: FC<{
             .map((credentials, index) => (
               <SelectItem key={index} value={credentials.id}>
                 <ProviderIcon className="mr-2 inline h-4 w-4" />
-                <Key className="mr-1.5 inline" size={16} />
+                <IconKey className="mr-1.5 inline" />
                 {credentials.title}
               </SelectItem>
             ))}
           <SelectSeparator />
           {supportsOAuth2 && (
             <SelectItem value="sign-in">
-              <UserPlus className="mr-1.5 inline" size={16} />
+              <IconUserPlus className="mr-1.5 inline" />
               Sign in with {providerName}
             </SelectItem>
           )}
           {supportsApiKey && (
             <SelectItem value="add-api-key">
-              <Plus className="mr-1.5 inline" size={16} weight="bold" />
+              <IconKeyPlus className="mr-1.5 inline" />
               Add new API key
             </SelectItem>
           )}
           {supportsUserPassword && (
             <SelectItem value="add-user-password">
-              <UserPlus className="mr-1.5 inline" size={16} />
+              <IconUserPlus className="mr-1.5 inline" />
               Add new user password
             </SelectItem>
           )}
           {supportsHostScoped && (
             <SelectItem value="add-host-scoped">
-              <Key className="mr-1.5 inline" size={16} />
+              <IconKey className="mr-1.5 inline" />
               Add host-scoped headers
             </SelectItem>
           )}

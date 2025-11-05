@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import type { StreamChunk } from "@/hooks/useChatStream";
+import type { StreamChunk } from "@/app/(platform)/chat/useChatStream";
 import type { HandlerDependencies } from "./useChatContainer.handlers";
 import {
   handleTextChunk,
@@ -11,29 +11,6 @@ import {
   handleError,
 } from "./useChatContainer.handlers";
 
-/**
- * Creates a stream event dispatcher that routes stream chunks to appropriate handlers.
- *
- * This dispatcher pattern separates event routing logic from individual handler implementations,
- * making the code more maintainable and testable.
- *
- * @param deps - Handler dependencies (state setters and refs)
- * @returns A function that processes StreamChunk events
- *
- * @example
- * ```ts
- * const dispatcher = createStreamEventDispatcher({
- *   setMessages,
- *   setStreamingChunks,
- *   streamingChunksRef,
- *   setHasTextChunks,
- *   sessionId,
- * });
- *
- * // Use with streaming hook
- * await sendStreamMessage(sessionId, content, dispatcher);
- * ```
- */
 export function createStreamEventDispatcher(
   deps: HandlerDependencies,
 ): (chunk: StreamChunk) => void {
