@@ -5,8 +5,8 @@ from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
+from autogpt_libs.auth.dependencies import get_optional_user_id
 from fastapi import HTTPException, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from typing_extensions import ParamSpec
@@ -23,37 +23,6 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 _is_initialized = False
-
-# Optional bearer token authentication for feature flags
-_optional_bearer = HTTPBearer(auto_error=False)
-
-
-def _get_optional_user_id_from_auth(
-    credentials: HTTPAuthorizationCredentials | None = Security(_optional_bearer),
-) -> str | None:
-    """
-    Extract user ID from JWT token if present, otherwise return None.
-
-    This is used by feature flag dependencies to get the authenticated user context
-    for LaunchDarkly targeting while still supporting anonymous access.
-
-    Args:
-        credentials: Optional HTTP bearer credentials from the request
-
-    Returns:
-        User ID string if authenticated, None for anonymous access
-    """
-    if not credentials:
-        return None
-
-    try:
-        from autogpt_libs.auth.jwt_utils import parse_jwt_token
-
-        payload = parse_jwt_token(credentials.credentials)
-        return payload.get("sub")
-    except Exception as e:
-        logger.debug(f"Auth token validation failed (anonymous access): {e}")
-        return None
 
 
 class Flag(str, Enum):
@@ -310,7 +279,7 @@ def create_feature_flag_dependency(
     """
 
     async def check_feature_flag(
-        user_id: str | None = Security(_get_optional_user_id_from_auth),
+        user_id: str | None = Security(get_optional_user_id),
     ) -> None:
         """Check if feature flag is enabled for the user.
 
