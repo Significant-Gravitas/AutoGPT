@@ -1291,24 +1291,6 @@ class ExecutionManager(AppProcess):
 
         self._execution_locks = {}
 
-    def _requeue_message_to_back(self, body: bytes):
-        """
-        Requeue a message to the back of the queue using the existing publish infrastructure.
-        This prevents rate-limited messages from blocking other users' executions.
-        """
-        try:
-            self.run_client.publish_message(
-                routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-                message=body.decode(),  # publish_message expects string, not bytes
-                exchange=GRAPH_EXECUTION_EXCHANGE,
-            )
-            logger.debug(f"[{self.service_name}] Message requeued to back of queue")
-        except Exception as e:
-            logger.error(
-                f"[{self.service_name}] Failed to requeue message to back: {e}"
-            )
-            raise
-
     @property
     def cancel_thread(self) -> threading.Thread:
         if self._cancel_thread is None:
@@ -1493,11 +1475,22 @@ class ExecutionManager(AppProcess):
                 if requeue and settings.config.requeue_by_republishing:
                     # Send rejected message to back of queue using republishing
                     def _republish_to_back():
-                        # First republish to back of queue
-                        self._requeue_message_to_back(body)
-                        # Then reject without requeue (message already republished)
-                        channel.basic_nack(delivery_tag, requeue=False)
-                        logger.info("Message requeued to back of queue")
+                        try:
+                            # First republish to back of queue
+                            self.run_client.publish_message(
+                                routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+                                message=body.decode(),  # publish_message expects string, not bytes
+                                exchange=GRAPH_EXECUTION_EXCHANGE,
+                            )
+                            # Then reject without requeue (message already republished)
+                            channel.basic_nack(delivery_tag, requeue=False)
+                            logger.info("Message requeued to back of queue")
+                        except Exception as e:
+                            logger.error(
+                                f"[{self.service_name}] Failed to requeue message to back: {e}"
+                            )
+                            # Fall back to traditional requeue on failure
+                            channel.basic_nack(delivery_tag, requeue=True)
 
                     channel.connection.add_callback_threadsafe(_republish_to_back)
                 else:
