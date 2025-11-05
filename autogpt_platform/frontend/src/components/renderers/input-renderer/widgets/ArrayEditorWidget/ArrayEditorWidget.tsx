@@ -43,7 +43,7 @@ export const ArrayEditorWidget = ({
             return (
               <div
                 key={element.key}
-                className="-ml-2 flex max-w-[400px] items-center gap-2"
+                className="-ml-2 flex max-w-[350px] items-center gap-2"
               >
                 <ArrayEditorContext.Provider
                   value={{
