@@ -90,7 +90,11 @@ test.describe("Build", () => { //(1)!
   });
 
   test("user can add blocks starting with e", async () => {
-    await addBlocksStartingWithSplit("e", 1, 1);
+    await addBlocksStartingWithSplit("e", 1, 2);
+  });
+
+  test("user can add blocks starting with e pt 2", async () => {
+    await addBlocksStartingWithSplit("e", 2, 2);
   });
 
   test("user can add blocks starting with f", async () => {
