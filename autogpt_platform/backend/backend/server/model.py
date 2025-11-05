@@ -77,3 +77,12 @@ class TimezoneResponse(pydantic.BaseModel):
 
 class UpdateTimezoneRequest(pydantic.BaseModel):
     timezone: TimeZoneName
+
+
+class NotificationPayload(pydantic.BaseModel):
+    type: str
+    event: str
+
+
+class OnboardingNotificationPayload(NotificationPayload):
+    step: str

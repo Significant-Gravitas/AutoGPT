@@ -978,7 +978,7 @@ export interface UserOnboarding {
 
 export interface OnboardingNotificationPayload {
   type: "onboarding";
-  event: "trigger_webhook_completed";
+  event: string;
   step: OnboardingStep;
 }
 
@@ -986,7 +986,7 @@ export type WebSocketNotification =
   | OnboardingNotificationPayload
   | {
       type: string;
-      event?: string;
+      event: string;
       [key: string]: unknown;
     };
 

@@ -10,7 +10,7 @@ from backend.data.execution import (
     NodeExecutionEvent,
 )
 from backend.server.conn_manager import ConnectionManager
-from backend.server.model import WSMessage, WSMethod
+from backend.server.model import NotificationPayload, WSMessage, WSMethod
 
 
 @pytest.fixture
@@ -219,10 +219,13 @@ async def test_send_notification(
     connection_manager.user_connections["user-1"] = {mock_websocket}
 
     await connection_manager.send_notification(
-        user_id="user-1", payload={"message": "hey"}
+        user_id="user-1", payload=NotificationPayload(type="info", event="hey")
     )
 
     mock_websocket.send_text.assert_called_once()
     sent_message = mock_websocket.send_text.call_args[0][0]
-    assert '"method":"notification"' in sent_message
-    assert '"message":"hey"' in sent_message
+    expected_message = WSMessage(
+        method=WSMethod.NOTIFICATION,
+        data={"type": "info", "event": "hey"},
+    ).model_dump_json()
+    assert sent_message == expected_message

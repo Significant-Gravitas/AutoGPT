@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Dict, Set
+from typing import Dict, Set
 
 from fastapi import WebSocket
 
@@ -8,7 +8,7 @@ from backend.data.execution import (
     GraphExecutionEvent,
     NodeExecutionEvent,
 )
-from backend.server.model import WSMessage, WSMethod
+from backend.server.model import NotificationPayload, WSMessage, WSMethod
 
 _EVENT_TYPE_TO_METHOD_MAP: dict[ExecutionEventType, WSMethod] = {
     ExecutionEventType.GRAPH_EXEC_UPDATE: WSMethod.GRAPH_EXECUTION_EVENT,
@@ -103,12 +103,12 @@ class ConnectionManager:
         return n_sent
 
     async def send_notification(
-        self, *, user_id: str, payload: dict[str, Any] | list[Any] | str
+        self, *, user_id: str, payload: NotificationPayload
     ) -> int:
         """Send a notification to all websocket connections belonging to a user."""
         message = WSMessage(
             method=WSMethod.NOTIFICATION,
-            data=payload,
+            data=payload.model_dump(),
         ).model_dump_json()
 
         connections = tuple(self.user_connections.get(user_id, set()))
@@ -117,7 +117,7 @@ class ConnectionManager:
 
         await asyncio.gather(
             *(connection.send_text(message) for connection in connections),
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         return len(connections)
