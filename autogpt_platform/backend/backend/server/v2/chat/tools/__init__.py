@@ -10,7 +10,7 @@ from .run_agent import RunAgentTool
 from .setup_agent import SetupAgentTool
 
 if TYPE_CHECKING:
-    from backend.server.v2.chat.models import StreamToolExecutionResult
+    from backend.server.v2.chat.response_model import StreamToolExecutionResult
 
 # Initialize tool instances
 find_agent_tool = FindAgentTool()

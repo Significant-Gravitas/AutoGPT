@@ -13,6 +13,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { NewSaveControl } from "./NewSaveControl/NewSaveControl";
 import { CustomNode } from "../FlowEditor/nodes/CustomNode/CustomNode";
+import { UndoRedoButtons } from "./UndoRedoButtons";
 
 export type Control = {
   icon: React.ReactNode;
@@ -106,6 +107,8 @@ export const NewControlPanel = ({
         ))} */}
         <Separator className="text-[#E1E1E1]" />
         <NewSaveControl />
+        <Separator className="text-[#E1E1E1]" />
+        <UndoRedoButtons />
       </div>
     </section>
   );

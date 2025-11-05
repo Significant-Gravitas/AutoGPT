@@ -1,6 +1,6 @@
 import pytest
 
-from backend.server.v2.chat.data import (
+from backend.server.v2.chat.model import (
     ChatMessage,
     ChatSession,
     Usage,

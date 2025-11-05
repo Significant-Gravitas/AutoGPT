@@ -5,7 +5,7 @@ from typing import Any
 
 from openai.types.chat import ChatCompletionToolParam
 
-from backend.server.v2.chat.models import StreamToolExecutionResult
+from backend.server.v2.chat.response_model import StreamToolExecutionResult
 
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 

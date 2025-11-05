@@ -295,7 +295,7 @@ app.include_router(
     tags=["v2", "chat"],
     prefix="/api/chat",
     dependencies=[
-        fastapi.Depends(create_feature_flag_dependency(Flag.CHAT, default=True))
+        fastapi.Depends(create_feature_flag_dependency(Flag.CHAT, default=False))
     ],
 )
 
