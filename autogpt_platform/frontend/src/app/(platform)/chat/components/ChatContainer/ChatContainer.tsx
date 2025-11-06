@@ -26,9 +26,9 @@ export function ChatContainer({
     });
 
   const quickActions = [
-    "Find agents for data analysis",
-    "Show me automation agents",
-    "Help me build a workflow",
+    "Find agents for social media management",
+    "Show me agents for content creation",
+    "Help me automate my business",
     "What can you help me with?",
   ];
 
