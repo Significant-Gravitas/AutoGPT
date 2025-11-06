@@ -28,7 +28,7 @@ config = ChatConfig()
 
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: str | None = None
     name: str | None = None
     tool_call_id: str | None = None
     refusal: str | None = None
@@ -50,6 +50,8 @@ class ChatSession(BaseModel):
     credentials: dict[str, dict] = {}  # Map of provider -> credential metadata
     started_at: datetime
     updated_at: datetime
+    successful_agent_runs: dict[str, int] = {}
+    successful_agent_schedules: dict[str, int] = {}
 
     @staticmethod
     def new(user_id: str | None) -> "ChatSession":
@@ -69,7 +71,7 @@ class ChatSession(BaseModel):
             if message.role == "developer":
                 m = ChatCompletionDeveloperMessageParam(
                     role="developer",
-                    content=message.content,
+                    content=message.content or "",
                 )
                 if message.name:
                     m["name"] = message.name
@@ -77,7 +79,7 @@ class ChatSession(BaseModel):
             elif message.role == "system":
                 m = ChatCompletionSystemMessageParam(
                     role="system",
-                    content=message.content,
+                    content=message.content or "",
                 )
                 if message.name:
                     m["name"] = message.name
@@ -85,7 +87,7 @@ class ChatSession(BaseModel):
             elif message.role == "user":
                 m = ChatCompletionUserMessageParam(
                     role="user",
-                    content=message.content,
+                    content=message.content or "",
                 )
                 if message.name:
                     m["name"] = message.name
@@ -93,7 +95,7 @@ class ChatSession(BaseModel):
             elif message.role == "assistant":
                 m = ChatCompletionAssistantMessageParam(
                     role="assistant",
-                    content=message.content,
+                    content=message.content or "",
                 )
                 if message.function_call:
                     m["function_call"] = FunctionCall(
@@ -137,7 +139,7 @@ class ChatSession(BaseModel):
                 messages.append(
                     ChatCompletionToolMessageParam(
                         role="tool",
-                        content=message.content,
+                        content=message.content or "",
                         tool_call_id=message.tool_call_id or "",
                     )
                 )

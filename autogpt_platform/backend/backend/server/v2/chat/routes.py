@@ -50,7 +50,7 @@ class SessionDetailResponse(BaseModel):
     "/sessions",
 )
 async def create_session(
-    user_id: Annotated[str | None, Depends(auth.get_optional_user_id)],
+    user_id: Annotated[str | None, Depends(auth.get_user_id)],
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -80,7 +80,7 @@ async def create_session(
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_optional_user_id)],
+    user_id: Annotated[str | None, Depends(auth.get_user_id)],
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
@@ -113,7 +113,7 @@ async def get_session(
 async def stream_chat(
     session_id: str,
     message: Annotated[str, Query(min_length=1, max_length=10000)],
-    user_id: str | None = Depends(auth.get_optional_user_id),
+    user_id: str | None = Depends(auth.get_user_id),
     is_user_message: bool = Query(default=True),
 ):
     """

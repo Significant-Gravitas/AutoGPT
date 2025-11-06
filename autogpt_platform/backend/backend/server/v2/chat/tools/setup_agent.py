@@ -9,6 +9,8 @@ from backend.data.graph import get_graph
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.server.v2.chat.config import ChatConfig
+from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.chat.tools.get_required_setup_info import (
     GetRequiredSetupInfoTool,
 )
@@ -28,6 +30,7 @@ from backend.util.timezone_utils import (
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase
 
+config = ChatConfig()
 logger = logging.getLogger(__name__)
 
 
@@ -113,7 +116,7 @@ class SetupAgentTool(BaseTool):
     async def _execute(
         self,
         user_id: str | None,
-        session_id: str,
+        session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
         """Set up an agent with configuration.
@@ -130,6 +133,8 @@ class SetupAgentTool(BaseTool):
         assert (
             user_id is not None
         ), "User ID is required to run an agent. Superclass enforces authentication."
+
+        session_id = session.session_id
         setup_type = kwargs.get("setup_type", "schedule").strip()
         if setup_type != "schedule":
             return ErrorResponse(
@@ -149,12 +154,22 @@ class SetupAgentTool(BaseTool):
         inputs = kwargs.get("inputs", {})
 
         library_agent = await self._get_or_add_library_agent(
-            username_agent_slug, user_id, session_id, **kwargs
+            username_agent_slug, user_id, session, **kwargs
         )
+
         if not isinstance(library_agent, AgentDetails):
             # library agent is an ErrorResponse
             return library_agent
 
+        if library_agent and (
+            session.successful_agent_schedules.get(library_agent.graph_id, 0)
+            if isinstance(library_agent, AgentDetails)
+            else 0 >= config.max_agent_schedules
+        ):
+            return ErrorResponse(
+                message="Maximum number of agent schedules reached. You can't schedule this agent again in this chat session.",
+                session_id=session.session_id,
+            )
         # At this point we know the user is ready to run the agent
         # Create the schedule for the agent
         from backend.server.v2.library import db as library_db
@@ -176,7 +191,7 @@ class SetupAgentTool(BaseTool):
             name=cron_name,
             inputs=inputs,
             credentials=library_agent.required_credentials,
-            session_id=session_id,
+            session=session,
         )
 
     async def _add_graph_execution_schedule(
@@ -187,13 +202,13 @@ class SetupAgentTool(BaseTool):
         name: str,
         inputs: dict[str, Any],
         credentials: dict[str, CredentialsMetaInput],
-        session_id: str,
+        session: ChatSession,
         **kwargs,
     ) -> ExecutionStartedResponse | ErrorResponse:
         # Use timezone from request if provided, otherwise fetch from user profile
         user = await get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else None)
-
+        session_id = session.session_id
         # Map required credentials (schema field names) to actual user credential IDs
         # credentials param contains CredentialsMetaInput with schema field names as keys
         # We need to find the user's actual credentials that match the provider/type
@@ -252,6 +267,11 @@ class SetupAgentTool(BaseTool):
             result.next_run_time = convert_utc_time_to_user_timezone(
                 result.next_run_time, user_timezone
             )
+
+        session.successful_agent_schedules[library_agent.graph_id] = (
+            session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+        )
+
         return ExecutionStartedResponse(
             message="Agent execution successfully scheduled. Do not run this tool again unless specifically asked to run the agent again.",
             session_id=session_id,
@@ -261,12 +281,11 @@ class SetupAgentTool(BaseTool):
         )
 
     async def _get_or_add_library_agent(
-        self, agent_id: str, user_id: str, session_id: str, **kwargs
+        self, agent_id: str, user_id: str, session: ChatSession, **kwargs
     ) -> AgentDetails | ErrorResponse:
         # Call _execute directly since we're calling internally from another tool
-        response = await GetRequiredSetupInfoTool()._execute(
-            user_id, session_id, **kwargs
-        )
+        session_id = session.session_id
+        response = await GetRequiredSetupInfoTool()._execute(user_id, session, **kwargs)
 
         if not isinstance(response, SetupRequirementsResponse):
             return ErrorResponse(

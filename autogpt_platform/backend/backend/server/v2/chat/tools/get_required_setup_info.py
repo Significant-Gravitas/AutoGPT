@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.get_agent_details import GetAgentDetailsTool
 from backend.server.v2.chat.tools.models import (
@@ -57,7 +58,7 @@ class GetRequiredSetupInfoTool(BaseTool):
     async def _execute(
         self,
         user_id: str | None,
-        session_id: str,
+        session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
         """
@@ -82,11 +83,9 @@ class GetRequiredSetupInfoTool(BaseTool):
         assert (
             user_id is not None
         ), "GetRequiredSetupInfoTool - This should never happen user_id is None when auth is required"
-
+        session_id = session.session_id
         # Call _execute directly since we're calling internally from another tool
-        agent_details = await GetAgentDetailsTool()._execute(
-            user_id, session_id, **kwargs
-        )
+        agent_details = await GetAgentDetailsTool()._execute(user_id, session, **kwargs)
 
         if isinstance(agent_details, ErrorResponse):
             return agent_details

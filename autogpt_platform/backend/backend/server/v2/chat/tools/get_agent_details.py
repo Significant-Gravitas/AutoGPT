@@ -5,6 +5,7 @@ from typing import Any
 
 from backend.data import graph as graph_db
 from backend.data.model import CredentialsMetaInput
+from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.models import (
     AgentDetails,
@@ -46,7 +47,7 @@ class GetAgentDetailsTool(BaseTool):
     async def _execute(
         self,
         user_id: str | None,
-        session_id: str,
+        session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
         """Get detailed information about an agent.
@@ -61,7 +62,7 @@ class GetAgentDetailsTool(BaseTool):
 
         """
         agent_id = kwargs.get("username_agent_slug", "").strip()
-
+        session_id = session.session_id
         if not agent_id or "/" not in agent_id:
             return ErrorResponse(
                 message="Please provide an agent ID in format 'creator/agent-name'",
