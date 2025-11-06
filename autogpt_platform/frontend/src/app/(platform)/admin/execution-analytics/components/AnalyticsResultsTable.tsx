@@ -35,6 +35,23 @@ export function AnalyticsResultsTable({ results }: Props) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
+  const createCopyableId = (value: string, label: string) => (
+    <div
+      className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+      onClick={() => {
+        navigator.clipboard.writeText(value);
+        toast({
+          title: "Copied",
+          description: `${label} copied to clipboard`,
+        });
+      }}
+      title={`Click to copy ${label.toLowerCase()}`}
+    >
+      {value.substring(0, 8)}...
+      <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+    </div>
+  );
+
   const toggleRowExpansion = (execId: string) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(execId)) {
@@ -202,53 +219,14 @@ export function AnalyticsResultsTable({ results }: Props) {
                   <React.Fragment key={result.exec_id}>
                     <tr className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <div
-                          className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
-                          onClick={() => {
-                            navigator.clipboard.writeText(result.agent_id);
-                            toast({
-                              title: "Copied",
-                              description: "Agent ID copied to clipboard",
-                            });
-                          }}
-                          title="Click to copy agent ID"
-                        >
-                          {result.agent_id.substring(0, 8)}...
-                          <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                        </div>
+                        {createCopyableId(result.agent_id, "Agent ID")}
                       </td>
                       <td className="px-4 py-3 text-sm">{result.version_id}</td>
                       <td className="px-4 py-3">
-                        <div
-                          className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
-                          onClick={() => {
-                            navigator.clipboard.writeText(result.user_id);
-                            toast({
-                              title: "Copied",
-                              description: "User ID copied to clipboard",
-                            });
-                          }}
-                          title="Click to copy user ID"
-                        >
-                          {result.user_id.substring(0, 8)}...
-                          <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                        </div>
+                        {createCopyableId(result.user_id, "User ID")}
                       </td>
                       <td className="px-4 py-3">
-                        <div
-                          className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
-                          onClick={() => {
-                            navigator.clipboard.writeText(result.exec_id);
-                            toast({
-                              title: "Copied",
-                              description: "Execution ID copied to clipboard",
-                            });
-                          }}
-                          title="Click to copy execution ID"
-                        >
-                          {result.exec_id.substring(0, 8)}...
-                          <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                        </div>
+                        {createCopyableId(result.exec_id, "Execution ID")}
                       </td>
                       <td className="px-4 py-3 text-sm">
                         {getStatusBadge(result.status)}

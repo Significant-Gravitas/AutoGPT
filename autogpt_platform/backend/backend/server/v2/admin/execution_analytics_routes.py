@@ -133,45 +133,62 @@ async def generate_execution_analytics(
             f"Found {len(executions_to_process)} executions needing analytics generation"
         )
 
-        if not executions_to_process:
-            return ExecutionAnalyticsResponse(
-                total_executions=len(executions),
-                processed_executions=0,
-                successful_analytics=0,
-                failed_analytics=0,
-                skipped_executions=len(executions),
-                results=[],
-            )
-
-        # Process executions in batches
+        # Create results for ALL executions - processed and skipped
         results = []
         successful_count = 0
         failed_count = 0
 
-        total_batches = len(range(0, len(executions_to_process), request.batch_size))
-
-        for batch_idx, i in enumerate(
-            range(0, len(executions_to_process), request.batch_size)
-        ):
-            batch = executions_to_process[i : i + request.batch_size]
-            logger.info(
-                f"Processing batch {batch_idx + 1}/{total_batches} with {len(batch)} executions"
+        # Process executions that need analytics generation
+        if executions_to_process:
+            total_batches = len(
+                range(0, len(executions_to_process), request.batch_size)
             )
 
-            batch_results = await _process_batch(
-                batch, request.model_name or "gpt-4o-mini", db_client
+            for batch_idx, i in enumerate(
+                range(0, len(executions_to_process), request.batch_size)
+            ):
+                batch = executions_to_process[i : i + request.batch_size]
+                logger.info(
+                    f"Processing batch {batch_idx + 1}/{total_batches} with {len(batch)} executions"
+                )
+
+                batch_results = await _process_batch(
+                    batch, request.model_name or "gpt-4o-mini", db_client
+                )
+
+                for result in batch_results:
+                    results.append(result)
+                    if result.status == "success":
+                        successful_count += 1
+                    elif result.status == "failed":
+                        failed_count += 1
+
+                # Small delay between batches to avoid overwhelming the LLM API
+                if batch_idx < total_batches - 1:  # Don't delay after the last batch
+                    await asyncio.sleep(2)
+
+        # Add ALL executions to results (both processed and skipped)
+        for execution in executions:
+            # Skip if already processed (added to results above)
+            if execution in executions_to_process:
+                continue
+
+            results.append(
+                ExecutionAnalyticsResult(
+                    agent_id=execution.graph_id,
+                    version_id=execution.graph_version,
+                    user_id=execution.user_id,
+                    exec_id=execution.id,
+                    summary_text=(
+                        execution.stats.activity_status if execution.stats else None
+                    ),
+                    score=(
+                        execution.stats.correctness_score if execution.stats else None
+                    ),
+                    status="skipped",
+                    error_message="Already has activity status and correctness score",
+                )
             )
-
-            for result in batch_results:
-                results.append(result)
-                if result.status == "success":
-                    successful_count += 1
-                elif result.status == "failed":
-                    failed_count += 1
-
-            # Small delay between batches to avoid overwhelming the LLM API
-            if batch_idx < total_batches - 1:  # Don't delay after the last batch
-                await asyncio.sleep(2)
 
         response = ExecutionAnalyticsResponse(
             total_executions=len(executions),
