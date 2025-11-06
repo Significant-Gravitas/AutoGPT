@@ -132,7 +132,8 @@ async def stream_chat_completion(
     has_done_tool_call = False
     has_received_text = False
     text_streaming_ended = False
-    messages_to_add: list[ChatMessage] = []
+    tool_response_messages: list[ChatMessage] = []
+    accumulated_tool_calls: list[dict[str, Any]] = []
     should_retry = False
 
     try:
@@ -142,7 +143,9 @@ async def stream_chat_completion(
         ):
 
             if isinstance(chunk, StreamTextChunk):
-                assistant_response.content += chunk.content
+                content = chunk.content or ""
+                assert assistant_response.content is not None
+                assistant_response.content += content
                 has_received_text = True
                 yield chunk
             elif isinstance(chunk, StreamToolCallStart):
@@ -152,15 +155,24 @@ async def stream_chat_completion(
                     text_streaming_ended = True
                 yield chunk
             elif isinstance(chunk, StreamToolCall):
-                # Just pass on the tool call notification
-                pass
+                # Accumulate tool calls in OpenAI format
+                accumulated_tool_calls.append(
+                    {
+                        "id": chunk.tool_id,
+                        "type": "function",
+                        "function": {
+                            "name": chunk.tool_name,
+                            "arguments": orjson.dumps(chunk.arguments).decode("utf-8"),
+                        },
+                    }
+                )
             elif isinstance(chunk, StreamToolExecutionResult):
                 result_content = (
                     chunk.result
                     if isinstance(chunk.result, str)
                     else orjson.dumps(chunk.result).decode("utf-8")
                 )
-                messages_to_add.append(
+                tool_response_messages.append(
                     ChatMessage(
                         role="tool",
                         content=result_content,
@@ -204,9 +216,18 @@ async def stream_chat_completion(
         else:
             # Non-retryable error or max retries exceeded
             # Save any partial progress before reporting error
+            messages_to_save: list[ChatMessage] = []
+
+            # Add assistant message if it has content or tool calls
+            if accumulated_tool_calls:
+                assistant_response.tool_calls = accumulated_tool_calls
             if assistant_response.content or assistant_response.tool_calls:
-                messages_to_add.append(assistant_response)
-            session.messages.extend(messages_to_add)
+                messages_to_save.append(assistant_response)
+
+            # Add tool response messages after assistant message
+            messages_to_save.extend(tool_response_messages)
+
+            session.messages.extend(messages_to_save)
             await upsert_chat_session(session)
 
             if not has_yielded_error:
@@ -246,11 +267,27 @@ async def stream_chat_completion(
     logger.info(
         f"Upserting session: {session.session_id} with user id {session.user_id}"
     )
-    # Only append assistant response if it has content or tool calls
-    # to avoid saving empty messages on errors
+
+    # Build the messages list in the correct order
+    messages_to_save: list[ChatMessage] = []
+
+    # Add assistant message with tool_calls if any
+    if accumulated_tool_calls:
+        assistant_response.tool_calls = accumulated_tool_calls
+        logger.info(
+            f"Added {len(accumulated_tool_calls)} tool calls to assistant message"
+        )
     if assistant_response.content or assistant_response.tool_calls:
-        messages_to_add.append(assistant_response)
-    session.messages.extend(messages_to_add)
+        messages_to_save.append(assistant_response)
+        logger.info(
+            f"Saving assistant message with content_len={len(assistant_response.content or '')}, tool_calls={len(assistant_response.tool_calls or [])}"
+        )
+
+    # Add tool response messages after assistant message
+    messages_to_save.extend(tool_response_messages)
+    logger.info(f"Saving {len(tool_response_messages)} tool response messages")
+
+    session.messages.extend(messages_to_save)
     await upsert_chat_session(session)
 
     # If we did a tool call, stream the chat completion again to get the next response
@@ -451,7 +488,7 @@ async def _yield_tool_call(
         parameters=arguments,
         tool_call_id=tool_calls[yield_idx]["id"],
         user_id=session.user_id,
-        session_id=session.session_id,
+        session=session,
     )
     logger.info(f"Yielding Tool execution response: {tool_execution_response}")
     yield tool_execution_response

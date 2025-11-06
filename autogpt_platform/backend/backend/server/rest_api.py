@@ -51,12 +51,7 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
 )
-from backend.util.feature_flag import (
-    Flag,
-    create_feature_flag_dependency,
-    initialize_launchdarkly,
-    shutdown_launchdarkly,
-)
+from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
 
 settings = backend.util.settings.Settings()
@@ -300,9 +295,6 @@ app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
-    dependencies=[
-        fastapi.Depends(create_feature_flag_dependency(Flag.CHAT, default=False))
-    ],
 )
 
 app.mount("/external-api", external_app)
