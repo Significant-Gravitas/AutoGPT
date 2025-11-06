@@ -1,9 +1,11 @@
+import asyncio
 import logging
 from typing import List
 
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.models import User as AuthUser
-from fastapi import APIRouter, Security
+from fastapi import APIRouter, HTTPException, Security
+from prisma.enums import AgentExecutionStatus
 from pydantic import BaseModel
 
 from backend.data.diagnostics import (
@@ -29,12 +31,10 @@ from backend.data.diagnostics import (
     get_running_executions_details,
     get_schedule_health_metrics,
     get_stuck_queued_executions_details,
-    requeue_execution,
-    requeue_executions_bulk,
     stop_all_long_running_executions,
-    stop_execution,
-    stop_executions_bulk,
 )
+from backend.data.execution import get_graph_executions
+from backend.executor.utils import add_graph_execution, stop_graph_execution
 from backend.server.v2.admin.model import (
     AgentDiagnosticsResponse,
     ExecutionDiagnosticsResponse,
@@ -385,7 +385,8 @@ async def requeue_single_execution(
 ):
     """
     Requeue a stuck QUEUED execution (admin only).
-    Publishes execution to RabbitMQ queue.
+
+    Uses add_graph_execution with existing graph_exec_id to requeue.
 
     ⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.
 
@@ -397,16 +398,32 @@ async def requeue_single_execution(
     """
     logger.info(f"Admin {user.user_id} requeueing execution {request.execution_id}")
 
-    success = await requeue_execution(request.execution_id, user.user_id)
+    # Get the execution (validation - must be QUEUED)
+    executions = await get_graph_executions(
+        graph_exec_id=request.execution_id,
+        statuses=[AgentExecutionStatus.QUEUED],
+    )
+
+    if not executions:
+        raise HTTPException(
+            status_code=404,
+            detail="Execution not found or not in QUEUED status",
+        )
+
+    execution = executions[0]
+
+    # Use add_graph_execution in requeue mode
+    await add_graph_execution(
+        graph_id=execution.graph_id,
+        user_id=execution.user_id,
+        graph_version=execution.graph_version,
+        graph_exec_id=request.execution_id,  # Requeue existing execution
+    )
 
     return RequeueExecutionResponse(
-        success=success,
-        requeued_count=1 if success else 0,
-        message=(
-            "Execution requeued successfully"
-            if success
-            else "Failed to requeue execution"
-        ),
+        success=True,
+        requeued_count=1,
+        message="Execution requeued successfully",
     )
 
 
@@ -421,7 +438,8 @@ async def requeue_multiple_executions(
 ):
     """
     Requeue multiple stuck QUEUED executions (admin only).
-    Publishes executions to RabbitMQ queue.
+
+    Uses add_graph_execution with existing graph_exec_id to requeue.
 
     ⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.
 
@@ -435,7 +453,38 @@ async def requeue_multiple_executions(
         f"Admin {user.user_id} requeueing {len(request.execution_ids)} executions"
     )
 
-    requeued_count = await requeue_executions_bulk(request.execution_ids, user.user_id)
+    # Get executions by ID list (must be QUEUED)
+    executions = await get_graph_executions(
+        execution_ids=request.execution_ids,
+        statuses=[AgentExecutionStatus.QUEUED],
+    )
+
+    if not executions:
+        return RequeueExecutionResponse(
+            success=False,
+            requeued_count=0,
+            message="No QUEUED executions found to requeue",
+        )
+
+    # Requeue all executions in parallel using add_graph_execution
+    async def requeue_one(exec) -> bool:
+        try:
+            await add_graph_execution(
+                graph_id=exec.graph_id,
+                user_id=exec.user_id,
+                graph_version=exec.graph_version,
+                graph_exec_id=exec.id,  # Requeue existing
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to requeue {exec.id}: {e}")
+            return False
+
+    results = await asyncio.gather(
+        *[requeue_one(exec) for exec in executions], return_exceptions=False
+    )
+
+    requeued_count = sum(1 for success in results if success)
 
     return RequeueExecutionResponse(
         success=requeued_count > 0,
@@ -456,6 +505,8 @@ async def stop_single_execution(
     """
     Stop a single execution (admin only).
 
+    Uses robust stop_graph_execution which cascades to children and waits for termination.
+
     Args:
         request: Contains execution_id to stop
 
@@ -464,14 +515,28 @@ async def stop_single_execution(
     """
     logger.info(f"Admin {user.user_id} stopping execution {request.execution_id}")
 
-    success = await stop_execution(request.execution_id, user.user_id)
+    # Get the execution to find its owner user_id (required by stop_graph_execution)
+    executions = await get_graph_executions(
+        graph_exec_id=request.execution_id,
+    )
+
+    if not executions:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    execution = executions[0]
+
+    # Use robust stop_graph_execution (cascades to children, waits for termination)
+    await stop_graph_execution(
+        user_id=execution.user_id,
+        graph_exec_id=request.execution_id,
+        wait_timeout=15.0,
+        cascade=True,
+    )
 
     return StopExecutionResponse(
-        success=success,
-        stopped_count=1 if success else 0,
-        message=(
-            "Execution stopped successfully" if success else "Failed to stop execution"
-        ),
+        success=True,
+        stopped_count=1,
+        message="Execution stopped successfully",
     )
 
 
@@ -486,7 +551,8 @@ async def stop_multiple_executions(
 ):
     """
     Stop multiple active executions (admin only).
-    Sends cancel signals to executor for recent executions.
+
+    Uses robust stop_graph_execution which cascades to children and waits for termination.
 
     Args:
         request: Contains list of execution_ids to stop
@@ -494,11 +560,42 @@ async def stop_multiple_executions(
     Returns:
         Number of executions stopped and success message
     """
+
     logger.info(
         f"Admin {user.user_id} stopping {len(request.execution_ids)} executions"
     )
 
-    stopped_count = await stop_executions_bulk(request.execution_ids, user.user_id)
+    # Get executions by ID list
+    executions = await get_graph_executions(
+        execution_ids=request.execution_ids,
+    )
+
+    if not executions:
+        return StopExecutionResponse(
+            success=False,
+            stopped_count=0,
+            message="No executions found",
+        )
+
+    # Stop all executions in parallel using robust stop_graph_execution
+    async def stop_one(exec) -> bool:
+        try:
+            await stop_graph_execution(
+                user_id=exec.user_id,
+                graph_exec_id=exec.id,
+                wait_timeout=15.0,
+                cascade=True,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to stop execution {exec.id}: {e}")
+            return False
+
+    results = await asyncio.gather(
+        *[stop_one(exec) for exec in executions], return_exceptions=False
+    )
+
+    stopped_count = sum(1 for success in results if success)
 
     return StopExecutionResponse(
         success=stopped_count > 0,
@@ -777,6 +874,8 @@ async def requeue_all_stuck_executions(
     Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.
     Operates on all executions, not just paginated results.
 
+    Uses add_graph_execution with existing graph_exec_id to requeue.
+
     ⚠️ WARNING: This will re-execute ALL stuck executions and may cost significant credits.
 
     Returns:
@@ -794,7 +893,31 @@ async def requeue_all_stuck_executions(
             message="No stuck queued executions to requeue",
         )
 
-    requeued_count = await requeue_executions_bulk(execution_ids, user.user_id)
+    # Get stuck executions by ID list (must be QUEUED)
+    executions = await get_graph_executions(
+        execution_ids=execution_ids,
+        statuses=[AgentExecutionStatus.QUEUED],
+    )
+
+    # Requeue all in parallel using add_graph_execution
+    async def requeue_one(exec) -> bool:
+        try:
+            await add_graph_execution(
+                graph_id=exec.graph_id,
+                user_id=exec.user_id,
+                graph_version=exec.graph_version,
+                graph_exec_id=exec.id,  # Requeue existing
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to requeue {exec.id}: {e}")
+            return False
+
+    results = await asyncio.gather(
+        *[requeue_one(exec) for exec in executions], return_exceptions=False
+    )
+
+    requeued_count = sum(1 for success in results if success)
 
     return RequeueExecutionResponse(
         success=requeued_count > 0,

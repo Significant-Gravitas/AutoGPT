@@ -454,6 +454,7 @@ class NodeExecutionResult(BaseModel):
 
 async def get_graph_executions(
     graph_exec_id: Optional[str] = None,
+    execution_ids: Optional[list[str]] = None,
     graph_id: Optional[str] = None,
     user_id: Optional[str] = None,
     statuses: Optional[list[ExecutionStatus]] = None,
@@ -472,6 +473,8 @@ async def get_graph_executions(
     ⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints.
 
     Args:
+        graph_exec_id: Filter by single execution ID (mutually exclusive with execution_ids)
+        execution_ids: Filter by list of execution IDs (mutually exclusive with graph_exec_id)
         order_by: Field to order by. Defaults to "createdAt"
         order_direction: Sort direction. Defaults to "desc"
     """
@@ -480,6 +483,9 @@ async def get_graph_executions(
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
+    elif execution_ids:
+        where_filter["id"] = {"in": execution_ids}
+
     if user_id:
         where_filter["userId"] = user_id
     if graph_id:
