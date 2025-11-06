@@ -289,9 +289,6 @@ async def stream_chat_completion(
 
     session.messages.extend(messages_to_save)
     await upsert_chat_session(session)
-    import pprint
-
-    pprint.pprint(session)
 
     # If we did a tool call, stream the chat completion again to get the next response
     if has_done_tool_call:

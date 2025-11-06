@@ -146,8 +146,6 @@ async def stream_chat(
         async for chunk in chat_service.stream_chat_completion(
             session_id, message, is_user_message=is_user_message, user_id=user_id
         ):
-            with open("chunks.log", "a") as f:
-                f.write(f"{session_id}: {chunk}\n")
             yield chunk.to_sse()
 
     return StreamingResponse(
