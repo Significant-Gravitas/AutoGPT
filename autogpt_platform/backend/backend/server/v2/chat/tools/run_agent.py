@@ -129,7 +129,7 @@ class RunAgentTool(BaseTool):
             )
 
         if graph and (
-            session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_schedules
+            session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs
         ):
             return ErrorResponse(
                 message="Maximum number of agent schedules reached. You can't schedule this agent again in this chat session.",
