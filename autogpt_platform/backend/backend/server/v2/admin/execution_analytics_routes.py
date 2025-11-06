@@ -186,7 +186,7 @@ async def generate_execution_analytics(
                         execution.stats.correctness_score if execution.stats else None
                     ),
                     status="skipped",
-                    error_message="Already has activity status and correctness score",
+                    error_message=None,  # Not an error - just already processed
                 )
             )
 
