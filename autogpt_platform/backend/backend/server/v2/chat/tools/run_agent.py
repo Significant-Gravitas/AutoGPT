@@ -7,6 +7,8 @@ from backend.data.graph import get_graph
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.server.v2.chat.config import ChatConfig
+from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.get_required_setup_info import (
     GetRequiredSetupInfoTool,
@@ -22,6 +24,7 @@ from backend.server.v2.library import db as library_db
 from backend.server.v2.library import model as library_model
 
 logger = logging.getLogger(__name__)
+config = ChatConfig()
 
 
 class RunAgentTool(BaseTool):
@@ -65,7 +68,7 @@ class RunAgentTool(BaseTool):
     async def _execute(
         self,
         user_id: str | None,
-        session_id: str,
+        session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
         """Execute an agent manually.
@@ -84,13 +87,12 @@ class RunAgentTool(BaseTool):
             user_id is not None
         ), "User ID is required to run an agent. Superclass enforces authentication."
 
+        session_id = session.session_id
         username_agent_slug = kwargs.get("username_agent_slug", "").strip()
         inputs = kwargs.get("inputs", {})
 
         # Call _execute directly since we're calling internally from another tool
-        response = await GetRequiredSetupInfoTool()._execute(
-            user_id, session_id, **kwargs
-        )
+        response = await GetRequiredSetupInfoTool()._execute(user_id, session, **kwargs)
 
         if not isinstance(response, SetupRequirementsResponse):
             return ErrorResponse(
@@ -124,6 +126,14 @@ class RunAgentTool(BaseTool):
             return ErrorResponse(
                 message=f"Graph {username_agent_slug} ({response.graph_id}v{response.graph_version}) not found",
                 session_id=session_id,
+            )
+
+        if graph and (
+            session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs
+        ):
+            return ErrorResponse(
+                message="Maximum number of agent schedules reached. You can't schedule this agent again in this chat session.",
+                session_id=session.session_id,
             )
 
         # Check if we already have a library agent for this graph
@@ -232,6 +242,11 @@ class RunAgentTool(BaseTool):
             inputs=inputs,
             graph_credentials_inputs=graph_credentials_inputs,
         )
+
+        session.successful_agent_runs[library_agent.graph_id] = (
+            session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
+        )
+
         return ExecutionStartedResponse(
             message="Agent execution successfully started. Do not run this tool again unless specifically asked to run the agent again.",
             session_id=session_id,

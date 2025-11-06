@@ -3,7 +3,11 @@ import uuid
 import orjson
 import pytest
 
-from backend.server.v2.chat.tools._test_data import setup_llm_test_data, setup_test_data
+from backend.server.v2.chat.tools._test_data import (
+    make_session,
+    setup_llm_test_data,
+    setup_test_data,
+)
 from backend.server.v2.chat.tools.setup_agent import SetupAgentTool
 from backend.util.clients import get_scheduler_client
 
@@ -22,13 +26,16 @@ async def test_setup_agent_missing_cron(setup_test_data):
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
     # Execute without cron
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         setup_type="schedule",
@@ -59,13 +66,16 @@ async def test_setup_agent_webhook_not_supported(setup_test_data):
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
     # Execute with webhook setup_type
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         setup_type="webhook",
@@ -94,13 +104,16 @@ async def test_setup_agent_schedule_success(setup_test_data):
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
     # Execute with schedule setup
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         setup_type="schedule",
@@ -137,13 +150,16 @@ async def test_setup_agent_with_credentials(setup_llm_test_data):
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
     # Execute with schedule setup
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         setup_type="schedule",
@@ -176,10 +192,13 @@ async def test_setup_agent_invalid_agent(setup_test_data):
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Execute with non-existent agent
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="nonexistent/agent",
         setup_type="schedule",
@@ -214,6 +233,9 @@ async def test_setup_agent_schedule_created_in_scheduler(setup_test_data):
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
@@ -223,7 +245,7 @@ async def test_setup_agent_schedule_created_in_scheduler(setup_test_data):
     # Execute with schedule setup
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         setup_type="schedule",
@@ -273,6 +295,9 @@ async def test_setup_agent_schedule_with_credentials_triggered(setup_llm_test_da
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
@@ -282,7 +307,7 @@ async def test_setup_agent_schedule_with_credentials_triggered(setup_llm_test_da
     # Execute with schedule setup
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         setup_type="schedule",
@@ -361,13 +386,16 @@ async def test_setup_agent_creates_library_agent(setup_test_data):
     # Create the tool instance
     tool = SetupAgentTool()
 
+    # Build the session
+    session = make_session(user_id=user.id)
+
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
     # Execute with schedule setup
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         setup_type="schedule",

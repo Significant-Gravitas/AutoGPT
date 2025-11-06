@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from os import getenv
 
 import pytest
@@ -12,7 +13,21 @@ from backend.data.graph import Graph, Link, Node, create_graph
 from backend.data.model import APIKeyCredentials
 from backend.data.user import get_or_create_user
 from backend.integrations.credentials_store import IntegrationCredentialsStore
+from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.store import db as store_db
+
+
+def make_session(user_id: str | None = None):
+    return ChatSession(
+        session_id=str(uuid.uuid4()),
+        user_id=user_id,
+        messages=[],
+        usage=[],
+        started_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        successful_agent_runs={},
+        successful_agent_schedules={},
+    )
 
 
 @pytest.fixture(scope="session")

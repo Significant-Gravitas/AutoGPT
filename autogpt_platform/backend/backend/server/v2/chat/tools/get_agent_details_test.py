@@ -3,7 +3,11 @@ import uuid
 import orjson
 import pytest
 
-from backend.server.v2.chat.tools._test_data import setup_llm_test_data, setup_test_data
+from backend.server.v2.chat.tools._test_data import (
+    make_session,
+    setup_llm_test_data,
+    setup_test_data,
+)
 from backend.server.v2.chat.tools.get_agent_details import GetAgentDetailsTool
 
 # This is so the formatter doesn't remove the fixture imports
@@ -25,10 +29,13 @@ async def test_get_agent_details_success(setup_test_data):
     # Build the proper marketplace agent_id format: username/slug
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
+    # Build session
+    session = make_session()
+
     # Execute the tool
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
     )
@@ -85,10 +92,12 @@ async def test_get_agent_details_with_llm_credentials(setup_llm_test_data):
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
+    session = make_session(user_id=user.id)
+
     # Execute the tool
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
     )
@@ -110,7 +119,6 @@ async def test_get_agent_details_with_llm_credentials(setup_llm_test_data):
     credentials = agent["credentials"]
 
     # The LLM agent should have OpenAI credentials listed
-    # Note: This depends on how the graph's credentials_input_schema is structured
     assert isinstance(credentials, list)
 
     # Check that inputs include the user_prompt
@@ -124,10 +132,13 @@ async def test_get_agent_details_invalid_format():
     """Test error handling when agent_id is not in correct format"""
     tool = GetAgentDetailsTool()
 
+    session = make_session()
+    session.user_id = str(uuid.uuid4())
+
     # Execute with invalid format (no slash)
     response = await tool.execute(
-        user_id=str(uuid.uuid4()),
-        session_id=str(uuid.uuid4()),
+        user_id=session.user_id,
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="invalid-format",
     )
@@ -147,10 +158,13 @@ async def test_get_agent_details_empty_slug():
     """Test error handling when agent_id is empty"""
     tool = GetAgentDetailsTool()
 
+    session = make_session()
+    session.user_id = str(uuid.uuid4())
+
     # Execute with empty slug
     response = await tool.execute(
-        user_id=str(uuid.uuid4()),
-        session_id=str(uuid.uuid4()),
+        user_id=session.user_id,
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="",
     )
@@ -170,10 +184,13 @@ async def test_get_agent_details_not_found():
     """Test error handling when agent is not found in marketplace"""
     tool = GetAgentDetailsTool()
 
+    session = make_session()
+    session.user_id = str(uuid.uuid4())
+
     # Execute with non-existent agent
     response = await tool.execute(
-        user_id=str(uuid.uuid4()),
-        session_id=str(uuid.uuid4()),
+        user_id=session.user_id,
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="nonexistent/agent",
     )
@@ -201,10 +218,13 @@ async def test_get_agent_details_anonymous_user(setup_test_data):
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
+    session = make_session()
+    # session.user_id stays as None
+
     # Execute the tool without a user_id (anonymous)
     response = await tool.execute(
         user_id=None,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
     )
@@ -238,10 +258,13 @@ async def test_get_agent_details_authenticated_user(setup_test_data):
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
+    session = make_session()
+    session.user_id = user.id
+
     # Execute the tool with a user_id (authenticated)
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
     )
@@ -275,10 +298,13 @@ async def test_get_agent_details_includes_execution_options(setup_test_data):
     # Build the proper marketplace agent_id format
     agent_marketplace_id = f"{user.email.split('@')[0]}/{store_submission.slug}"
 
+    session = make_session()
+    session.user_id = user.id
+
     # Execute the tool
     response = await tool.execute(
         user_id=user.id,
-        session_id=str(uuid.uuid4()),
+        session=session,
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
     )

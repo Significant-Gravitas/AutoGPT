@@ -2,6 +2,8 @@ from typing import TYPE_CHECKING, Any
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.server.v2.chat.model import ChatSession
+
 from .base import BaseTool
 from .find_agent import FindAgentTool
 from .get_agent_details import GetAgentDetailsTool
@@ -33,7 +35,7 @@ async def execute_tool(
     tool_name: str,
     parameters: dict[str, Any],
     user_id: str | None,
-    session_id: str,
+    session: ChatSession,
     tool_call_id: str,
 ) -> "StreamToolExecutionResult":
 
@@ -47,5 +49,5 @@ async def execute_tool(
     if tool_name not in tool_map:
         raise ValueError(f"Tool {tool_name} not found")
     return await tool_map[tool_name].execute(
-        user_id, session_id, tool_call_id, **parameters
+        user_id, session, tool_call_id, **parameters
     )
