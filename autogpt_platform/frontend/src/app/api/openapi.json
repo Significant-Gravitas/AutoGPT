@@ -4220,7 +4220,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Stuck Execution",
-        "description": "Requeue a stuck QUEUED execution (admin only).\nPublishes execution to RabbitMQ queue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
+        "description": "Requeue a stuck QUEUED execution (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
         "operationId": "postV2Requeue stuck execution",
         "requestBody": {
           "content": {
@@ -4260,7 +4260,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Multiple Stuck Executions",
-        "description": "Requeue multiple stuck QUEUED executions (admin only).\nPublishes executions to RabbitMQ queue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
+        "description": "Requeue multiple stuck QUEUED executions (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
         "operationId": "postV2Requeue multiple stuck executions",
         "requestBody": {
           "content": {
@@ -4300,7 +4300,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Stop Single Execution",
-        "description": "Stop a single execution (admin only).\n\nArgs:\n    request: Contains execution_id to stop\n\nReturns:\n    Success status and message",
+        "description": "Stop a single execution (admin only).\n\nUses robust stop_graph_execution which cascades to children and waits for termination.\n\nArgs:\n    request: Contains execution_id to stop\n\nReturns:\n    Success status and message",
         "operationId": "postV2Stop single execution",
         "requestBody": {
           "content": {
@@ -4340,7 +4340,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Stop Multiple Executions",
-        "description": "Stop multiple active executions (admin only).\nSends cancel signals to executor for recent executions.\n\nArgs:\n    request: Contains list of execution_ids to stop\n\nReturns:\n    Number of executions stopped and success message",
+        "description": "Stop multiple active executions (admin only).\n\nUses robust stop_graph_execution which cascades to children and waits for termination.\n\nArgs:\n    request: Contains list of execution_ids to stop\n\nReturns:\n    Number of executions stopped and success message",
         "operationId": "postV2Stop multiple executions",
         "requestBody": {
           "content": {
@@ -4626,7 +4626,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue ALL Stuck Queued Executions",
-        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\n⚠️ WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
+        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
         "operationId": "postV2Requeue all stuck queued executions",
         "responses": {
           "200": {
