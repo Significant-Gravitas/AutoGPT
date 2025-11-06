@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
@@ -11,7 +12,7 @@ import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./NavbarLink";
 import { Wallet } from "./Wallet/Wallet";
-
+import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 interface NavbarViewProps {
   isLoggedIn: boolean;
 }
@@ -21,6 +22,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
   const dynamicMenuItems = getAccountMenuItems(user?.role);
+  const isChatEnabled = useGetFlag(Flag.CHAT);
 
   const { data: profile } = useGetV2GetUserProfile({
     query: {
@@ -29,6 +31,11 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
     },
   });
 
+  const linksWithChat = useMemo(() => {
+    const chatLink = { name: "Chat", href: "/chat" };
+    return isChatEnabled ? [...loggedInLinks, chatLink] : loggedInLinks;
+  }, [isChatEnabled]);
+
   return (
     <>
       <nav className="sticky top-0 z-40 inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
@@ -36,7 +43,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
         {!isSmallScreen ? (
           <div className="flex flex-1 items-center gap-3 gap-5">
             {isLoggedIn
-              ? loggedInLinks.map((link) => (
+              ? linksWithChat.map((link) => (
                   <NavbarLink
                     key={link.name}
                     name={link.name}
@@ -89,7 +96,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: loggedInLinks.map((link) => ({
+                  items: linksWithChat.map((link) => ({
                     icon:
                       link.name === "Marketplace"
                         ? IconType.Marketplace
@@ -97,9 +104,11 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
                           ? IconType.Library
                           : link.name === "Build"
                             ? IconType.Builder
-                            : link.name === "Monitor"
-                              ? IconType.Library
-                              : IconType.LayoutDashboard,
+                            : link.name === "Chat"
+                              ? IconType.Chat
+                              : link.name === "Monitor"
+                                ? IconType.Library
+                                : IconType.LayoutDashboard,
                     text: link.name,
                     href: link.href,
                   })),
