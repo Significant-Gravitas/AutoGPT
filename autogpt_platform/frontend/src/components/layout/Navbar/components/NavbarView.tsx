@@ -36,11 +36,6 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
     return isChatEnabled ? [...loggedInLinks, chatLink] : loggedInLinks;
   }, [isChatEnabled]);
 
-  const loggedOutLinksWithChat = useMemo(() => {
-    const chatLink = { name: "Chat", href: "/chat" };
-    return isChatEnabled ? [...loggedOutLinks, chatLink] : loggedOutLinks;
-  }, [isChatEnabled]);
-
   return (
     <>
       <nav className="sticky top-0 z-40 inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
@@ -55,7 +50,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
                     href={link.href}
                   />
                 ))
-              : loggedOutLinksWithChat.map((link) => (
+              : loggedOutLinks.map((link) => (
                   <NavbarLink
                     key={link.name}
                     name={link.name}
