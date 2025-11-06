@@ -40,6 +40,7 @@ import {
   useGetV2ListFailedExecutions,
   useGetV2ListLongRunningExecutions,
   useGetV2ListStuckQueuedExecutions,
+  useGetV2ListInvalidExecutions,
   usePostV2StopSingleExecution,
   usePostV2StopMultipleExecutions,
   usePostV2StopAllLongRunningExecutions,
@@ -72,9 +73,21 @@ interface RunningExecutionDetail {
 
 interface ExecutionsTableProps {
   onRefresh?: () => void;
-  initialTab?: "all" | "orphaned" | "failed" | "long-running" | "stuck-queued";
+  initialTab?:
+    | "all"
+    | "orphaned"
+    | "failed"
+    | "long-running"
+    | "stuck-queued"
+    | "invalid";
   onTabChange?: (
-    tab: "all" | "orphaned" | "failed" | "long-running" | "stuck-queued",
+    tab:
+      | "all"
+      | "orphaned"
+      | "failed"
+      | "long-running"
+      | "stuck-queued"
+      | "invalid",
   ) => void;
   diagnosticsData?: {
     orphaned_running: number;
@@ -82,6 +95,8 @@ interface ExecutionsTableProps {
     failed_count_24h: number;
     stuck_running_24h: number;
     stuck_queued_1h: number;
+    invalid_queued_with_start: number;
+    invalid_running_without_start: number;
   };
 }
 
@@ -92,7 +107,7 @@ export function ExecutionsTable({
   diagnosticsData,
 }: ExecutionsTableProps) {
   const [activeTab, setActiveTab] = useState<
-    "all" | "orphaned" | "failed" | "long-running" | "stuck-queued"
+    "all" | "orphaned" | "failed" | "long-running" | "stuck-queued" | "invalid"
   >(initialTab);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showStopDialog, setShowStopDialog] = useState(false);
@@ -173,6 +188,15 @@ export function ExecutionsTable({
     { query: { enabled: activeTab === "stuck-queued" } },
   );
 
+  // Invalid states endpoint (read-only, data corruption cases)
+  const invalidQuery = useGetV2ListInvalidExecutions(
+    {
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
+    },
+    { query: { enabled: activeTab === "invalid" } },
+  );
+
   // Select active query based on tab
   const activeQuery =
     activeTab === "orphaned"
@@ -183,7 +207,9 @@ export function ExecutionsTable({
           ? longRunningQuery
           : activeTab === "stuck-queued"
             ? stuckQueuedQuery
-            : runningQuery;
+            : activeTab === "invalid"
+              ? invalidQuery
+              : runningQuery;
 
   const { data: executionsResponse, isLoading, error, refetch } = activeQuery;
 
@@ -240,17 +266,22 @@ export function ExecutionsTable({
     isCleaningUpAllStuckQueued ||
     isStoppingAllLongRunning;
 
-  // Calculate which executions are orphaned (>24h old based on created_at)
   const now = new Date();
+
+  // Determine which executions are orphaned
+  // If viewing the "orphaned" tab, trust backend filtering - all executions are orphaned
+  // Otherwise, calculate based on created_at > 24h
   const orphanedIds = new Set(
-    executions
-      .filter((e: RunningExecutionDetail) => {
-        const createdDate = new Date(e.created_at);
-        const ageHours =
-          (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
-        return ageHours > 24;
-      })
-      .map((e: RunningExecutionDetail) => e.execution_id),
+    activeTab === "orphaned"
+      ? executions.map((e: RunningExecutionDetail) => e.execution_id)
+      : executions
+          .filter((e: RunningExecutionDetail) => {
+            const createdDate = new Date(e.created_at);
+            const ageHours =
+              (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
+            return ageHours > 24;
+          })
+          .map((e: RunningExecutionDetail) => e.execution_id),
   );
 
   const selectedOrphanedIds = Array.from(selectedIds).filter((id) =>
@@ -510,22 +541,24 @@ export function ExecutionsTable({
                     </Button>
                   </>
                 )}
-                {selectedIds.size > 0 && activeTab !== "stuck-queued" && (
-                  <Button
-                    variant="destructive"
-                    size="small"
-                    onClick={() => confirmStop("selected", "stop")}
-                    disabled={isStopping}
-                  >
-                    <StopCircleIcon className="mr-2 h-4 w-4" />
-                    Stop Selected ({selectedIds.size})
-                    {hasOrphanedSelected && (
-                      <span className="ml-1 text-xs text-orange-200">
-                        ({selectedOrphanedIds.length} orphaned)
-                      </span>
-                    )}
-                  </Button>
-                )}
+                {selectedIds.size > 0 &&
+                  activeTab !== "stuck-queued" &&
+                  activeTab !== "invalid" && (
+                    <Button
+                      variant="destructive"
+                      size="small"
+                      onClick={() => confirmStop("selected", "stop")}
+                      disabled={isStopping}
+                    >
+                      <StopCircleIcon className="mr-2 h-4 w-4" />
+                      Stop Selected ({selectedIds.size})
+                      {hasOrphanedSelected && (
+                        <span className="ml-1 text-xs text-orange-200">
+                          ({selectedOrphanedIds.length} orphaned)
+                        </span>
+                      )}
+                    </Button>
+                  )}
                 {/* Only show Stop All for specific tabs, not "all" tab */}
                 {activeTab === "long-running" && total > 0 && (
                   <Button
@@ -541,6 +574,11 @@ export function ExecutionsTable({
                 {activeTab === "failed" && selectedIds.size === 0 && (
                   <div className="px-3 text-sm text-gray-500">
                     View-only (select to delete)
+                  </div>
+                )}
+                {activeTab === "invalid" && (
+                  <div className="rounded-md bg-pink-50 px-3 py-2 text-sm text-pink-700">
+                    ⚠️ Read-only: Invalid states require manual investigation
                   </div>
                 )}
                 <Button
@@ -582,6 +620,11 @@ export function ExecutionsTable({
                 Failed
                 {diagnosticsData && ` (${diagnosticsData.failed_count_24h})`}
               </TabsLineTrigger>
+              <TabsLineTrigger value="invalid">
+                Invalid States
+                {diagnosticsData &&
+                  ` (${diagnosticsData.invalid_queued_with_start + diagnosticsData.invalid_running_without_start})`}
+              </TabsLineTrigger>
             </TabsLineList>
           </CardHeader>
 
@@ -607,6 +650,7 @@ export function ExecutionsTable({
                               executions.length > 0
                             }
                             onCheckedChange={handleSelectAll}
+                            disabled={activeTab === "invalid"}
                           />
                         </TableHead>
                         <TableHead>Execution ID</TableHead>
@@ -649,6 +693,7 @@ export function ExecutionsTable({
                                     checked as boolean,
                                   )
                                 }
+                                disabled={activeTab === "invalid"}
                               />
                             </TableCell>
                             <TableCell className="font-mono text-xs">

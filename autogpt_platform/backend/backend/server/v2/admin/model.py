@@ -43,6 +43,10 @@ class ExecutionDiagnosticsResponse(BaseModel):
     stuck_queued_1h: int
     queued_never_started: int
 
+    # Invalid state detection (data corruption - no auto-actions)
+    invalid_queued_with_start: int
+    invalid_running_without_start: int
+
     # Throughput metrics
     completed_1h: int
     completed_24h: int

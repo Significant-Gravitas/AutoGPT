@@ -22,6 +22,7 @@ from backend.data.diagnostics import (
     get_execution_diagnostics,
     get_failed_executions_count,
     get_failed_executions_details,
+    get_invalid_executions_details,
     get_long_running_executions_details,
     get_orphaned_executions_details,
     get_orphaned_schedules_details,
@@ -127,6 +128,8 @@ async def get_execution_diagnostics_endpoint():
         oldest_running_hours=diagnostics.oldest_running_hours,
         stuck_queued_1h=diagnostics.stuck_queued_1h,
         queued_never_started=diagnostics.queued_never_started,
+        invalid_queued_with_start=diagnostics.invalid_queued_with_start,
+        invalid_running_without_start=diagnostics.invalid_running_without_start,
         completed_1h=diagnostics.completed_1h,
         completed_24h=diagnostics.completed_24h,
         throughput_per_hour=diagnostics.throughput_per_hour,
@@ -324,6 +327,49 @@ async def list_stuck_queued_executions(
     # Get total count for pagination
     diagnostics = await get_execution_diagnostics()
     total = diagnostics.stuck_queued_1h
+
+    return RunningExecutionsListResponse(executions=executions, total=total)
+
+
+@router.get(
+    "/diagnostics/executions/invalid",
+    response_model=RunningExecutionsListResponse,
+    summary="List Invalid Executions",
+)
+async def list_invalid_executions(
+    limit: int = 100,
+    offset: int = 0,
+):
+    """
+    Get detailed list of executions in invalid states (READ-ONLY).
+
+    Invalid states indicate data corruption and require manual investigation:
+    - QUEUED but has startedAt (impossible - can't start while queued)
+    - RUNNING but no startedAt (impossible - can't run without starting)
+
+    ⚠️ NO BULK ACTIONS PROVIDED - These need case-by-case investigation.
+
+    Each invalid execution likely has a different root cause (crashes, race conditions,
+    DB corruption). Investigate the execution history and logs to determine appropriate
+    action (manual cleanup, status fix, or leave as-is if system recovered).
+
+    Args:
+        limit: Maximum number of executions to return (default 100)
+        offset: Number of executions to skip (default 0)
+
+    Returns:
+        List of invalid state executions with details
+    """
+    logger.info(f"Listing invalid state executions (limit={limit}, offset={offset})")
+
+    executions = await get_invalid_executions_details(limit=limit, offset=offset)
+
+    # Get total count for pagination
+    diagnostics = await get_execution_diagnostics()
+    total = (
+        diagnostics.invalid_queued_with_start
+        + diagnostics.invalid_running_without_start
+    )
 
     return RunningExecutionsListResponse(executions=executions, total=total)
 

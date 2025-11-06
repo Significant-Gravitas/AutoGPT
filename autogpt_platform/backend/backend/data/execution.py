@@ -27,6 +27,7 @@ from prisma.models import (
     AgentNodeExecutionKeyValueData,
 )
 from prisma.types import (
+    AgentGraphExecutionOrderByInput,
     AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
@@ -458,10 +459,22 @@ async def get_graph_executions(
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
+    started_time_gte: Optional[datetime] = None,
+    started_time_lte: Optional[datetime] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
+    order_by: Literal["createdAt", "startedAt", "updatedAt"] = "createdAt",
+    order_direction: Literal["asc", "desc"] = "desc",
 ) -> list[GraphExecutionMeta]:
-    """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
+    """
+    Get graph executions with optional filters and ordering.
+
+    ⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints.
+
+    Args:
+        order_by: Field to order by. Defaults to "createdAt"
+        order_direction: Sort direction. Defaults to "desc"
+    """
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
     }
@@ -476,12 +489,34 @@ async def get_graph_executions(
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+    if started_time_gte or started_time_lte:
+        where_filter["startedAt"] = {
+            "gte": started_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": started_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
+    # Build properly typed order clause
+    # Prisma wants specific typed dicts for each field, so we construct them explicitly
+    order_clause: AgentGraphExecutionOrderByInput
+    match (order_by):
+        case "startedAt":
+            order_clause = {
+                "startedAt": order_direction,
+            }
+        case "updatedAt":
+            order_clause = {
+                "updatedAt": order_direction,
+            }
+        case _:
+            order_clause = {
+                "createdAt": order_direction,
+            }
+
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_filter,
-        order={"createdAt": "desc"},
+        order=order_clause,
         take=limit,
         skip=offset,
     )
@@ -494,6 +529,8 @@ async def get_graph_executions_count(
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
+    started_time_gte: Optional[datetime] = None,
+    started_time_lte: Optional[datetime] = None,
 ) -> int:
     """
     Get count of graph executions with optional filters.
@@ -504,6 +541,8 @@ async def get_graph_executions_count(
         statuses: Optional list of execution statuses to filter by
         created_time_gte: Optional minimum creation time
         created_time_lte: Optional maximum creation time
+        started_time_gte: Optional minimum start time (when execution started running)
+        started_time_lte: Optional maximum start time (when execution started running)
 
     Returns:
         Count of matching graph executions
@@ -523,6 +562,13 @@ async def get_graph_executions_count(
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+
+    if started_time_gte or started_time_lte:
+        where_filter["startedAt"] = {
+            "gte": started_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": started_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+
     if statuses:
         where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 

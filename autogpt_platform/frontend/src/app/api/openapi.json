@@ -4170,6 +4170,52 @@
         }
       }
     },
+    "/api/admin/diagnostics/executions/invalid": {
+      "get": {
+        "tags": ["v2", "admin", "diagnostics", "admin"],
+        "summary": "List Invalid Executions",
+        "description": "Get detailed list of executions in invalid states (READ-ONLY).\n\nInvalid states indicate data corruption and require manual investigation:\n- QUEUED but has startedAt (impossible - can't start while queued)\n- RUNNING but no startedAt (impossible - can't run without starting)\n\n⚠️ NO BULK ACTIONS PROVIDED - These need case-by-case investigation.\n\nEach invalid execution likely has a different root cause (crashes, race conditions,\nDB corruption). Investigate the execution history and logs to determine appropriate\naction (manual cleanup, status fix, or leave as-is if system recovered).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of invalid state executions with details",
+        "operationId": "getV2List invalid executions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 100, "title": "Limit" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0, "title": "Offset" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/admin/diagnostics/executions/requeue": {
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
@@ -6528,6 +6574,14 @@
             "type": "integer",
             "title": "Queued Never Started"
           },
+          "invalid_queued_with_start": {
+            "type": "integer",
+            "title": "Invalid Queued With Start"
+          },
+          "invalid_running_without_start": {
+            "type": "integer",
+            "title": "Invalid Running Without Start"
+          },
           "completed_1h": { "type": "integer", "title": "Completed 1H" },
           "completed_24h": { "type": "integer", "title": "Completed 24H" },
           "throughput_per_hour": {
@@ -6552,6 +6606,8 @@
           "oldest_running_hours",
           "stuck_queued_1h",
           "queued_never_started",
+          "invalid_queued_with_start",
+          "invalid_running_without_start",
           "completed_1h",
           "completed_24h",
           "throughput_per_hour",

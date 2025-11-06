@@ -27,7 +27,7 @@ export function DiagnosticsContent() {
   } = useDiagnosticsContent();
 
   const [activeTab, setActiveTab] = useState<
-    "all" | "orphaned" | "failed" | "long-running" | "stuck-queued"
+    "all" | "orphaned" | "failed" | "long-running" | "stuck-queued" | "invalid"
   >("all");
 
   if (isLoading && !executionData && !agentData) {
@@ -190,6 +190,35 @@ export function DiagnosticsContent() {
                     </p>
                     <p className="mt-2 text-xs text-purple-600">
                       Click to view schedules →
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Invalid State Alert */}
+            {(executionData.invalid_queued_with_start > 0 ||
+              executionData.invalid_running_without_start > 0) && (
+              <div
+                className="cursor-pointer transition-all hover:scale-105"
+                onClick={() => setActiveTab("invalid")}
+              >
+                <Card className="border-pink-300 bg-pink-50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-pink-800">
+                      Invalid States (Data Corruption)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-3xl font-bold text-pink-900">
+                      {executionData.invalid_queued_with_start +
+                        executionData.invalid_running_without_start}
+                    </p>
+                    <p className="text-sm text-pink-700">
+                      Requires manual investigation
+                    </p>
+                    <p className="mt-2 text-xs text-pink-600">
+                      Click to view (read-only) →
                     </p>
                   </CardContent>
                 </Card>
@@ -482,6 +511,17 @@ export function DiagnosticsContent() {
               </p>
             </div>
             <div>
+              <p className="font-semibold text-pink-700">
+                🩷 Invalid States (Data Corruption):
+              </p>
+              <p className="text-gray-600">
+                Executions in impossible states (QUEUED with startedAt, RUNNING
+                without startedAt). Indicates DB corruption, race conditions, or
+                crashes. Each requires manual investigation - no bulk actions
+                provided.
+              </p>
+            </div>
+            <div>
               <p className="font-semibold">Throughput Metrics:</p>
               <p className="text-gray-600">
                 Completions per hour shows system productivity. Declining
@@ -513,6 +553,10 @@ export function DiagnosticsContent() {
                 failed_count_24h: executionData.failed_count_24h,
                 stuck_running_24h: executionData.stuck_running_24h,
                 stuck_queued_1h: executionData.stuck_queued_1h,
+                invalid_queued_with_start:
+                  executionData.invalid_queued_with_start,
+                invalid_running_without_start:
+                  executionData.invalid_running_without_start,
               }
             : undefined
         }
