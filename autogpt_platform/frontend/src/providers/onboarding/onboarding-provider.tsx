@@ -8,10 +8,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -83,6 +84,9 @@ export default function OnboardingProvider({
   const [step, setStep] = useState(1);
   const [npsDialogOpen, setNpsDialogOpen] = useState(false);
   const hasInitialized = useRef(false);
+  const isMounted = useRef(true);
+  const pendingUpdatesRef = useRef<Set<Promise<void>>>(new Set());
+  const { toast } = useToast();
 
   const api = useBackendAPI();
   const pathname = usePathname();
@@ -90,6 +94,22 @@ export default function OnboardingProvider({
   const { user, isUserLoading } = useSupabase();
 
   useOnboardingTimezoneDetection();
+
+  // Cleanup effect to track mount state and cancel pending operations
+  useEffect(() => {
+    isMounted.current = true;
+
+    return () => {
+      isMounted.current = false;
+
+      // Wait for pending updates to complete before unmounting
+      pendingUpdatesRef.current.forEach((promise) => {
+        promise.catch(() => {});
+      });
+
+      pendingUpdatesRef.current.clear();
+    };
+  }, []);
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
 
@@ -130,6 +150,12 @@ export default function OnboardingProvider({
         }
       } catch (error) {
         console.error("Failed to initialize onboarding:", error);
+
+        toast({
+          title: "Failed to initialize onboarding",
+          variant: "destructive",
+        });
+
         hasInitialized.current = false; // Allow retry on next render
       }
     }
@@ -139,6 +165,7 @@ export default function OnboardingProvider({
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
+      // Update local state immediately
       setState((prev) => {
         if (!prev) {
           return createInitialOnboardingState(newState);
@@ -146,12 +173,28 @@ export default function OnboardingProvider({
         return { ...prev, ...newState };
       });
 
-      // Async API update without blocking render
-      setTimeout(() => {
-        api.updateUserOnboarding(newState).catch((error) => {
-          console.error("Failed to update user onboarding:", error);
-        });
-      }, 0);
+      const updatePromise = (async () => {
+        try {
+          if (!isMounted.current) return;
+          await api.updateUserOnboarding(newState);
+        } catch (error) {
+          if (isMounted.current) {
+            console.error("Failed to update user onboarding:", error);
+          }
+
+          toast({
+            title: "Failed to update user onboarding",
+            variant: "destructive",
+          });
+        }
+      })();
+
+      // Track this pending update
+      pendingUpdatesRef.current.add(updatePromise);
+
+      updatePromise.finally(() => {
+        pendingUpdatesRef.current.delete(updatePromise);
+      });
     },
     [api],
   );
