@@ -19,11 +19,13 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 
 export const NewSaveControl = () => {
-  const { form, onSubmit, isLoading, graphVersion } = useNewSaveControl();
+  const { form, onSubmit, isLoading, graphVersion } = useNewSaveControl({
+    showToast: true,
+  });
   const { saveControlOpen, setSaveControlOpen } = useControlPanelStore();
   return (
     <Popover onOpenChange={setSaveControlOpen}>
-      <Tooltip delayDuration={500}>
+      <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <ControlPanelButton
@@ -32,7 +34,6 @@ export const NewSaveControl = () => {
               selected={saveControlOpen}
               className="rounded-none"
             >
-              {/* Need to find phosphor icon alternative for this lucide icon */}
               <FloppyDiskIcon className="h-6 w-6" />
             </ControlPanelButton>
           </PopoverTrigger>
@@ -111,6 +112,7 @@ export const NewSaveControl = () => {
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
                   disabled={isLoading}
+                  loading={isLoading}
                 >
                   Save Agent
                 </Button>

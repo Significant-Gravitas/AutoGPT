@@ -13,12 +13,11 @@ except ImportError:
 
 from pydantic import SecretStr
 
-from backend.blocks.llm import LlmModel, llm_call
+from backend.blocks.llm import AIStructuredResponseGeneratorBlock, LlmModel
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import APIKeyCredentials, GraphExecutionStats
 from backend.util.feature_flag import Flag, is_feature_enabled
-from backend.util.retry import func_retry
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
 
@@ -70,6 +69,13 @@ class NodeRelation(TypedDict):
     sink_block_name: NotRequired[str]  # Optional, only set if block exists
 
 
+class ActivityStatusResponse(TypedDict):
+    """Type definition for structured activity status response."""
+
+    activity_status: str
+    correctness_score: float
+
+
 def _truncate_uuid(uuid_str: str) -> str:
     """Truncate UUID to first segment to reduce payload size."""
     if not uuid_str:
@@ -85,9 +91,9 @@ async def generate_activity_status_for_execution(
     db_client: "DatabaseManagerAsyncClient",
     user_id: str,
     execution_status: ExecutionStatus | None = None,
-) -> str | None:
+) -> ActivityStatusResponse | None:
     """
-    Generate an AI-based activity status summary for a graph execution.
+    Generate an AI-based activity status summary and correctness assessment for a graph execution.
 
     This function handles all the data collection and AI generation logic,
     keeping the manager integration simple.
@@ -102,7 +108,8 @@ async def generate_activity_status_for_execution(
         execution_status: The overall execution status (COMPLETED, FAILED, TERMINATED)
 
     Returns:
-        AI-generated activity status string, or None if feature is disabled
+        AI-generated activity status response with activity_status and correctness_status,
+        or None if feature is disabled
     """
     # Check LaunchDarkly feature flag for AI activity status generation with full context support
     if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
@@ -141,16 +148,27 @@ async def generate_activity_status_for_execution(
             execution_status,
         )
 
-        # Prepare prompt for AI
+        # Prepare prompt for AI with structured output requirements
         prompt = [
             {
                 "role": "system",
                 "content": (
-                    "You are an AI assistant summarizing what you just did for a user in simple, friendly language. "
-                    "Write from the user's perspective about what they accomplished, NOT about technical execution details. "
-                    "Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps. "
-                    "Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc. "
-                    "Keep it to 3 sentences maximum. Be conversational and human-friendly.\n\n"
+                    "You are an AI assistant analyzing what an agent execution accomplished and whether it worked correctly. "
+                    "You need to provide both a user-friendly summary AND a correctness assessment.\n\n"
+                    "FOR THE ACTIVITY STATUS:\n"
+                    "- Write from the user's perspective about what they accomplished, NOT about technical execution details\n"
+                    "- Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps\n"
+                    "- Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc.\n"
+                    "- Keep it to 3 sentences maximum. Be conversational and human-friendly\n\n"
+                    "FOR THE CORRECTNESS SCORE:\n"
+                    "- Provide a score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose\n"
+                    "- Use this scoring guide:\n"
+                    "  0.0-0.2: Failure - The result clearly did not meet the task requirements\n"
+                    "  0.2-0.4: Poor - Major issues; only small parts of the goal were achieved\n"
+                    "  0.4-0.6: Partial Success - Some objectives met, but with noticeable gaps or inaccuracies\n"
+                    "  0.6-0.8: Mostly Successful - Largely achieved the intended outcome, with minor flaws\n"
+                    "  0.8-1.0: Success - Fully met or exceeded the task requirements\n"
+                    "- Base the score on actual outputs produced, not just technical completion\n\n"
                     "UNDERSTAND THE INTENDED PURPOSE:\n"
                     "- FIRST: Read the graph description carefully to understand what the user wanted to accomplish\n"
                     "- The graph name and description tell you the main goal/intention of this automation\n"
@@ -186,7 +204,7 @@ async def generate_activity_status_for_execution(
                 "role": "user",
                 "content": (
                     f"A user ran '{graph_name}' to accomplish something. Based on this execution data, "
-                    f"write what they achieved in simple, user-friendly terms:\n\n"
+                    f"provide both an activity summary and correctness assessment:\n\n"
                     f"{json.dumps(execution_data, indent=2)}\n\n"
                     "ANALYSIS CHECKLIST:\n"
                     "1. READ graph_info.description FIRST - this tells you what the user intended to accomplish\n"
@@ -203,13 +221,20 @@ async def generate_activity_status_for_execution(
                     "- If description mentions 'content generation' → was content actually generated?\n"
                     "- If description mentions 'social media posting' → were posts actually made?\n"
                     "- Match the outputs to the stated intention, not just technical completion\n\n"
-                    "Write 1-3 sentences about what the user accomplished, such as:\n"
+                    "PROVIDE:\n"
+                    "activity_status: 1-3 sentences about what the user accomplished, such as:\n"
                     "- 'I analyzed your resume and provided detailed feedback for the IT industry.'\n"
                     "- 'I couldn't complete the task because critical steps failed to produce any results.'\n"
                     "- 'I failed to generate the content you requested due to missing API access.'\n"
                     "- 'I extracted key information from your documents and organized it into a summary.'\n"
                     "- 'The task failed because the blog post creation step didn't produce any output.'\n\n"
-                    "BE CRITICAL: If the graph's intended purpose (from description) wasn't achieved, report this as a failure even if status is 'completed'."
+                    "correctness_score: A float score from 0.0 to 1.0 based on how well the intended purpose was achieved:\n"
+                    "- 0.0-0.2: Failure (didn't meet requirements)\n"
+                    "- 0.2-0.4: Poor (major issues, minimal achievement)\n"
+                    "- 0.4-0.6: Partial Success (some objectives met with gaps)\n"
+                    "- 0.6-0.8: Mostly Successful (largely achieved with minor flaws)\n"
+                    "- 0.8-1.0: Success (fully met or exceeded requirements)\n\n"
+                    "BE CRITICAL: If the graph's intended purpose (from description) wasn't achieved, use a low score (0.0-0.4) even if status is 'completed'."
                 ),
             },
         ]
@@ -227,14 +252,58 @@ async def generate_activity_status_for_execution(
             title="System OpenAI",
         )
 
-        # Make LLM call using current event loop
-        activity_status = await _call_llm_direct(credentials, prompt)
+        # Define expected response format
+        expected_format = {
+            "activity_status": "A user-friendly 1-3 sentence summary of what was accomplished",
+            "correctness_score": "Float score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose",
+        }
 
-        logger.debug(
-            f"Generated activity status for {graph_exec_id}: {activity_status}"
+        # Use existing AIStructuredResponseGeneratorBlock for structured LLM call
+        structured_block = AIStructuredResponseGeneratorBlock()
+
+        # Convert credentials to the format expected by AIStructuredResponseGeneratorBlock
+        credentials_input = {
+            "provider": credentials.provider,
+            "id": credentials.id,
+            "type": credentials.type,
+            "title": credentials.title,
+        }
+
+        structured_input = AIStructuredResponseGeneratorBlock.Input(
+            prompt=prompt[1]["content"],  # User prompt content
+            sys_prompt=prompt[0]["content"],  # System prompt content
+            expected_format=expected_format,
+            model=LlmModel.GPT4O_MINI,
+            credentials=credentials_input,  # type: ignore
+            max_tokens=150,
+            retry=3,
         )
 
-        return activity_status
+        # Execute the structured LLM call
+        async for output_name, output_data in structured_block.run(
+            structured_input, credentials=credentials
+        ):
+            if output_name == "response":
+                response = output_data
+                break
+        else:
+            raise RuntimeError("Failed to get response from structured LLM call")
+
+        # Create typed response with validation
+        correctness_score = float(response["correctness_score"])
+        # Clamp score to valid range
+        correctness_score = max(0.0, min(1.0, correctness_score))
+
+        activity_response: ActivityStatusResponse = {
+            "activity_status": response["activity_status"],
+            "correctness_score": correctness_score,
+        }
+
+        logger.debug(
+            f"Generated activity status for {graph_exec_id}: {activity_response}"
+        )
+
+        return activity_response
 
     except Exception as e:
         logger.error(
@@ -448,23 +517,3 @@ def _build_execution_summary(
             ),
         },
     }
-
-
-@func_retry
-async def _call_llm_direct(
-    credentials: APIKeyCredentials, prompt: list[dict[str, str]]
-) -> str:
-    """Make direct LLM call."""
-
-    response = await llm_call(
-        credentials=credentials,
-        llm_model=LlmModel.GPT4O_MINI,
-        prompt=prompt,
-        max_tokens=150,
-        compress_prompt_to_fit=True,
-    )
-
-    if response and response.response:
-        return response.response.strip()
-    else:
-        return "Unable to generate activity summary"

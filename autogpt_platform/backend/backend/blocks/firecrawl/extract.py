@@ -9,7 +9,8 @@ from backend.sdk import (
     BlockCost,
     BlockCostType,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
     cost,
@@ -20,7 +21,7 @@ from ._config import firecrawl
 
 @cost(BlockCost(2, BlockCostType.RUN))
 class FirecrawlExtractBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         urls: list[str] = SchemaField(
             description="The URLs to crawl - at least one is required. Wildcards are supported. (/*)"
@@ -37,7 +38,7 @@ class FirecrawlExtractBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         data: dict[str, Any] = SchemaField(description="The result of the crawl")
         error: str = SchemaField(
             description="Error message if the extraction failed",

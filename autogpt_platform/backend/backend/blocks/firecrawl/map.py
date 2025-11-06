@@ -7,7 +7,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -16,12 +17,12 @@ from ._config import firecrawl
 
 
 class FirecrawlMapWebsiteBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
 
         url: str = SchemaField(description="The website url to map")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         links: list[str] = SchemaField(description="List of URLs found on the website")
         results: list[dict[str, Any]] = SchemaField(
             description="List of search results with url, title, and description"

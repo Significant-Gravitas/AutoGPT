@@ -5,7 +5,7 @@
 # from tweepy.client import Response
 
 # from backend.blocks.twitter._serializer import IncludesSerializer, ResponseDataSerializer
-# from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+# from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockSchemaInput, BlockSchemaOutput
 # from backend.data.model import SchemaField
 # from backend.blocks.twitter._builders import DMExpansionsBuilder
 # from backend.blocks.twitter._types import DMEventExpansion, DMEventExpansionInputs, DMEventType, DMMediaField, DMTweetField, TweetUserFields
@@ -49,7 +49,7 @@
 #             default=""
 #         )
 
-#     class Output(BlockSchema):
+#     class Output(BlockSchemaOutput):
 #         # Common outputs
 #         event_ids: list[str] = SchemaField(description="DM Event IDs")
 #         event_texts: list[str] = SchemaField(description="DM Event text contents")

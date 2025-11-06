@@ -3,7 +3,13 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from ._api import get_api
@@ -39,7 +45,7 @@ class ChecksConclusion(Enum):
 class GithubCreateCheckRunBlock(Block):
     """Block for creating a new check run on a GitHub repository."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo:status")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -76,7 +82,7 @@ class GithubCreateCheckRunBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class CheckRunResult(BaseModel):
             id: int
             html_url: str
@@ -211,7 +217,7 @@ class GithubCreateCheckRunBlock(Block):
 class GithubUpdateCheckRunBlock(Block):
     """Block for updating an existing check run on a GitHub repository."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo:status")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -239,7 +245,7 @@ class GithubUpdateCheckRunBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class CheckRunResult(BaseModel):
             id: int
             html_url: str
@@ -249,7 +255,6 @@ class GithubUpdateCheckRunBlock(Block):
         check_run: CheckRunResult = SchemaField(
             description="Details of the updated check run"
         )
-        error: str = SchemaField(description="Error message if check run update failed")
 
     def __init__(self):
         super().__init__(

@@ -288,7 +288,7 @@ export function AgentRunDetailsView({
           <Card className="agpt-box">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-poppins text-lg">
-                Smart Agent Execution Summary
+                Task Summary
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -296,10 +296,9 @@ export function AgentRunDetailsView({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        This is an AI-generated summary and may not be
-                        completely accurate. It provides a conversational
-                        overview of what the agent accomplished during
-                        execution.
+                        This AI-generated summary describes how the agent
+                        handled your task. It’s an experimental feature and may
+                        occasionally be inaccurate.
                       </p>
                     </TooltipContent>
                   </Tooltip>

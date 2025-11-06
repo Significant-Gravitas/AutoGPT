@@ -4,7 +4,13 @@ from typing import Any, Dict, Literal, Optional
 from pydantic import SecretStr
 from requests.exceptions import RequestException
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -84,7 +90,7 @@ class UpscaleOption(str, Enum):
 
 
 class IdeogramModelBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.IDEOGRAM], Literal["api_key"]
         ] = CredentialsField(
@@ -154,9 +160,8 @@ class IdeogramModelBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: str = SchemaField(description="Generated image URL")
-        error: str = SchemaField(description="Error message if the model run failed")
 
     def __init__(self):
         super().__init__(

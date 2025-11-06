@@ -2,7 +2,13 @@ import re
 
 from typing_extensions import TypedDict
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from ._api import get_api
@@ -16,14 +22,14 @@ from ._auth import (
 
 
 class GithubListPullRequestsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
             placeholder="https://github.com/owner/repo",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class PRItem(TypedDict):
             title: str
             url: str
@@ -108,7 +114,7 @@ class GithubListPullRequestsBlock(Block):
 
 
 class GithubMakePullRequestBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo_url: str = SchemaField(
             description="URL of the GitHub repository",
@@ -135,7 +141,7 @@ class GithubMakePullRequestBlock(Block):
             placeholder="Enter the base branch",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         number: int = SchemaField(description="Number of the created pull request")
         url: str = SchemaField(description="URL of the created pull request")
         error: str = SchemaField(
@@ -209,7 +215,7 @@ class GithubMakePullRequestBlock(Block):
 
 
 class GithubReadPullRequestBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
@@ -221,7 +227,7 @@ class GithubReadPullRequestBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         title: str = SchemaField(description="Title of the pull request")
         body: str = SchemaField(description="Body of the pull request")
         author: str = SchemaField(description="User who created the pull request")
@@ -325,7 +331,7 @@ class GithubReadPullRequestBlock(Block):
 
 
 class GithubAssignPRReviewerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
@@ -336,7 +342,7 @@ class GithubAssignPRReviewerBlock(Block):
             placeholder="Enter the reviewer's username",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(
             description="Status of the reviewer assignment operation"
         )
@@ -392,7 +398,7 @@ class GithubAssignPRReviewerBlock(Block):
 
 
 class GithubUnassignPRReviewerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
@@ -403,7 +409,7 @@ class GithubUnassignPRReviewerBlock(Block):
             placeholder="Enter the reviewer's username",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(
             description="Status of the reviewer unassignment operation"
         )
@@ -459,14 +465,14 @@ class GithubUnassignPRReviewerBlock(Block):
 
 
 class GithubListPRReviewersBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         pr_url: str = SchemaField(
             description="URL of the GitHub pull request",
             placeholder="https://github.com/owner/repo/pull/1",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         class ReviewerItem(TypedDict):
             username: str
             url: str

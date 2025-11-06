@@ -4,6 +4,10 @@ import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
 import { Node } from "@/app/api/__generated__/models/node";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
+import { useHistoryStore } from "./historyStore";
+import { useEdgeStore } from "./edgeStore";
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -22,6 +26,15 @@ type NodeStore = {
   getHardCodedValues: (nodeId: string) => Record<string, any>;
   convertCustomNodeToBackendNode: (node: CustomNode) => Node;
   getBackendNodes: () => Node[];
+
+  updateNodeStatus: (nodeId: string, status: AgentExecutionStatus) => void;
+  getNodeStatus: (nodeId: string) => AgentExecutionStatus | undefined;
+
+  updateNodeExecutionResult: (
+    nodeId: string,
+    result: NodeExecutionResult,
+  ) => void;
+  getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -33,10 +46,26 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     set((state) => ({
       nodeCounter: state.nodeCounter + 1,
     })),
-  onNodesChange: (changes) =>
+  onNodesChange: (changes) => {
+    const prevState = {
+      nodes: get().nodes,
+      connections: useEdgeStore.getState().connections,
+    };
+    const shouldTrack = changes.some(
+      (change) =>
+        change.type === "remove" ||
+        change.type === "add" ||
+        (change.type === "position" && change.dragging === false),
+    );
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
-    })),
+    }));
+
+    if (shouldTrack) {
+      useHistoryStore.getState().pushState(prevState);
+    }
+  },
+
   addNode: (node) =>
     set((state) => ({
       nodes: [...state.nodes, node],
@@ -55,12 +84,20 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       nodes: [...state.nodes, customNode],
     }));
   },
-  updateNodeData: (nodeId, data) =>
+  updateNodeData: (nodeId, data) => {
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n,
       ),
-    })),
+    }));
+
+    const newState = {
+      nodes: get().nodes,
+      connections: useEdgeStore.getState().connections,
+    };
+
+    useHistoryStore.getState().pushState(newState);
+  },
   toggleAdvanced: (nodeId: string) =>
     set((state) => ({
       nodeAdvancedStates: {
@@ -102,5 +139,28 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return get().nodes.map((node) =>
       get().convertCustomNodeToBackendNode(node),
     );
+  },
+  updateNodeStatus: (nodeId: string, status: AgentExecutionStatus) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, status } } : n,
+      ),
+    }));
+  },
+  getNodeStatus: (nodeId: string) => {
+    return get().nodes.find((n) => n.id === nodeId)?.data?.status;
+  },
+
+  updateNodeExecutionResult: (nodeId: string, result: NodeExecutionResult) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, nodeExecutionResult: result } }
+          : n,
+      ),
+    }));
+  },
+  getNodeExecutionResult: (nodeId: string) => {
+    return get().nodes.find((n) => n.id === nodeId)?.data?.nodeExecutionResult;
   },
 }));

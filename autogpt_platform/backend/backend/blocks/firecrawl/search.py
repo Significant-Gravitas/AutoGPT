@@ -9,7 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -19,7 +20,7 @@ from ._format_utils import convert_to_format_options
 
 
 class FirecrawlSearchBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         query: str = SchemaField(description="The query to search for")
         limit: int = SchemaField(description="The number of pages to crawl", default=10)
@@ -35,7 +36,7 @@ class FirecrawlSearchBlock(Block):
             description="Returns the content of the search if specified", default=[]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         data: dict[str, Any] = SchemaField(description="The result of the search")
         site: dict[str, Any] = SchemaField(description="The site of the search")
         error: str = SchemaField(
