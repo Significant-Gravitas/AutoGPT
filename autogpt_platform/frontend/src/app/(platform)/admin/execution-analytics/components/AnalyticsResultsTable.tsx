@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Badge } from "@/components/__legacy__/ui/badge";
 import { DownloadIcon, EyeIcon } from "@phosphor-icons/react";
+import { Copy } from "lucide-react";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface ExecutionAnalyticsResult {
   agent_id: string;
@@ -31,6 +33,7 @@ interface Props {
 
 export function AnalyticsResultsTable({ results }: Props) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
 
   const toggleRowExpansion = (execId: string) => {
     const newExpanded = new Set(expandedRows);
@@ -198,21 +201,54 @@ export function AnalyticsResultsTable({ results }: Props) {
                 {results.results.map((result) => (
                   <React.Fragment key={result.exec_id}>
                     <tr className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono text-sm">
-                        {result.agent_id.length > 20
-                          ? `${result.agent_id.substring(0, 20)}...`
-                          : result.agent_id}
+                      <td className="px-4 py-3">
+                        <div
+                          className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                          onClick={() => {
+                            navigator.clipboard.writeText(result.agent_id);
+                            toast({
+                              title: "Copied",
+                              description: "Agent ID copied to clipboard",
+                            });
+                          }}
+                          title="Click to copy agent ID"
+                        >
+                          {result.agent_id.substring(0, 8)}...
+                          <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm">{result.version_id}</td>
-                      <td className="px-4 py-3 font-mono text-sm">
-                        {result.user_id.length > 20
-                          ? `${result.user_id.substring(0, 20)}...`
-                          : result.user_id}
+                      <td className="px-4 py-3">
+                        <div
+                          className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                          onClick={() => {
+                            navigator.clipboard.writeText(result.user_id);
+                            toast({
+                              title: "Copied",
+                              description: "User ID copied to clipboard",
+                            });
+                          }}
+                          title="Click to copy user ID"
+                        >
+                          {result.user_id.substring(0, 8)}...
+                          <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-sm">
-                        {result.exec_id.length > 20
-                          ? `${result.exec_id.substring(0, 20)}...`
-                          : result.exec_id}
+                      <td className="px-4 py-3">
+                        <div
+                          className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                          onClick={() => {
+                            navigator.clipboard.writeText(result.exec_id);
+                            toast({
+                              title: "Copied",
+                              description: "Execution ID copied to clipboard",
+                            });
+                          }}
+                          title="Click to copy execution ID"
+                        >
+                          {result.exec_id.substring(0, 8)}...
+                          <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-sm">
                         {getStatusBadge(result.status)}
