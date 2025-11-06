@@ -11,7 +11,9 @@ class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
     # OpenAI API Configuration
-    model: str = Field(default="openai/gpt-5-mini", description="Default model to use")
+    model: str = Field(
+        default="qwen/qwen3-235b-a22b-2507", description="Default model to use"
+    )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
         default="https://openrouter.ai/api/v1",

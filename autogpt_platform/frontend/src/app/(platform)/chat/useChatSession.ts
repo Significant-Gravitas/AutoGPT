@@ -70,7 +70,10 @@ export function useChatSession({
   } = useGetV2GetSession(sessionId || "", {
     query: {
       enabled: !!sessionId,
-      staleTime: 30000,
+      staleTime: Infinity, // Never mark as stale
+      refetchOnMount: false, // Don't refetch on component mount
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus
+      refetchOnReconnect: false, // Don't refetch when network reconnects
       retry: 1,
     },
   });
