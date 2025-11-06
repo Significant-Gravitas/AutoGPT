@@ -696,7 +696,7 @@ class ExecutionProcessor:
             exec_meta.status = status
 
             # Activity status handling
-            activity_status = asyncio.run_coroutine_threadsafe(
+            activity_response = asyncio.run_coroutine_threadsafe(
                 generate_activity_status_for_execution(
                     graph_exec_id=graph_exec.graph_exec_id,
                     graph_id=graph_exec.graph_id,
@@ -708,18 +708,21 @@ class ExecutionProcessor:
                 ),
                 self.node_execution_loop,
             ).result(timeout=60.0)
-            if activity_status is not None:
-                exec_stats.activity_status = activity_status
-                log_metadata.info(f"Generated activity status: {activity_status}")
+            if activity_response is not None:
+                exec_stats.activity_status = activity_response["activity_status"]
+                exec_stats.correctness_score = activity_response["correctness_score"]
+                log_metadata.info(
+                    f"Generated activity status: {activity_response['activity_status']} "
+                    f"(correctness: {activity_response['correctness_score']:.2f})"
+                )
             else:
                 log_metadata.debug(
-                    "Activity status generation disabled, not setting field"
+                    "Activity status generation disabled, not setting fields"
                 )
-
+        finally:
             # Communication handling
             self._handle_agent_run_notif(db_client, graph_exec, exec_stats)
 
-        finally:
             update_graph_execution_state(
                 db_client=db_client,
                 graph_exec_id=graph_exec.graph_exec_id,
