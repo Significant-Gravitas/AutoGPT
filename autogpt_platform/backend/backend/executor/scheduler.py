@@ -178,8 +178,9 @@ async def _execute_graph(**kwargs):
 
 async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> None:
     """
-    Clean up orphaned schedules for a specific graph when execution fails with GraphNotInLibraryError.
-    This happens when an agent is deleted but schedules still exist.
+    Clean up orphaned schedules for a specific graph when execution fails with GraphNotAccessibleError.
+    This happens when an agent is pulled from the Marketplace or deleted
+    but schedules still exist.
     """
     # Use scheduler client to access the scheduler service
     scheduler_client = get_scheduler_client()

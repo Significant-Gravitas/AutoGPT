@@ -71,6 +71,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    requeue_by_republishing: bool = Field(
+        default=True,
+        description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
+    )
+
     # FastAPI Thread Pool Configuration
     # IMPORTANT: FastAPI automatically offloads ALL sync functions to a thread pool:
     # - Sync endpoint functions (def instead of async def)
