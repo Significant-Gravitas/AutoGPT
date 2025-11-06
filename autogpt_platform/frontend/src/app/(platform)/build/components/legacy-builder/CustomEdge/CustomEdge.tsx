@@ -176,14 +176,14 @@ export function CustomEdge({
       <BaseEdge
         path={svgPath}
         markerEnd={markerEnd}
-        className={`transition-all duration-200 ${data?.isStatic ? "[stroke-dasharray:5_3]" : "[stroke-dasharray:0]"} [stroke-width:${data?.isStatic ? 2.5 : 2}px] hover:[stroke-width:${data?.isStatic ? 3.5 : 3}px] ${selected ? `[stroke:${data?.edgeColor ?? "#555555"}]` : `[stroke:${data?.edgeColor ?? "#555555"}80] hover:[stroke:${data?.edgeColor ?? "#555555"}]`}`}
+        className={`data-sentry-unmask transition-all duration-200 ${data?.isStatic ? "[stroke-dasharray:5_3]" : "[stroke-dasharray:0]"} [stroke-width:${data?.isStatic ? 2.5 : 2}px] hover:[stroke-width:${data?.isStatic ? 3.5 : 3}px] ${selected ? `[stroke:${data?.edgeColor ?? "#555555"}]` : `[stroke:${data?.edgeColor ?? "#555555"}80] hover:[stroke:${data?.edgeColor ?? "#555555"}]`}`}
       />
       <path
         d={svgPath}
         fill="none"
         strokeOpacity={0}
         strokeWidth={20}
-        className="react-flow__edge-interaction"
+        className="data-sentry-unmask react-flow__edge-interaction"
       />
       <EdgeLabelRenderer>
         <div
