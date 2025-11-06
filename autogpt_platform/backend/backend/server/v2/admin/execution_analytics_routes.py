@@ -201,11 +201,19 @@ async def _process_batch(
     async def process_single_execution(execution) -> ExecutionAnalyticsResult:
         try:
             # Generate activity status and score using the specified model
+            # Convert stats to GraphExecutionStats if needed
+            if execution.stats and hasattr(execution.stats, "to_db"):
+                stats_for_generation = execution.stats.to_db()
+            elif isinstance(execution.stats, GraphExecutionStats):
+                stats_for_generation = execution.stats
+            else:
+                stats_for_generation = GraphExecutionStats()
+
             activity_response = await generate_activity_status_for_execution(
                 graph_exec_id=execution.id,
                 graph_id=execution.graph_id,
                 graph_version=execution.graph_version,
-                execution_stats=execution.stats or GraphExecutionStats(),
+                execution_stats=stats_for_generation,
                 db_client=db_client,
                 user_id=execution.user_id,
                 execution_status=execution.status,
@@ -226,11 +234,18 @@ async def _process_batch(
                 )
 
             # Update the execution stats
-            updated_stats = execution.stats or GraphExecutionStats()
+            # Convert GraphExecutionMeta.Stats to GraphExecutionStats for DB compatibility
+            if execution.stats and hasattr(execution.stats, "to_db"):
+                updated_stats = execution.stats.to_db()
+            elif isinstance(execution.stats, GraphExecutionStats):
+                updated_stats = execution.stats
+            else:
+                updated_stats = GraphExecutionStats()
+
             updated_stats.activity_status = activity_response["activity_status"]
             updated_stats.correctness_score = activity_response["correctness_score"]
 
-            # Save to database
+            # Save to database with correct stats type
             await update_graph_execution_stats(
                 graph_exec_id=execution.id, stats=updated_stats
             )
