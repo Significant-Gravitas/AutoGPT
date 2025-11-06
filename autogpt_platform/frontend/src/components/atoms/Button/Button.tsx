@@ -1,8 +1,3 @@
-import {
-  linkBaseClasses,
-  linkFocusClasses,
-  linkVariantClasses,
-} from "@/components/atoms/Link/Link";
 import { cn } from "@/lib/utils";
 import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import NextLink, { type LinkProps } from "next/link";
@@ -46,13 +41,9 @@ export function Button(props: ButtonProps) {
     return (
       <button
         className={cn(
-          linkBaseClasses,
-          linkVariantClasses.secondary,
-          linkFocusClasses,
-          "inline-flex items-center gap-2 border-none bg-transparent px-0 py-0 text-left",
+          extendedButtonVariants({ variant: "link", className }),
           loading && "pointer-events-none opacity-60",
           isDisabled && "pointer-events-none opacity-50",
-          className,
         )}
         disabled={isDisabled || loading}
         {...(buttonRest as React.ButtonHTMLAttributes<HTMLButtonElement>)}
