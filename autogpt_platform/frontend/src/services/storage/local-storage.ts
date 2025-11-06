@@ -9,6 +9,7 @@ export enum Key {
   WALLET_LAST_SEEN_CREDITS = "wallet-last-seen-credits",
   LIBRARY_AGENTS_CACHE = "library-agents-cache",
   CHAT_SESSION_ID = "chat_session_id",
+  COOKIE_CONSENT = "autogpt_cookie_consent",
 }
 
 function get(key: Key) {
