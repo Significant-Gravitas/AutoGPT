@@ -31,6 +31,7 @@ async function handleJsonRequest(
     backendUrl,
     payload,
     "application/json",
+    req,
   );
 }
 
@@ -39,7 +40,7 @@ async function handleFormDataRequest(
   backendUrl: string,
 ): Promise<any> {
   const formData = await req.formData();
-  return await makeAuthenticatedFileUpload(backendUrl, formData);
+  return await makeAuthenticatedFileUpload(backendUrl, formData, req);
 }
 
 async function handleUrlEncodedRequest(
@@ -55,14 +56,22 @@ async function handleUrlEncodedRequest(
     backendUrl,
     payload,
     "application/x-www-form-urlencoded",
+    req,
   );
 }
 
-async function handleRequestWithoutBody(
+async function handleGetDeleteRequest(
   method: string,
   backendUrl: string,
+  req: NextRequest,
 ): Promise<any> {
-  return await makeAuthenticatedRequest(method, backendUrl);
+  return await makeAuthenticatedRequest(
+    method,
+    backendUrl,
+    undefined,
+    "application/json",
+    req,
+  );
 }
 
 function createUnsupportedContentTypeResponse(
@@ -168,7 +177,7 @@ async function handler(
 
   try {
     if (method === "GET" || method === "DELETE") {
-      responseBody = await handleRequestWithoutBody(method, backendUrl);
+      responseBody = await handleGetDeleteRequest(method, backendUrl, req);
     } else if (contentType?.includes("application/json")) {
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {

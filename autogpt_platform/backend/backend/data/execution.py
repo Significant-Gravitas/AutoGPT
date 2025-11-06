@@ -175,6 +175,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="AI-generated summary of what the agent did",
         )
+        correctness_score: float | None = Field(
+            default=None,
+            description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
+        )
 
         def to_db(self) -> GraphExecutionStats:
             return GraphExecutionStats(
@@ -187,6 +191,7 @@ class GraphExecutionMeta(BaseDbModel):
                 node_error_count=self.node_error_count,
                 error=self.error,
                 activity_status=self.activity_status,
+                correctness_score=self.correctness_score,
             )
 
     stats: Stats | None
@@ -244,6 +249,7 @@ class GraphExecutionMeta(BaseDbModel):
                         else stats.error
                     ),
                     activity_status=stats.activity_status,
+                    correctness_score=stats.correctness_score,
                 )
                 if stats
                 else None

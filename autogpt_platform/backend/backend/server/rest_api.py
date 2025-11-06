@@ -28,6 +28,7 @@ import backend.server.v2.admin.diagnostics_admin_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
+import backend.server.v2.chat.routes as chat_routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -289,6 +290,11 @@ app.include_router(
     backend.server.routers.postmark.postmark.router,
     tags=["v1", "email"],
     prefix="/api/email",
+)
+app.include_router(
+    chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
 )
 
 app.mount("/external-api", external_app)

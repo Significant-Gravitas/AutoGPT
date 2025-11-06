@@ -118,13 +118,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
     AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
     # Groq models
-    GEMMA2_9B = "gemma2-9b-it"
     LLAMA3_3_70B = "llama-3.3-70b-versatile"
     LLAMA3_1_8B = "llama-3.1-8b-instant"
-    LLAMA3_70B = "llama3-70b-8192"
-    LLAMA3_8B = "llama3-8b-8192"
-    # Groq preview models
-    DEEPSEEK_LLAMA_70B = "deepseek-r1-distill-llama-70b"
     # Ollama models
     OLLAMA_LLAMA3_3 = "llama3.3"
     OLLAMA_LLAMA3_2 = "llama3.2"
@@ -134,7 +129,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenRouter models
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_FLASH_1_5 = "google/gemini-flash-1.5"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
@@ -238,12 +232,8 @@ MODEL_METADATA = {
     LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata("aiml_api", 131000, 2000),
     LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata("aiml_api", 128000, None),
     # https://console.groq.com/docs/models
-    LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, None),
     LlmModel.LLAMA3_3_70B: ModelMetadata("groq", 128000, 32768),
     LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 128000, 8192),
-    LlmModel.LLAMA3_70B: ModelMetadata("groq", 8192, None),
-    LlmModel.LLAMA3_8B: ModelMetadata("groq", 8192, None),
-    LlmModel.DEEPSEEK_LLAMA_70B: ModelMetadata("groq", 128000, None),
     # https://ollama.com/library
     LlmModel.OLLAMA_LLAMA3_3: ModelMetadata("ollama", 8192, None),
     LlmModel.OLLAMA_LLAMA3_2: ModelMetadata("ollama", 8192, None),
@@ -251,7 +241,6 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, None),
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
-    LlmModel.GEMINI_FLASH_1_5: ModelMetadata("open_router", 1000000, 8192),
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),

@@ -24,10 +24,10 @@ export function SelectedAgentCard(props: Props) {
             {/* Right content */}
             <div className="ml-3 flex flex-1 flex-col">
               <div className="mb-2 flex flex-col items-start">
-                <span className="w-[292px] truncate font-sans text-[14px] font-medium leading-tight text-zinc-800">
+                <span className="data-sentry-unmask w-[292px] truncate font-sans text-[14px] font-medium leading-tight text-zinc-800">
                   {props.storeAgent.agent_name}
                 </span>
-                <span className="font-norma w-[292px] truncate font-sans text-xs text-zinc-600">
+                <span className="data-sentry-unmask font-norma w-[292px] truncate font-sans text-xs text-zinc-600">
                   by {props.storeAgent.creator}
                 </span>
               </div>

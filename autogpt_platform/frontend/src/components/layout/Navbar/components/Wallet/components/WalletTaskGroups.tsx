@@ -72,6 +72,7 @@ export function TaskGroups({ groups }: Props) {
 
   const delayConfetti = useCallback((el: HTMLDivElement, count: number) => {
     setTimeout(() => {
+      if (!el) return;
       party.confetti(el, {
         count,
         spread: 90,
