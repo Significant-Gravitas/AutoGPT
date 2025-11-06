@@ -221,7 +221,9 @@ export default function OnboardingProvider({
 
     updateState({
       agentRuns: newRunCount,
-      completedSteps: [...state.completedSteps, ...milestoneSteps],
+      completedSteps: Array.from(
+        new Set([...state.completedSteps, ...milestoneSteps]),
+      ),
       ...consecutiveData,
     });
   }, [state, updateState]);

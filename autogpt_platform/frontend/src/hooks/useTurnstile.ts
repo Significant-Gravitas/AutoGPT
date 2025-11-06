@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { verifyTurnstileToken } from "@/lib/turnstile";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
-import { isServerSide } from "@/lib/utils/is-server-side";
+import { environment } from "@/services/environment";
 
 interface UseTurnstileOptions {
   action?: string;
@@ -46,17 +45,15 @@ export function useTurnstile({
   const [widgetId, setWidgetId] = useState<string | null>(null);
 
   useEffect(() => {
-    const behaveAs = getBehaveAs();
+    const isCloud = environment.isCloud();
     const hasTurnstileKey = !!TURNSTILE_SITE_KEY;
     const turnstileDisabled = process.env.NEXT_PUBLIC_TURNSTILE !== "enabled";
 
     // Only render Turnstile in cloud environment if not explicitly disabled
-    setShouldRender(
-      behaveAs === BehaveAs.CLOUD && hasTurnstileKey && !turnstileDisabled,
-    );
+    setShouldRender(isCloud && hasTurnstileKey && !turnstileDisabled);
 
     // Skip verification if disabled, in local development, or no key
-    if (turnstileDisabled || behaveAs !== BehaveAs.CLOUD || !hasTurnstileKey) {
+    if (turnstileDisabled || !isCloud || !hasTurnstileKey) {
       setVerified(true);
     }
   }, []);
@@ -80,7 +77,12 @@ export function useTurnstile({
     setError(null);
 
     // Only reset the actual Turnstile widget if it exists and shouldRender is true
-    if (shouldRender && !isServerSide() && window.turnstile && widgetId) {
+    if (
+      shouldRender &&
+      !environment.isServerSide() &&
+      window.turnstile &&
+      widgetId
+    ) {
       try {
         window.turnstile.reset(widgetId);
       } catch (err) {

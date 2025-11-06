@@ -9,7 +9,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -23,7 +24,7 @@ class AirtableCreateBaseBlock(Block):
     Creates a new base in an Airtable workspace, or returns existing base if one with the same name exists.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -53,7 +54,7 @@ class AirtableCreateBaseBlock(Block):
             ],
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         base_id: str = SchemaField(description="The ID of the created or found base")
         tables: list[dict] = SchemaField(description="Array of table objects")
         table: dict = SchemaField(description="A single table object")
@@ -118,7 +119,7 @@ class AirtableListBasesBlock(Block):
     Lists all bases in an Airtable workspace that the user has access to.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -129,7 +130,7 @@ class AirtableListBasesBlock(Block):
             description="Pagination offset from previous request", default=""
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         bases: list[dict] = SchemaField(description="Array of base objects")
         offset: Optional[str] = SchemaField(
             description="Offset for next page (null if no more bases)", default=None

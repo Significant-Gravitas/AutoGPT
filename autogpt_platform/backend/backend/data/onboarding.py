@@ -4,7 +4,6 @@ from typing import Any, Optional
 
 import prisma
 import pydantic
-from autogpt_libs.utils.cache import cached
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
@@ -13,6 +12,7 @@ from backend.data.block import get_blocks
 from backend.data.credit import get_user_credit_model
 from backend.data.model import CredentialsMetaInput
 from backend.server.v2.store.model import StoreAgentDetails
+from backend.util.cache import cached
 from backend.util.json import SafeJson
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -25,8 +25,6 @@ REASON_MAPPING: dict[str, list[str]] = {
 }
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
 MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
-
-user_credit = get_user_credit_model()
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
@@ -54,10 +52,36 @@ async def get_user_onboarding(user_id: str):
     )
 
 
+async def reset_user_onboarding(user_id: str):
+    return await UserOnboarding.prisma().upsert(
+        where={"userId": user_id},
+        data={
+            "create": UserOnboardingCreateInput(userId=user_id),
+            "update": {
+                "completedSteps": [],
+                "walletShown": False,
+                "notified": [],
+                "usageReason": None,
+                "integrations": [],
+                "otherIntegrations": None,
+                "selectedStoreListingVersionId": None,
+                "agentInput": prisma.Json({}),
+                "onboardingAgentExecutionId": None,
+                "agentRuns": 0,
+                "lastRunAt": None,
+                "consecutiveRunDays": 0,
+            },
+        },
+    )
+
+
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
+    onboarding = await get_user_onboarding(user_id)
     if data.completedSteps is not None:
-        update["completedSteps"] = list(set(data.completedSteps))
+        update["completedSteps"] = list(
+            set(data.completedSteps + onboarding.completedSteps)
+        )
         for step in (
             OnboardingStep.AGENT_NEW_RUN,
             OnboardingStep.MARKETPLACE_VISIT,
@@ -73,11 +97,11 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
             OnboardingStep.RUN_AGENTS_100,
         ):
             if step in data.completedSteps:
-                await reward_user(user_id, step)
-    if data.walletShown is not None:
+                await reward_user(user_id, step, onboarding)
+    if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified))
+        update["notified"] = list(set(data.notified + onboarding.notified))
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:
@@ -90,7 +114,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
-    if data.agentRuns is not None:
+    if data.agentRuns is not None and data.agentRuns > onboarding.agentRuns:
         update["agentRuns"] = data.agentRuns
     if data.lastRunAt is not None:
         update["lastRunAt"] = data.lastRunAt
@@ -106,7 +130,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     )
 
 
-async def reward_user(user_id: str, step: OnboardingStep):
+async def reward_user(user_id: str, step: OnboardingStep, onboarding: UserOnboarding):
     reward = 0
     match step:
         # Reward user when they clicked New Run during onboarding
@@ -140,14 +164,13 @@ async def reward_user(user_id: str, step: OnboardingStep):
     if reward == 0:
         return
 
-    onboarding = await get_user_onboarding(user_id)
-
     # Skip if already rewarded
     if step in onboarding.rewardedFor:
         return
 
     onboarding.rewardedFor.append(step)
-    await user_credit.onboarding_reward(user_id, reward, step)
+    user_credit_model = await get_user_credit_model(user_id)
+    await user_credit_model.onboarding_reward(user_id, reward, step)
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={

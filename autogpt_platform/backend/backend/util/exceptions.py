@@ -17,6 +17,14 @@ class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
 
 
+class GraphNotAccessibleError(NotAuthorizedError):
+    """Raised when attempting to execute a graph that is not accessible to the user."""
+
+
+class GraphNotInLibraryError(GraphNotAccessibleError):
+    """Raised when attempting to execute a graph that is not / no longer in the user's library."""
+
+
 class InsufficientBalanceError(ValueError):
     user_id: str
     message: str
@@ -90,5 +98,11 @@ class GraphValidationError(ValueError):
 
 class DatabaseError(Exception):
     """Raised when there is an error interacting with the database"""
+
+    pass
+
+
+class RedisError(Exception):
+    """Raised when there is an error interacting with Redis"""
 
     pass

@@ -37,6 +37,7 @@ import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 import { AgentRunOutputView } from "./agent-run-output-view";
+import { analytics } from "@/services/analytics";
 
 export function AgentRunDetailsView({
   agent,
@@ -131,7 +132,13 @@ export function AgentRunDetailsView({
           run.inputs!,
           run.credential_inputs!,
         )
-        .then(({ id }) => onRun(id))
+        .then(({ id }) => {
+          analytics.sendDatafastEvent("run_agent", {
+            name: graph.name,
+            id: graph.id,
+          });
+          onRun(id);
+        })
         .catch(toastOnFail("execute agent preset"));
     }
 
@@ -142,7 +149,13 @@ export function AgentRunDetailsView({
         run.inputs!,
         run.credential_inputs!,
       )
-      .then(({ id }) => onRun(id))
+      .then(({ id }) => {
+        analytics.sendDatafastEvent("run_agent", {
+          name: graph.name,
+          id: graph.id,
+        });
+        onRun(id);
+      })
       .catch(toastOnFail("execute agent"));
   }, [api, graph, run, onRun, toastOnFail]);
 
@@ -275,7 +288,7 @@ export function AgentRunDetailsView({
           <Card className="agpt-box">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-poppins text-lg">
-                Smart Agent Execution Summary
+                Task Summary
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -283,10 +296,9 @@ export function AgentRunDetailsView({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        This is an AI-generated summary and may not be
-                        completely accurate. It provides a conversational
-                        overview of what the agent accomplished during
-                        execution.
+                        This AI-generated summary describes how the agent
+                        handled your task. It’s an experimental feature and may
+                        occasionally be inaccurate.
                       </p>
                     </TooltipContent>
                   </Tooltip>

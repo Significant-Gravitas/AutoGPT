@@ -4,15 +4,15 @@ import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
+import { environment } from "../environment";
 
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
 const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useSupabase();
-  const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloud = environment.isCloud();
   const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
 
   const context = useMemo(() => {

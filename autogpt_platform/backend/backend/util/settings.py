@@ -15,6 +15,17 @@ from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 
+_SERVICE_NAME = "MainProcess"
+
+
+def get_service_name():
+    return _SERVICE_NAME
+
+
+def set_service_name(name: str):
+    global _SERVICE_NAME
+    _SERVICE_NAME = name
+
 
 class AppEnvironment(str, Enum):
     LOCAL = "local"
@@ -58,6 +69,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description="Maximum number of workers to use for graph execution.",
+    )
+
+    requeue_by_republishing: bool = Field(
+        default=True,
+        description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
     )
 
     # FastAPI Thread Pool Configuration
@@ -254,6 +270,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="localhost",
         description="The host for the RabbitMQ server",
     )
+
     rabbitmq_port: int = Field(
         default=5672,
         description="The port for the RabbitMQ server",
@@ -262,6 +279,21 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     rabbitmq_vhost: str = Field(
         default="/",
         description="The vhost for the RabbitMQ server",
+    )
+
+    redis_host: str = Field(
+        default="localhost",
+        description="The host for the Redis server",
+    )
+
+    redis_port: int = Field(
+        default=6379,
+        description="The port for the Redis server",
+    )
+
+    redis_password: str = Field(
+        default="",
+        description="The password for the Redis server (empty string if no password)",
     )
 
     postmark_sender_email: str = Field(

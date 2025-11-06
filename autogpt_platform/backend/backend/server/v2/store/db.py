@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import typing
 from datetime import datetime, timezone
+from typing import Literal
 
 import fastapi
 import prisma.enums
@@ -37,29 +39,10 @@ DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
 
-def sanitize_query(query: str | None) -> str | None:
-    if query is None:
-        return query
-    query = query.strip()[:100]
-    return (
-        query.replace("\\", "\\\\")
-        .replace("%", "\\%")
-        .replace("_", "\\_")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-        .replace("'", "\\'")
-        .replace('"', '\\"')
-        .replace(";", "\\;")
-        .replace("--", "\\--")
-        .replace("/*", "\\/*")
-        .replace("*/", "\\*/")
-    )
-
-
 async def get_store_agents(
     featured: bool = False,
     creators: list[str] | None = None,
-    sorted_by: str | None = None,
+    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = None,
     search_query: str | None = None,
     category: str | None = None,
     page: int = 1,
@@ -71,64 +54,177 @@ async def get_store_agents(
     logger.debug(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
-    search_term = sanitize_query(search_query)
-    where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
-    if featured:
-        where_clause["featured"] = featured
-    if creators:
-        where_clause["creator_username"] = {"in": creators}
-    if category:
-        where_clause["categories"] = {"has": category}
-
-    if search_term:
-        where_clause["OR"] = [
-            {"agent_name": {"contains": search_term, "mode": "insensitive"}},
-            {"description": {"contains": search_term, "mode": "insensitive"}},
-        ]
-
-    order_by = []
-    if sorted_by == "rating":
-        order_by.append({"rating": "desc"})
-    elif sorted_by == "runs":
-        order_by.append({"runs": "desc"})
-    elif sorted_by == "name":
-        order_by.append({"agent_name": "asc"})
 
     try:
-        agents = await prisma.models.StoreAgent.prisma().find_many(
-            where=where_clause,
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
-        )
+        # If search_query is provided, use full-text search
+        if search_query:
+            offset = (page - 1) * page_size
 
-        total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
-        total_pages = (total + page_size - 1) // page_size
+            # Whitelist allowed order_by columns
+            ALLOWED_ORDER_BY = {
+                "rating": "rating DESC, rank DESC",
+                "runs": "runs DESC, rank DESC",
+                "name": "agent_name ASC, rank ASC",
+                "updated_at": "updated_at DESC, rank DESC",
+            }
 
-        store_agents: list[backend.server.v2.store.model.StoreAgent] = []
-        for agent in agents:
-            try:
-                # Create the StoreAgent object safely
-                store_agent = backend.server.v2.store.model.StoreAgent(
-                    slug=agent.slug,
-                    agent_name=agent.agent_name,
-                    agent_image=agent.agent_image[0] if agent.agent_image else "",
-                    creator=agent.creator_username or "Needs Profile",
-                    creator_avatar=agent.creator_avatar or "",
-                    sub_heading=agent.sub_heading,
-                    description=agent.description,
-                    runs=agent.runs,
-                    rating=agent.rating,
-                )
-                # Add to the list only if creation was successful
-                store_agents.append(store_agent)
-            except Exception as e:
-                # Skip this agent if there was an error
-                # You could log the error here if needed
-                logger.error(
-                    f"Error parsing Store agent when getting store agents from db: {e}"
-                )
-                continue
+            # Validate and get order clause
+            if sorted_by and sorted_by in ALLOWED_ORDER_BY:
+                order_by_clause = ALLOWED_ORDER_BY[sorted_by]
+            else:
+                order_by_clause = "updated_at DESC, rank DESC"
+
+            # Build WHERE conditions and parameters list
+            where_parts: list[str] = []
+            params: list[typing.Any] = [search_query]  # $1 - search term
+            param_index = 2  # Start at $2 for next parameter
+
+            # Always filter for available agents
+            where_parts.append("is_available = true")
+
+            if featured:
+                where_parts.append("featured = true")
+
+            if creators and creators:
+                # Use ANY with array parameter
+                where_parts.append(f"creator_username = ANY(${param_index})")
+                params.append(creators)
+                param_index += 1
+
+            if category and category:
+                where_parts.append(f"${param_index} = ANY(categories)")
+                params.append(category)
+                param_index += 1
+
+            sql_where_clause: str = " AND ".join(where_parts) if where_parts else "1=1"
+
+            # Add pagination params
+            params.extend([page_size, offset])
+            limit_param = f"${param_index}"
+            offset_param = f"${param_index + 1}"
+
+            # Execute full-text search query with parameterized values
+            sql_query = f"""
+                SELECT
+                    slug,
+                    agent_name,
+                    agent_image,
+                    creator_username,
+                    creator_avatar,
+                    sub_heading,
+                    description,
+                    runs,
+                    rating,
+                    categories,
+                    featured,
+                    is_available,
+                    updated_at,
+                    ts_rank_cd(search, query) AS rank
+                FROM "StoreAgent",
+                    plainto_tsquery('english', $1) AS query
+                WHERE {sql_where_clause}
+                    AND search @@ query
+                ORDER BY {order_by_clause}
+                LIMIT {limit_param} OFFSET {offset_param}
+            """
+
+            # Count query for pagination - only uses search term parameter
+            count_query = f"""
+                SELECT COUNT(*) as count
+                FROM "StoreAgent",
+                    plainto_tsquery('english', $1) AS query
+                WHERE {sql_where_clause}
+                    AND search @@ query
+            """
+
+            # Execute both queries with parameters
+            agents = await prisma.client.get_client().query_raw(
+                typing.cast(typing.LiteralString, sql_query), *params
+            )
+
+            # For count, use params without pagination (last 2 params)
+            count_params = params[:-2]
+            count_result = await prisma.client.get_client().query_raw(
+                typing.cast(typing.LiteralString, count_query), *count_params
+            )
+
+            total = count_result[0]["count"] if count_result else 0
+            total_pages = (total + page_size - 1) // page_size
+
+            # Convert raw results to StoreAgent models
+            store_agents: list[backend.server.v2.store.model.StoreAgent] = []
+            for agent in agents:
+                try:
+                    store_agent = backend.server.v2.store.model.StoreAgent(
+                        slug=agent["slug"],
+                        agent_name=agent["agent_name"],
+                        agent_image=(
+                            agent["agent_image"][0] if agent["agent_image"] else ""
+                        ),
+                        creator=agent["creator_username"] or "Needs Profile",
+                        creator_avatar=agent["creator_avatar"] or "",
+                        sub_heading=agent["sub_heading"],
+                        description=agent["description"],
+                        runs=agent["runs"],
+                        rating=agent["rating"],
+                    )
+                    store_agents.append(store_agent)
+                except Exception as e:
+                    logger.error(f"Error parsing Store agent from search results: {e}")
+                    continue
+
+        else:
+            # Non-search query path (original logic)
+            where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
+            if featured:
+                where_clause["featured"] = featured
+            if creators:
+                where_clause["creator_username"] = {"in": creators}
+            if category:
+                where_clause["categories"] = {"has": category}
+
+            order_by = []
+            if sorted_by == "rating":
+                order_by.append({"rating": "desc"})
+            elif sorted_by == "runs":
+                order_by.append({"runs": "desc"})
+            elif sorted_by == "name":
+                order_by.append({"agent_name": "asc"})
+
+            agents = await prisma.models.StoreAgent.prisma().find_many(
+                where=where_clause,
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            )
+
+            total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
+            total_pages = (total + page_size - 1) // page_size
+
+            store_agents: list[backend.server.v2.store.model.StoreAgent] = []
+            for agent in agents:
+                try:
+                    # Create the StoreAgent object safely
+                    store_agent = backend.server.v2.store.model.StoreAgent(
+                        slug=agent.slug,
+                        agent_name=agent.agent_name,
+                        agent_image=agent.agent_image[0] if agent.agent_image else "",
+                        creator=agent.creator_username or "Needs Profile",
+                        creator_avatar=agent.creator_avatar or "",
+                        sub_heading=agent.sub_heading,
+                        description=agent.description,
+                        runs=agent.runs,
+                        rating=agent.rating,
+                    )
+                    # Add to the list only if creation was successful
+                    store_agents.append(store_agent)
+                except Exception as e:
+                    # Skip this agent if there was an error
+                    # You could log the error here if needed
+                    logger.error(
+                        f"Error parsing Store agent when getting store agents from db: {e}"
+                    )
+                    continue
 
         logger.debug(f"Found {len(store_agents)} agents")
         return backend.server.v2.store.model.StoreAgentsResponse(
@@ -326,7 +422,7 @@ async def get_store_agent_by_version_id(
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,
-    sorted_by: str | None = None,
+    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> backend.server.v2.store.model.CreatorsResponse:
@@ -1640,22 +1736,21 @@ async def get_admin_listings_with_versions(
         if status:
             where_dict["Versions"] = {"some": {"submissionStatus": status}}
 
-        sanitized_query = sanitize_query(search_query)
-        if sanitized_query:
+        if search_query:
             # Find users with matching email
             matching_users = await prisma.models.User.prisma().find_many(
-                where={"email": {"contains": sanitized_query, "mode": "insensitive"}},
+                where={"email": {"contains": search_query, "mode": "insensitive"}},
             )
 
             user_ids = [user.id for user in matching_users]
 
             # Set up OR conditions
             where_dict["OR"] = [
-                {"slug": {"contains": sanitized_query, "mode": "insensitive"}},
+                {"slug": {"contains": search_query, "mode": "insensitive"}},
                 {
                     "Versions": {
                         "some": {
-                            "name": {"contains": sanitized_query, "mode": "insensitive"}
+                            "name": {"contains": search_query, "mode": "insensitive"}
                         }
                     }
                 },
@@ -1663,7 +1758,7 @@ async def get_admin_listings_with_versions(
                     "Versions": {
                         "some": {
                             "description": {
-                                "contains": sanitized_query,
+                                "contains": search_query,
                                 "mode": "insensitive",
                             }
                         }
@@ -1673,7 +1768,7 @@ async def get_admin_listings_with_versions(
                     "Versions": {
                         "some": {
                             "subHeading": {
-                                "contains": sanitized_query,
+                                "contains": search_query,
                                 "mode": "insensitive",
                             }
                         }

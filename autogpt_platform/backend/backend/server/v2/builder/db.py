@@ -2,12 +2,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import prisma
-from autogpt_libs.utils.cache import cached
 
 import backend.data.block
 from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
-from backend.data.block import Block, BlockCategory, BlockInfo, BlockSchema
+from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
 from backend.integrations.providers import ProviderName
 from backend.server.v2.builder.model import (
     BlockCategoryResponse,
@@ -18,6 +17,7 @@ from backend.server.v2.builder.model import (
     ProviderResponse,
     SearchBlocksResponse,
 )
+from backend.util.cache import cached
 from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse
     categories: dict[BlockCategory, BlockCategoryResponse] = {}
 
     for block_type in load_all_blocks().values():
-        block: Block[BlockSchema, BlockSchema] = block_type()
+        block: AnyBlockSchema = block_type()
         # Skip disabled blocks
         if block.disabled:
             continue
@@ -73,13 +73,13 @@ def get_blocks(
     if (category and type) or (category and provider) or (type and provider):
         raise ValueError("Only one of category, type, or provider can be specified")
 
-    blocks: list[Block[BlockSchema, BlockSchema]] = []
+    blocks: list[AnyBlockSchema] = []
     skip = (page - 1) * page_size
     take = page_size
     total = 0
 
     for block_type in load_all_blocks().values():
-        block: Block[BlockSchema, BlockSchema] = block_type()
+        block: AnyBlockSchema = block_type()
         # Skip disabled blocks
         if block.disabled:
             continue
@@ -123,7 +123,7 @@ def get_block_by_id(block_id: str) -> BlockInfo | None:
     Get a specific block by its ID.
     """
     for block_type in load_all_blocks().values():
-        block: Block[BlockSchema, BlockSchema] = block_type()
+        block: AnyBlockSchema = block_type()
         if block.id == block_id:
             return block.get_info()
     return None
@@ -140,7 +140,7 @@ def search_blocks(
     Get blocks based on the filter and query.
     `providers` only applies for `integrations` filter.
     """
-    blocks: list[Block[BlockSchema, BlockSchema]] = []
+    blocks: list[AnyBlockSchema] = []
     query = query.lower()
 
     total = 0
@@ -150,7 +150,7 @@ def search_blocks(
     integration_count = 0
 
     for block_type in load_all_blocks().values():
-        block: Block[BlockSchema, BlockSchema] = block_type()
+        block: AnyBlockSchema = block_type()
         # Skip disabled blocks
         if block.disabled:
             continue
@@ -267,7 +267,7 @@ async def _get_static_counts():
     integrations = 0
 
     for block_type in load_all_blocks().values():
-        block: Block[BlockSchema, BlockSchema] = block_type()
+        block: AnyBlockSchema = block_type()
         if block.disabled:
             continue
 
@@ -307,12 +307,12 @@ def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
     return False
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def _get_all_providers() -> dict[ProviderName, Provider]:
     providers: dict[ProviderName, Provider] = {}
 
     for block_type in load_all_blocks().values():
-        block: Block[BlockSchema, BlockSchema] = block_type()
+        block: AnyBlockSchema = block_type()
         if block.disabled:
             continue
 
@@ -359,7 +359,7 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     blocks: list[tuple[BlockInfo, int]] = []
 
     for block_type in load_all_blocks().values():
-        block: Block[BlockSchema, BlockSchema] = block_type()
+        block: AnyBlockSchema = block_type()
         if block.disabled or block.block_type in (
             backend.data.block.BlockType.INPUT,
             backend.data.block.BlockType.OUTPUT,
