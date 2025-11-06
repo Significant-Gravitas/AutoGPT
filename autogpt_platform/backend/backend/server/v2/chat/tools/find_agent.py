@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.chat.tools.base import BaseTool
 from backend.server.v2.chat.tools.models import (
     AgentCarouselResponse,
@@ -46,7 +47,7 @@ class FindAgentTool(BaseTool):
     async def _execute(
         self,
         user_id: str | None,
-        session_id: str,
+        session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
         """Search for agents in the marketplace.
@@ -62,7 +63,7 @@ class FindAgentTool(BaseTool):
             ErrorResponse: Error message
         """
         query = kwargs.get("query", "").strip()
-
+        session_id = session.session_id
         if not query:
             return ErrorResponse(
                 message="Please provide a search query",
@@ -125,25 +126,3 @@ class FindAgentTool(BaseTool):
             count=len(agents),
             session_id=session_id,
         )
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    import prisma
-
-    find_agent_tool = FindAgentTool()
-    print(find_agent_tool.as_openai_tool())
-
-    async def main():
-        await prisma.Prisma().connect()
-        agents = await find_agent_tool.execute(
-            tool_call_id="tool_call_id",
-            query="Linkedin",
-            user_id="user",
-            session_id="session",
-        )
-        print(agents)
-        await prisma.Prisma().disconnect()
-
-    asyncio.run(main())

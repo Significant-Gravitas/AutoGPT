@@ -5,6 +5,7 @@ from typing import Any
 
 from openai.types.chat import ChatCompletionToolParam
 
+from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.chat.response_model import StreamToolExecutionResult
 
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
@@ -49,7 +50,7 @@ class BaseTool:
     async def execute(
         self,
         user_id: str | None,
-        session_id: str,
+        session: ChatSession,
         tool_call_id: str,
         **kwargs,
     ) -> StreamToolExecutionResult:
@@ -73,13 +74,13 @@ class BaseTool:
                 tool_name=self.name,
                 result=NeedLoginResponse(
                     message=f"Please sign in to use {self.name}",
-                    session_id=session_id,
+                    session_id=session.session_id,
                 ).model_dump_json(),
                 success=False,
             )
 
         try:
-            result = await self._execute(user_id, session_id, **kwargs)
+            result = await self._execute(user_id, session, **kwargs)
             return StreamToolExecutionResult(
                 tool_id=tool_call_id,
                 tool_name=self.name,
@@ -93,7 +94,7 @@ class BaseTool:
                 result=ErrorResponse(
                     message=f"An error occurred while executing {self.name}",
                     error=str(e),
-                    session_id=session_id,
+                    session_id=session.session_id,
                 ).model_dump_json(),
                 success=False,
             )
@@ -101,7 +102,7 @@ class BaseTool:
     async def _execute(
         self,
         user_id: str | None,
-        session_id: str,
+        session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
         """Internal execution logic to be implemented by subclasses.
