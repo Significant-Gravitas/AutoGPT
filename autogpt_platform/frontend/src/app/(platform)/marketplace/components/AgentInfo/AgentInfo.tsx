@@ -114,9 +114,10 @@ export const AgentInfo = ({
       <p className="mt-6 text-zinc-600 dark:text-zinc-400 lg:mt-12">
         Want to use this agent locally?{" "}
         <button
+          className="underline"
           onClick={() => handleDownload(agentId, name)}
           disabled={isDownloadingAgent}
-          className="underline"
+          data-testid="agent-download-button"
         >
           Download here.
         </button>
