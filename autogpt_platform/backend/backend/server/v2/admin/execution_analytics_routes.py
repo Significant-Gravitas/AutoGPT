@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from backend.data.execution import (
     ExecutionStatus,
+    GraphExecutionMeta,
     get_graph_executions,
     update_graph_execution_stats,
 )
@@ -202,10 +203,12 @@ async def _process_batch(
         try:
             # Generate activity status and score using the specified model
             # Convert stats to GraphExecutionStats if needed
-            if execution.stats and hasattr(execution.stats, "to_db"):
-                stats_for_generation = execution.stats.to_db()
-            elif isinstance(execution.stats, GraphExecutionStats):
-                stats_for_generation = execution.stats
+            if execution.stats:
+                if isinstance(execution.stats, GraphExecutionMeta.Stats):
+                    stats_for_generation = execution.stats.to_db()
+                else:
+                    # Already GraphExecutionStats
+                    stats_for_generation = execution.stats
             else:
                 stats_for_generation = GraphExecutionStats()
 
@@ -235,10 +238,12 @@ async def _process_batch(
 
             # Update the execution stats
             # Convert GraphExecutionMeta.Stats to GraphExecutionStats for DB compatibility
-            if execution.stats and hasattr(execution.stats, "to_db"):
-                updated_stats = execution.stats.to_db()
-            elif isinstance(execution.stats, GraphExecutionStats):
-                updated_stats = execution.stats
+            if execution.stats:
+                if isinstance(execution.stats, GraphExecutionMeta.Stats):
+                    updated_stats = execution.stats.to_db()
+                else:
+                    # Already GraphExecutionStats
+                    updated_stats = execution.stats
             else:
                 updated_stats = GraphExecutionStats()
 
