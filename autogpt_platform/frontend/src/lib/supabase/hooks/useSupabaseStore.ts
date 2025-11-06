@@ -55,6 +55,33 @@ interface SupabaseStoreState {
 }
 
 export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
+  async function loadUserIfNeeded(): Promise<void> {
+    if (get().hasLoadedUser) {
+      set({ isUserLoading: false });
+      return;
+    }
+
+    set({ isUserLoading: true });
+    const result = await fetchUser();
+    set(result);
+  }
+
+  function setupEventListenersIfNeeded(): void {
+    if (get().listenersCleanup) return;
+
+    const cleanup = setupSessionEventListeners(
+      handleVisibilityChange,
+      handleFocus,
+      handleStorageEventInternal,
+    );
+    set({ listenersCleanup: cleanup.cleanup });
+  }
+
+  async function performInitialization(): Promise<void> {
+    await loadUserIfNeeded();
+    setupEventListenersIfNeeded();
+  }
+
   async function initialize(params: InitializeParams): Promise<void> {
     set({
       routerRef: params.router,
@@ -67,33 +94,17 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
       set({ supabase: supabaseClient });
     }
 
-    let initializationPromise = get().initializationPromise;
-
-    if (!initializationPromise) {
-      initializationPromise = (async () => {
-        if (!get().hasLoadedUser) {
-          set({ isUserLoading: true });
-          const result = await fetchUser();
-          set(result);
-        } else {
-          set({ isUserLoading: false });
-        }
-
-        if (!get().listenersCleanup) {
-          const cleanup = setupSessionEventListeners(
-            handleVisibilityChange,
-            handleFocus,
-            handleStorageEventInternal,
-          );
-          set({ listenersCleanup: cleanup.cleanup });
-        }
-      })();
-
-      set({ initializationPromise });
+    const existingPromise = get().initializationPromise;
+    if (existingPromise) {
+      await existingPromise;
+      return;
     }
 
+    const newPromise = performInitialization();
+    set({ initializationPromise: newPromise });
+
     try {
-      await initializationPromise;
+      await newPromise;
     } finally {
       set({ initializationPromise: null });
     }
