@@ -4811,9 +4811,12 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
-        "security": [{ "HTTPBearer": [] }]
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/chat/sessions/{session_id}": {
@@ -4822,7 +4825,7 @@
         "summary": "Get Session",
         "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.",
         "operationId": "getV2GetSession",
-        "security": [{ "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "session_id",
@@ -4849,6 +4852,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4859,7 +4865,7 @@
         "summary": "Stream Chat",
         "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "getV2StreamChat",
-        "security": [{ "HTTPBearer": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "session_id",
@@ -4901,6 +4907,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
       }
@@ -4911,7 +4920,7 @@
         "summary": "Session Assign User",
         "description": "Assign an authenticated user to a chat session.\n\nUsed (typically post-login) to claim an existing anonymous session as the current authenticated user.\n\nArgs:\n    session_id: The identifier for the (previously anonymous) session.\n    user_id: The authenticated user's ID to associate with the session.\n\nReturns:\n    dict: Status of the assignment.",
         "operationId": "patchV2SessionAssignUser",
-        "security": [{ "HTTPBearer": [] }, { "HTTPBearerJWT": [] }],
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "session_id",
@@ -4966,8 +4975,7 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearer": [] }]
+        }
       }
     },
     "/health": {
@@ -7821,11 +7829,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Activity Status",
             "description": "AI-generated summary of what the agent did"
-          },
-          "correctness_score": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Correctness Score",
-            "description": "AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose"
           }
         },
         "additionalProperties": true,
@@ -9868,8 +9871,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
-      },
-      "HTTPBearer": { "type": "http", "scheme": "bearer" }
+      }
     },
     "responses": {
       "HTTP401NotAuthenticatedError": {
