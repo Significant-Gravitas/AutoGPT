@@ -11,7 +11,11 @@ from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraphExecution
 from pydantic import BaseModel
 
-from backend.data.execution import GraphExecutionEntry, UserContext
+from backend.data.execution import (
+    GraphExecutionEntry,
+    UserContext,
+    get_graph_executions_count,
+)
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.utils import (
     GRAPH_EXECUTION_CANCEL_EXCHANGE,
@@ -166,13 +170,13 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
         twenty_four_hours_ago = now - timedelta(hours=24)
 
         # Get running executions count
-        running_count = await AgentGraphExecution.prisma().count(
-            where={"executionStatus": AgentExecutionStatus.RUNNING}
+        running_count = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.RUNNING]
         )
 
         # Get queued executions from database
-        queued_db_count = await AgentGraphExecution.prisma().count(
-            where={"executionStatus": AgentExecutionStatus.QUEUED}
+        queued_db_count = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.QUEUED]
         )
 
         # Get RabbitMQ queue depths (both execution and cancel queues)
@@ -180,18 +184,14 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
         cancel_queue_depth = get_rabbitmq_cancel_queue_depth()
 
         # Orphaned execution detection (>24h old, likely not in executor)
-        orphaned_running = await AgentGraphExecution.prisma().count(
-            where={
-                "executionStatus": AgentExecutionStatus.RUNNING,
-                "createdAt": {"lt": twenty_four_hours_ago},
-            }
+        orphaned_running = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.RUNNING],
+            created_time_lte=twenty_four_hours_ago,
         )
 
-        orphaned_queued = await AgentGraphExecution.prisma().count(
-            where={
-                "executionStatus": AgentExecutionStatus.QUEUED,
-                "createdAt": {"lt": twenty_four_hours_ago},
-            }
+        orphaned_queued = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.QUEUED],
+            created_time_lte=twenty_four_hours_ago,
         )
 
         # Failure metrics
@@ -212,18 +212,14 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
         failure_rate_24h = failed_count_24h / 24.0 if failed_count_24h > 0 else 0.0
 
         # Long-running detection (created >24h ago, still running)
-        stuck_running_24h = await AgentGraphExecution.prisma().count(
-            where={
-                "executionStatus": AgentExecutionStatus.RUNNING,
-                "createdAt": {"lt": twenty_four_hours_ago},
-            }
+        stuck_running_24h = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.RUNNING],
+            created_time_lte=twenty_four_hours_ago,
         )
 
-        stuck_running_1h = await AgentGraphExecution.prisma().count(
-            where={
-                "executionStatus": AgentExecutionStatus.RUNNING,
-                "createdAt": {"lt": one_hour_ago},
-            }
+        stuck_running_1h = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.RUNNING],
+            created_time_lte=one_hour_ago,
         )
 
         # Find oldest running execution
@@ -238,11 +234,9 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             oldest_running_hours = age_seconds / 3600.0
 
         # Stuck queued detection
-        stuck_queued_1h = await AgentGraphExecution.prisma().count(
-            where={
-                "executionStatus": AgentExecutionStatus.QUEUED,
-                "createdAt": {"lt": one_hour_ago},
-            }
+        stuck_queued_1h = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.QUEUED],
+            created_time_lte=one_hour_ago,
         )
 
         queued_never_started = await AgentGraphExecution.prisma().count(
@@ -1014,6 +1008,28 @@ async def get_stuck_queued_executions_details(
         raise
 
 
+async def get_failed_executions_count(hours: int = 24) -> int:
+    """
+    Get count of failed executions within the specified time window.
+
+    Args:
+        hours: Number of hours to look back (default 24)
+
+    Returns:
+        Count of failed executions
+    """
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        count = await get_graph_executions_count(
+            statuses=[AgentExecutionStatus.FAILED],
+            created_time_gte=cutoff,
+        )
+        return count
+    except Exception as e:
+        logger.error(f"Error getting failed executions count: {e}")
+        raise
+
+
 async def get_failed_executions_details(
     limit: int = 100, offset: int = 0, hours: int = 24
 ) -> List[FailedExecutionDetail]:
@@ -1313,6 +1329,31 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
         return 0
 
 
+async def get_all_orphaned_execution_ids() -> List[str]:
+    """
+    Get all orphaned execution IDs (>24h old, RUNNING or QUEUED).
+
+    Returns:
+        List of execution IDs that are orphaned
+    """
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+        executions = await AgentGraphExecution.prisma().find_many(
+            where={
+                "executionStatus": {
+                    "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
+                },
+                "createdAt": {"lt": cutoff},
+            },
+        )
+
+        return [e.id for e in executions]
+    except Exception as e:
+        logger.error(f"Error getting all orphaned execution IDs: {e}")
+        raise
+
+
 async def cleanup_orphaned_executions_bulk(
     execution_ids: List[str], admin_user_id: str
 ) -> int:
@@ -1349,6 +1390,29 @@ async def cleanup_orphaned_executions_bulk(
     except Exception as e:
         logger.error(f"Error cleaning up orphaned executions in bulk: {e}")
         return 0
+
+
+async def get_all_stuck_queued_execution_ids() -> List[str]:
+    """
+    Get all stuck queued execution IDs (QUEUED >1h).
+
+    Returns:
+        List of execution IDs that are stuck in QUEUED status
+    """
+    try:
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        executions = await AgentGraphExecution.prisma().find_many(
+            where={
+                "executionStatus": AgentExecutionStatus.QUEUED,
+                "createdAt": {"lt": one_hour_ago},
+            },
+        )
+
+        return [e.id for e in executions]
+    except Exception as e:
+        logger.error(f"Error getting all stuck queued execution IDs: {e}")
+        raise
 
 
 async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:

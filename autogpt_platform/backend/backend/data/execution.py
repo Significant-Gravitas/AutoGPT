@@ -453,6 +453,7 @@ async def get_graph_executions(
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
     limit: Optional[int] = None,
+    offset: Optional[int] = None,
 ) -> list[GraphExecutionMeta]:
     """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
     where_filter: AgentGraphExecutionWhereInput = {
@@ -476,6 +477,7 @@ async def get_graph_executions(
         where=where_filter,
         order={"createdAt": "desc"},
         take=limit,
+        skip=offset,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 

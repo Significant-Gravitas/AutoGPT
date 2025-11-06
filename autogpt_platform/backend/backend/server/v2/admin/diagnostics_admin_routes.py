@@ -1,12 +1,9 @@
 import logging
-from datetime import datetime, timedelta, timezone
 from typing import List
 
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.models import User as AuthUser
-from fastapi import APIRouter, HTTPException, Security
-from prisma.enums import AgentExecutionStatus
-from prisma.models import AgentGraphExecution
+from fastapi import APIRouter, Security
 from pydantic import BaseModel
 
 from backend.data.diagnostics import (
@@ -19,8 +16,11 @@ from backend.data.diagnostics import (
     cleanup_orphaned_executions_bulk,
     cleanup_orphaned_schedules_bulk,
     get_agent_diagnostics,
+    get_all_orphaned_execution_ids,
     get_all_schedules_details,
+    get_all_stuck_queued_execution_ids,
     get_execution_diagnostics,
+    get_failed_executions_count,
     get_failed_executions_details,
     get_long_running_executions_details,
     get_orphaned_executions_details,
@@ -108,43 +108,39 @@ async def get_execution_diagnostics_endpoint():
     - Throughput metrics (completions/hour)
     - RabbitMQ queue depths
     """
-    try:
-        logger.info("Getting execution diagnostics")
+    logger.info("Getting execution diagnostics")
 
-        diagnostics = await get_execution_diagnostics()
+    diagnostics = await get_execution_diagnostics()
 
-        response = ExecutionDiagnosticsResponse(
-            running_executions=diagnostics.running_count,
-            queued_executions_db=diagnostics.queued_db_count,
-            queued_executions_rabbitmq=diagnostics.rabbitmq_queue_depth,
-            cancel_queue_depth=diagnostics.cancel_queue_depth,
-            orphaned_running=diagnostics.orphaned_running,
-            orphaned_queued=diagnostics.orphaned_queued,
-            failed_count_1h=diagnostics.failed_count_1h,
-            failed_count_24h=diagnostics.failed_count_24h,
-            failure_rate_24h=diagnostics.failure_rate_24h,
-            stuck_running_24h=diagnostics.stuck_running_24h,
-            stuck_running_1h=diagnostics.stuck_running_1h,
-            oldest_running_hours=diagnostics.oldest_running_hours,
-            stuck_queued_1h=diagnostics.stuck_queued_1h,
-            queued_never_started=diagnostics.queued_never_started,
-            completed_1h=diagnostics.completed_1h,
-            completed_24h=diagnostics.completed_24h,
-            throughput_per_hour=diagnostics.throughput_per_hour,
-            timestamp=diagnostics.timestamp,
-        )
+    response = ExecutionDiagnosticsResponse(
+        running_executions=diagnostics.running_count,
+        queued_executions_db=diagnostics.queued_db_count,
+        queued_executions_rabbitmq=diagnostics.rabbitmq_queue_depth,
+        cancel_queue_depth=diagnostics.cancel_queue_depth,
+        orphaned_running=diagnostics.orphaned_running,
+        orphaned_queued=diagnostics.orphaned_queued,
+        failed_count_1h=diagnostics.failed_count_1h,
+        failed_count_24h=diagnostics.failed_count_24h,
+        failure_rate_24h=diagnostics.failure_rate_24h,
+        stuck_running_24h=diagnostics.stuck_running_24h,
+        stuck_running_1h=diagnostics.stuck_running_1h,
+        oldest_running_hours=diagnostics.oldest_running_hours,
+        stuck_queued_1h=diagnostics.stuck_queued_1h,
+        queued_never_started=diagnostics.queued_never_started,
+        completed_1h=diagnostics.completed_1h,
+        completed_24h=diagnostics.completed_24h,
+        throughput_per_hour=diagnostics.throughput_per_hour,
+        timestamp=diagnostics.timestamp,
+    )
 
-        logger.info(
-            f"Execution diagnostics: running={diagnostics.running_count}, "
-            f"queued_db={diagnostics.queued_db_count}, "
-            f"orphaned={diagnostics.orphaned_running + diagnostics.orphaned_queued}, "
-            f"failed_24h={diagnostics.failed_count_24h}"
-        )
+    logger.info(
+        f"Execution diagnostics: running={diagnostics.running_count}, "
+        f"queued_db={diagnostics.queued_db_count}, "
+        f"orphaned={diagnostics.orphaned_running + diagnostics.orphaned_queued}, "
+        f"failed_24h={diagnostics.failed_count_24h}"
+    )
 
-        return response
-    except Exception as e:
-        logger.exception(f"Error getting execution diagnostics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return response
 
 
 @router.get(
@@ -160,24 +156,20 @@ async def get_agent_diagnostics_endpoint():
         - agents_with_active_executions: Number of unique agents with running/queued executions
         - timestamp: Current timestamp
     """
-    try:
-        logger.info("Getting agent diagnostics")
+    logger.info("Getting agent diagnostics")
 
-        diagnostics = await get_agent_diagnostics()
+    diagnostics = await get_agent_diagnostics()
 
-        response = AgentDiagnosticsResponse(
-            agents_with_active_executions=diagnostics.agents_with_active_executions,
-            timestamp=diagnostics.timestamp,
-        )
+    response = AgentDiagnosticsResponse(
+        agents_with_active_executions=diagnostics.agents_with_active_executions,
+        timestamp=diagnostics.timestamp,
+    )
 
-        logger.info(
-            f"Agent diagnostics: with_active_executions={diagnostics.agents_with_active_executions}"
-        )
+    logger.info(
+        f"Agent diagnostics: with_active_executions={diagnostics.agents_with_active_executions}"
+    )
 
-        return response
-    except Exception as e:
-        logger.exception(f"Error getting agent diagnostics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return response
 
 
 @router.get(
@@ -199,21 +191,15 @@ async def list_running_executions(
     Returns:
         List of running executions with details
     """
-    try:
-        logger.info(f"Listing running executions (limit={limit}, offset={offset})")
+    logger.info(f"Listing running executions (limit={limit}, offset={offset})")
 
-        executions = await get_running_executions_details(limit=limit, offset=offset)
+    executions = await get_running_executions_details(limit=limit, offset=offset)
 
-        # Get total count for pagination
-        from backend.data.diagnostics import get_execution_diagnostics as get_diag
+    # Get total count for pagination
+    diagnostics = await get_execution_diagnostics()
+    total = diagnostics.running_count + diagnostics.queued_db_count
 
-        diagnostics = await get_diag()
-        total = diagnostics.running_count + diagnostics.queued_db_count
-
-        return RunningExecutionsListResponse(executions=executions, total=total)
-    except Exception as e:
-        logger.exception(f"Error listing running executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return RunningExecutionsListResponse(executions=executions, total=total)
 
 
 @router.get(
@@ -235,21 +221,15 @@ async def list_orphaned_executions(
     Returns:
         List of orphaned executions with details
     """
-    try:
-        logger.info(f"Listing orphaned executions (limit={limit}, offset={offset})")
+    logger.info(f"Listing orphaned executions (limit={limit}, offset={offset})")
 
-        executions = await get_orphaned_executions_details(limit=limit, offset=offset)
+    executions = await get_orphaned_executions_details(limit=limit, offset=offset)
 
-        # Get total count for pagination
-        from backend.data.diagnostics import get_execution_diagnostics as get_diag
+    # Get total count for pagination
+    diagnostics = await get_execution_diagnostics()
+    total = diagnostics.orphaned_running + diagnostics.orphaned_queued
 
-        diagnostics = await get_diag()
-        total = diagnostics.orphaned_running + diagnostics.orphaned_queued
-
-        return RunningExecutionsListResponse(executions=executions, total=total)
-    except Exception as e:
-        logger.exception(f"Error listing orphaned executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return RunningExecutionsListResponse(executions=executions, total=total)
 
 
 @router.get(
@@ -273,29 +253,19 @@ async def list_failed_executions(
     Returns:
         List of failed executions with error details
     """
-    try:
-        logger.info(
-            f"Listing failed executions (limit={limit}, offset={offset}, hours={hours})"
-        )
+    logger.info(
+        f"Listing failed executions (limit={limit}, offset={offset}, hours={hours})"
+    )
 
-        executions = await get_failed_executions_details(
-            limit=limit, offset=offset, hours=hours
-        )
+    executions = await get_failed_executions_details(
+        limit=limit, offset=offset, hours=hours
+    )
 
-        # Get total count for pagination
-        # Always count actual total for given hours parameter
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-        total = await AgentGraphExecution.prisma().count(
-            where={
-                "executionStatus": AgentExecutionStatus.FAILED,
-                "updatedAt": {"gte": cutoff},
-            }
-        )
+    # Get total count for pagination
+    # Always count actual total for given hours parameter
+    total = await get_failed_executions_count(hours=hours)
 
-        return FailedExecutionsListResponse(executions=executions, total=total)
-    except Exception as e:
-        logger.exception(f"Error listing failed executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return FailedExecutionsListResponse(executions=executions, total=total)
 
 
 @router.get(
@@ -317,23 +287,15 @@ async def list_long_running_executions(
     Returns:
         List of long-running executions with details
     """
-    try:
-        logger.info(f"Listing long-running executions (limit={limit}, offset={offset})")
+    logger.info(f"Listing long-running executions (limit={limit}, offset={offset})")
 
-        executions = await get_long_running_executions_details(
-            limit=limit, offset=offset
-        )
+    executions = await get_long_running_executions_details(limit=limit, offset=offset)
 
-        # Get total count for pagination
-        from backend.data.diagnostics import get_execution_diagnostics as get_diag
+    # Get total count for pagination
+    diagnostics = await get_execution_diagnostics()
+    total = diagnostics.stuck_running_24h
 
-        diagnostics = await get_diag()
-        total = diagnostics.stuck_running_24h
-
-        return RunningExecutionsListResponse(executions=executions, total=total)
-    except Exception as e:
-        logger.exception(f"Error listing long-running executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return RunningExecutionsListResponse(executions=executions, total=total)
 
 
 @router.get(
@@ -355,23 +317,15 @@ async def list_stuck_queued_executions(
     Returns:
         List of stuck queued executions with details
     """
-    try:
-        logger.info(f"Listing stuck queued executions (limit={limit}, offset={offset})")
+    logger.info(f"Listing stuck queued executions (limit={limit}, offset={offset})")
 
-        executions = await get_stuck_queued_executions_details(
-            limit=limit, offset=offset
-        )
+    executions = await get_stuck_queued_executions_details(limit=limit, offset=offset)
 
-        # Get total count for pagination
-        from backend.data.diagnostics import get_execution_diagnostics as get_diag
+    # Get total count for pagination
+    diagnostics = await get_execution_diagnostics()
+    total = diagnostics.stuck_queued_1h
 
-        diagnostics = await get_diag()
-        total = diagnostics.stuck_queued_1h
-
-        return RunningExecutionsListResponse(executions=executions, total=total)
-    except Exception as e:
-        logger.exception(f"Error listing stuck queued executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return RunningExecutionsListResponse(executions=executions, total=total)
 
 
 @router.post(
@@ -395,23 +349,19 @@ async def requeue_single_execution(
     Returns:
         Success status and message
     """
-    try:
-        logger.info(f"Admin {user.user_id} requeueing execution {request.execution_id}")
+    logger.info(f"Admin {user.user_id} requeueing execution {request.execution_id}")
 
-        success = await requeue_execution(request.execution_id, user.user_id)
+    success = await requeue_execution(request.execution_id, user.user_id)
 
-        return RequeueExecutionResponse(
-            success=success,
-            requeued_count=1 if success else 0,
-            message=(
-                "Execution requeued successfully"
-                if success
-                else "Failed to requeue execution"
-            ),
-        )
-    except Exception as e:
-        logger.exception(f"Error requeueing execution: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return RequeueExecutionResponse(
+        success=success,
+        requeued_count=1 if success else 0,
+        message=(
+            "Execution requeued successfully"
+            if success
+            else "Failed to requeue execution"
+        ),
+    )
 
 
 @router.post(
@@ -435,23 +385,17 @@ async def requeue_multiple_executions(
     Returns:
         Number of executions requeued and success message
     """
-    try:
-        logger.info(
-            f"Admin {user.user_id} requeueing {len(request.execution_ids)} executions"
-        )
+    logger.info(
+        f"Admin {user.user_id} requeueing {len(request.execution_ids)} executions"
+    )
 
-        requeued_count = await requeue_executions_bulk(
-            request.execution_ids, user.user_id
-        )
+    requeued_count = await requeue_executions_bulk(request.execution_ids, user.user_id)
 
-        return RequeueExecutionResponse(
-            success=requeued_count > 0,
-            requeued_count=requeued_count,
-            message=f"Requeued {requeued_count} of {len(request.execution_ids)} executions",
-        )
-    except Exception as e:
-        logger.exception(f"Error requeueing multiple executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return RequeueExecutionResponse(
+        success=requeued_count > 0,
+        requeued_count=requeued_count,
+        message=f"Requeued {requeued_count} of {len(request.execution_ids)} executions",
+    )
 
 
 @router.post(
@@ -472,23 +416,17 @@ async def stop_single_execution(
     Returns:
         Success status and message
     """
-    try:
-        logger.info(f"Admin {user.user_id} stopping execution {request.execution_id}")
+    logger.info(f"Admin {user.user_id} stopping execution {request.execution_id}")
 
-        success = await stop_execution(request.execution_id, user.user_id)
+    success = await stop_execution(request.execution_id, user.user_id)
 
-        return StopExecutionResponse(
-            success=success,
-            stopped_count=1 if success else 0,
-            message=(
-                "Execution stopped successfully"
-                if success
-                else "Failed to stop execution"
-            ),
-        )
-    except Exception as e:
-        logger.exception(f"Error stopping execution: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return StopExecutionResponse(
+        success=success,
+        stopped_count=1 if success else 0,
+        message=(
+            "Execution stopped successfully" if success else "Failed to stop execution"
+        ),
+    )
 
 
 @router.post(
@@ -510,21 +448,17 @@ async def stop_multiple_executions(
     Returns:
         Number of executions stopped and success message
     """
-    try:
-        logger.info(
-            f"Admin {user.user_id} stopping {len(request.execution_ids)} executions"
-        )
+    logger.info(
+        f"Admin {user.user_id} stopping {len(request.execution_ids)} executions"
+    )
 
-        stopped_count = await stop_executions_bulk(request.execution_ids, user.user_id)
+    stopped_count = await stop_executions_bulk(request.execution_ids, user.user_id)
 
-        return StopExecutionResponse(
-            success=stopped_count > 0,
-            stopped_count=stopped_count,
-            message=f"Stopped {stopped_count} of {len(request.execution_ids)} executions",
-        )
-    except Exception as e:
-        logger.exception(f"Error stopping multiple executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return StopExecutionResponse(
+        success=stopped_count > 0,
+        stopped_count=stopped_count,
+        message=f"Stopped {stopped_count} of {len(request.execution_ids)} executions",
+    )
 
 
 @router.post(
@@ -546,23 +480,19 @@ async def cleanup_orphaned_executions(
     Returns:
         Number of executions cleaned up and success message
     """
-    try:
-        logger.info(
-            f"Admin {user.user_id} cleaning up {len(request.execution_ids)} orphaned executions"
-        )
+    logger.info(
+        f"Admin {user.user_id} cleaning up {len(request.execution_ids)} orphaned executions"
+    )
 
-        cleaned_count = await cleanup_orphaned_executions_bulk(
-            request.execution_ids, user.user_id
-        )
+    cleaned_count = await cleanup_orphaned_executions_bulk(
+        request.execution_ids, user.user_id
+    )
 
-        return StopExecutionResponse(
-            success=cleaned_count > 0,
-            stopped_count=cleaned_count,
-            message=f"Cleaned up {cleaned_count} of {len(request.execution_ids)} orphaned executions",
-        )
-    except Exception as e:
-        logger.exception(f"Error cleaning up orphaned executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return StopExecutionResponse(
+        success=cleaned_count > 0,
+        stopped_count=cleaned_count,
+        message=f"Cleaned up {cleaned_count} of {len(request.execution_ids)} orphaned executions",
+    )
 
 
 # ============================================================================
@@ -606,21 +536,17 @@ async def get_schedule_diagnostics_endpoint():
     - Orphaned schedules by category
     - Upcoming executions
     """
-    try:
-        logger.info("Getting schedule diagnostics")
+    logger.info("Getting schedule diagnostics")
 
-        diagnostics = await get_schedule_health_metrics()
+    diagnostics = await get_schedule_health_metrics()
 
-        logger.info(
-            f"Schedule diagnostics: total={diagnostics.total_schedules}, "
-            f"user={diagnostics.user_schedules}, "
-            f"orphaned={diagnostics.total_orphaned}"
-        )
+    logger.info(
+        f"Schedule diagnostics: total={diagnostics.total_schedules}, "
+        f"user={diagnostics.user_schedules}, "
+        f"orphaned={diagnostics.total_orphaned}"
+    )
 
-        return diagnostics
-    except Exception as e:
-        logger.exception(f"Error getting schedule diagnostics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return diagnostics
 
 
 @router.get(
@@ -642,19 +568,15 @@ async def list_all_schedules(
     Returns:
         List of schedules with details
     """
-    try:
-        logger.info(f"Listing all schedules (limit={limit}, offset={offset})")
+    logger.info(f"Listing all schedules (limit={limit}, offset={offset})")
 
-        schedules = await get_all_schedules_details(limit=limit, offset=offset)
+    schedules = await get_all_schedules_details(limit=limit, offset=offset)
 
-        # Get total count
-        diagnostics = await get_schedule_health_metrics()
-        total = diagnostics.user_schedules
+    # Get total count
+    diagnostics = await get_schedule_health_metrics()
+    total = diagnostics.user_schedules
 
-        return SchedulesListResponse(schedules=schedules, total=total)
-    except Exception as e:
-        logger.exception(f"Error listing all schedules: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return SchedulesListResponse(schedules=schedules, total=total)
 
 
 @router.get(
@@ -669,15 +591,11 @@ async def list_orphaned_schedules():
     Returns:
         List of orphaned schedules categorized by orphan type
     """
-    try:
-        logger.info("Listing orphaned schedules")
+    logger.info("Listing orphaned schedules")
 
-        schedules = await get_orphaned_schedules_details()
+    schedules = await get_orphaned_schedules_details()
 
-        return OrphanedSchedulesListResponse(schedules=schedules, total=len(schedules))
-    except Exception as e:
-        logger.exception(f"Error listing orphaned schedules: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return OrphanedSchedulesListResponse(schedules=schedules, total=len(schedules))
 
 
 @router.post(
@@ -698,23 +616,19 @@ async def cleanup_orphaned_schedules(
     Returns:
         Number of schedules deleted and success message
     """
-    try:
-        logger.info(
-            f"Admin {user.user_id} cleaning up {len(request.execution_ids)} orphaned schedules"
-        )
+    logger.info(
+        f"Admin {user.user_id} cleaning up {len(request.execution_ids)} orphaned schedules"
+    )
 
-        deleted_count = await cleanup_orphaned_schedules_bulk(
-            request.execution_ids, user.user_id
-        )
+    deleted_count = await cleanup_orphaned_schedules_bulk(
+        request.execution_ids, user.user_id
+    )
 
-        return ScheduleCleanupResponse(
-            success=deleted_count > 0,
-            deleted_count=deleted_count,
-            message=f"Deleted {deleted_count} of {len(request.execution_ids)} orphaned schedules",
-        )
-    except Exception as e:
-        logger.exception(f"Error cleaning up orphaned schedules: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return ScheduleCleanupResponse(
+        success=deleted_count > 0,
+        deleted_count=deleted_count,
+        message=f"Deleted {deleted_count} of {len(request.execution_ids)} orphaned schedules",
+    )
 
 
 @router.post(
@@ -732,19 +646,15 @@ async def stop_all_long_running_executions_endpoint(
     Returns:
         Number of executions stopped and success message
     """
-    try:
-        logger.info(f"Admin {user.user_id} stopping ALL long-running executions")
+    logger.info(f"Admin {user.user_id} stopping ALL long-running executions")
 
-        stopped_count = await stop_all_long_running_executions(user.user_id)
+    stopped_count = await stop_all_long_running_executions(user.user_id)
 
-        return StopExecutionResponse(
-            success=stopped_count > 0,
-            stopped_count=stopped_count,
-            message=f"Stopped {stopped_count} long-running executions",
-        )
-    except Exception as e:
-        logger.exception(f"Error stopping all long-running executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return StopExecutionResponse(
+        success=stopped_count > 0,
+        stopped_count=stopped_count,
+        message=f"Stopped {stopped_count} long-running executions",
+    )
 
 
 @router.post(
@@ -762,44 +672,25 @@ async def cleanup_all_orphaned_executions(
     Returns:
         Number of executions cleaned up and success message
     """
-    try:
-        logger.info(f"Admin {user.user_id} cleaning up ALL orphaned executions")
+    logger.info(f"Admin {user.user_id} cleaning up ALL orphaned executions")
 
-        # Fetch all orphaned execution IDs
-        from datetime import timedelta
+    # Fetch all orphaned execution IDs
+    execution_ids = await get_all_orphaned_execution_ids()
 
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-
-        executions = await AgentGraphExecution.prisma().find_many(
-            where={
-                "executionStatus": {
-                    "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
-                },
-                "createdAt": {"lt": cutoff},
-            },
-        )
-
-        execution_ids = [e.id for e in executions]
-
-        if not execution_ids:
-            return StopExecutionResponse(
-                success=True,
-                stopped_count=0,
-                message="No orphaned executions to cleanup",
-            )
-
-        cleaned_count = await cleanup_orphaned_executions_bulk(
-            execution_ids, user.user_id
-        )
-
+    if not execution_ids:
         return StopExecutionResponse(
-            success=cleaned_count > 0,
-            stopped_count=cleaned_count,
-            message=f"Cleaned up {cleaned_count} orphaned executions",
+            success=True,
+            stopped_count=0,
+            message="No orphaned executions to cleanup",
         )
-    except Exception as e:
-        logger.exception(f"Error cleaning up all orphaned executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    cleaned_count = await cleanup_orphaned_executions_bulk(execution_ids, user.user_id)
+
+    return StopExecutionResponse(
+        success=cleaned_count > 0,
+        stopped_count=cleaned_count,
+        message=f"Cleaned up {cleaned_count} orphaned executions",
+    )
 
 
 @router.post(
@@ -817,19 +708,15 @@ async def cleanup_all_stuck_queued_executions_endpoint(
     Returns:
         Number of executions cleaned up and success message
     """
-    try:
-        logger.info(f"Admin {user.user_id} cleaning up ALL stuck queued executions")
+    logger.info(f"Admin {user.user_id} cleaning up ALL stuck queued executions")
 
-        cleaned_count = await cleanup_all_stuck_queued_executions(user.user_id)
+    cleaned_count = await cleanup_all_stuck_queued_executions(user.user_id)
 
-        return StopExecutionResponse(
-            success=cleaned_count > 0,
-            stopped_count=cleaned_count,
-            message=f"Cleaned up {cleaned_count} stuck queued executions",
-        )
-    except Exception as e:
-        logger.exception(f"Error cleaning up all stuck queued executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return StopExecutionResponse(
+        success=cleaned_count > 0,
+        stopped_count=cleaned_count,
+        message=f"Cleaned up {cleaned_count} stuck queued executions",
+    )
 
 
 @router.post(
@@ -849,37 +736,22 @@ async def requeue_all_stuck_executions(
     Returns:
         Number of executions requeued and success message
     """
-    try:
-        logger.info(f"Admin {user.user_id} requeueing ALL stuck queued executions")
+    logger.info(f"Admin {user.user_id} requeueing ALL stuck queued executions")
 
-        # Fetch all stuck queued execution IDs
-        from datetime import timedelta
+    # Fetch all stuck queued execution IDs
+    execution_ids = await get_all_stuck_queued_execution_ids()
 
-        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-
-        executions = await AgentGraphExecution.prisma().find_many(
-            where={
-                "executionStatus": AgentExecutionStatus.QUEUED,
-                "createdAt": {"lt": one_hour_ago},
-            },
-        )
-
-        execution_ids = [e.id for e in executions]
-
-        if not execution_ids:
-            return RequeueExecutionResponse(
-                success=True,
-                requeued_count=0,
-                message="No stuck queued executions to requeue",
-            )
-
-        requeued_count = await requeue_executions_bulk(execution_ids, user.user_id)
-
+    if not execution_ids:
         return RequeueExecutionResponse(
-            success=requeued_count > 0,
-            requeued_count=requeued_count,
-            message=f"Requeued {requeued_count} stuck executions",
+            success=True,
+            requeued_count=0,
+            message="No stuck queued executions to requeue",
         )
-    except Exception as e:
-        logger.exception(f"Error requeueing all stuck executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+
+    requeued_count = await requeue_executions_bulk(execution_ids, user.user_id)
+
+    return RequeueExecutionResponse(
+        success=requeued_count > 0,
+        requeued_count=requeued_count,
+        message=f"Requeued {requeued_count} stuck executions",
+    )
