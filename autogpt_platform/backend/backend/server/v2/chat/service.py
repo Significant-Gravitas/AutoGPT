@@ -440,9 +440,11 @@ async def _stream_chat_chunks(
                             if (
                                 idx not in emitted_start_for_idx
                                 and tool_calls[idx]["id"]
+                                and tool_calls[idx]["function"]["name"]
                             ):
                                 yield StreamToolCallStart(
                                     tool_id=tool_calls[idx]["id"],
+                                    tool_name=tool_calls[idx]["function"]["name"],
                                     timestamp=datetime.now(UTC).isoformat(),
                                 )
                                 emitted_start_for_idx.add(idx)

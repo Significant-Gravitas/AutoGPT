@@ -39,6 +39,7 @@ class StreamToolCallStart(StreamBaseResponse):
     """Tool call started notification."""
 
     type: ResponseType = ResponseType.TOOL_CALL_START
+    tool_name: str = Field(..., description="Name of the tool that was executed")
     tool_id: str = Field(..., description="Unique tool call ID")
 
 

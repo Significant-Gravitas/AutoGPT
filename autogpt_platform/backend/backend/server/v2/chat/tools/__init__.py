@@ -43,7 +43,7 @@ async def execute_tool(
         "find_agent": find_agent_tool,
         "get_agent_details": get_agent_details_tool,
         "get_required_setup_info": get_required_setup_info_tool,
-        "setup_agent": setup_agent_tool,
+        "schedule_agent": setup_agent_tool,
         "run_agent": run_agent_tool,
     }
     if tool_name not in tool_map:
