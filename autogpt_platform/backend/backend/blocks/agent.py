@@ -84,6 +84,7 @@ class AgentExecutorBlock(Block):
             inputs=input_data.inputs,
             nodes_input_masks=input_data.nodes_input_masks,
             parent_graph_exec_id=graph_exec_id,
+            is_sub_graph=True,  # AgentExecutorBlock executions are always sub-graphs
         )
 
         logger = execution_utils.LogMetadata(

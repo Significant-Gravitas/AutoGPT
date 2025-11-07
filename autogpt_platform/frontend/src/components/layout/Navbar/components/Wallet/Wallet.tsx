@@ -217,7 +217,7 @@ export function Wallet() {
     if (typeof credits !== "number") return;
     // Open once for first-time users
     if (state && state.walletShown === false) {
-      setWalletOpen(true);
+      requestAnimationFrame(() => setWalletOpen(true));
       // Mark as shown so it won't reopen on every reload
       updateState({ walletShown: true });
       return;
@@ -228,7 +228,7 @@ export function Wallet() {
       credits > lastSeenCredits &&
       walletOpen === false
     ) {
-      setWalletOpen(true);
+      requestAnimationFrame(() => setWalletOpen(true));
     }
   }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
 
@@ -327,9 +327,7 @@ export function Wallet() {
         <div className="relative inline-block">
           <button
             ref={walletRef}
-            className={cn(
-              "relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm",
-            )}
+            className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
             onClick={onWalletOpen}
           >
             <WalletIcon size={20} className="inline-block md:hidden" />
@@ -338,7 +336,7 @@ export function Wallet() {
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}
               </span>
-              {completedCount && completedCount < totalCount && (
+              {completedCount !== null && completedCount < totalCount && (
                 <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
               )}
               <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">

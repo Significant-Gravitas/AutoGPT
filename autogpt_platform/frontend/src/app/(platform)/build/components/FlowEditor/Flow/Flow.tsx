@@ -9,7 +9,7 @@ import { CustomNode } from "../nodes/CustomNode/CustomNode";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { useFlowRealtime } from "./useFlowRealtime";
 import { GraphLoadingBox } from "./components/GraphLoadingBox";
-import { BuilderActions } from "../BuilderActions/BuilderActions";
+import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
 
@@ -23,6 +23,8 @@ export const Flow = () => {
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
   useFlow();
+
+  // This hook is used for websocket realtime updates.
   useFlowRealtime();
 
   const { isFlowContentLoading } = useFlow();

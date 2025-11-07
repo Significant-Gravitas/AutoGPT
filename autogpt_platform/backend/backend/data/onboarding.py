@@ -57,19 +57,44 @@ async def get_user_onboarding(user_id: str):
     )
 
 
+async def reset_user_onboarding(user_id: str):
+    return await UserOnboarding.prisma().upsert(
+        where={"userId": user_id},
+        data={
+            "create": UserOnboardingCreateInput(userId=user_id),
+            "update": {
+                "completedSteps": [],
+                "walletShown": False,
+                "notified": [],
+                "usageReason": None,
+                "integrations": [],
+                "otherIntegrations": None,
+                "selectedStoreListingVersionId": None,
+                "agentInput": prisma.Json({}),
+                "onboardingAgentExecutionId": None,
+                "agentRuns": 0,
+                "lastRunAt": None,
+                "consecutiveRunDays": 0,
+            },
+        },
+    )
+
+
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     onboarding = await get_user_onboarding(user_id)
     if data.completedSteps is not None:
-        update["completedSteps"] = list(set(data.completedSteps))
+        update["completedSteps"] = list(
+            set(data.completedSteps + onboarding.completedSteps)
+        )
         for step in data.completedSteps:
             if step not in onboarding.completedSteps:
                 await _reward_user(user_id, onboarding, step)
                 await _send_onboarding_notification(user_id, step)
-    if data.walletShown is not None:
+    if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified))
+        update["notified"] = list(set(data.notified + onboarding.notified))
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:
@@ -82,7 +107,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
-    if data.agentRuns is not None:
+    if data.agentRuns is not None and data.agentRuns > onboarding.agentRuns:
         update["agentRuns"] = data.agentRuns
     if data.lastRunAt is not None:
         update["lastRunAt"] = data.lastRunAt

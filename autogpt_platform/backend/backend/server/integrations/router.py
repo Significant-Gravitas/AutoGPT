@@ -470,7 +470,9 @@ async def _execute_webhook_preset_trigger(
         logger.debug(f"Preset #{preset.id} is inactive")
         return
 
-    graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
+    graph = await get_graph(
+        preset.graph_id, preset.graph_version, user_id=webhook.user_id
+    )
     if not graph:
         logger.error(
             f"User #{webhook.user_id} has preset #{preset.id} for graph "
@@ -562,8 +564,9 @@ async def _cleanup_orphaned_webhook_for_graph(
     graph_id: str, user_id: str, webhook_id: str
 ) -> None:
     """
-    Clean up orphaned webhook connections for a specific graph when execution fails with GraphNotInLibraryError.
-    This happens when an agent is deleted but webhook triggers still exist.
+    Clean up orphaned webhook connections for a specific graph when execution fails with GraphNotAccessibleError.
+    This happens when an agent is pulled from the Marketplace or deleted
+    but webhook triggers still exist.
     """
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
