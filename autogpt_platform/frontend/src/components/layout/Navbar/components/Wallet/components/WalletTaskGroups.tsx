@@ -70,6 +70,14 @@ export function TaskGroups({ groups }: Props) {
     }
   };
 
+  const scrollIntoViewCentered = useCallback((el: HTMLDivElement) => {
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+  }, []);
+
   const delayConfetti = useCallback((el: HTMLDivElement, count: number) => {
     setTimeout(() => {
       party.confetti(el, {
@@ -100,7 +108,8 @@ export function TaskGroups({ groups }: Props) {
       if (groupCompleted) {
         const el = refs.current[group.name];
         if (el && !alreadyCelebrated) {
-          delayConfetti(el, 50);
+          scrollIntoViewCentered(el);
+          delayConfetti(el, 600);
           // Update the state to include all group tasks as notified
           // This ensures that the confetti effect isn't perpetually triggered on Wallet
           const notifiedTasks = group.tasks.map((task) => task.id);
@@ -114,7 +123,8 @@ export function TaskGroups({ groups }: Props) {
       group.tasks.forEach((task) => {
         const el = refs.current[task.id];
         if (el && isTaskCompleted(task) && !state?.notified.includes(task.id)) {
-          delayConfetti(el, 40);
+          scrollIntoViewCentered(el);
+          delayConfetti(el, 400);
           // Update the state to include the task as notified
           updateState({ notified: [...(state?.notified || []), task.id] });
         }
@@ -128,6 +138,7 @@ export function TaskGroups({ groups }: Props) {
     state?.notified,
     isGroupCompleted,
     isTaskCompleted,
+    scrollIntoViewCentered,
   ]);
 
   return (
