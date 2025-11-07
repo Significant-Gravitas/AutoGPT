@@ -16,6 +16,7 @@ from backend.monitoring.instrumentation import (
     update_websocket_connections,
 )
 from backend.server.conn_manager import ConnectionManager
+from backend.server.utils.cors import build_cors_params
 from backend.server.model import (
     WSMessage,
     WSMethod,
@@ -315,9 +316,13 @@ async def health():
 class WebsocketServer(AppProcess):
     def run(self):
         logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
+        cors_params = build_cors_params(
+            settings.config.backend_cors_allow_origins,
+            settings.config.app_env,
+        )
         server_app = CORSMiddleware(
             app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
+            **cors_params,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

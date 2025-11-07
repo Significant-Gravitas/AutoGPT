@@ -1,7 +1,8 @@
 """Helper functions for improved test assertions and error handling."""
 
 import json
-from typing import Any, Dict, Optional
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, Optional
 
 
 def assert_response_status(
@@ -107,3 +108,15 @@ def assert_mock_called_with_partial(mock_obj: Any, **expected_kwargs: Any) -> No
         assert (
             actual_kwargs[key] == expected_value
         ), f"Mock called with {key}={actual_kwargs[key]}, expected {expected_value}"
+
+
+@contextmanager
+def override_config(
+    settings: Any, attribute: str, value: Any
+) -> Iterator[None]:
+    original = getattr(settings.config, attribute)
+    setattr(settings.config, attribute, value)
+    try:
+        yield
+    finally:
+        setattr(settings.config, attribute, original)

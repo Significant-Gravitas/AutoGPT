@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
@@ -427,34 +428,64 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
+    backend_cors_allow_origins: List[str] = Field(
+        default=["http://localhost:3000"],
+        description=
+        "Allowed Origins for CORS. Supports exact URLs (http/https) or entries prefixed with "
+        '"regex:" to match via regular expression.',
+    )
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
-        out = []
+        validated: List[str] = []
         port = None
         has_localhost = False
         has_127_0_0_1 = False
-        for url in v:
-            url = url.strip()
-            if url.startswith(("http://", "https://")):
-                if "localhost" in url:
-                    port = url.split(":")[2]
-                    has_localhost = True
-                if "127.0.0.1" in url:
-                    port = url.split(":")[2]
-                    has_127_0_0_1 = True
-                out.append(url)
-            else:
-                raise ValueError(f"Invalid URL: {url}")
 
-        if has_127_0_0_1 and not has_localhost:
-            out.append(f"http://localhost:{port}")
-        if has_localhost and not has_127_0_0_1:
-            out.append(f"http://127.0.0.1:{port}")
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if origin.startswith("regex:"):
+                pattern = origin[len("regex:") :]
+                if not pattern:
+                    raise ValueError("Invalid regex pattern: pattern cannot be empty")
+                try:
+                    re.compile(pattern)
+                except re.error as exc:
+                    raise ValueError(
+                        f"Invalid regex pattern '{pattern}': {exc}"
+                    ) from exc
+                validated.append(origin)
+                continue
 
-        return out
+            if origin.startswith(("http://", "https://")):
+                if "localhost" in origin:
+                    try:
+                        port = origin.split(":")[2]
+                        has_localhost = True
+                    except IndexError as exc:
+                        raise ValueError(
+                            "localhost origins must include an explicit port, e.g. http://localhost:3000"
+                        ) from exc
+                if "127.0.0.1" in origin:
+                    try:
+                        port = origin.split(":")[2]
+                        has_127_0_0_1 = True
+                    except IndexError as exc:
+                        raise ValueError(
+                            "127.0.0.1 origins must include an explicit port, e.g. http://127.0.0.1:3000"
+                        ) from exc
+                validated.append(origin)
+                continue
+
+            raise ValueError(f"Invalid URL or regex origin: {origin}")
+
+        if has_127_0_0_1 and not has_localhost and port:
+            validated.append(f"http://localhost:{port}")
+        if has_localhost and not has_127_0_0_1 and port:
+            validated.append(f"http://127.0.0.1:{port}")
+
+        return validated
 
     @classmethod
     def settings_customise_sources(

@@ -8,9 +8,14 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
+from backend.server.test_helpers import override_config
 from backend.server.ws_api import (
+    AppEnvironment,
     WSMessage,
     WSMethod,
+    WebsocketServer,
+    app as websocket_app,
+    settings,
     handle_subscribe,
     handle_unsubscribe,
     websocket_router,
@@ -27,6 +32,47 @@ def mock_websocket() -> AsyncMock:
 @pytest.fixture
 def mock_manager() -> AsyncMock:
     return AsyncMock(spec=ConnectionManager)
+
+
+def test_websocket_server_uses_cors_helper(mocker) -> None:
+    cors_params = {
+        "allow_origins": ["https://app.example.com"],
+        "allow_origin_regex": None,
+    }
+    mocker.patch("backend.server.ws_api.uvicorn.run")
+    cors_middleware = mocker.patch(
+        "backend.server.ws_api.CORSMiddleware", return_value=object()
+    )
+    build_cors = mocker.patch(
+        "backend.server.ws_api.build_cors_params", return_value=cors_params
+    )
+
+    with override_config(
+        settings, "backend_cors_allow_origins", cors_params["allow_origins"]
+    ), override_config(settings, "app_env", AppEnvironment.LOCAL):
+        WebsocketServer().run()
+
+    build_cors.assert_called_once_with(
+        cors_params["allow_origins"], AppEnvironment.LOCAL
+    )
+    cors_middleware.assert_called_once_with(
+        app=websocket_app,
+        allow_origins=cors_params["allow_origins"],
+        allow_origin_regex=cors_params["allow_origin_regex"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def test_websocket_server_blocks_localhost_in_production(mocker) -> None:
+    mocker.patch("backend.server.ws_api.uvicorn.run")
+
+    with override_config(
+        settings, "backend_cors_allow_origins", ["http://localhost:3000"]
+    ), override_config(settings, "app_env", AppEnvironment.PRODUCTION):
+        with pytest.raises(ValueError):
+            WebsocketServer().run()
 
 
 @pytest.mark.asyncio
