@@ -84,6 +84,10 @@ function isClientSide() {
   return typeof window !== "undefined";
 }
 
+function isVercelPreview() {
+  return process.env.VERCEL_ENV === "preview";
+}
+
 function isCAPTCHAEnabled() {
   return process.env.NEXT_PUBLIC_TURNSTILE === "enabled";
 }
@@ -110,6 +114,7 @@ export const environment = {
   isDev,
   isCloud,
   isLocal,
+  isVercelPreview,
   isCAPTCHAEnabled,
   areFeatureFlagsEnabled,
 };

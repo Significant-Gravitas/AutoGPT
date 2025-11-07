@@ -1,6 +1,7 @@
 import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { environment } from "@/services/environment";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { NextResponse } from "next/server";
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
 
     // Verify Turnstile token if provided
     const captchaOk = await verifyTurnstileToken(turnstileToken ?? "", "login");
-    if (!captchaOk) {
+    if (!captchaOk && !environment.isVercelPreview()) {
       return NextResponse.json(
         { error: "CAPTCHA verification failed. Please try again." },
         { status: 400 },
