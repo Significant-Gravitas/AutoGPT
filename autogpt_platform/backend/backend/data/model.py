@@ -833,6 +833,10 @@ class GraphExecutionStats(BaseModel):
     activity_status: Optional[str] = Field(
         default=None, description="AI-generated summary of what the agent did"
     )
+    correctness_score: Optional[float] = Field(
+        default=None,
+        description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
+    )
 
 
 class UserExecutionSummaryStats(BaseModel):

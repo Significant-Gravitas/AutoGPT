@@ -25,7 +25,7 @@ export const NewSaveControl = () => {
   const { saveControlOpen, setSaveControlOpen } = useControlPanelStore();
   return (
     <Popover onOpenChange={setSaveControlOpen}>
-      <Tooltip delayDuration={500}>
+      <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <ControlPanelButton
@@ -34,7 +34,6 @@ export const NewSaveControl = () => {
               selected={saveControlOpen}
               className="rounded-none"
             >
-              {/* Need to find phosphor icon alternative for this lucide icon */}
               <FloppyDiskIcon className="h-6 w-6" />
             </ControlPanelButton>
           </PopoverTrigger>
