@@ -439,9 +439,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
         validated: List[str] = []
-        port = None
-        has_localhost = False
-        has_127_0_0_1 = False
+        localhost_ports: set[str] = set()
+        ip127_ports: set[str] = set()
 
         for raw_origin in v:
             origin = raw_origin.strip()
@@ -462,7 +461,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
                 if "localhost" in origin:
                     try:
                         port = origin.split(":")[2]
-                        has_localhost = True
+                        localhost_ports.add(port)
                     except IndexError as exc:
                         raise ValueError(
                             "localhost origins must include an explicit port, e.g. http://localhost:3000"
@@ -470,7 +469,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
                 if "127.0.0.1" in origin:
                     try:
                         port = origin.split(":")[2]
-                        has_127_0_0_1 = True
+                        ip127_ports.add(port)
                     except IndexError as exc:
                         raise ValueError(
                             "127.0.0.1 origins must include an explicit port, e.g. http://127.0.0.1:3000"
@@ -480,9 +479,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
             raise ValueError(f"Invalid URL or regex origin: {origin}")
 
-        if has_127_0_0_1 and not has_localhost and port:
+        for port in ip127_ports - localhost_ports:
             validated.append(f"http://localhost:{port}")
-        if has_localhost and not has_127_0_0_1 and port:
+        for port in localhost_ports - ip127_ports:
             validated.append(f"http://127.0.0.1:{port}")
 
         return validated

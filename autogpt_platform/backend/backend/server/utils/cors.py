@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Sequence
 
 from backend.util.settings import AppEnvironment
@@ -14,11 +15,27 @@ def build_cors_params(
     if app_env == AppEnvironment.PRODUCTION:
         for origin in origins:
             if origin.startswith("regex:"):
-                pattern = origin[len("regex:") :].lower()
-                if "localhost" in pattern or "127.0.0.1" in pattern:
+                pattern = origin[len("regex:") :]
+                pattern_lower = pattern.lower()
+                if "localhost" in pattern_lower or "127.0.0.1" in pattern_lower:
                     raise ValueError(
-                        "Production environment cannot allow localhost origins via regex"
+                        f"Production environment cannot allow localhost origins via regex: {pattern}"
                     )
+                try:
+                    compiled = re.compile(pattern)
+                    test_urls = [
+                        "http://localhost:3000",
+                        "http://127.0.0.1:3000",
+                        "https://localhost:8000",
+                        "https://127.0.0.1:8000",
+                    ]
+                    for test_url in test_urls:
+                        if compiled.search(test_url):
+                            raise ValueError(
+                                f"Production regex pattern matches localhost/127.0.0.1: {pattern}"
+                            )
+                except re.error:
+                    pass
                 continue
 
             lowered = origin.lower()
