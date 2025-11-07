@@ -111,15 +111,13 @@ def assert_mock_called_with_partial(mock_obj: Any, **expected_kwargs: Any) -> No
 
 
 @contextmanager
-def override_config(
-    settings: Any, attribute: str, value: Any
-) -> Iterator[None]:
+def override_config(settings: Any, attribute: str, value: Any) -> Iterator[None]:
     """Temporarily override a config attribute for testing.
-    
+
     Warning: Directly mutates settings.config. If config is reloaded or cached
     elsewhere during the test, side effects may leak. Use with caution in
     parallel tests or when config is accessed globally.
-    
+
     Args:
         settings: The settings object containing .config
         attribute: The config attribute name to override

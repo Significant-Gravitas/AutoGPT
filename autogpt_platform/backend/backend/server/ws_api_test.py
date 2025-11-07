@@ -9,15 +9,12 @@ from pytest_snapshot.plugin import Snapshot
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.test_helpers import override_config
+from backend.server.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
+from backend.server.ws_api import app as websocket_app
 from backend.server.ws_api import (
-    AppEnvironment,
-    WSMessage,
-    WSMethod,
-    WebsocketServer,
-    app as websocket_app,
-    settings,
     handle_subscribe,
     handle_unsubscribe,
+    settings,
     websocket_router,
 )
 

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Sequence
+from typing import List, Sequence, TypedDict
 
 from backend.util.settings import AppEnvironment
 
 
-def build_cors_params(
-    origins: Sequence[str], app_env: AppEnvironment
-) -> Dict[str, object]:
+class CorsParams(TypedDict):
+    allow_origins: List[str]
+    allow_origin_regex: str | None
+
+
+def build_cors_params(origins: Sequence[str], app_env: AppEnvironment) -> CorsParams:
     allow_origins: List[str] = []
     regex_patterns: List[str] = []
 
@@ -62,4 +65,3 @@ def build_cors_params(
         "allow_origins": allow_origins,
         "allow_origin_regex": allow_origin_regex,
     }
-

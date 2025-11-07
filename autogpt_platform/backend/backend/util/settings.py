@@ -430,8 +430,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     backend_cors_allow_origins: List[str] = Field(
         default=["http://localhost:3000"],
-        description=
-        "Allowed Origins for CORS. Supports exact URLs (http/https) or entries prefixed with "
+        description="Allowed Origins for CORS. Supports exact URLs (http/https) or entries prefixed with "
         '"regex:" to match via regular expression.',
     )
 

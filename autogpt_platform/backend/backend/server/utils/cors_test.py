@@ -37,23 +37,17 @@ def test_build_cors_params_blocks_localhost_literal_in_production() -> None:
 
 def test_build_cors_params_blocks_localhost_regex_in_production() -> None:
     with pytest.raises(ValueError):
-        build_cors_params(
-            ["regex:https://.*localhost.*"], AppEnvironment.PRODUCTION
-        )
+        build_cors_params(["regex:https://.*localhost.*"], AppEnvironment.PRODUCTION)
 
 
 def test_build_cors_params_blocks_case_insensitive_localhost_regex() -> None:
     with pytest.raises(ValueError, match="localhost origins via regex"):
-        build_cors_params(
-            ["regex:https://(?i)LOCALHOST.*"], AppEnvironment.PRODUCTION
-        )
+        build_cors_params(["regex:https://(?i)LOCALHOST.*"], AppEnvironment.PRODUCTION)
 
 
 def test_build_cors_params_blocks_regex_matching_localhost_at_runtime() -> None:
     with pytest.raises(ValueError, match="matches localhost"):
-        build_cors_params(
-            ["regex:https?://.*:3000"], AppEnvironment.PRODUCTION
-        )
+        build_cors_params(["regex:https?://.*:3000"], AppEnvironment.PRODUCTION)
 
 
 def test_build_cors_params_allows_vercel_preview_regex() -> None:
@@ -61,9 +55,8 @@ def test_build_cors_params_allows_vercel_preview_regex() -> None:
         ["regex:https://autogpt-git-[a-z0-9-]+\\.vercel\\.app"],
         AppEnvironment.PRODUCTION,
     )
-    
+
     assert result["allow_origins"] == []
     assert result["allow_origin_regex"] == (
         "^(?:https://autogpt-git-[a-z0-9-]+\\.vercel\\.app)$"
     )
-

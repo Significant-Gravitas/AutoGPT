@@ -16,13 +16,13 @@ from backend.monitoring.instrumentation import (
     update_websocket_connections,
 )
 from backend.server.conn_manager import ConnectionManager
-from backend.server.utils.cors import build_cors_params
 from backend.server.model import (
     WSMessage,
     WSMethod,
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.server.utils.cors import build_cors_params
 from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
