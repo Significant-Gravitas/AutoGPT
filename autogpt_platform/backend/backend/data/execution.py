@@ -653,7 +653,7 @@ async def get_child_graph_executions(
         List of child graph executions
     """
     children = await AgentGraphExecution.prisma().find_many(
-        where={"parentGraphExecutionId": parent_exec_id, "isDeleted": False}  # type: ignore
+        where={"parentGraphExecutionId": parent_exec_id, "isDeleted": False}
     )
 
     return [GraphExecutionMeta.from_db(child) for child in children]
@@ -705,8 +705,8 @@ async def create_graph_execution(
             },
             "userId": user_id,
             "agentPresetId": preset_id,
-            "parentGraphExecutionId": parent_graph_exec_id,  # type: ignore
-        },  # type: ignore
+            "parentGraphExecutionId": parent_graph_exec_id,
+        },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 
