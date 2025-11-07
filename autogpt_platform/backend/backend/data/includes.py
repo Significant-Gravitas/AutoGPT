@@ -105,6 +105,7 @@ def library_agent_include(
     """
     result: prisma.types.LibraryAgentInclude = {
         "Creator": True,  # Always needed for creator info
+        "StoreListingVersion": True,  # Always needed for marketplace metadata
     }
 
     # Build AgentGraph include based on requested options

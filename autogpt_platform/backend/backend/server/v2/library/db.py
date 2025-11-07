@@ -714,6 +714,7 @@ async def add_store_agent_to_library(
                         "graphVersionId": {"id": graph.id, "version": graph.version}
                     }
                 },
+                "StoreListingVersion": {"connect": {"id": store_listing_version_id}},
                 "isCreatedByUser": False,
             },
             include=library_agent_include(

@@ -116,6 +116,17 @@ class LibraryAgent(pydantic.BaseModel):
         # Hard-coded to True until a method to check is implemented
         is_latest_version = True
 
+        # Use marketplace name and description if available (for downloaded agents)
+        name = graph.name
+        description = graph.description
+        instructions = graph.instructions
+        if agent.StoreListingVersion:
+            name = agent.StoreListingVersion.name
+            description = agent.StoreListingVersion.description
+            # Use marketplace instructions if available, otherwise fall back to graph instructions
+            if agent.StoreListingVersion.instructions:
+                instructions = agent.StoreListingVersion.instructions
+
         return LibraryAgent(
             id=agent.id,
             graph_id=agent.agentGraphId,
@@ -125,9 +136,9 @@ class LibraryAgent(pydantic.BaseModel):
             creator_image_url=creator_image_url,
             status=status,
             updated_at=updated_at,
-            name=graph.name,
-            description=graph.description,
-            instructions=graph.instructions,
+            name=name,
+            description=description,
+            instructions=instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
             credentials_input_schema=(

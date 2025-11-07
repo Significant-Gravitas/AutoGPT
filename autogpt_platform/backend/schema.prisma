@@ -258,6 +258,9 @@ model LibraryAgent {
   creatorId String?
   Creator   Profile? @relation(fields: [creatorId], references: [id])
 
+  storeListingVersionId String?
+  StoreListingVersion   StoreListingVersion? @relation(fields: [storeListingVersionId], references: [id])
+
   useGraphIsActiveVersion Boolean @default(false)
 
   isFavorite      Boolean @default(false)
@@ -268,6 +271,7 @@ model LibraryAgent {
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
+  @@index([storeListingVersionId])
 }
 
 ////////////////////////////////////////////////////////////
