@@ -120,7 +120,7 @@ class FindAgentTool(BaseTool):
             f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'"
         )
         return AgentCarouselResponse(
-            message="Now you have found some options for the user to choose from. Please ask the user if they would like to use any of these agents. If they do, please call the get_agent_details tool for this agent.",
+            message="Now you have found some options for the user to choose from. You can add a link to a recommended agent at: /marketplace/agent/agent_id Please ask the user if they would like to use any of these agents. If they do, please call the get_agent_details tool for this agent.",
             title=title,
             agents=agents,
             count=len(agents),
