@@ -52,6 +52,7 @@ interface SupabaseStoreState {
   logOut: (params?: LogOutParams) => Promise<void>;
   validateSession: (params?: ValidateParams) => Promise<boolean>;
   refreshSession: () => ReturnType<typeof refreshSessionHelper>;
+  cleanup: () => void;
 }
 
 export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
@@ -79,14 +80,17 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
           set({ isUserLoading: false });
         }
 
-        if (!get().listenersCleanup) {
-          const cleanup = setupSessionEventListeners(
-            handleVisibilityChange,
-            handleFocus,
-            handleStorageEventInternal,
-          );
-          set({ listenersCleanup: cleanup.cleanup });
+        const existingCleanup = get().listenersCleanup;
+        if (existingCleanup) {
+          existingCleanup();
         }
+
+        const cleanup = setupSessionEventListeners(
+          handleVisibilityChange,
+          handleFocus,
+          handleStorageEventInternal,
+        );
+        set({ listenersCleanup: cleanup.cleanup });
       })();
 
       set({ initializationPromise });
@@ -108,6 +112,12 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     if (api) {
       api.disconnectWebSocket();
+    }
+
+    const existingCleanup = get().listenersCleanup;
+    if (existingCleanup) {
+      existingCleanup();
+      set({ listenersCleanup: null });
     }
 
     broadcastLogout();
@@ -237,6 +247,14 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     return result;
   }
 
+  function cleanup(): void {
+    const existingCleanup = get().listenersCleanup;
+    if (existingCleanup) {
+      existingCleanup();
+      set({ listenersCleanup: null });
+    }
+  }
+
   return {
     user: null,
     supabase: null,
@@ -253,5 +271,6 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     logOut,
     validateSession: validateSessionInternal,
     refreshSession: refreshSessionInternal,
+    cleanup,
   };
 });
