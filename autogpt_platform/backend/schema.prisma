@@ -838,6 +838,9 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
+  // LibraryAgents that reference this version
+  LibraryAgents LibraryAgent[]
+
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
