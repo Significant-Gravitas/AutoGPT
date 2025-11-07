@@ -4795,6 +4795,189 @@
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
       }
     },
+    "/api/chat/sessions": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Create Session",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "operationId": "postV2CreateSession",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/sessions/{session_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Session",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.",
+        "operationId": "getV2GetSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Chat",
+        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "getV2StreamChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "message",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000,
+              "title": "Message"
+            }
+          },
+          {
+            "name": "is_user_message",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Is User Message"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/assign-user": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Session Assign User",
+        "description": "Assign an authenticated user to a chat session.\n\nUsed (typically post-login) to claim an existing anonymous session as the current authenticated user.\n\nArgs:\n    session_id: The identifier for the (previously anonymous) session.\n    user_id: The authenticated user's ID to associate with the session.\n\nReturns:\n    dict: Status of the assignment.",
+        "operationId": "patchV2SessionAssignUser",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Sessionassignuser"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/health": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Health Check",
+        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation, assignment, and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
+        "operationId": "getV2HealthCheck",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Healthcheck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
@@ -5370,6 +5553,20 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
+      },
+      "CreateSessionResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "user_id"],
+        "title": "CreateSessionResponse",
+        "description": "Response model containing information on a newly created chat session."
       },
       "Creator": {
         "properties": {
@@ -7500,6 +7697,26 @@
         "required": ["items", "total_items", "page", "more_pages"],
         "title": "SearchResponse"
       },
+      "SessionDetailResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "updated_at": { "type": "string", "title": "Updated At" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "messages": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "updated_at", "user_id", "messages"],
+        "title": "SessionDetailResponse",
+        "description": "Response model providing complete details for a chat session, including messages."
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -7612,6 +7829,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Activity Status",
             "description": "AI-generated summary of what the agent did"
+          },
+          "correctness_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Correctness Score",
+            "description": "AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose"
           }
         },
         "additionalProperties": true,

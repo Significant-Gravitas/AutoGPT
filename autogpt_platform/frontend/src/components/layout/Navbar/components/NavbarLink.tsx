@@ -3,6 +3,7 @@
 import { IconLaptop } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
 import {
+  ChatsIcon,
   CubeIcon,
   HouseIcon,
   StorefrontIcon,
@@ -10,6 +11,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 const iconWidthClass = "h-5 w-5";
 
@@ -21,6 +23,7 @@ interface Props {
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
   const isActive = pathname.includes(href);
+  const chat_enabled = useGetFlag(Flag.CHAT);
 
   return (
     <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
@@ -57,6 +60,14 @@ export function NavbarLink({ name, href }: Props) {
         )}
         {href === "/library" && (
           <HouseIcon
+            className={cn(
+              iconWidthClass,
+              isActive && "text-white dark:text-black",
+            )}
+          />
+        )}
+        {chat_enabled && href === "/chat" && (
+          <ChatsIcon
             className={cn(
               iconWidthClass,
               isActive && "text-white dark:text-black",

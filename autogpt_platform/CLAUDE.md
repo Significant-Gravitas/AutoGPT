@@ -192,6 +192,8 @@ Quick steps:
 Note: when making many new blocks analyze the interfaces for each of these blocks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
 ex: do the inputs and outputs tie well together?
 
+If you get any pushback or hit complex block conditions check the new_blocks guide in the docs.
+
 **Modifying the API:**
 
 1. Update route in `/backend/backend/server/routers/`

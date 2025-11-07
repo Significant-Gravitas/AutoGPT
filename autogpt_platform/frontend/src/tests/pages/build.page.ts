@@ -113,17 +113,20 @@ export class BuildPage extends BasePage {
     const displayName = this.getDisplayName(block.name);
     await searchInput.clear();
     await searchInput.fill(displayName);
-    await this.page.waitForTimeout(500);
 
     const blockCard = this.page.getByTestId(`block-name-${block.id}`);
-    if (await blockCard.isVisible()) {
+
+    try {
+      // Wait for the block card to be visible with a reasonable timeout
+      await blockCard.waitFor({ state: "visible", timeout: 10000 });
       await blockCard.click();
       const blockInEditor = this.page.getByTestId(block.id).first();
       expect(blockInEditor).toBeAttached();
-    } else {
+    } catch (error) {
       console.log(
         `❌ ❌  Block ${block.name} (display: ${displayName}) returned from the API but not found in block list`,
       );
+      console.log(`Error: ${error}`);
     }
   }
 
