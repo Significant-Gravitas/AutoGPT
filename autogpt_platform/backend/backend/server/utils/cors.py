@@ -52,8 +52,11 @@ def build_cors_params(
 
     allow_origin_regex = None
     if regex_patterns:
-        combined_pattern = "|".join(f"(?:{pattern})" for pattern in regex_patterns)
-        allow_origin_regex = f"^(?:{combined_pattern})$"
+        if len(regex_patterns) == 1:
+            allow_origin_regex = f"^(?:{regex_patterns[0]})$"
+        else:
+            combined_pattern = "|".join(f"(?:{pattern})" for pattern in regex_patterns)
+            allow_origin_regex = f"^(?:{combined_pattern})$"
 
     return {
         "allow_origins": allow_origins,

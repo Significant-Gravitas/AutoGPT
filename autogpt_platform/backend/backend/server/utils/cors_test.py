@@ -26,7 +26,7 @@ def test_build_cors_params_combines_multiple_regex_patterns() -> None:
 
     assert result["allow_origins"] == []
     assert result["allow_origin_regex"] == (
-        "^(?:https://alpha.example.com|https://beta.example.com)$"
+        "^(?:(?:https://alpha.example.com)|(?:https://beta.example.com))$"
     )
 
 
@@ -43,9 +43,16 @@ def test_build_cors_params_blocks_localhost_regex_in_production() -> None:
 
 
 def test_build_cors_params_blocks_case_insensitive_localhost_regex() -> None:
-    with pytest.raises(ValueError, match="matches localhost"):
+    with pytest.raises(ValueError, match="localhost origins via regex"):
         build_cors_params(
             ["regex:https://(?i)LOCALHOST.*"], AppEnvironment.PRODUCTION
+        )
+
+
+def test_build_cors_params_blocks_regex_matching_localhost_at_runtime() -> None:
+    with pytest.raises(ValueError, match="matches localhost"):
+        build_cors_params(
+            ["regex:https?://.*:3000"], AppEnvironment.PRODUCTION
         )
 
 
