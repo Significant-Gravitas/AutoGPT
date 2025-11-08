@@ -14,7 +14,7 @@ type CopyPasteStore = {
   pasteNodes: () => void;
 };
 
-export const useCopyPasteStore = create<CopyPasteStore>((set, get) => ({
+export const useCopyPasteStore = create<CopyPasteStore>(() => ({
   copySelectedNodes: () => {
     const { nodes } = useNodeStore.getState();
     const { connections } = useEdgeStore.getState();
