@@ -6,9 +6,10 @@ import {
 } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useCallback, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 export const useCustomEdge = () => {
-  const connections = useEdgeStore((s) => s.connections);
+  const connections = useEdgeStore(useShallow((s) => s.connections));
   const addConnection = useEdgeStore((s) => s.addConnection);
   const removeConnection = useEdgeStore((s) => s.removeConnection);
 
