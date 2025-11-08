@@ -1,4 +1,4 @@
-import { ReactFlow, Background, Controls } from "@xyflow/react";
+import { ReactFlow, Background, Controls, useReactFlow } from "@xyflow/react";
 import NewControlPanel from "../../NewControlPanel/NewControlPanel";
 import CustomEdge from "../edges/CustomEdge";
 import { useFlow } from "./useFlow";
@@ -22,7 +22,7 @@ export const Flow = () => {
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
-  useFlow();
+  const { onDragOver, onDrop } = useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
@@ -42,6 +42,8 @@ export const Flow = () => {
           edgeTypes={{ custom: CustomEdge }}
           maxZoom={2}
           minZoom={0.1}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
         >
           <Background />
           <Controls />
