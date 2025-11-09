@@ -33,7 +33,6 @@ MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
-    completedSteps: Optional[list[OnboardingStep]] = None
     walletShown: Optional[bool] = None
     notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
@@ -42,9 +41,6 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     selectedStoreListingVersionId: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
     onboardingAgentExecutionId: Optional[str] = None
-    agentRuns: Optional[int] = None
-    lastRunAt: Optional[datetime] = None
-    consecutiveRunDays: Optional[int] = None
 
 
 async def get_user_onboarding(user_id: str):
@@ -83,14 +79,6 @@ async def reset_user_onboarding(user_id: str):
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     onboarding = await get_user_onboarding(user_id)
-    if data.completedSteps is not None:
-        update["completedSteps"] = list(
-            set(data.completedSteps + onboarding.completedSteps)
-        )
-        for step in data.completedSteps:
-            if step not in onboarding.completedSteps:
-                await _reward_user(user_id, onboarding, step)
-                await _send_onboarding_notification(user_id, step)
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
@@ -107,12 +95,6 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
-    if data.agentRuns is not None and data.agentRuns > onboarding.agentRuns:
-        update["agentRuns"] = data.agentRuns
-    if data.lastRunAt is not None:
-        update["lastRunAt"] = data.lastRunAt
-    if data.consecutiveRunDays is not None:
-        update["consecutiveRunDays"] = data.consecutiveRunDays
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -161,14 +143,12 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
     if step in onboarding.rewardedFor:
         return
 
-    onboarding.rewardedFor.append(step)
     user_credit_model = await get_user_credit_model(user_id)
     await user_credit_model.onboarding_reward(user_id, reward, step)
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            "completedSteps": list(set(onboarding.completedSteps + [step])),
-            "rewardedFor": onboarding.rewardedFor,
+            "rewardedFor": list(set(onboarding.rewardedFor + [step])),
         },
     )
 
@@ -177,13 +157,16 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
     """
     Completes the specified onboarding step for the user if not already completed.
     """
-
     onboarding = await get_user_onboarding(user_id)
     if step not in onboarding.completedSteps:
-        await update_user_onboarding(
-            user_id,
-            UserOnboardingUpdate(completedSteps=onboarding.completedSteps + [step]),
+        onboarding = await get_user_onboarding(user_id)
+        await UserOnboarding.prisma().update(
+            where={"userId": user_id},
+            data={
+                "completedSteps": list(set(onboarding.completedSteps + [step])),
+            },
         )
+        await _reward_user(user_id, onboarding, step)
         await _send_onboarding_notification(user_id, step)
 
 

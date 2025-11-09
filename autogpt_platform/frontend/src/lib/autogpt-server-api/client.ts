@@ -199,12 +199,6 @@ export default class BackendAPI {
   ////////////// ONBOARDING //////////////
   ////////////////////////////////////////
 
-  updateUserOnboarding(
-    onboarding: Omit<Partial<UserOnboarding>, "rewardedFor">,
-  ): Promise<void> {
-    return this._request("PATCH", "/onboarding", onboarding);
-  }
-
   getOnboardingAgents(): Promise<StoreAgentDetails[]> {
     return this._get("/onboarding/agents");
   }

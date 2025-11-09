@@ -11189,16 +11189,6 @@
       },
       "UserOnboardingUpdate": {
         "properties": {
-          "completedSteps": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/OnboardingStep" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Completedsteps"
-          },
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"
@@ -11242,21 +11232,6 @@
           "onboardingAgentExecutionId": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Onboardingagentexecutionid"
-          },
-          "agentRuns": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Agentruns"
-          },
-          "lastRunAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Lastrunat"
-          },
-          "consecutiveRunDays": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Consecutiverundays"
           }
         },
         "type": "object",

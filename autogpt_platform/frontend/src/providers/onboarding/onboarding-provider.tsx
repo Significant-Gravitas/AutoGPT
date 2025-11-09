@@ -32,7 +32,7 @@ import {
   shouldRedirectFromOnboarding,
 } from "./helpers";
 import { resolveResponse } from "@/app/api/helpers";
-import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { getV1OnboardingState, patchV1UpdateOnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 
 const OnboardingContext = createContext<
   | {
@@ -176,7 +176,7 @@ export default function OnboardingProvider({
       const updatePromise = (async () => {
         try {
           if (!isMounted.current) return;
-          await api.updateUserOnboarding(newState);
+          await patchV1UpdateOnboardingState(newState);
         } catch (error) {
           if (isMounted.current) {
             console.error("Failed to update user onboarding:", error);
