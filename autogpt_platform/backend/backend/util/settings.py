@@ -418,6 +418,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Name of the event bus",
     )
 
+    notification_event_bus_name: str = Field(
+        default="notification_event",
+        description="Name of the websocket notification event bus",
+    )
+
     trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
