@@ -27,7 +27,9 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
+from prisma.models import UserOnboarding
 
+from backend.server.v2.store.model import StoreAgentDetails
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.v2.library.db as library_db
@@ -49,6 +51,8 @@ from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     UserOnboardingUpdate,
+    OnboardingStep,
+    complete_onboarding_step,
     get_recommended_agents,
     get_user_onboarding,
     onboarding_enabled,
@@ -218,45 +222,45 @@ async def update_preferences(
 
 @v1_router.get(
     "/onboarding",
-    summary="Get onboarding status",
+    summary="Onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
-async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
+async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]) -> UserOnboarding:
     return await get_user_onboarding(user_id)
 
 
 @v1_router.patch(
     "/onboarding",
-    summary="Update onboarding progress",
+    summary="Update onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
 async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
-):
+) -> UserOnboarding:
     return await update_user_onboarding(user_id, data)
 
 
 @v1_router.get(
     "/onboarding/agents",
-    summary="Get recommended agents",
+    summary="Recommended onboarding agents",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
 async def get_onboarding_agents(
     user_id: Annotated[str, Security(get_user_id)],
-):
+) -> list[StoreAgentDetails]:
     return await get_recommended_agents(user_id)
 
 
 @v1_router.get(
     "/onboarding/enabled",
-    summary="Check onboarding enabled",
+    summary="Is onboarding enabled",
     tags=["onboarding", "public"],
     dependencies=[Security(requires_user)],
 )
-async def is_onboarding_enabled():
+async def is_onboarding_enabled() -> bool:
     return await onboarding_enabled()
 
 
@@ -266,7 +270,7 @@ async def is_onboarding_enabled():
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
-async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
+async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]) -> UserOnboarding:
     return await reset_user_onboarding(user_id)
 
 
