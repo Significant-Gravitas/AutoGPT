@@ -691,14 +691,6 @@ export default class BackendAPI {
     });
   }
 
-  addMarketplaceAgentToLibrary(
-    storeListingVersionID: string,
-  ): Promise<LibraryAgent> {
-    return this._request("POST", "/library/agents", {
-      store_listing_version_id: storeListingVersionID,
-    });
-  }
-
   updateLibraryAgent(
     libraryAgentId: LibraryAgentID,
     params: {

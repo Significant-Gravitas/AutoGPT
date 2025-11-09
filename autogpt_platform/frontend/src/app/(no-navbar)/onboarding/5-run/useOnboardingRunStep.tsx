@@ -12,6 +12,9 @@ import {
   useGetV2GetAgentByVersion,
   useGetV2GetAgentGraph,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { resolveResponse } from "@/app/api/helpers";
+import { postV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
+import { GraphID } from "@/lib/autogpt-server-api";
 
 export function useOnboardingRunStep() {
   const onboarding = useOnboarding(undefined, "AGENT_CHOICE");
@@ -111,12 +114,12 @@ export function useOnboardingRunStep() {
     setRunningAgent(true);
 
     try {
-      const libraryAgent = await api.addMarketplaceAgentToLibrary(
-        storeAgent?.store_listing_version_id || "",
-      );
+      const libraryAgent = await resolveResponse(postV2AddMarketplaceAgent({
+        store_listing_version_id: storeAgent?.store_listing_version_id || "",
+      }));
 
       const { id: runID } = await api.executeGraph(
-        libraryAgent.graph_id,
+        libraryAgent.graph_id as GraphID,
         libraryAgent.graph_version,
         onboarding.state.agentInput || {},
         inputCredentials,
