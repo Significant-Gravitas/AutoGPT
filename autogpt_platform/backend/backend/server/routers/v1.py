@@ -1217,6 +1217,8 @@ async def create_graph_execution_schedule(
             result.next_run_time, user_timezone
         )
 
+    await complete_onboarding_step(user_id, OnboardingStep.SCHEDULE_AGENT)
+
     return result
 
 

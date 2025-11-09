@@ -331,8 +331,6 @@ export function useAgentRunModal(
           userTimezone && userTimezone !== "not-set" ? userTimezone : undefined,
       },
     });
-
-    completeOnboardingStep("SCHEDULE_AGENT");
   }, [
     allRequiredInputsAreSet,
     scheduleName,

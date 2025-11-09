@@ -94,7 +94,6 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
       props.onSubmit(cronExpression);
     }
     setOpen(false);
-    completeStep("SCHEDULE_AGENT");
   };
 
   return (
