@@ -1,4 +1,5 @@
 import BackendAPI from "@/lib/autogpt-server-api";
+import { getV1OnboardingState } from "./__generated__/endpoints/onboarding/onboarding";
 
 /**
  * Narrow an orval response to its success payload if and only if it is a `200` status with OK shape.
@@ -90,7 +91,7 @@ export async function resolveResponse<
 export async function shouldShowOnboarding() {
   const api = new BackendAPI();
   const isEnabled = await api.isOnboardingEnabled();
-  const onboarding = await api.getUserOnboarding();
+  const onboarding = await resolveResponse(getV1OnboardingState());
   const isCompleted = onboarding.completedSteps.includes("CONGRATS");
   return isEnabled && !isCompleted;
 }

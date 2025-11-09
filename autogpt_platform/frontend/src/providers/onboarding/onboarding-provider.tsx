@@ -31,6 +31,8 @@ import {
   processOnboardingData,
   shouldRedirectFromOnboarding,
 } from "./helpers";
+import { resolveResponse } from "@/app/api/helpers";
+import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 
 const OnboardingContext = createContext<
   | {
@@ -132,9 +134,7 @@ export default function OnboardingProvider({
           }
         }
 
-        const onboarding = await api.getUserOnboarding();
-        if (!onboarding) return;
-
+        const onboarding = await resolveResponse(getV1OnboardingState());
         const processedOnboarding = processOnboardingData(onboarding);
         setState(processedOnboarding);
 

@@ -1,4 +1,5 @@
-import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
+import { GraphExecutionID, OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
+import { UserOnboarding as RawUserOnboarding } from "@/app/api/__generated__/models/userOnboarding";
 
 export function isToday(date: Date): boolean {
   const today = new Date();
@@ -61,19 +62,22 @@ export function getRunMilestoneSteps(
 }
 
 export function processOnboardingData(
-  onboarding: UserOnboarding,
+  onboarding: RawUserOnboarding,
 ): UserOnboarding {
-  // Patch for TRIGGER_WEBHOOK - only set on backend then overwritten by frontend
-  const completeWebhook =
-    onboarding.rewardedFor.includes("TRIGGER_WEBHOOK") &&
-    !onboarding.completedSteps.includes("TRIGGER_WEBHOOK")
-      ? (["TRIGGER_WEBHOOK"] as OnboardingStep[])
-      : [];
-
   return {
-    ...onboarding,
-    completedSteps: [...completeWebhook, ...onboarding.completedSteps],
+    completedSteps: onboarding.completedSteps,
+    walletShown: onboarding.walletShown,
+    notified: onboarding.notified,
+    rewardedFor: onboarding.rewardedFor,
+    usageReason: onboarding.usageReason || null,
+    integrations: onboarding.integrations,
+    otherIntegrations: onboarding.otherIntegrations || null,
+    selectedStoreListingVersionId: onboarding.selectedStoreListingVersionId || null,
+    agentInput: onboarding.agentInput as {} || null,
+    onboardingAgentExecutionId: onboarding.onboardingAgentExecutionId as GraphExecutionID || null,
     lastRunAt: onboarding.lastRunAt ? new Date(onboarding.lastRunAt) : null,
+    consecutiveRunDays: onboarding.consecutiveRunDays,
+    agentRuns: onboarding.agentRuns,
   };
 }
 

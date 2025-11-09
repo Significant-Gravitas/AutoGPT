@@ -199,10 +199,6 @@ export default class BackendAPI {
   ////////////// ONBOARDING //////////////
   ////////////////////////////////////////
 
-  getUserOnboarding(): Promise<UserOnboarding> {
-    return this._get("/onboarding");
-  }
-
   updateUserOnboarding(
     onboarding: Omit<Partial<UserOnboarding>, "rewardedFor">,
   ): Promise<void> {
