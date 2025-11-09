@@ -102,7 +102,7 @@ export const useFlow = () => {
 
     // adding links
     if (graph?.links) {
-      useEdgeStore.getState().setConnections([]);
+      useEdgeStore.getState().setEdges([]);
       addLinks(graph.links);
     }
 
@@ -138,7 +138,7 @@ export const useFlow = () => {
   useEffect(() => {
     return () => {
       useNodeStore.getState().setNodes([]);
-      useEdgeStore.getState().setConnections([]);
+      useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
       setIsGraphRunning(false);
     };

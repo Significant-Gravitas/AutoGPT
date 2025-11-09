@@ -49,7 +49,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   onNodesChange: (changes) => {
     const prevState = {
       nodes: get().nodes,
-      connections: useEdgeStore.getState().connections,
+      edges: useEdgeStore.getState().edges,
     };
     const shouldTrack = changes.some(
       (change) =>
@@ -93,7 +93,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
 
     const newState = {
       nodes: get().nodes,
-      connections: useEdgeStore.getState().connections,
+      edges: useEdgeStore.getState().edges,
     };
 
     useHistoryStore.getState().pushState(newState);
