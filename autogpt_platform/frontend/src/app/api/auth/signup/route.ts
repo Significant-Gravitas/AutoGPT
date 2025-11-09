@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
-import * as Sentry from "@sentry/nextjs";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { environment } from "@/services/environment";
 import { signupFormSchema } from "@/types/auth";
+import * as Sentry from "@sentry/nextjs";
+import { NextResponse } from "next/server";
 import { shouldShowOnboarding } from "../../helpers";
 import { isWaitlistError, logWaitlistError } from "../utils";
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
       "signup",
     );
 
-    if (!captchaOk) {
+    if (!captchaOk && !environment.isVercelPreview()) {
       return NextResponse.json(
         { error: "CAPTCHA verification failed. Please try again." },
         { status: 400 },
