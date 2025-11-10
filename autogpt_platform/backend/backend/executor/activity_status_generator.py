@@ -91,6 +91,8 @@ async def generate_activity_status_for_execution(
     db_client: "DatabaseManagerAsyncClient",
     user_id: str,
     execution_status: ExecutionStatus | None = None,
+    model_name: str = "gpt-4o-mini",
+    skip_feature_flag: bool = False,
 ) -> ActivityStatusResponse | None:
     """
     Generate an AI-based activity status summary and correctness assessment for a graph execution.
@@ -112,7 +114,9 @@ async def generate_activity_status_for_execution(
         or None if feature is disabled
     """
     # Check LaunchDarkly feature flag for AI activity status generation with full context support
-    if not await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+    if not skip_feature_flag and not await is_feature_enabled(
+        Flag.AI_ACTIVITY_STATUS, user_id
+    ):
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
 
@@ -273,7 +277,7 @@ async def generate_activity_status_for_execution(
             prompt=prompt[1]["content"],  # User prompt content
             sys_prompt=prompt[0]["content"],  # System prompt content
             expected_format=expected_format,
-            model=LlmModel.GPT4O_MINI,
+            model=LlmModel(model_name),
             credentials=credentials_input,  # type: ignore
             max_tokens=150,
             retry=3,
@@ -306,7 +310,7 @@ async def generate_activity_status_for_execution(
         return activity_response
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             f"Failed to generate activity status for execution {graph_exec_id}: {str(e)}"
         )
         return None

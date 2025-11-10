@@ -194,6 +194,12 @@ class GraphExecutionMeta(BaseDbModel):
                 correctness_score=self.correctness_score,
             )
 
+        def without_activity_features(self) -> "GraphExecutionMeta.Stats":
+            """Return a copy of stats with activity features (activity_status, correctness_score) set to None."""
+            return self.model_copy(
+                update={"activity_status": None, "correctness_score": None}
+            )
+
     stats: Stats | None
 
     @staticmethod
