@@ -24,7 +24,26 @@ function getInitialImpersonationState(): string | null {
   }
 
   try {
-    return sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
+    // First check sessionStorage (for same tab)
+    const sessionValue = sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
+    if (sessionValue) {
+      return sessionValue;
+    }
+
+    // Fallback to cookie (for cross-tab support)
+    const cookieValue = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("admin-impersonate-user-id="))
+      ?.split("=")[1];
+
+    if (cookieValue) {
+      const decodedValue = decodeURIComponent(cookieValue);
+      // Sync back to sessionStorage for consistency
+      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, decodedValue);
+      return decodedValue;
+    }
+
+    return null;
   } catch (error) {
     console.error("Failed to read initial impersonation state:", error);
     return null;
