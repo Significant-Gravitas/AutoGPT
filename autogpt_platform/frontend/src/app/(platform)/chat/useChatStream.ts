@@ -105,63 +105,6 @@ export function useChatStream() {
           eventSourceRef.current = null;
         });
 
-        eventSource.onmessage = function (event) {
-          try {
-            const chunk = JSON.parse(event.data) as StreamChunk;
-
-            if (retryCountRef.current > 0) {
-              retryCountRef.current = 0;
-            }
-
-            onChunk(chunk);
-
-            if (chunk.type === "stream_end") {
-              stopStreaming();
-            }
-          } catch (err) {
-            const parseError =
-              err instanceof Error
-                ? err
-                : new Error("Failed to parse stream chunk");
-            setError(parseError);
-          }
-        };
-
-        eventSource.onerror = function (_event) {
-          if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-          }
-
-          if (retryCountRef.current < MAX_RETRIES) {
-            retryCountRef.current += 1;
-            const retryDelay =
-              INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current - 1);
-
-            toast.info("Connection interrupted", {
-              description: `Retrying in ${retryDelay / 1000} seconds...`,
-            });
-
-            retryTimeoutRef.current = setTimeout(() => {
-              sendMessage(sessionId, message, onChunk, isUserMessage).catch(
-                (_err) => {
-                  // Retry failed
-                },
-              );
-            }, retryDelay);
-          } else {
-            const streamError = new Error(
-              "Stream connection failed after multiple retries",
-            );
-            setError(streamError);
-            toast.error("Connection Failed", {
-              description:
-                "Unable to connect to chat service. Please try again.",
-            });
-            stopStreaming();
-          }
-        };
-
         return new Promise<void>((resolve, reject) => {
           const cleanup = () => {
             eventSource.removeEventListener("message", messageHandler);
@@ -171,8 +114,18 @@ export function useChatStream() {
           const messageHandler = (event: MessageEvent) => {
             try {
               const chunk = JSON.parse(event.data) as StreamChunk;
+
+              if (retryCountRef.current > 0) {
+                retryCountRef.current = 0;
+              }
+
+              // Call the chunk handler
+              onChunk(chunk);
+
+              // Handle stream lifecycle
               if (chunk.type === "stream_end") {
                 cleanup();
+                stopStreaming();
                 resolve();
               } else if (chunk.type === "error") {
                 cleanup();
@@ -180,12 +133,52 @@ export function useChatStream() {
                   new Error(chunk.message || chunk.content || "Stream error"),
                 );
               }
-            } catch {}
+            } catch (err) {
+              const parseError =
+                err instanceof Error
+                  ? err
+                  : new Error("Failed to parse stream chunk");
+              setError(parseError);
+              cleanup();
+              reject(parseError);
+            }
           };
 
           const errorHandler = () => {
-            cleanup();
-            reject(new Error("Stream connection error"));
+            if (eventSourceRef.current) {
+              eventSourceRef.current.close();
+              eventSourceRef.current = null;
+            }
+
+            if (retryCountRef.current < MAX_RETRIES) {
+              retryCountRef.current += 1;
+              const retryDelay =
+                INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current - 1);
+
+              toast.info("Connection interrupted", {
+                description: `Retrying in ${retryDelay / 1000} seconds...`,
+              });
+
+              retryTimeoutRef.current = setTimeout(() => {
+                sendMessage(sessionId, message, onChunk, isUserMessage).catch(
+                  (_err) => {
+                    // Retry failed
+                  },
+                );
+              }, retryDelay);
+            } else {
+              const streamError = new Error(
+                "Stream connection failed after multiple retries",
+              );
+              setError(streamError);
+              toast.error("Connection Failed", {
+                description:
+                  "Unable to connect to chat service. Please try again.",
+              });
+              cleanup();
+              stopStreaming();
+              reject(streamError);
+            }
           };
 
           eventSource.addEventListener("message", messageHandler);

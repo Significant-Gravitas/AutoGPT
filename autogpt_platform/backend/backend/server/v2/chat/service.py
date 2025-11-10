@@ -76,6 +76,7 @@ async def stream_chat_completion(
     is_user_message: bool = True,
     user_id: str | None = None,
     retry_count: int = 0,
+    session: ChatSession | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -86,6 +87,7 @@ async def stream_chat_completion(
         session_id: Chat session ID
         user_message: User's input message
         user_id: User ID for authentication (None for anonymous)
+        session: Optional pre-loaded session object (for recursive calls to avoid Redis refetch)
 
     Yields:
         StreamBaseResponse objects formatted as SSE
@@ -99,7 +101,18 @@ async def stream_chat_completion(
         f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
     )
 
-    session = await get_chat_session(session_id, user_id)
+    # Only fetch from Redis if session not provided (initial call)
+    if session is None:
+        session = await get_chat_session(session_id, user_id)
+        logger.info(
+            f"Fetched session from Redis: {session.session_id if session else 'None'}, "
+            f"message_count={len(session.messages) if session else 0}"
+        )
+    else:
+        logger.info(
+            f"Using provided session object: {session.session_id}, "
+            f"message_count={len(session.messages)}"
+        )
 
     if not session:
         raise NotFoundError(
@@ -112,12 +125,17 @@ async def stream_chat_completion(
                 role="user" if is_user_message else "assistant", content=message
             )
         )
+        logger.info(
+            f"Appended message (role={'user' if is_user_message else 'assistant'}), "
+            f"new message_count={len(session.messages)}"
+        )
 
     if len(session.messages) > config.max_context_messages:
         raise ValueError(f"Max messages exceeded: {config.max_context_messages}")
 
     logger.info(
-        f"Upserting session: {session.session_id} with user id {session.user_id}"
+        f"Upserting session: {session.session_id} with user id {session.user_id}, "
+        f"message_count={len(session.messages)}"
     )
     session = await upsert_chat_session(session)
     assert session, "Session not found"
@@ -259,13 +277,15 @@ async def stream_chat_completion(
             session_id=session.session_id,
             user_id=user_id,
             retry_count=retry_count + 1,
+            session=session,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
 
     # Normal completion path - save session and handle tool call continuation
     logger.info(
-        f"Upserting session: {session.session_id} with user id {session.user_id}"
+        f"Normal completion path: session={session.session_id}, "
+        f"current message_count={len(session.messages)}"
     )
 
     # Build the messages list in the correct order
@@ -285,9 +305,13 @@ async def stream_chat_completion(
 
     # Add tool response messages after assistant message
     messages_to_save.extend(tool_response_messages)
-    logger.info(f"Saving {len(tool_response_messages)} tool response messages")
+    logger.info(
+        f"Saving {len(tool_response_messages)} tool response messages, "
+        f"total_to_save={len(messages_to_save)}"
+    )
 
     session.messages.extend(messages_to_save)
+    logger.info(f"Extended session messages, new message_count={len(session.messages)}")
     await upsert_chat_session(session)
 
     # If we did a tool call, stream the chat completion again to get the next response
@@ -296,7 +320,9 @@ async def stream_chat_completion(
             "Tool call executed, streaming chat completion again to get assistant response"
         )
         async for chunk in stream_chat_completion(
-            session_id=session.session_id, user_id=user_id
+            session_id=session.session_id,
+            user_id=user_id,
+            session=session,  # Pass session object to avoid Redis refetch
         ):
             yield chunk
 
@@ -414,9 +440,11 @@ async def _stream_chat_chunks(
                             if (
                                 idx not in emitted_start_for_idx
                                 and tool_calls[idx]["id"]
+                                and tool_calls[idx]["function"]["name"]
                             ):
                                 yield StreamToolCallStart(
                                     tool_id=tool_calls[idx]["id"],
+                                    tool_name=tool_calls[idx]["function"]["name"],
                                     timestamp=datetime.now(UTC).isoformat(),
                                 )
                                 emitted_start_for_idx.add(idx)

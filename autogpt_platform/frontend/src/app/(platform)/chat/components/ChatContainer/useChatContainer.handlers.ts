@@ -141,6 +141,7 @@ export function handleLoginNeeded(
 ) {
   const loginNeededMessage: ChatMessageData = {
     type: "login_needed",
+    toolName: "login_needed",
     message: chunk.message || "Please sign in to use chat and agent features",
     sessionId: chunk.session_id || deps.sessionId,
     agentInfo: chunk.agent_info,
@@ -154,7 +155,12 @@ export function handleStreamEnd(
   deps: HandlerDependencies,
 ) {
   const completedContent = deps.streamingChunksRef.current.join("");
-  if (completedContent) {
+  // Only save message if there are uncommitted chunks
+  // (text_ended already saved if there were tool calls)
+  if (completedContent.trim()) {
+    console.log(
+      "[Stream End] Saving remaining streamed text as assistant message",
+    );
     const assistantMessage: ChatMessageData = {
       type: "message",
       role: "assistant",
@@ -185,6 +191,8 @@ export function handleStreamEnd(
       });
       return updated;
     });
+  } else {
+    console.log("[Stream End] No uncommitted chunks, message already saved");
   }
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
