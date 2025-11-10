@@ -11,7 +11,6 @@ interface CopyableData {
 export function useCopyPaste() {
   const { setNodes, addEdges, getNodes, getEdges, getViewport } =
     useReactFlow();
-  const { x, y, zoom } = getViewport();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
@@ -58,6 +57,8 @@ export function useCopyPaste() {
             const copiedData = JSON.parse(copiedDataString) as CopyableData;
             const oldToNewIdMap: Record<string, string> = {};
 
+            // Get fresh viewport values at paste time to ensure correct positioning
+            const { x, y, zoom } = getViewport();
             const viewportCenter = {
               x: (window.innerWidth / 2 - x) / zoom,
               y: (window.innerHeight / 2 - y) / zoom,
@@ -120,7 +121,7 @@ export function useCopyPaste() {
         }
       }
     },
-    [setNodes, addEdges, getNodes, getEdges, x, y, zoom],
+    [setNodes, addEdges, getNodes, getEdges, getViewport],
   );
 
   return handleCopyPaste;
