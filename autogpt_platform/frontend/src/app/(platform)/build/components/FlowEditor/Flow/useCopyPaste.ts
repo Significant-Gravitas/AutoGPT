@@ -1,20 +1,31 @@
 import { useCallback } from "react";
 import { Node, Edge, useReactFlow } from "@xyflow/react";
 import { Key, storage } from "@/services/storage/local-storage";
+import { v4 as uuidv4 } from "uuid";
 
 interface CopyableData {
   nodes: Node[];
   edges: Edge[];
 }
 
-export function useCopyPaste(getNextNodeId: () => string) {
+export function useCopyPaste() {
   const { setNodes, addEdges, getNodes, getEdges, getViewport } =
     useReactFlow();
   const { x, y, zoom } = getViewport();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
+      // Prevent copy/paste if any modal is open or if the focus is on an input element
+      const activeElement = document.activeElement;
+      const isInputField =
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.getAttribute("contenteditable") === "true";
+
+      if (isInputField) return;
+
       if (event.ctrlKey || event.metaKey) {
+        // COPY: Ctrl+C or Cmd+C
         if (event.key === "c" || event.key === "C") {
           const selectedNodes = getNodes().filter((node) => node.selected);
           const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
@@ -32,7 +43,6 @@ export function useCopyPaste(getNextNodeId: () => string) {
               ...node,
               data: {
                 ...node.data,
-                connections: node.data.connections || [], // Preserve connections
               },
             })),
             edges: selectedEdges,
@@ -40,6 +50,8 @@ export function useCopyPaste(getNextNodeId: () => string) {
 
           storage.set(Key.COPIED_FLOW_DATA, JSON.stringify(copiedData));
         }
+
+        // PASTE: Ctrl+V or Cmd+V
         if (event.key === "v" || event.key === "V") {
           const copiedDataString = storage.get(Key.COPIED_FLOW_DATA);
           if (copiedDataString) {
@@ -65,13 +77,14 @@ export function useCopyPaste(getNextNodeId: () => string) {
             const offsetX = viewportCenter.x - (minX + maxX) / 2;
             const offsetY = viewportCenter.y - (minY + maxY) / 2;
 
+            // Create new nodes with UNIQUE IDs using UUID
             const pastedNodes = copiedData.nodes.map((node: Node) => {
-              const newNodeId = getNextNodeId();
+              const newNodeId = uuidv4(); // Generate unique UUID for each node
               oldToNewIdMap[node.id] = newNodeId;
               return {
                 ...node,
-                id: newNodeId, // Generate unique ID for the pasted node
-                selected: true, // Select the pasted nodes so they're visible
+                id: newNodeId, // Assign the new unique ID
+                selected: true, // Select the pasted nodes
                 position: {
                   x: node.position.x + offsetX,
                   y: node.position.y + offsetY,
@@ -79,13 +92,13 @@ export function useCopyPaste(getNextNodeId: () => string) {
                 data: {
                   ...node.data,
                   backend_id: undefined, // Clear backend_id so the new node.id is used when saving
-                  connections: node.data.connections || [], // Preserve connections
-                  status: undefined,
-                  executionResults: undefined,
+                  status: undefined, // Clear execution status
+                  nodeExecutionResult: undefined, // Clear execution results
                 },
               };
             });
 
+            // Create new edges with updated source/target IDs
             const pastedEdges = copiedData.edges.map((edge) => {
               const newSourceId = oldToNewIdMap[edge.source] ?? edge.source;
               const newTargetId = oldToNewIdMap[edge.target] ?? edge.target;
@@ -97,41 +110,17 @@ export function useCopyPaste(getNextNodeId: () => string) {
               };
             });
 
+            // Deselect existing nodes and add pasted nodes
             setNodes((existingNodes) => [
               ...existingNodes.map((node) => ({ ...node, selected: false })),
               ...pastedNodes,
             ]);
             addEdges(pastedEdges);
-
-            setNodes((nodes) => {
-              return nodes.map((node) => {
-                const nodeConnections = getEdges()
-                  .filter(
-                    (edge: Edge) =>
-                      edge.source === node.id || edge.target === node.id,
-                  )
-                  .map((edge: Edge) => ({
-                    edge_id: edge.id,
-                    source: edge.source,
-                    target: edge.target,
-                    sourceHandle: edge.sourceHandle,
-                    targetHandle: edge.targetHandle,
-                  }));
-
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    connections: nodeConnections,
-                  },
-                };
-              });
-            });
           }
         }
       }
     },
-    [setNodes, addEdges, getNodes, getEdges, getNextNodeId, x, y, zoom],
+    [setNodes, addEdges, getNodes, getEdges, x, y, zoom],
   );
 
   return handleCopyPaste;
