@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/__legacy__/ui/badge";
-import { DownloadIcon, EyeIcon } from "@phosphor-icons/react";
-import { Copy } from "lucide-react";
+import { DownloadIcon, EyeIcon, CopyIcon } from "@phosphor-icons/react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface ExecutionAnalyticsResult {
@@ -48,7 +48,7 @@ export function AnalyticsResultsTable({ results }: Props) {
       title={`Click to copy ${label.toLowerCase()}`}
     >
       {value.substring(0, 8)}...
-      <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+      <CopyIcon className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
     </div>
   );
 
@@ -137,37 +137,49 @@ export function AnalyticsResultsTable({ results }: Props) {
     <div className="space-y-4">
       {/* Summary Stats */}
       <div className="rounded-lg bg-gray-50 p-4">
-        <h3 className="mb-3 text-lg font-semibold">Analytics Summary</h3>
+        <Text variant="h3" className="mb-3">
+          Analytics Summary
+        </Text>
         <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
           <div>
-            <span className="text-gray-600">Total Executions:</span>
-            <div className="text-lg font-semibold">
+            <Text variant="body" className="text-gray-600">
+              Total Executions:
+            </Text>
+            <Text variant="h4" className="font-semibold">
               {results.total_executions}
-            </div>
+            </Text>
           </div>
           <div>
-            <span className="text-gray-600">Processed:</span>
-            <div className="text-lg font-semibold">
+            <Text variant="body" className="text-gray-600">
+              Processed:
+            </Text>
+            <Text variant="h4" className="font-semibold">
               {results.processed_executions}
-            </div>
+            </Text>
           </div>
           <div>
-            <span className="text-gray-600">Successful:</span>
-            <div className="text-lg font-semibold text-green-600">
+            <Text variant="body" className="text-gray-600">
+              Successful:
+            </Text>
+            <Text variant="h4" className="font-semibold text-green-600">
               {results.successful_analytics}
-            </div>
+            </Text>
           </div>
           <div>
-            <span className="text-gray-600">Failed:</span>
-            <div className="text-lg font-semibold text-red-600">
+            <Text variant="body" className="text-gray-600">
+              Failed:
+            </Text>
+            <Text variant="h4" className="font-semibold text-red-600">
               {results.failed_analytics}
-            </div>
+            </Text>
           </div>
           <div>
-            <span className="text-gray-600">Skipped:</span>
-            <div className="text-lg font-semibold text-gray-600">
+            <Text variant="body" className="text-gray-600">
+              Skipped:
+            </Text>
+            <Text variant="h4" className="font-semibold text-gray-600">
               {results.skipped_executions}
-            </div>
+            </Text>
           </div>
         </div>
       </div>
@@ -191,26 +203,40 @@ export function AnalyticsResultsTable({ results }: Props) {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    Agent ID
+                  <th className="px-4 py-3 text-left">
+                    <Text variant="body" className="font-medium text-gray-600">
+                      Agent ID
+                    </Text>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    Version
+                  <th className="px-4 py-3 text-left">
+                    <Text variant="body" className="font-medium text-gray-600">
+                      Version
+                    </Text>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    User ID
+                  <th className="px-4 py-3 text-left">
+                    <Text variant="body" className="font-medium text-gray-600">
+                      User ID
+                    </Text>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    Execution ID
+                  <th className="px-4 py-3 text-left">
+                    <Text variant="body" className="font-medium text-gray-600">
+                      Execution ID
+                    </Text>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    Status
+                  <th className="px-4 py-3 text-left">
+                    <Text variant="body" className="font-medium text-gray-600">
+                      Status
+                    </Text>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    Score
+                  <th className="px-4 py-3 text-left">
+                    <Text variant="body" className="font-medium text-gray-600">
+                      Score
+                    </Text>
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    Actions
+                  <th className="px-4 py-3 text-left">
+                    <Text variant="body" className="font-medium text-gray-600">
+                      Actions
+                    </Text>
                   </th>
                 </tr>
               </thead>
@@ -221,24 +247,26 @@ export function AnalyticsResultsTable({ results }: Props) {
                       <td className="px-4 py-3">
                         {createCopyableId(result.agent_id, "Agent ID")}
                       </td>
-                      <td className="px-4 py-3 text-sm">{result.version_id}</td>
+                      <td className="px-4 py-3">
+                        <Text variant="body">{result.version_id}</Text>
+                      </td>
                       <td className="px-4 py-3">
                         {createCopyableId(result.user_id, "User ID")}
                       </td>
                       <td className="px-4 py-3">
                         {createCopyableId(result.exec_id, "Execution ID")}
                       </td>
-                      <td className="px-4 py-3 text-sm">
+                      <td className="px-4 py-3">
                         {getStatusBadge(result.status)}
                       </td>
-                      <td className="px-4 py-3 text-sm">
+                      <td className="px-4 py-3">
                         {getScoreDisplay(result.score)}
                       </td>
-                      <td className="px-4 py-3 text-sm">
+                      <td className="px-4 py-3">
                         {(result.summary_text || result.error_message) && (
                           <Button
                             variant="ghost"
-                            size="sm"
+                            size="small"
                             onClick={() => toggleRowExpansion(result.exec_id)}
                           >
                             <EyeIcon size={16} />
@@ -253,23 +281,35 @@ export function AnalyticsResultsTable({ results }: Props) {
                           <div className="space-y-3">
                             {result.summary_text && (
                               <div>
-                                <h4 className="mb-1 text-sm font-medium text-gray-700">
+                                <Text
+                                  variant="body"
+                                  className="mb-1 font-medium text-gray-700"
+                                >
                                   Summary:
-                                </h4>
-                                <p className="text-sm leading-relaxed text-gray-600">
+                                </Text>
+                                <Text
+                                  variant="body"
+                                  className="leading-relaxed text-gray-600"
+                                >
                                   {result.summary_text}
-                                </p>
+                                </Text>
                               </div>
                             )}
 
                             {result.error_message && (
                               <div>
-                                <h4 className="mb-1 text-sm font-medium text-red-700">
+                                <Text
+                                  variant="body"
+                                  className="mb-1 font-medium text-red-700"
+                                >
                                   Error:
-                                </h4>
-                                <p className="text-sm leading-relaxed text-red-600">
+                                </Text>
+                                <Text
+                                  variant="body"
+                                  className="leading-relaxed text-red-600"
+                                >
                                   {result.error_message}
-                                </p>
+                                </Text>
                               </div>
                             )}
                           </div>
@@ -283,8 +323,10 @@ export function AnalyticsResultsTable({ results }: Props) {
           </div>
         </div>
       ) : (
-        <div className="py-8 text-center text-gray-500">
-          No executions were processed.
+        <div className="py-8 text-center">
+          <Text variant="body" className="text-gray-500">
+            No executions were processed.
+          </Text>
         </div>
       )}
     </div>

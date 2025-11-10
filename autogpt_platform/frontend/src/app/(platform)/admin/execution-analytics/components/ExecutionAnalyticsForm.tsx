@@ -120,7 +120,6 @@ export function ExecutionAnalyticsForm() {
       payload.created_after = new Date(formData.created_after.trim());
     }
 
-    // Use the generated API hook
     generateAnalytics.mutate({ data: payload });
   };
 
