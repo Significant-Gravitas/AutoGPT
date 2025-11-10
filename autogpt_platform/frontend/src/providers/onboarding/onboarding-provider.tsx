@@ -37,7 +37,7 @@ import {
   LocalOnboardingStateUpdate,
 } from "./helpers";
 import { resolveResponse } from "@/app/api/helpers";
-import { getV1OnboardingState, patchV1UpdateOnboardingState, postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { getV1IsOnboardingEnabled, getV1OnboardingState, patchV1UpdateOnboardingState, postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { UserOnboardingUpdate } from "@/app/api/__generated__/models/userOnboardingUpdate";
 import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 
@@ -141,7 +141,7 @@ export default function OnboardingProvider({
       try {
         // Check onboarding enabled only for onboarding routes
         if (isOnOnboardingRoute) {
-          const enabled = await api.isOnboardingEnabled();
+          const enabled = await resolveResponse(getV1IsOnboardingEnabled());
           if (!enabled) {
             router.push("/marketplace");
             return;
