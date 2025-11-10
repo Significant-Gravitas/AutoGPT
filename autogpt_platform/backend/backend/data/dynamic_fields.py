@@ -92,6 +92,18 @@ def get_dynamic_field_description(field_name: str) -> str:
     return f"Value for {field_name}"
 
 
+def is_tool_pin(name: str) -> bool:
+    """Check if a pin name represents a tool connection."""
+    return name.startswith("tools_^_") or name == "tools"
+
+
+def sanitize_pin_name(name: str) -> str:
+    sanitized_name = extract_base_field_name(name)
+    if is_tool_pin(sanitized_name):
+        return "tools"
+    return sanitized_name
+
+
 # --------------------------------------------------------------------------- #
 #  Dynamic field parsing and merging utilities
 # --------------------------------------------------------------------------- #

@@ -18,6 +18,7 @@ from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
     is_dynamic_field,
+    is_tool_pin,
 )
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
@@ -367,8 +368,9 @@ class SmartDecisionMakerBlock(Block):
             "required": sorted(required_fields),
         }
 
-        # Store field mapping for later use in output processing
+        # Store field mapping and node info for later use in output processing
         tool_function["_field_mapping"] = field_mapping
+        tool_function["_sink_node_id"] = sink_node.id
 
         return {"type": "function", "function": tool_function}
 
@@ -431,6 +433,9 @@ class SmartDecisionMakerBlock(Block):
             "strict": True,
         }
 
+        # Store node info for later use in output processing
+        tool_function["_sink_node_id"] = sink_node.id
+
         return {"type": "function", "function": tool_function}
 
     @staticmethod
@@ -450,7 +455,7 @@ class SmartDecisionMakerBlock(Block):
         tools = [
             (link, node)
             for link, node in await db_client.get_connected_output_nodes(node_id)
-            if link.source_name.startswith("tools_^_") and link.source_id == node_id
+            if is_tool_pin(link.source_name) and link.source_id == node_id
         ]
         if not tools:
             raise ValueError("There is no next node to execute.")
@@ -699,11 +704,14 @@ class SmartDecisionMakerBlock(Block):
             else:
                 expected_args = {arg: {} for arg in tool_args.keys()}
 
-            # Get field mapping from tool definition
+            # Get the sink node ID and field mapping from tool definition
             field_mapping = (
                 tool_def.get("function", {}).get("_field_mapping", {})
                 if tool_def
                 else {}
+            )
+            sink_node_id = (
+                tool_def.get("function", {}).get("_sink_node_id") if tool_def else None
             )
 
             for clean_arg_name in expected_args:
@@ -712,9 +720,9 @@ class SmartDecisionMakerBlock(Block):
                 original_field_name = field_mapping.get(clean_arg_name, clean_arg_name)
                 arg_value = tool_args.get(clean_arg_name)
 
-                sanitized_tool_name = self.cleanup(tool_name)
+                tool_key = sink_node_id if sink_node_id else self.cleanup(tool_name)
                 sanitized_arg_name = self.cleanup(original_field_name)
-                emit_key = f"tools_^_{sanitized_tool_name}_~_{sanitized_arg_name}"
+                emit_key = f"tools_^_{tool_key}_~_{sanitized_arg_name}"
 
                 logger.debug(
                     "[SmartDecisionMakerBlock|geid:%s|neid:%s] emit %s",
