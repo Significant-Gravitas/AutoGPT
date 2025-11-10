@@ -56,7 +56,6 @@ import type {
   Schedule,
   ScheduleCreatable,
   ScheduleID,
-  StoreAgentDetails,
   StoreAgentsResponse,
   StoreListingsWithVersionsResponse,
   StoreReview,
@@ -198,11 +197,6 @@ export default class BackendAPI {
   ////////////////////////////////////////
   ////////////// ONBOARDING //////////////
   ////////////////////////////////////////
-
-  getOnboardingAgents(): Promise<StoreAgentDetails[]> {
-    return this._get("/onboarding/agents");
-  }
-
   /** Check if onboarding is enabled not if user finished it or not. */
   isOnboardingEnabled(): Promise<boolean> {
     return this._get("/onboarding/enabled");
@@ -460,27 +454,10 @@ export default class BackendAPI {
     return this._get("/store/agents", params);
   }
 
-  getStoreAgent(
-    username: string,
-    agentName: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(
-      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
-        agentName,
-      )}`,
-    );
-  }
-
   getGraphMetaByStoreListingVersionID(
     storeListingVersionID: string,
   ): Promise<GraphMeta> {
     return this._get(`/store/graph/${storeListingVersionID}`);
-  }
-
-  getStoreAgentByVersionId(
-    storeListingVersionID: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(`/store/agents/${storeListingVersionID}`);
   }
 
   getStoreCreators(params?: {

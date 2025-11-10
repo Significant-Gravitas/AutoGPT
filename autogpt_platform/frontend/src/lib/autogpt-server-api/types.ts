@@ -711,28 +711,6 @@ export type StoreAgentsResponse = {
   pagination: Pagination;
 };
 
-export type StoreAgentDetails = {
-  store_listing_version_id: string;
-  slug: string;
-  updated_at: string;
-  agent_name: string;
-  agent_video: string;
-  agent_image: string[];
-  creator: string;
-  creator_avatar: string;
-  sub_heading: string;
-  description: string;
-  categories: string[];
-  runs: number;
-  rating: number;
-  versions: string[];
-
-  // Approval and status fields
-  active_version_id?: string;
-  has_approved_version?: boolean;
-  is_available?: boolean;
-};
-
 export type Creator = {
   name: string;
   username: string;
