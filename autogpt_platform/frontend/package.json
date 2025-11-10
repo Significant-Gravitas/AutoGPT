@@ -139,7 +139,7 @@
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.2",
     "eslint-plugin-storybook": "9.1.5",
-    "import-in-the-middle": "1.14.2",
+    "import-in-the-middle": "2.0.0",
     "msw": "2.11.6",
     "msw-storybook-addon": "2.0.6",
     "orval": "7.13.0",
