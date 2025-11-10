@@ -1024,20 +1024,9 @@ export default class BackendAPI {
       "Content-Type": "application/json",
     };
 
-    if (environment.isClientSide()) {
-      try {
-        const impersonatedUserId = sessionStorage.getItem(
-          IMPERSONATION_STORAGE_KEY,
-        );
-        if (impersonatedUserId) {
-          headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
-        }
-      } catch (_error) {
-        console.error(
-          "Admin impersonation: Failed to access sessionStorage:",
-          _error,
-        );
-      }
+    const impersonatedUserId = ImpersonationState.get();
+    if (impersonatedUserId) {
+      headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
     }
 
     const response = await fetch(url, {
@@ -1065,27 +1054,20 @@ export default class BackendAPI {
     const url = buildServerUrl(path);
 
     // For server-side requests, try to read impersonation from cookies
-    const impersonationUserId = await this._getServerSideImpersonation();
-    if (impersonationUserId) {
-      // Create a fake request with the impersonation header
-      const fakeRequest = new Request(url, {
-        headers: { "X-Act-As-User-Id": impersonationUserId },
-      });
-      return await makeAuthenticatedRequest(
-        method,
-        url,
-        payload,
-        "application/json",
-        fakeRequest,
-      );
-    }
+    const impersonationUserId = await ImpersonationState.getServerSide();
+    const fakeRequest = impersonationUserId
+      ? new Request(url, {
+          headers: { "X-Act-As-User-Id": impersonationUserId },
+        })
+      : undefined;
 
-    return await makeAuthenticatedRequest(method, url, payload);
-  }
-
-  private async _getServerSideImpersonation(): Promise<string | undefined> {
-    const result = await ImpersonationState.getServerSide();
-    return result || undefined;
+    return await makeAuthenticatedRequest(
+      method,
+      url,
+      payload,
+      "application/json",
+      fakeRequest,
+    );
   }
 
   ////////////////////////////////////////
@@ -1204,12 +1186,7 @@ export default class BackendAPI {
           return;
         }
 
-        // Start with base URL and token
-        let wsUrlWithToken = `${this.wsUrl}?token=${token}`;
-
-        // Add impersonation support for WebSocket connections
-        wsUrlWithToken = ImpersonationState.addToWebSocketUrl(wsUrlWithToken);
-
+        const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
         this.webSocket.state = "connecting";
 

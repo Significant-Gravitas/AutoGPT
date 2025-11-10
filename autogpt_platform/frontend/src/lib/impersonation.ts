@@ -164,19 +164,4 @@ export const ImpersonationState = {
   async getServerSide(): Promise<string | null> {
     return await ImpersonationCookie.getServerSide();
   },
-
-  /**
-   * Add impersonation query parameters to a URL for WebSocket connections
-   * Since WebSockets don't support custom headers, we use query parameters
-   */
-  addToWebSocketUrl(baseUrl: string): string {
-    const userId = this.get();
-    if (!userId) {
-      return baseUrl;
-    }
-
-    const url = new URL(baseUrl);
-    url.searchParams.set("act_as_user_id", userId);
-    return url.toString();
-  },
 };
