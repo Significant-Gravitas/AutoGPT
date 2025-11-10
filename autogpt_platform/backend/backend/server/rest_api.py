@@ -24,9 +24,11 @@ import backend.integrations.webhooks.utils
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
+import backend.server.v2.admin.execution_analytics_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
+import backend.server.v2.chat.routes as chat_routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -42,6 +44,7 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
+from backend.server.utils.cors import build_cors_params
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
 from backend.util.exceptions import (
@@ -268,6 +271,11 @@ app.include_router(
     prefix="/api/credits",
 )
 app.include_router(
+    backend.server.v2.admin.execution_analytics_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/executions",
+)
+app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
@@ -284,6 +292,11 @@ app.include_router(
     tags=["v1", "email"],
     prefix="/api/email",
 )
+app.include_router(
+    chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
+)
 
 app.mount("/external-api", external_app)
 
@@ -297,9 +310,14 @@ async def health():
 
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
+        cors_params = build_cors_params(
+            settings.config.backend_cors_allow_origins,
+            settings.config.app_env,
+        )
+
         server_app = starlette.middleware.cors.CORSMiddleware(
             app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
+            **cors_params,
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers

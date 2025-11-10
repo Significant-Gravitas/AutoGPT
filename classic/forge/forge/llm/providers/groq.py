@@ -22,8 +22,6 @@ from .schema import (
 
 
 class GroqModelName(str, enum.Enum):
-    LLAMA3_8B = "llama3-8b-8192"
-    LLAMA3_70B = "llama3-70b-8192"
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
     GEMMA_7B = "gemma-7b-it"
 
@@ -31,22 +29,6 @@ class GroqModelName(str, enum.Enum):
 GROQ_CHAT_MODELS = {
     info.name: info
     for info in [
-        ChatModelInfo(
-            name=GroqModelName.LLAMA3_8B,
-            provider_name=ModelProviderName.GROQ,
-            prompt_token_cost=0.05 / 1e6,
-            completion_token_cost=0.10 / 1e6,
-            max_tokens=8192,
-            has_function_call_api=True,
-        ),
-        ChatModelInfo(
-            name=GroqModelName.LLAMA3_70B,
-            provider_name=ModelProviderName.GROQ,
-            prompt_token_cost=0.59 / 1e6,
-            completion_token_cost=0.79 / 1e6,
-            max_tokens=8192,
-            has_function_call_api=True,
-        ),
         ChatModelInfo(
             name=GroqModelName.MIXTRAL_8X7B,
             provider_name=ModelProviderName.GROQ,

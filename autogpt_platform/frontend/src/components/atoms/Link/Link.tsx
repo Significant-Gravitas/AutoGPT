@@ -10,6 +10,20 @@ interface LinkProps {
   variant?: "primary" | "secondary";
 }
 
+export const linkBaseClasses =
+  "font-sans text-sm font-medium leading-[22px] text-[var(--AutoGPT-Text-text-black,#141414)]";
+
+export const linkVariantClasses: Record<
+  Required<LinkProps>["variant"],
+  string
+> = {
+  primary: "hover:underline",
+  secondary: "underline",
+};
+
+export const linkFocusClasses =
+  "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-sm";
+
 const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   {
     href,
@@ -22,13 +36,9 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   ref,
 ) {
   const linkClasses = cn(
-    // Base styles from Figma
-    "font-sans text-sm font-medium leading-[22px] text-[var(--AutoGPT-Text-text-black,#141414)]",
-    // Variant-specific underline styles
-    variant === "primary" && "hover:underline",
-    variant === "secondary" && "underline",
-    // Focus state for accessibility
-    "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-sm",
+    linkBaseClasses,
+    linkVariantClasses[variant],
+    linkFocusClasses,
     className,
   );
 
