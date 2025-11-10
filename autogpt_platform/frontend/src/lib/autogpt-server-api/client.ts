@@ -7,6 +7,7 @@ import {
   IMPERSONATION_HEADER_NAME,
   IMPERSONATION_STORAGE_KEY,
 } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -1083,21 +1084,8 @@ export default class BackendAPI {
   }
 
   private async _getServerSideImpersonation(): Promise<string | undefined> {
-    try {
-      // In Next.js server components/API routes, we can access cookies
-      if (typeof window === "undefined") {
-        const { cookies } = await import("next/headers");
-        const cookieStore = await cookies();
-        const impersonationCookie = cookieStore.get(
-          "admin-impersonate-user-id",
-        );
-        return impersonationCookie?.value;
-      }
-    } catch (error) {
-      // Silently fail - cookies() might not be available in all server contexts
-      console.debug("Could not access server-side cookies:", error);
-    }
-    return undefined;
+    const result = await ImpersonationState.getServerSide();
+    return result || undefined;
   }
 
   ////////////////////////////////////////
@@ -1216,7 +1204,12 @@ export default class BackendAPI {
           return;
         }
 
-        const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
+        // Start with base URL and token
+        let wsUrlWithToken = `${this.wsUrl}?token=${token}`;
+
+        // Add impersonation support for WebSocket connections
+        wsUrlWithToken = ImpersonationState.addToWebSocketUrl(wsUrlWithToken);
+
         this.webSocket = new WebSocket(wsUrlWithToken);
         this.webSocket.state = "connecting";
 

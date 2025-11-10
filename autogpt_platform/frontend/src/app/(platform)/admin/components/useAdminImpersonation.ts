@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { environment } from "@/services/environment";
-import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface AdminImpersonationState {
@@ -18,41 +17,9 @@ interface AdminImpersonationActions {
 type AdminImpersonationHook = AdminImpersonationState &
   AdminImpersonationActions;
 
-function getInitialImpersonationState(): string | null {
-  if (!environment.isClientSide()) {
-    return null;
-  }
-
-  try {
-    // First check sessionStorage (for same tab)
-    const sessionValue = sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
-    if (sessionValue) {
-      return sessionValue;
-    }
-
-    // Fallback to cookie (for cross-tab support)
-    const cookieValue = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("admin-impersonate-user-id="))
-      ?.split("=")[1];
-
-    if (cookieValue) {
-      const decodedValue = decodeURIComponent(cookieValue);
-      // Sync back to sessionStorage for consistency
-      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, decodedValue);
-      return decodedValue;
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Failed to read initial impersonation state:", error);
-    return null;
-  }
-}
-
 export function useAdminImpersonation(): AdminImpersonationHook {
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
-    getInitialImpersonationState,
+    ImpersonationState.get,
   );
   const { toast } = useToast();
 
@@ -68,43 +35,34 @@ export function useAdminImpersonation(): AdminImpersonationHook {
         return;
       }
 
-      if (environment.isClientSide()) {
-        try {
-          sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, userId);
-          // Also set in cookie for server-side requests
-          document.cookie = `admin-impersonate-user-id=${encodeURIComponent(userId)}; path=/; SameSite=Lax; Secure`;
-          setImpersonatedUserId(userId);
-          window.location.reload();
-        } catch (error) {
-          console.error("Failed to start impersonation:", error);
-          toast({
-            title: "Failed to start impersonation",
-            description:
-              error instanceof Error ? error.message : "Unknown error",
-            variant: "destructive",
-          });
-        }
+      try {
+        ImpersonationState.set(userId);
+        setImpersonatedUserId(userId);
+        window.location.reload();
+      } catch (error) {
+        console.error("Failed to start impersonation:", error);
+        toast({
+          title: "Failed to start impersonation",
+          description: error instanceof Error ? error.message : "Unknown error",
+          variant: "destructive",
+        });
       }
     },
     [toast],
   );
 
   const stopImpersonating = useCallback(() => {
-    if (environment.isClientSide()) {
-      try {
-        sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
-        // Also remove from cookie
-        document.cookie = `admin-impersonate-user-id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
-        setImpersonatedUserId(null);
-        window.location.reload();
-      } catch (error) {
-        console.error("Failed to stop impersonation:", error);
-        toast({
-          title: "Failed to stop impersonation",
-          description: error instanceof Error ? error.message : "Unknown error",
-          variant: "destructive",
-        });
-      }
+    try {
+      ImpersonationState.clear();
+      setImpersonatedUserId(null);
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to stop impersonation:", error);
+      toast({
+        title: "Failed to stop impersonation",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
     }
   }, [toast]);
 
