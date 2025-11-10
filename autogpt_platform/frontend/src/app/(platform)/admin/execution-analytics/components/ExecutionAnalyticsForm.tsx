@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
 import {
@@ -13,9 +13,11 @@ import {
 } from "@/components/__legacy__/ui/select";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { usePostV2GenerateExecutionAnalytics } from "@/app/api/__generated__/endpoints/admin/admin";
-import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
+import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
+import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 
-interface ExecutionAnalyticsRequest {
+// Local interface for form state to simplify handling
+interface FormData {
   graph_id: string;
   graph_version?: number;
   user_id?: string;
@@ -23,26 +25,7 @@ interface ExecutionAnalyticsRequest {
   model_name: string;
   batch_size: number;
 }
-
-interface ExecutionAnalyticsResult {
-  agent_id: string;
-  version_id: number;
-  user_id: string;
-  exec_id: string;
-  summary_text?: string;
-  score?: number;
-  status: "success" | "failed" | "skipped";
-  error_message?: string;
-}
-
-interface ExecutionAnalyticsResponse {
-  total_executions: number;
-  processed_executions: number;
-  successful_analytics: number;
-  failed_analytics: number;
-  skipped_executions: number;
-  results: ExecutionAnalyticsResult[];
-}
+import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
 
 const MODEL_OPTIONS = [
   { value: "gpt-4o-mini", label: "GPT-4o Mini (Recommended)" },
@@ -60,8 +43,11 @@ export function ExecutionAnalyticsForm() {
 
   const generateAnalytics = usePostV2GenerateExecutionAnalytics({
     mutation: {
-      onSuccess: (data) => {
-        const result = data.data as ExecutionAnalyticsResponse;
+      onSuccess: (res) => {
+        if (res.status !== 200) {
+          throw new Error("Something went wrong!");
+        }
+        const result = res.data;
         setResults(result);
         toast({
           title: "Analytics Generated",
@@ -81,7 +67,7 @@ export function ExecutionAnalyticsForm() {
     },
   });
 
-  const [formData, setFormData] = useState<ExecutionAnalyticsRequest>({
+  const [formData, setFormData] = useState<FormData>({
     graph_id: "",
     model_name: "gpt-4o-mini",
     batch_size: 10, // Fixed internal value
@@ -102,7 +88,7 @@ export function ExecutionAnalyticsForm() {
     setResults(null);
 
     // Prepare the request payload
-    const payload: any = {
+    const payload: ExecutionAnalyticsRequest = {
       graph_id: formData.graph_id.trim(),
       model_name: formData.model_name,
       batch_size: formData.batch_size,
@@ -116,18 +102,19 @@ export function ExecutionAnalyticsForm() {
       payload.user_id = formData.user_id.trim();
     }
 
-    if (formData.created_after?.trim()) {
+    if (
+      formData.created_after &&
+      typeof formData.created_after === "string" &&
+      formData.created_after.trim()
+    ) {
       payload.created_after = new Date(formData.created_after.trim());
     }
 
     generateAnalytics.mutate({ data: payload });
   };
 
-  const handleInputChange = (
-    field: keyof ExecutionAnalyticsRequest,
-    value: any,
-  ) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleInputChange = (field: keyof FormData, value: any) => {
+    setFormData((prev: FormData) => ({ ...prev, [field]: value }));
   };
 
   return (
@@ -206,7 +193,12 @@ export function ExecutionAnalyticsForm() {
         </div>
 
         <div className="flex justify-end">
-          <Button type="submit" disabled={generateAnalytics.isPending}>
+          <Button
+            variant="primary"
+            size="large"
+            type="submit"
+            disabled={generateAnalytics.isPending}
+          >
             {generateAnalytics.isPending
               ? "Processing..."
               : "Generate Analytics"}

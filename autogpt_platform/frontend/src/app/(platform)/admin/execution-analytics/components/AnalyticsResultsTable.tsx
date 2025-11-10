@@ -3,29 +3,10 @@
 import React, { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Badge } from "@/components/__legacy__/ui/badge";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { DownloadIcon, EyeIcon, CopyIcon } from "@phosphor-icons/react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-
-interface ExecutionAnalyticsResult {
-  agent_id: string;
-  version_id: number;
-  user_id: string;
-  exec_id: string;
-  summary_text?: string;
-  score?: number;
-  status: "success" | "failed" | "skipped";
-  error_message?: string;
-}
-
-interface ExecutionAnalyticsResponse {
-  total_executions: number;
-  processed_executions: number;
-  successful_analytics: number;
-  failed_analytics: number;
-  skipped_executions: number;
-  results: ExecutionAnalyticsResult[];
-}
+import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 
 interface Props {
   results: ExecutionAnalyticsResponse;
@@ -109,13 +90,13 @@ export function AnalyticsResultsTable({ results }: Props) {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "success":
-        return <Badge variant="default">Success</Badge>;
+        return <Badge variant="success">Success</Badge>;
       case "failed":
-        return <Badge variant="destructive">Failed</Badge>;
+        return <Badge variant="error">Failed</Badge>;
       case "skipped":
-        return <Badge variant="secondary">Skipped</Badge>;
+        return <Badge variant="info">Skipped</Badge>;
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge variant="info">{status}</Badge>;
     }
   };
 
@@ -260,7 +241,11 @@ export function AnalyticsResultsTable({ results }: Props) {
                         {getStatusBadge(result.status)}
                       </td>
                       <td className="px-4 py-3">
-                        {getScoreDisplay(result.score)}
+                        {getScoreDisplay(
+                          typeof result.score === "number"
+                            ? result.score
+                            : undefined,
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {(result.summary_text || result.error_message) && (
