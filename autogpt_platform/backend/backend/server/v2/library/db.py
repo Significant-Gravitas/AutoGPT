@@ -705,7 +705,7 @@ async def add_store_agent_to_library(
                 )
             return library_model.LibraryAgent.from_db(existing_library_agent)
 
-        # Create LibraryAgent entry
+        # Create LibraryAgent entry with marketplace name/description
         added_agent = await prisma.models.LibraryAgent.prisma().create(
             data={
                 "User": {"connect": {"id": user_id}},
@@ -714,6 +714,8 @@ async def add_store_agent_to_library(
                         "graphVersionId": {"id": graph.id, "version": graph.version}
                     }
                 },
+                "name": store_listing_version.name,
+                "description": store_listing_version.description,
                 "isCreatedByUser": False,
             },
             include=library_agent_include(
