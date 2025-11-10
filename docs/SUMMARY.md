@@ -1,0 +1,17 @@
+# Table of contents
+
+* [What is the AutoGPT Platform?](README.md)
+* [Setting Up Auto-GPT (Local Host)](getting-started.md)
+* [AutoGPT Platform Installer](installer.md)
+* [Edit an Agent](edit-agent.md)
+* [Delete an Agent](delete-agent.md)
+* [Download & Import an Agent](download-agent-from-marketplace-local.md)
+* [Create a Basic Agent](create-basic-agent.md)
+* [Submit an Agent to the Marketplace](submit-agent-to-marketplace.md)
+* [Advanced Setup](advanced-setup.md)
+* [Create an Agent Block](agent-blocks.md)
+* [Contributing to AutoGPT Agent Server: Creating and Testing Blocks](new-blocks.md)
+* [Copy of Contributing to AutoGPT Agent Server: Creating and Testing Blocks](new-blocks-1.md)
+* [Block Creation using SDK](block-sdk-guide.md)
+* [Using Ollama](ollama.md)
+* [Using AI/ML API](aimlapi.md)
