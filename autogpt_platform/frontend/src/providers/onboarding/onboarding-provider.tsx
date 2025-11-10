@@ -10,7 +10,11 @@ import {
 } from "@/components/__legacy__/ui/dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
-import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
+import {
+  OnboardingStep,
+  UserOnboarding,
+  WebSocketNotification,
+} from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import Link from "next/link";
@@ -28,8 +32,9 @@ import {
   calculateConsecutiveDays,
   updateOnboardingState,
   getRunMilestoneSteps,
-  processOnboardingData,
+  fromBackendUserOnboarding,
   shouldRedirectFromOnboarding,
+  LocalOnboardingStateUpdate,
 } from "./helpers";
 import { resolveResponse } from "@/app/api/helpers";
 import { getV1OnboardingState, patchV1UpdateOnboardingState, postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
@@ -41,14 +46,11 @@ type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
-      updateState: (
-        state: Omit<Partial<UserOnboarding>, "rewardedFor">,
-      ) => void;
+      updateState: (state: LocalOnboardingStateUpdate) => void;
       step: number;
       setStep: (step: number) => void;
       completeStep: (step: FrontendOnboardingStep) => void;
       incrementRuns: () => void;
-      fetchOnboarding: () => Promise<UserOnboarding>;
     }
   | undefined
 >(undefined);
@@ -63,15 +65,13 @@ export function useOnboarding(step?: number, completeStep?: FrontendOnboardingSt
     if (
       !completeStep ||
       !context.state ||
-      !context.state.completedSteps ||
       context.state.completedSteps.includes(completeStep)
-    )
+    ) {
       return;
+    }
 
-    context.updateState({
-      completedSteps: [...context.state.completedSteps, completeStep],
-    });
-  }, [completeStep, context, context.updateState]);
+    context.completeStep(completeStep);
+  }, [completeStep, context]);
 
   useEffect(() => {
     if (step && context.step !== step) {
@@ -122,8 +122,10 @@ export default function OnboardingProvider({
 
   const fetchOnboarding = useCallback(async () => {
     const onboarding = await resolveResponse(getV1OnboardingState());
-    const processedOnboarding = processOnboardingData(onboarding);
-    setState(processedOnboarding);
+    const processedOnboarding = fromBackendUserOnboarding(onboarding);
+    if (isMounted.current) {
+      setState(processedOnboarding);
+    }
     return processedOnboarding;
   }, []);
 
@@ -173,9 +175,34 @@ export default function OnboardingProvider({
     initializeOnboarding();
   }, [api, isOnOnboardingRoute, router, user, isUserLoading, pathname, fetchOnboarding, toast]);
 
+  const handleOnboardingNotification = useCallback(
+    (notification: WebSocketNotification) => {
+      if (notification.type !== "onboarding") {
+        return;
+      }
+
+      fetchOnboarding().catch((error) => {
+        console.error("Failed to refresh onboarding after notification:", error);
+      });
+    },
+    [fetchOnboarding],
+  );
+
+  useEffect(() => {
+    const detachMessage = api.onWebSocketMessage(
+      "notification",
+      handleOnboardingNotification,
+    );
+
+    api.connectWebSocket();
+
+    return () => {
+      detachMessage();
+    };
+  }, [api, handleOnboardingNotification]);
+
   const updateState = useCallback(
-    (newState: UserOnboardingUpdate) => {
-      // Update local state immediately
+    (newState: LocalOnboardingStateUpdate) => {
       setState((prev) => updateOnboardingState(prev, newState));
 
       const updatePromise = (async () => {
@@ -194,24 +221,43 @@ export default function OnboardingProvider({
         }
       })();
 
-      // Track this pending update
       pendingUpdatesRef.current.add(updatePromise);
 
       updatePromise.finally(() => {
         pendingUpdatesRef.current.delete(updatePromise);
       });
     },
-    [api],
+    [toast],
   );
 
   const completeStep = useCallback(
     (step: FrontendOnboardingStep) => {
-      if (!state?.completedSteps?.includes(step)) {
-        postV1CompleteOnboardingStep({ step });
-        fetchOnboarding();
+      if (state?.completedSteps?.includes(step)) {
+        return;
       }
+
+      const completionPromise = (async () => {
+        try {
+          await postV1CompleteOnboardingStep({ step });
+          await fetchOnboarding();
+        } catch (error) {
+          if (isMounted.current) {
+            console.error("Failed to complete onboarding step:", error);
+          }
+
+          toast({
+            title: "Failed to complete onboarding step",
+            variant: "destructive",
+          });
+        }
+      })();
+
+      pendingUpdatesRef.current.add(completionPromise);
+      completionPromise.finally(() => {
+        pendingUpdatesRef.current.delete(completionPromise);
+      });
     },
-    [state?.completedSteps, updateState, fetchOnboarding],
+    [state?.completedSteps, fetchOnboarding, toast],
   );
 
   const incrementRuns = useCallback(() => {
@@ -244,7 +290,14 @@ export default function OnboardingProvider({
 
   return (
     <OnboardingContext.Provider
-      value={{ state, updateState, step, setStep, completeStep, incrementRuns, fetchOnboarding }}
+      value={{
+        state,
+        updateState,
+        step,
+        setStep,
+        completeStep,
+        incrementRuns
+      }}
     >
       <Dialog onOpenChange={setNpsDialogOpen} open={npsDialogOpen}>
         <DialogContent>

@@ -1,6 +1,14 @@
-import { GraphExecutionID, OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
+import {
+  GraphExecutionID,
+  OnboardingStep,
+  UserOnboarding,
+} from "@/lib/autogpt-server-api";
 import { UserOnboarding as RawUserOnboarding } from "@/app/api/__generated__/models/userOnboarding";
-import { UserOnboardingUpdate } from "@/app/api/__generated__/models/userOnboardingUpdate";
+
+export type LocalOnboardingStateUpdate = Omit<
+  Partial<UserOnboarding>,
+  "completedSteps" | "rewardedFor" | "lastRunAt" | "consecutiveRunDays" | "agentRuns"
+>;
 
 export function isToday(date: Date): boolean {
   const today = new Date();
@@ -62,23 +70,17 @@ export function getRunMilestoneSteps(
   return steps;
 }
 
-export function processOnboardingData(
+export function fromBackendUserOnboarding(
   onboarding: RawUserOnboarding,
 ): UserOnboarding {
   return {
-    completedSteps: onboarding.completedSteps,
-    walletShown: onboarding.walletShown,
-    notified: onboarding.notified,
-    rewardedFor: onboarding.rewardedFor,
+    ...onboarding,
     usageReason: onboarding.usageReason || null,
-    integrations: onboarding.integrations,
     otherIntegrations: onboarding.otherIntegrations || null,
     selectedStoreListingVersionId: onboarding.selectedStoreListingVersionId || null,
     agentInput: onboarding.agentInput as {} || null,
     onboardingAgentExecutionId: onboarding.onboardingAgentExecutionId as GraphExecutionID || null,
     lastRunAt: onboarding.lastRunAt ? new Date(onboarding.lastRunAt) : null,
-    consecutiveRunDays: onboarding.consecutiveRunDays,
-    agentRuns: onboarding.agentRuns,
   };
 }
 
@@ -92,24 +94,23 @@ export function shouldRedirectFromOnboarding(
   );
 }
 
-
 export function updateOnboardingState(
   prevState: UserOnboarding | null,
-  newState: UserOnboardingUpdate,
-): UserOnboarding {
+  newState: LocalOnboardingStateUpdate,
+): UserOnboarding | null {
   return {
-    completedSteps: prevState?.completedSteps || [],
-    walletShown: newState.walletShown || prevState?.walletShown || true,
-    notified: newState.notified || prevState?.notified || [],
-    rewardedFor: prevState?.rewardedFor || [],
-    usageReason: newState.usageReason || prevState?.usageReason || null,
-    integrations: newState.integrations || prevState?.integrations || [],
-    otherIntegrations: newState.otherIntegrations || prevState?.otherIntegrations || null,
-    selectedStoreListingVersionId: newState.selectedStoreListingVersionId || prevState?.selectedStoreListingVersionId || null,
-    agentInput: newState.agentInput as Record<string, string | number> || prevState?.agentInput || null,
-    onboardingAgentExecutionId: newState.onboardingAgentExecutionId as GraphExecutionID || prevState?.onboardingAgentExecutionId || null,
-    agentRuns: prevState?.agentRuns || 0,
-    lastRunAt: prevState?.lastRunAt || null,
-    consecutiveRunDays: prevState?.consecutiveRunDays || 0,
+    completedSteps: prevState?.completedSteps ?? [],
+    walletShown: newState.walletShown ?? prevState?.walletShown ?? false,
+    notified: newState.notified ?? prevState?.notified ?? [],
+    rewardedFor: prevState?.rewardedFor ?? [],
+    usageReason: newState.usageReason ?? prevState?.usageReason ?? null,
+    integrations: newState.integrations ?? prevState?.integrations ?? [],
+    otherIntegrations: newState.otherIntegrations ?? prevState?.otherIntegrations ?? null,
+    selectedStoreListingVersionId: newState.selectedStoreListingVersionId ?? prevState?.selectedStoreListingVersionId ?? null,
+    agentInput: newState.agentInput ?? prevState?.agentInput ?? null,
+    onboardingAgentExecutionId: newState.onboardingAgentExecutionId ?? prevState?.onboardingAgentExecutionId ?? null,
+    lastRunAt: prevState?.lastRunAt ?? null,
+    consecutiveRunDays: prevState?.consecutiveRunDays ?? 0,
+    agentRuns: prevState?.agentRuns ?? 0,
   };
 }

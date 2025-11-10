@@ -8,12 +8,10 @@ import {
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
-import {
-  OnboardingStep,
-  WebSocketNotification,
-} from "@/lib/autogpt-server-api";
+import { OnboardingStep, WebSocketNotification } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
@@ -23,7 +21,6 @@ import * as party from "party-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export interface Task {
   id: OnboardingStep;
@@ -44,7 +41,7 @@ export interface TaskGroup {
 }
 
 export function Wallet() {
-  const { state, updateState, fetchOnboarding } = useOnboarding();
+  const { state, updateState } = useOnboarding();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
   const groups = useMemo<TaskGroup[]>(() => {
@@ -167,7 +164,6 @@ export function Wallet() {
     ];
   }, [state]);
 
-  const api = useBackendAPI();
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
@@ -250,35 +246,40 @@ export function Wallet() {
     [],
   );
 
-  // Confetti effect on the wallet button
+  // React to onboarding notifications emitted by the provider
+  const api = useBackendAPI();
+
   const handleNotification = useCallback(
     (notification: WebSocketNotification) => {
-      if (notification.type !== "onboarding") {
+      if (
+        notification.type !== "onboarding" ||
+        notification.event !== "step_completed"
+      ) {
         return;
       }
 
-      if (walletRef.current) {
-        // Fix confetti appearing in the top left corner
-        const rect = walletRef.current.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
-          return;
-        }
-        fetchCredits();
-        fetchOnboarding();
-        party.confetti(walletRef.current!, {
-          count: 30,
-          spread: 120,
-          shapes: ["square", "circle"],
-          size: party.variation.range(1, 2),
-          speed: party.variation.range(200, 300),
-          modules: [fadeOut],
-        });
+      if (!walletRef.current) {
+        return;
       }
+
+      const rect = walletRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
+
+      fetchCredits();
+      party.confetti(walletRef.current, {
+        count: 30,
+        spread: 120,
+        shapes: ["square", "circle"],
+        size: party.variation.range(1, 2),
+        speed: party.variation.range(200, 300),
+        modules: [fadeOut],
+      });
     },
-    [],
+    [fetchCredits, fadeOut],
   );
 
-  // WebSocket setup for onboarding notifications
   useEffect(() => {
     const detachMessage = api.onWebSocketMessage(
       "notification",
