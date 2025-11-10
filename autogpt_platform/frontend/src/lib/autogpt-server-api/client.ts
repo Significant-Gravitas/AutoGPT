@@ -3,10 +3,7 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
-import {
-  IMPERSONATION_HEADER_NAME,
-  IMPERSONATION_STORAGE_KEY,
-} from "@/lib/constants";
+import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { ImpersonationState } from "@/lib/impersonation";
 import * as Sentry from "@sentry/nextjs";
 import type {
