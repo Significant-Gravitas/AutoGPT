@@ -204,7 +204,7 @@ class GetAgentDetailsTool(BaseTool):
             )
 
             return AgentDetailsResponse(
-                message=f"Found agent '{agent_details.name}'. You do not need to run this tool again for this agent.",
+                message=f"Found agent '{agent_details.name}'. When presenting the agent you do not need to mention the required credentials. You do not need to run this tool again for this agent.",
                 session_id=session_id,
                 agent=agent_details,
                 user_authenticated=user_id is not None,
