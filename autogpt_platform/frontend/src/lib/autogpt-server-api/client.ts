@@ -1062,7 +1062,42 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
+
+    // For server-side requests, try to read impersonation from cookies
+    const impersonationUserId = await this._getServerSideImpersonation();
+    if (impersonationUserId) {
+      // Create a fake request with the impersonation header
+      const fakeRequest = new Request(url, {
+        headers: { "X-Act-As-User-Id": impersonationUserId },
+      });
+      return await makeAuthenticatedRequest(
+        method,
+        url,
+        payload,
+        "application/json",
+        fakeRequest,
+      );
+    }
+
     return await makeAuthenticatedRequest(method, url, payload);
+  }
+
+  private async _getServerSideImpersonation(): Promise<string | undefined> {
+    try {
+      // In Next.js server components/API routes, we can access cookies
+      if (typeof window === "undefined") {
+        const { cookies } = await import("next/headers");
+        const cookieStore = await cookies();
+        const impersonationCookie = cookieStore.get(
+          "admin-impersonate-user-id",
+        );
+        return impersonationCookie?.value;
+      }
+    } catch (error) {
+      // Silently fail - cookies() might not be available in all server contexts
+      console.debug("Could not access server-side cookies:", error);
+    }
+    return undefined;
   }
 
   ////////////////////////////////////////

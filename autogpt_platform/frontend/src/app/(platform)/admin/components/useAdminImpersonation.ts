@@ -52,6 +52,8 @@ export function useAdminImpersonation(): AdminImpersonationHook {
       if (environment.isClientSide()) {
         try {
           sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, userId);
+          // Also set in cookie for server-side requests
+          document.cookie = `admin-impersonate-user-id=${encodeURIComponent(userId)}; path=/; SameSite=Lax`;
           setImpersonatedUserId(userId);
           window.location.reload();
         } catch (error) {
@@ -72,6 +74,8 @@ export function useAdminImpersonation(): AdminImpersonationHook {
     if (environment.isClientSide()) {
       try {
         sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
+        // Also remove from cookie
+        document.cookie = `admin-impersonate-user-id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         setImpersonatedUserId(null);
         window.location.reload();
       } catch (error) {
