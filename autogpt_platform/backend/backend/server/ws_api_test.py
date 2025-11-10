@@ -96,7 +96,9 @@ async def test_websocket_router_subscribe(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
     mock_manager.subscribe_graph_exec.assert_called_once_with(
         user_id=DEFAULT_USER_ID,
         graph_exec_id="test-graph-exec-1",
@@ -115,7 +117,9 @@ async def test_websocket_router_subscribe(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(parsed_message, indent=2, sort_keys=True), "sub")
 
-    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio
@@ -142,7 +146,9 @@ async def test_websocket_router_unsubscribe(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
     mock_manager.unsubscribe_graph_exec.assert_called_once_with(
         user_id=DEFAULT_USER_ID,
         graph_exec_id="test-graph-exec-1",
@@ -158,7 +164,9 @@ async def test_websocket_router_unsubscribe(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(parsed_message, indent=2, sort_keys=True), "unsub")
 
-    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio
@@ -179,11 +187,15 @@ async def test_websocket_router_invalid_method(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":false' in mock_websocket.send_text.call_args[0][0]
-    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio
