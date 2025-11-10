@@ -44,7 +44,7 @@ export interface TaskGroup {
 }
 
 export function Wallet() {
-  const { state, updateState } = useOnboarding();
+  const { state, updateState, fetchOnboarding } = useOnboarding();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
   const groups = useMemo<TaskGroup[]>(() => {
@@ -264,6 +264,7 @@ export function Wallet() {
           return;
         }
         fetchCredits();
+        fetchOnboarding();
         party.confetti(walletRef.current!, {
           count: 30,
           spread: 120,

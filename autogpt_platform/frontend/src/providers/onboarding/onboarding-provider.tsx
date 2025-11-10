@@ -26,13 +26,17 @@ import {
 } from "react";
 import {
   calculateConsecutiveDays,
-  createInitialOnboardingState,
+  updateOnboardingState,
   getRunMilestoneSteps,
   processOnboardingData,
   shouldRedirectFromOnboarding,
 } from "./helpers";
 import { resolveResponse } from "@/app/api/helpers";
-import { getV1OnboardingState, patchV1UpdateOnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { getV1OnboardingState, patchV1UpdateOnboardingState, postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { UserOnboardingUpdate } from "@/app/api/__generated__/models/userOnboardingUpdate";
+import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
+
+type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 
 const OnboardingContext = createContext<
   | {
@@ -42,13 +46,14 @@ const OnboardingContext = createContext<
       ) => void;
       step: number;
       setStep: (step: number) => void;
-      completeStep: (step: OnboardingStep) => void;
+      completeStep: (step: FrontendOnboardingStep) => void;
       incrementRuns: () => void;
+      fetchOnboarding: () => Promise<UserOnboarding>;
     }
   | undefined
 >(undefined);
 
-export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
+export function useOnboarding(step?: number, completeStep?: FrontendOnboardingStep) {
   const context = useContext(OnboardingContext);
 
   if (!context)
@@ -115,6 +120,13 @@ export default function OnboardingProvider({
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
 
+  const fetchOnboarding = useCallback(async () => {
+    const onboarding = await resolveResponse(getV1OnboardingState());
+    const processedOnboarding = processOnboardingData(onboarding);
+    setState(processedOnboarding);
+    return processedOnboarding;
+  }, []);
+
   useEffect(() => {
     // Prevent multiple initializations
     if (hasInitialized.current || isUserLoading || !user) {
@@ -134,15 +146,13 @@ export default function OnboardingProvider({
           }
         }
 
-        const onboarding = await resolveResponse(getV1OnboardingState());
-        const processedOnboarding = processOnboardingData(onboarding);
-        setState(processedOnboarding);
+        const onboarding = await fetchOnboarding();
 
         // Handle redirects for completed onboarding
         if (
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(
-            processedOnboarding.completedSteps,
+            onboarding.completedSteps,
             pathname,
           )
         ) {
@@ -161,17 +171,12 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, isOnOnboardingRoute, router, user, isUserLoading, pathname]);
+  }, [api, isOnOnboardingRoute, router, user, isUserLoading, pathname, fetchOnboarding, toast]);
 
   const updateState = useCallback(
-    (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
+    (newState: UserOnboardingUpdate) => {
       // Update local state immediately
-      setState((prev) => {
-        if (!prev) {
-          return createInitialOnboardingState(newState);
-        }
-        return { ...prev, ...newState };
-      });
+      setState((prev) => updateOnboardingState(prev, newState));
 
       const updatePromise = (async () => {
         try {
@@ -200,14 +205,13 @@ export default function OnboardingProvider({
   );
 
   const completeStep = useCallback(
-    (step: OnboardingStep) => {
+    (step: FrontendOnboardingStep) => {
       if (!state?.completedSteps?.includes(step)) {
-        updateState({
-          completedSteps: [...(state?.completedSteps || []), step],
-        });
+        postV1CompleteOnboardingStep({ step });
+        fetchOnboarding();
       }
     },
-    [state?.completedSteps, updateState],
+    [state?.completedSteps, updateState, fetchOnboarding],
   );
 
   const incrementRuns = useCallback(() => {
@@ -229,18 +233,18 @@ export default function OnboardingProvider({
       setNpsDialogOpen(true);
     }
 
-    updateState({
-      agentRuns: newRunCount,
-      completedSteps: Array.from(
-        new Set([...state.completedSteps, ...milestoneSteps]),
-      ),
-      ...consecutiveData,
-    });
+    // updateState({
+    //   agentRuns: newRunCount,
+    //   completedSteps: Array.from(
+    //     new Set([...state.completedSteps, ...milestoneSteps]),
+    //   ),
+    //   ...consecutiveData,
+    // });
   }, [state, updateState]);
 
   return (
     <OnboardingContext.Provider
-      value={{ state, updateState, step, setStep, completeStep, incrementRuns }}
+      value={{ state, updateState, step, setStep, completeStep, incrementRuns, fetchOnboarding }}
     >
       <Dialog onOpenChange={setNpsDialogOpen} open={npsDialogOpen}>
         <DialogContent>

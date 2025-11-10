@@ -880,6 +880,63 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/step": {
+      "post": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Complete onboarding step",
+        "operationId": "postV1Complete onboarding step",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "step",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "WELCOME",
+                "USAGE_REASON",
+                "INTEGRATIONS",
+                "AGENT_CHOICE",
+                "AGENT_NEW_RUN",
+                "AGENT_INPUT",
+                "CONGRATS",
+                "GET_RESULTS",
+                "MARKETPLACE_VISIT",
+                "MARKETPLACE_ADD_AGENT",
+                "MARKETPLACE_RUN_AGENT",
+                "BUILDER_SAVE_AGENT",
+                "RE_RUN_AGENT",
+                "RUN_AGENTS",
+                "RUN_3_DAYS",
+                "RUN_14_DAYS",
+                "RUN_AGENTS_100",
+                "BUILDER_OPEN",
+                "BUILDER_RUN_AGENT"
+              ],
+              "type": "string",
+              "title": "Step"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/onboarding/agents": {
       "get": {
         "tags": ["v1", "onboarding"],

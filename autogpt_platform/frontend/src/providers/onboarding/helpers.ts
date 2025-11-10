@@ -1,5 +1,6 @@
 import { GraphExecutionID, OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { UserOnboarding as RawUserOnboarding } from "@/app/api/__generated__/models/userOnboarding";
+import { UserOnboardingUpdate } from "@/app/api/__generated__/models/userOnboardingUpdate";
 
 export function isToday(date: Date): boolean {
   const today = new Date();
@@ -91,23 +92,24 @@ export function shouldRedirectFromOnboarding(
   );
 }
 
-export function createInitialOnboardingState(
-  newState: Omit<Partial<UserOnboarding>, "rewardedFor">,
+
+export function updateOnboardingState(
+  prevState: UserOnboarding | null,
+  newState: UserOnboardingUpdate,
 ): UserOnboarding {
   return {
-    completedSteps: [],
-    walletShown: true,
-    notified: [],
-    rewardedFor: [],
-    usageReason: null,
-    integrations: [],
-    otherIntegrations: null,
-    selectedStoreListingVersionId: null,
-    agentInput: null,
-    onboardingAgentExecutionId: null,
-    agentRuns: 0,
-    lastRunAt: null,
-    consecutiveRunDays: 0,
-    ...newState,
+    completedSteps: prevState?.completedSteps || [],
+    walletShown: newState.walletShown || prevState?.walletShown || true,
+    notified: newState.notified || prevState?.notified || [],
+    rewardedFor: prevState?.rewardedFor || [],
+    usageReason: newState.usageReason || prevState?.usageReason || null,
+    integrations: newState.integrations || prevState?.integrations || [],
+    otherIntegrations: newState.otherIntegrations || prevState?.otherIntegrations || null,
+    selectedStoreListingVersionId: newState.selectedStoreListingVersionId || prevState?.selectedStoreListingVersionId || null,
+    agentInput: newState.agentInput as Record<string, string | number> || prevState?.agentInput || null,
+    onboardingAgentExecutionId: newState.onboardingAgentExecutionId as GraphExecutionID || prevState?.onboardingAgentExecutionId || null,
+    agentRuns: prevState?.agentRuns || 0,
+    lastRunAt: prevState?.lastRunAt || null,
+    consecutiveRunDays: prevState?.consecutiveRunDays || 0,
   };
 }

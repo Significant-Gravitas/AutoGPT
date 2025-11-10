@@ -5,7 +5,7 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Annotated, Any, Sequence
+from typing import Annotated, Any, Sequence, get_args
 
 import pydantic
 import stripe
@@ -50,6 +50,7 @@ from backend.data.execution import UserContext
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
+    FrontendOnboardingStep,
     UserOnboardingUpdate,
     OnboardingStep,
     complete_onboarding_step,
@@ -240,6 +241,20 @@ async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
 ) -> UserOnboarding:
     return await update_user_onboarding(user_id, data)
+
+
+@v1_router.post(
+    "/onboarding/step",
+    summary="Complete onboarding step",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def onboarding_complete_step(
+    user_id: Annotated[str, Security(get_user_id)], step: FrontendOnboardingStep
+):
+    if step not in get_args(FrontendOnboardingStep):
+        raise HTTPException(status_code=400, detail="Invalid onboarding step")
+    return await complete_onboarding_step(user_id, step)
 
 
 @v1_router.get(

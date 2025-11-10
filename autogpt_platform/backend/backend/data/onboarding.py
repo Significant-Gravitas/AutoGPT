@@ -1,6 +1,5 @@
 import re
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import prisma
 import pydantic
@@ -30,6 +29,28 @@ REASON_MAPPING: dict[str, list[str]] = {
 }
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
 MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
+
+FrontendOnboardingStep = Literal[
+    OnboardingStep.WELCOME,
+    OnboardingStep.USAGE_REASON,
+    OnboardingStep.INTEGRATIONS,
+    OnboardingStep.AGENT_CHOICE,
+    OnboardingStep.AGENT_NEW_RUN,
+    OnboardingStep.AGENT_INPUT,
+    OnboardingStep.CONGRATS,
+    OnboardingStep.GET_RESULTS,
+    OnboardingStep.MARKETPLACE_VISIT,
+    OnboardingStep.MARKETPLACE_ADD_AGENT,
+    OnboardingStep.MARKETPLACE_RUN_AGENT,
+    OnboardingStep.BUILDER_SAVE_AGENT,
+    OnboardingStep.RE_RUN_AGENT,
+    OnboardingStep.RUN_AGENTS,
+    OnboardingStep.RUN_3_DAYS,
+    OnboardingStep.RUN_14_DAYS,
+    OnboardingStep.RUN_AGENTS_100,
+    OnboardingStep.BUILDER_OPEN,
+    OnboardingStep.BUILDER_RUN_AGENT,
+]
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
