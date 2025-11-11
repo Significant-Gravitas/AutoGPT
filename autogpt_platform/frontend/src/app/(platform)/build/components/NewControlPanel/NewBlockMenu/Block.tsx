@@ -6,6 +6,7 @@ import { highlightText } from "./helpers";
 import { PlusIcon } from "@phosphor-icons/react";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
+import { blockDragPreviewStyle } from "./style";
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   description?: string;
@@ -36,17 +37,7 @@ export const Block: BlockComponent = ({
 
     // preview when user drags it
     const dragPreview = document.createElement("div");
-    dragPreview.style.cssText = `
-      padding: 0.625rem 0.875rem;
-      background: #f4f4f5;
-      border-radius: 0.75rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: #27272a;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      position: absolute;
-      top: -9999px;
-    `;
+    dragPreview.style.cssText = blockDragPreviewStyle;
     dragPreview.textContent = beautifyString(title || "");
 
     document.body.appendChild(dragPreview);
