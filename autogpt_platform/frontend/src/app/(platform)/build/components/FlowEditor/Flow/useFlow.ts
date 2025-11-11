@@ -30,6 +30,9 @@ export const useFlow = () => {
   const setGraphSchemas = useGraphStore(
     useShallow((state) => state.setGraphSchemas),
   );
+  const updateEdgeBeads = useEdgeStore(
+    useShallow((state) => state.updateEdgeBeads),
+  );
   const [{ flowID, flowVersion, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
@@ -123,7 +126,7 @@ export const useFlow = () => {
       });
     }
 
-    // update node execution results in nodes
+    // update node execution results in nodes, also update edge beads
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -131,6 +134,7 @@ export const useFlow = () => {
     ) {
       executionDetails.node_executions.forEach((nodeExecution) => {
         updateNodeExecutionResult(nodeExecution.node_id, nodeExecution);
+        updateEdgeBeads(nodeExecution.node_id, nodeExecution);
       });
     }
   }, [customNodes, addNodes, graph?.links, executionDetails, updateNodeStatus]);
@@ -140,6 +144,7 @@ export const useFlow = () => {
       useNodeStore.getState().setNodes([]);
       useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
+      useEdgeStore.getState().resetEdgeBeads();
       setIsGraphRunning(false);
     };
   }, []);

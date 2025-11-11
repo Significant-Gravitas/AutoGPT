@@ -3,6 +3,7 @@ import { Link } from "@/app/api/__generated__/models/link";
 import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 import { customEdgeToLink, linkToCustomEdge } from "../components/helper";
 import { MarkerType } from "@xyflow/react";
+import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 
 type EdgeStore = {
   edges: CustomEdge[];
@@ -19,6 +20,12 @@ type EdgeStore = {
   addLinks: (links: Link[]) => void;
 
   getAllHandleIdsOfANode: (nodeId: string) => string[];
+
+  updateEdgeBeads: (
+    targetNodeId: string,
+    executionResult: NodeExecutionResult,
+  ) => void;
+  resetEdgeBeads: () => void;
 };
 
 function makeEdgeId(edge: Omit<CustomEdge, "id">) {
@@ -93,4 +100,66 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
     get()
       .edges.filter((e) => e.target === nodeId)
       .map((e) => e.targetHandle || ""),
+
+  updateEdgeBeads: (
+    targetNodeId: string,
+    executionResult: NodeExecutionResult,
+  ) => {
+    set((state) => ({
+      edges: state.edges.map((edge) => {
+        if (edge.target !== targetNodeId) {
+          return edge;
+        }
+
+        const beadData =
+          edge.data?.beadData ??
+          new Map<string, NodeExecutionResult["status"]>();
+
+        if (
+          edge.targetHandle &&
+          edge.targetHandle in executionResult.input_data
+        ) {
+          beadData.set(executionResult.node_exec_id, executionResult.status);
+        }
+
+        let beadUp = 0;
+        let beadDown = 0;
+
+        beadData.forEach((status) => {
+          beadUp++;
+          if (status !== "INCOMPLETE") {
+            beadDown++;
+          }
+        });
+
+        if (edge.data?.isStatic && beadUp > 0) {
+          beadUp = beadDown + 1;
+        }
+
+        return {
+          ...edge,
+          data: {
+            ...edge.data,
+            beadUp,
+            beadDown,
+            beadData,
+          },
+        };
+      }),
+    }));
+  },
+
+  resetEdgeBeads: () => {
+    set((state) => ({
+      edges: state.edges.map((edge) => ({
+        ...edge,
+        data: {
+          ...edge.data,
+          beadUp: 0,
+          beadDown: 0,
+          beadData: new Map(),
+        },
+      })),
+    }));
+  },
 }));

@@ -6,13 +6,17 @@ import {
   EdgeProps,
   getBezierPath,
 } from "@xyflow/react";
-
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { NodeExecutionResult } from "@/lib/autogpt-server-api";
+import { Beads } from "./components/Beads";
 
 export type CustomEdgeData = {
   isStatic?: boolean;
+  beadUp?: number;
+  beadDown?: number;
+  beadData?: Map<string, NodeExecutionResult["status"]>;
 };
 
 export type CustomEdge = XYEdge<CustomEdgeData, "custom">;
@@ -40,6 +44,8 @@ const CustomEdge = ({
   });
 
   const isStatic = data?.isStatic ?? false;
+  const beadUp = data?.beadUp ?? 0;
+  const beadDown = data?.beadDown ?? 0;
 
   return (
     <>
@@ -52,6 +58,12 @@ const CustomEdge = ({
             ? "stroke-zinc-800"
             : "stroke-zinc-500/50 hover:stroke-zinc-500",
         )}
+      />
+      <Beads
+        beadUp={beadUp}
+        beadDown={beadDown}
+        edgePath={edgePath}
+        beadsKey={`beads-${id}-${sourceX}-${sourceY}-${targetX}-${targetY}`}
       />
       <EdgeLabelRenderer>
         <Button
