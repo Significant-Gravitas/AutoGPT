@@ -66,7 +66,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     }
   },
 
-  addNode: (node) =>
+  addNode: (node) => {
     set((state) => ({
       nodes: [...state.nodes, node],
     })),

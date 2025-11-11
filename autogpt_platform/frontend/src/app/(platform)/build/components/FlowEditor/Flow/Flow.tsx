@@ -12,6 +12,7 @@ import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
+import { useCopyPasteKeyboard } from "../../../hooks/useCopyPasteKeyboard";
 
 export const Flow = () => {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
@@ -26,6 +27,8 @@ export const Flow = () => {
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
+
+  useCopyPasteKeyboard();
 
   const { isFlowContentLoading } = useFlow();
   const { isGraphRunning } = useGraphStore();
