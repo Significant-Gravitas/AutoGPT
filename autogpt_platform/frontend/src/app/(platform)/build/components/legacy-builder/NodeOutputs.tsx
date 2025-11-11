@@ -39,7 +39,7 @@ export default function NodeOutputs({
   const { nodes } = builderContext;
 
   const getNodeTitle = (nodeID: string) => {
-    const node = nodes.find((n) => n.id === nodeID);
+    const node = nodes.find((n) => n.data.backend_id === nodeID);
     if (node) {
       return node.data.metadata?.customized_name || node.data.blockType.replace(/Block$/, "");
     }
