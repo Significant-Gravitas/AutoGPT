@@ -43,7 +43,7 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.AGENT_INPUT,
     OnboardingStep.CONGRATS,
     OnboardingStep.MARKETPLACE_VISIT,
-    OnboardingStep.MARKETPLACE_ADD_AGENT,
+    OnboardingStep.MARKETPLACE_RUN_AGENT, # <-
     OnboardingStep.MARKETPLACE_RUN_AGENT,
     OnboardingStep.BUILDER_SAVE_AGENT,
     OnboardingStep.RE_RUN_AGENT,

@@ -47,7 +47,6 @@ import { CreatePresetDialog } from "./components/create-preset-dialog";
 import { useAgentRunsInfinite } from "./use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function OldAgentLibraryView() {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -84,10 +83,6 @@ export function OldAgentLibraryView() {
     useState<GraphExecutionMeta | null>(null);
   const [confirmingDeleteAgentPreset, setConfirmingDeleteAgentPreset] =
     useState<LibraryAgentPresetID | null>(null);
-  const {
-    state: onboardingState,
-    completeStep: completeOnboardingStep,
-  } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
   const [creatingPresetFromExecutionID, setCreatingPresetFromExecutionID] =
     useState<GraphExecutionID | null>(null);
