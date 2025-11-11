@@ -74,6 +74,7 @@ import { BuildActionBar } from "../BuildActionBar";
 const MINIMUM_MOVE_BEFORE_LOG = 50;
 
 type BuilderContextType = {
+  nodes: CustomNode[];
   libraryAgent: LibraryAgent | null;
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
@@ -783,7 +784,7 @@ const FlowEditor: React.FC<{
           data: {
             blockType: blockName,
             blockCosts: nodeSchema.costs || [],
-            title: `${beautifyString(blockName)} ${nodeId}`,
+            title: `${blockName} ${nodeId}`,
             description: nodeSchema.description,
             categories: nodeSchema.categories,
             inputSchema: nodeSchema.inputSchema,
@@ -828,7 +829,7 @@ const FlowEditor: React.FC<{
 
   return (
     <BuilderContext.Provider
-      value={{ libraryAgent, visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
+      value={{ nodes, libraryAgent, visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
     >
       <div className={className}>
         <ReactFlow
