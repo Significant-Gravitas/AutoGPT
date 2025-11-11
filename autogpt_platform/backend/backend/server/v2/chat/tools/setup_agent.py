@@ -273,7 +273,7 @@ class SetupAgentTool(BaseTool):
         )
 
         return ExecutionStartedResponse(
-            message="Agent execution successfully scheduled. Do not run this tool again unless specifically asked to run the agent again.",
+            message=f"Agent execution successfully scheduled. You can add a link to the agent at: /library/agents/{library_agent.id}. Do not run this tool again unless specifically asked to run the agent again.",
             session_id=session_id,
             execution_id=result.id,
             graph_id=library_agent.graph_id,

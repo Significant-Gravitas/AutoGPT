@@ -13,7 +13,7 @@ export function TallyPopupSimple() {
   }
 
   return (
-    <div className="fixed bottom-1 right-24 z-20 hidden select-none items-center gap-4 p-3 transition-all duration-300 ease-in-out md:flex">
+    <div className="fixed bottom-1 right-0 z-20 hidden select-none items-center gap-4 p-3 transition-all duration-300 ease-in-out md:flex">
       {state.showTutorial && (
         <Button
           variant="primary"
