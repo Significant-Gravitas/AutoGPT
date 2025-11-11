@@ -8,6 +8,7 @@ from backend.blocks.io import (
     BlockSchemaInput,
     SchemaField,
 )
+from backend.blocks.google.sheets import format_sheet_name, parse_a1_notation
 from backend.data.model import GoogleDriveFile, GoogleDrivePickerField
 from backend.sdk import BlockSchemaOutput
 
@@ -89,8 +90,19 @@ class GoogleSheetsReadTestBlock(Block):
     ) -> list[list[str]]:
         """Helper method to read sheet data"""
         sheet = service.spreadsheets()
+        range_to_use = range_str
+        sheet_name, cell_range = parse_a1_notation(range_str)
+        if sheet_name:
+            cleaned_sheet = sheet_name.strip().strip("'\"")
+            formatted_sheet = format_sheet_name(cleaned_sheet)
+            cell_part = cell_range.strip() if cell_range else ""
+            range_to_use = (
+                f"{formatted_sheet}!{cell_part}" if cell_part else formatted_sheet
+            )
         result = (
-            sheet.values().get(spreadsheetId=spreadsheet_id, range=range_str).execute()
+            sheet.values()
+            .get(spreadsheetId=spreadsheet_id, range=range_to_use)
+            .execute()
         )
         return result.get("values", [])
 

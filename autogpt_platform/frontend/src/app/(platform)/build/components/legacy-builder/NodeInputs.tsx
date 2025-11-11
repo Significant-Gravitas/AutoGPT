@@ -392,14 +392,7 @@ export const NodeGenericInputField: FC<{
             multiselect={config.multiselect || false}
             views={(config.allowed_views as any) || ["DOCS"]}
             scopes={
-              config.scopes || [
-                "https://www.googleapis.com/auth/drive.file",
-              ]
-            }
-            buttonText={
-              displayName ||
-              (propSchema as any).placeholder ||
-              "Choose from Google Drive"
+              config.scopes || ["https://www.googleapis.com/auth/drive.file"]
             }
             disabled={false}
             onPicked={(files) => {
@@ -415,9 +408,7 @@ export const NodeGenericInputField: FC<{
               }));
 
               // Store based on multiselect mode
-              const value = isMultiSelect
-                ? convertedFiles
-                : convertedFiles[0];
+              const value = isMultiSelect ? convertedFiles : convertedFiles[0];
               handleInputChange(propKey, value);
             }}
             onCanceled={() => {

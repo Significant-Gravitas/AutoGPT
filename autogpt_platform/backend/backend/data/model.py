@@ -293,6 +293,7 @@ def GoogleDrivePickerField(
         ]
     ] = None,
     allowed_mime_types: Optional[list[str]] = None,
+    scopes: Optional[list[str]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     placeholder: Optional[str] = None,
@@ -342,33 +343,41 @@ def GoogleDrivePickerField(
         picker_config["allowed_mime_types"] = allowed_mime_types
 
     # Determine required scopes based on config
+    base_scopes = scopes if scopes is not None else []
+    picker_scopes: set[str] = set(base_scopes)
     if allow_folder_selection:
-        # Full drive access needed for folders
-        picker_config["scopes"] = ["https://www.googleapis.com/auth/drive"]
+        picker_scopes.add("https://www.googleapis.com/auth/drive")
     else:
-        # File-level access only
-        picker_config["scopes"] = [
-            "https://www.googleapis.com/auth/drive.file",
-            "https://www.googleapis.com/auth/drive.readonly",
-        ]
+        picker_scopes.update(
+            [
+                "https://www.googleapis.com/auth/drive.file",
+                "https://www.googleapis.com/auth/drive.readonly",
+            ]
+        )
 
-    # Add to json_schema_extra for frontend consumption
-    field_schema_extra = {
-        "format": "google-drive-picker",
-        "google_drive_picker_config": picker_config,
-    }
+    views = set(allowed_views or [])
+    if "SPREADSHEETS" in views:
+        picker_scopes.add("https://www.googleapis.com/auth/spreadsheets.readonly")
+    if "DOCUMENTS" in views or "DOCS" in views:
+        picker_scopes.add("https://www.googleapis.com/auth/documents.readonly")
+
+    picker_config["scopes"] = sorted(picker_scopes)
 
     # Set appropriate default value
     default_value = [] if multiselect else None
 
-    return SchemaField(
+    # Use Pydantic's json_schema_extra and json_schema_mode to ensure metadata is preserved
+    return Field(
         default=default_value,
         title=title,
         description=description,
-        placeholder=placeholder or "Choose from Google Drive",
-        json_schema_extra=field_schema_extra,
-        advanced=False,
-        **kwargs,
+        json_schema_extra={
+            "placeholder": placeholder or "Choose from Google Drive",
+            "format": "google-drive-picker",
+            "google_drive_picker_config": picker_config,
+            "advanced": False,
+            **kwargs,
+        },
     )
 
 

@@ -171,7 +171,7 @@ export function useGoogleDrivePicker(options: Props) {
         // Include the access token with each file
         const filesWithToken = files.map((file) => ({
           ...file,
-          accessToken: accessTokenRef.current,
+          accessToken: accessTokenRef.current ?? undefined,
         }));
         onPicked(filesWithToken);
       } else {

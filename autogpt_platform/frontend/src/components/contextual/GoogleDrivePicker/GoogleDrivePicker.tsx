@@ -2,7 +2,7 @@
 
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { Button } from "@/components/atoms/Button/Button";
-import { CircleNotchIcon } from "@phosphor-icons/react";
+import { CircleNotchIcon, FolderOpenIcon } from "@phosphor-icons/react";
 import { Props, useGoogleDrivePicker } from "./useGoogleDrivePicker";
 
 export function GoogleDrivePicker(props: Props) {
@@ -33,7 +33,8 @@ export function GoogleDrivePicker(props: Props) {
       onClick={handleOpenPicker}
       disabled={props.disabled || isLoading || isAuthInProgress}
     >
-      {props.buttonText || "Choose file from Google Drive"}
+      <FolderOpenIcon className="size-4" />
+      {props.buttonText || "Choose file(s) from Google Drive"}
     </Button>
   );
 }

@@ -293,7 +293,20 @@ class GoogleSheetsReadBlock(Block):
 
     def _read_sheet(self, service, spreadsheet_id: str, range: str) -> list[list[str]]:
         sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range).execute()
+        range_to_use = range
+        sheet_name, cell_range = parse_a1_notation(range)
+        if sheet_name:
+            cleaned_sheet = sheet_name.strip().strip("'\"")
+            formatted_sheet = format_sheet_name(cleaned_sheet)
+            cell_part = cell_range.strip() if cell_range else ""
+            range_to_use = (
+                f"{formatted_sheet}!{cell_part}" if cell_part else formatted_sheet
+            )
+        result = (
+            sheet.values()
+            .get(spreadsheetId=spreadsheet_id, range=range_to_use)
+            .execute()
+        )
         return result.get("values", [])
 
 
