@@ -10,7 +10,7 @@ import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
-import { Beads } from "./components/Beads";
+import { JSBeads } from "./components/JSBeads";
 
 export type CustomEdgeData = {
   isStatic?: boolean;
@@ -64,7 +64,7 @@ const CustomEdge = ({
             : "stroke-zinc-500/50 hover:stroke-zinc-500",
         )}
       />
-      <Beads
+      <JSBeads
         beadUp={beadUp}
         beadDown={beadDown}
         edgePath={edgePath}

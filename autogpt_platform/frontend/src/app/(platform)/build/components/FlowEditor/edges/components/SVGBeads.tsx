@@ -1,3 +1,6 @@
+// This component uses SVG animation
+// Problem - it doesn't work with real time updates
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getLengthOfPathInPixels } from "../helpers";
 
@@ -13,7 +16,12 @@ interface BeadsProps {
   beadsKey: string;
 }
 
-export const Beads = ({ beadUp, beadDown, edgePath, beadsKey }: BeadsProps) => {
+export const SVGBeads = ({
+  beadUp,
+  beadDown,
+  edgePath,
+  beadsKey,
+}: BeadsProps) => {
   const [removedBeads, setRemovedBeads] = useState<Set<number>>(new Set());
   const animateRef = useRef<SVGAElement | null>(null);
 
