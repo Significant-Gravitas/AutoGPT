@@ -96,9 +96,12 @@ class GoogleSheetsReadTestBlock(Block):
             cleaned_sheet = sheet_name.strip().strip("'\"")
             formatted_sheet = format_sheet_name(cleaned_sheet)
             cell_part = cell_range.strip() if cell_range else ""
-            range_to_use = (
-                f"{formatted_sheet}!{cell_part}" if cell_part else formatted_sheet
-            )
+            if cell_part:
+                range_to_use = f"{formatted_sheet}!{cell_part}"
+            else:
+                range_to_use = f"{formatted_sheet}!A:Z"
+        else:
+            range_to_use = "A:Z"
         result = (
             sheet.values()
             .get(spreadsheetId=spreadsheet_id, range=range_to_use)
