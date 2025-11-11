@@ -86,8 +86,7 @@ export function OldAgentLibraryView() {
     useState<LibraryAgentPresetID | null>(null);
   const {
     state: onboardingState,
-    updateState: updateOnboardingState,
-    incrementRuns,
+    completeStep: completeOnboardingState,
   } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
   const [creatingPresetFromExecutionID, setCreatingPresetFromExecutionID] =
@@ -146,11 +145,9 @@ export function OldAgentLibraryView() {
       return;
 
     if (selectedRun.id === onboardingState.onboardingAgentExecutionId) {
-      updateOnboardingState({
-        completedSteps: [...onboardingState.completedSteps, "GET_RESULTS"],
-      });
+      completeOnboardingState("GET_RESULTS");
     }
-  }, [selectedRun, onboardingState, updateOnboardingState]);
+  }, [selectedRun, onboardingState, completeOnboardingState]);
 
   const lastRefresh = useRef<number>(0);
   const refreshPageData = useCallback(() => {
@@ -285,10 +282,6 @@ export function OldAgentLibraryView() {
       (data) => {
         if (data.graph_id != agent?.graph_id) return;
 
-        if (data.status == "COMPLETED") {
-          incrementRuns();
-        }
-
         agentRunsQuery.upsertAgentRun(data);
         if (data.id === selectedView.id) {
           // Update currently viewed run
@@ -300,7 +293,7 @@ export function OldAgentLibraryView() {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent?.graph_id, selectedView.id, incrementRuns]);
+  }, [api, agent?.graph_id, selectedView.id]);
 
   // Pre-load selectedRun based on selectedView
   useEffect(() => {

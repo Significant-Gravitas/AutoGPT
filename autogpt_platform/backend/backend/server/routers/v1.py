@@ -54,6 +54,7 @@ from backend.data.onboarding import (
     UserOnboardingUpdate,
     OnboardingStep,
     complete_onboarding_step,
+    increment_runs,
     get_recommended_agents,
     get_user_onboarding,
     onboarding_enabled,
@@ -925,6 +926,7 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
+        await increment_runs(user_id)
         return result
     except GraphValidationError as e:
         # Record failed graph execution

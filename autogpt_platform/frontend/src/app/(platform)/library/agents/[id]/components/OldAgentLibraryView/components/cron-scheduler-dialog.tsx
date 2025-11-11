@@ -49,7 +49,6 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
   const [scheduleName, setScheduleName] = useState<string>(
     props.mode === "with-name" ? props.defaultScheduleName || "" : "",
   );
-  const { completeStep } = useOnboarding();
 
   // Get user's timezone
   const { data: userTimezone } = useGetV1GetUserTimezone({

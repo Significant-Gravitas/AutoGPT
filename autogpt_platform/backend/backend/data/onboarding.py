@@ -1,5 +1,7 @@
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
+from zoneinfo import ZoneInfo
 
 import prisma
 import pydantic
@@ -14,10 +16,12 @@ from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
-from backend.server.model import OnboardingNotificationPayload
+from backend.data.user import get_user_by_id
+from backend.server.model import NotificationPayload, OnboardingNotificationPayload
 from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.json import SafeJson
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 # Mapping from user reason id to categories to search for when choosing agent to show
 REASON_MAPPING: dict[str, list[str]] = {
@@ -44,10 +48,6 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.MARKETPLACE_RUN_AGENT,
     OnboardingStep.BUILDER_SAVE_AGENT,
     OnboardingStep.RE_RUN_AGENT,
-    OnboardingStep.RUN_AGENTS,
-    OnboardingStep.RUN_3_DAYS,
-    OnboardingStep.RUN_14_DAYS,
-    OnboardingStep.RUN_AGENTS_100,
     OnboardingStep.BUILDER_OPEN,
     OnboardingStep.BUILDER_RUN_AGENT,
 ]
@@ -191,13 +191,15 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
         await _send_onboarding_notification(user_id, step)
 
 
-async def _send_onboarding_notification(user_id: str, step: OnboardingStep):
+async def _send_onboarding_notification(
+    user_id: str, step: OnboardingStep, event: str = "step_completed"
+):
     """
-    Sends an onboarding notification to the user for the specified step.
+    Sends an onboarding notification to the user.
     """
     payload = OnboardingNotificationPayload(
         type="onboarding",
-        event="step_completed",
+        event=event,
         step=step.value,
     )
     await AsyncRedisNotificationEventBus().publish(
@@ -228,7 +230,7 @@ def clean_and_split(text: str) -> list[str]:
     return words
 
 
-def calculate_points(
+def _calculate_points(
     agent, categories: list[str], custom: list[str], integrations: list[str]
 ) -> int:
     """
@@ -286,6 +288,84 @@ def get_credentials_blocks() -> dict[str, str]:
 CREDENTIALS_FIELDS: dict[str, str] = get_credentials_blocks()
 
 
+def _normalize_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _calculate_consecutive_run_days(
+    last_run_at: datetime | None, current_consecutive_days: int, user_timezone: str
+) -> tuple[datetime, int]:
+    tz = ZoneInfo(user_timezone)
+    local_now = datetime.now(tz)
+    normalized_last_run = _normalize_datetime(last_run_at)
+
+    if normalized_last_run is None:
+        return local_now.astimezone(timezone.utc), 1
+
+    last_run_local = normalized_last_run.astimezone(tz)
+    last_run_date = last_run_local.date()
+    today = local_now.date()
+
+    if last_run_date == today:
+        return local_now.astimezone(timezone.utc), current_consecutive_days
+
+    if last_run_date == today - timedelta(days=1):
+        return local_now.astimezone(timezone.utc), current_consecutive_days + 1
+
+    return local_now.astimezone(timezone.utc), 1
+
+
+def _get_run_milestone_steps(
+    new_run_count: int, consecutive_days: int
+) -> list[OnboardingStep]:
+    milestones: list[OnboardingStep] = []
+    if new_run_count >= 10:
+        milestones.append(OnboardingStep.RUN_AGENTS)
+    if new_run_count >= 100:
+        milestones.append(OnboardingStep.RUN_AGENTS_100)
+    if consecutive_days >= 3:
+        milestones.append(OnboardingStep.RUN_3_DAYS)
+    if consecutive_days >= 14:
+        milestones.append(OnboardingStep.RUN_14_DAYS)
+    return milestones
+
+
+async def _get_user_timezone(user_id: str) -> str:
+    user = await get_user_by_id(user_id)
+    return get_user_timezone_or_utc(user.timezone if user else None)
+
+
+async def increment_runs(user_id: str):
+    """
+    Increment a user's run counters and trigger any onboarding milestones.
+    """
+    user_timezone = await _get_user_timezone(user_id)
+    onboarding = await get_user_onboarding(user_id)
+    new_run_count = onboarding.agentRuns + 1
+    last_run_at, consecutive_run_days = _calculate_consecutive_run_days(
+        onboarding.lastRunAt, onboarding.consecutiveRunDays, user_timezone
+    )
+
+    await UserOnboarding.prisma().update(
+        where={"userId": user_id},
+        data={
+            "agentRuns": new_run_count,
+            "lastRunAt": last_run_at,
+            "consecutiveRunDays": consecutive_run_days,
+        },
+    )
+
+    milestones = _get_run_milestone_steps(new_run_count, consecutive_run_days)
+    new_steps = [step for step in milestones if step not in onboarding.completedSteps]
+
+    for step in new_steps:
+        await complete_onboarding_step(user_id, step)
+
+
 async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     user_onboarding = await get_user_onboarding(user_id)
     categories = REASON_MAPPING.get(user_onboarding.usageReason or "", [])
@@ -340,7 +420,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     # Calculate points for the first X agents and choose the top 2
     agent_points = []
     for agent in storeAgents[:POINTS_AGENT_COUNT]:
-        points = calculate_points(
+        points = _calculate_points(
             agent, categories, custom, user_onboarding.integrations
         )
         agent_points.append((agent, points))

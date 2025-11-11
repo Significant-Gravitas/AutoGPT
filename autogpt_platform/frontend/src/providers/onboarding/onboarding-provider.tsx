@@ -29,16 +29,13 @@ import {
   useState,
 } from "react";
 import {
-  calculateConsecutiveDays,
   updateOnboardingState,
-  getRunMilestoneSteps,
   fromBackendUserOnboarding,
   shouldRedirectFromOnboarding,
   LocalOnboardingStateUpdate,
 } from "./helpers";
 import { resolveResponse } from "@/app/api/helpers";
 import { getV1IsOnboardingEnabled, getV1OnboardingState, patchV1UpdateOnboardingState, postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import { UserOnboardingUpdate } from "@/app/api/__generated__/models/userOnboardingUpdate";
 import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 
 type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
@@ -50,7 +47,6 @@ const OnboardingContext = createContext<
       step: number;
       setStep: (step: number) => void;
       completeStep: (step: FrontendOnboardingStep) => void;
-      incrementRuns: () => void;
     }
   | undefined
 >(undefined);
@@ -181,6 +177,10 @@ export default function OnboardingProvider({
         return;
       }
 
+      if (notification.step === "RUN_AGENTS") {
+        setNpsDialogOpen(true);
+      }
+
       fetchOnboarding().catch((error) => {
         console.error("Failed to refresh onboarding after notification:", error);
       });
@@ -260,34 +260,6 @@ export default function OnboardingProvider({
     [state?.completedSteps, fetchOnboarding, toast],
   );
 
-  const incrementRuns = useCallback(() => {
-    if (!state?.completedSteps) return;
-
-    const newRunCount = state.agentRuns + 1;
-    const consecutiveData = calculateConsecutiveDays(
-      state.lastRunAt,
-      state.consecutiveRunDays,
-    );
-
-    const milestoneSteps = getRunMilestoneSteps(
-      newRunCount,
-      consecutiveData.consecutiveRunDays,
-    );
-
-    // Show NPS dialog at 10 runs
-    if (newRunCount === 10) {
-      setNpsDialogOpen(true);
-    }
-
-    // updateState({
-    //   agentRuns: newRunCount,
-    //   completedSteps: Array.from(
-    //     new Set([...state.completedSteps, ...milestoneSteps]),
-    //   ),
-    //   ...consecutiveData,
-    // });
-  }, [state, updateState]);
-
   return (
     <OnboardingContext.Provider
       value={{
@@ -296,7 +268,6 @@ export default function OnboardingProvider({
         step,
         setStep,
         completeStep,
-        incrementRuns
       }}
     >
       <Dialog onOpenChange={setNpsDialogOpen} open={npsDialogOpen}>

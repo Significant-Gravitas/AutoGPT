@@ -956,7 +956,7 @@ export interface UserOnboarding {
 
 export interface OnboardingNotificationPayload {
   type: "onboarding";
-  event: string;
+  event: "step_completed";
   step: OnboardingStep;
 }
 

@@ -80,12 +80,7 @@ export function useOnboardingRunStep() {
 
     setShowInput(true);
     onboarding.setStep(6);
-    onboarding.updateState({
-      completedSteps: [
-        ...(onboarding.state.completedSteps || []),
-        "AGENT_NEW_RUN",
-      ],
-    });
+    onboarding.completeStep("AGENT_NEW_RUN");
   }
 
   function handleSetAgentInput(key: string, value: string) {
@@ -125,10 +120,7 @@ export function useOnboardingRunStep() {
         inputCredentials,
       );
 
-      onboarding.updateState({
-        onboardingAgentExecutionId: runID,
-        agentRuns: (onboarding.state.agentRuns || 0) + 1,
-      });
+      onboarding.updateState({ onboardingAgentExecutionId: runID });
 
       router.push("/onboarding/6-congrats");
     } catch (error) {

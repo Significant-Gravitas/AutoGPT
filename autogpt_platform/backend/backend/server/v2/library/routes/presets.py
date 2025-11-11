@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Optional
 
+from backend.data.onboarding import increment_runs
+
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 
@@ -400,6 +402,8 @@ async def execute_preset(
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
+
+    await increment_runs(user_id)
 
     return await add_graph_execution(
         user_id=user_id,

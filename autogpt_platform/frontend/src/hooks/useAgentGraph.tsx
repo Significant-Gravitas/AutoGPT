@@ -65,7 +65,7 @@ export default function useAgentGraph(
   );
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
-  const { state, completeStep, incrementRuns } = useOnboarding();
+  const { state, completeStep } = useOnboarding();
   const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
 
   // Filter blocks based on beta flags
@@ -577,14 +577,13 @@ export default function useAgentGraph(
             setIsRunning(false);
             setIsStopping(false);
             setActiveExecutionID(null);
-            incrementRuns();
           }
         },
       );
     };
 
     fetchExecutions();
-  }, [flowID, flowExecutionID, incrementRuns]);
+  }, [flowID, flowExecutionID]);
 
   const prepareNodeInputData = useCallback(
     (node: CustomNode) => {
