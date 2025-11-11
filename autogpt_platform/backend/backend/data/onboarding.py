@@ -42,7 +42,6 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.AGENT_NEW_RUN,
     OnboardingStep.AGENT_INPUT,
     OnboardingStep.CONGRATS,
-    OnboardingStep.GET_RESULTS,
     OnboardingStep.MARKETPLACE_VISIT,
     OnboardingStep.MARKETPLACE_ADD_AGENT,
     OnboardingStep.MARKETPLACE_RUN_AGENT,
@@ -364,6 +363,15 @@ async def increment_runs(user_id: str):
 
     for step in new_steps:
         await complete_onboarding_step(user_id, step)
+
+
+async def complete_get_results_if_applicable(user_id: str, graph_exec_id: str) -> None:
+    onboarding = await get_user_onboarding(user_id)
+    if (
+        onboarding.onboardingAgentExecutionId == graph_exec_id
+        and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
+    ):
+        await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
 
 async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:

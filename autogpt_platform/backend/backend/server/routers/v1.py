@@ -54,6 +54,7 @@ from backend.data.onboarding import (
     UserOnboardingUpdate,
     OnboardingStep,
     complete_onboarding_step,
+    complete_get_results_if_applicable,
     increment_runs,
     get_recommended_agents,
     get_user_onboarding,
@@ -1057,6 +1058,16 @@ async def get_graph_execution(
     if not result or result.graph_id != graph_id:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
+        )
+
+    try:
+        await complete_get_results_if_applicable(user_id, graph_exec_id)
+    except Exception:
+        logger.warning(
+            "Failed to auto-complete GET_RESULTS for user %s exec %s",
+            user_id,
+            graph_exec_id,
+            exc_info=True,
         )
 
     return result

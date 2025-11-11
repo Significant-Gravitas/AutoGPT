@@ -86,7 +86,7 @@ export function OldAgentLibraryView() {
     useState<LibraryAgentPresetID | null>(null);
   const {
     state: onboardingState,
-    completeStep: completeOnboardingState,
+    completeStep: completeOnboardingStep,
   } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
   const [creatingPresetFromExecutionID, setCreatingPresetFromExecutionID] =
@@ -134,20 +134,6 @@ export function OldAgentLibraryView() {
     },
     [api, graphVersions, loadingGraphVersions],
   );
-
-  // Reward user for viewing results of their onboarding agent
-  useEffect(() => {
-    if (
-      !onboardingState ||
-      !selectedRun ||
-      onboardingState.completedSteps.includes("GET_RESULTS")
-    )
-      return;
-
-    if (selectedRun.id === onboardingState.onboardingAgentExecutionId) {
-      completeOnboardingState("GET_RESULTS");
-    }
-  }, [selectedRun, onboardingState, completeOnboardingState]);
 
   const lastRefresh = useRef<number>(0);
   const refreshPageData = useCallback(() => {
