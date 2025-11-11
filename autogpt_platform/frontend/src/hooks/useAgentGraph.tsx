@@ -17,7 +17,6 @@ import {
   LinkCreatable,
   NodeCreatable,
   NodeExecutionResult,
-  SpecialBlockID,
   Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";

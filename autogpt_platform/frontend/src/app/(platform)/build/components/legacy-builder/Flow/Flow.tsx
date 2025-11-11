@@ -39,7 +39,6 @@ import { Key, storage } from "@/services/storage/local-storage";
 import {
   getTypeColor,
   findNewlyAddedBlockCoordinates,
-  beautifyString,
 } from "@/lib/utils";
 import { history } from "../history";
 import { CustomEdge } from "../CustomEdge/CustomEdge";
