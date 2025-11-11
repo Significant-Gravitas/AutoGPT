@@ -69,7 +69,8 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   addNode: (node) => {
     set((state) => ({
       nodes: [...state.nodes, node],
-    })),
+    }));
+  },
   addBlock: (block: BlockInfo, position?: XYPosition) => {
     const customNodeData = convertBlockInfoIntoCustomNodeData(block);
     get().incrementNodeCounter();
