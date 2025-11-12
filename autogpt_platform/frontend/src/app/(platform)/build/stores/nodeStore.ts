@@ -37,7 +37,7 @@ type NodeStore = {
   ) => void;
   getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
 
-  getNodeBlockUIType: (nodeId: string) => BlockUIType | undefined;
+  getNodeBlockUIType: (nodeId: string) => BlockUIType;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -168,6 +168,9 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return get().nodes.find((n) => n.id === nodeId)?.data?.nodeExecutionResult;
   },
   getNodeBlockUIType: (nodeId: string) => {
-    return get().nodes.find((n) => n.id === nodeId)?.data?.uiType;
+    return (
+      get().nodes.find((n) => n.id === nodeId)?.data?.uiType ??
+      BlockUIType.STANDARD
+    );
   },
 }));

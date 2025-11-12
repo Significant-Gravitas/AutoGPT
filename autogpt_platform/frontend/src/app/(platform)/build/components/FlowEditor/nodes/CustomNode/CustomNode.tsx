@@ -2,15 +2,21 @@ import React from "react";
 import { Node as XYNode, NodeProps } from "@xyflow/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { BlockUIType } from "../../../types";
-import { StickyNoteBlock } from "./StickyNoteBlock";
+import { StickyNoteBlock } from "./components/StickyNoteBlock";
 import { BlockInfoCategoriesItem } from "@/app/api/__generated__/models/blockInfoCategoriesItem";
-import { StandardNodeBlock } from "./StandardNodeBlock";
 import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
-import { OutputBlock } from "./OutputBlock";
-import { InputBlock } from "./InputBlock";
-import { WebhookBlock } from "./WebhookBlock";
+import { NodeContainer } from "./components/NodeContainer";
+import { NodeHeader } from "./components/NodeHeader";
+import { FormCreator } from "../FormCreator";
+import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
+import { OutputHandler } from "../OutputHandler";
+import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
+import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
+import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
+import { cn } from "@/lib/utils";
+import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -24,7 +30,6 @@ export type CustomNodeData = {
   block_id: string;
   status?: AgentExecutionStatus;
   nodeExecutionResult?: NodeExecutionResult;
-  // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
   categories: BlockInfoCategoriesItem[];
 };
@@ -33,39 +38,57 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
+    // TODO : Need to add Ayrshare block here
+
     if (data.uiType === BlockUIType.NOTE) {
-      return <StickyNoteBlock selected={selected} data={data} id={nodeId} />;
-    }
-
-    if (data.uiType === BlockUIType.STANDARD) {
       return (
-        <StandardNodeBlock data={data} selected={selected} nodeId={nodeId} />
+        <StickyNoteBlock data={data} selected={selected} nodeId={nodeId} />
       );
     }
 
-    if (data.uiType === BlockUIType.OUTPUT) {
-      return <OutputBlock data={data} selected={selected} nodeId={nodeId} />;
-    }
+    const showHandles =
+      data.uiType !== BlockUIType.INPUT &&
+      data.uiType !== BlockUIType.WEBHOOK &&
+      data.uiType !== BlockUIType.WEBHOOK_MANUAL;
 
-    if (
-      [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(data.uiType)
-    ) {
-      return <WebhookBlock data={data} selected={selected} nodeId={nodeId} />;
-    }
+    const isWebhook = [
+      BlockUIType.WEBHOOK,
+      BlockUIType.WEBHOOK_MANUAL,
+    ].includes(data.uiType);
 
-    if (data.uiType === BlockUIType.INPUT) {
-      return (
-        <InputBlock
-          data={data}
-          selected={selected}
-          nodeId={nodeId}
-          showHandles={false}
-        />
-      );
-    }
+    const inputSchema =
+      data.uiType === BlockUIType.AGENT
+        ? (data.hardcodedValues.input_schema ?? {})
+        : data.inputSchema;
+
+    const outputSchema =
+      data.uiType === BlockUIType.AGENT
+        ? (data.hardcodedValues.output_schema ?? {})
+        : data.outputSchema;
 
     return (
-      <StandardNodeBlock data={data} selected={selected} nodeId={nodeId} />
+      <NodeContainer selected={selected} nodeId={nodeId}>
+        <div className="rounded-xlarge bg-white">
+          <NodeHeader data={data} nodeId={nodeId} />
+          {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
+          <FormCreator
+            jsonSchema={preprocessInputSchema(inputSchema)}
+            nodeId={nodeId}
+            uiType={data.uiType}
+            className={cn(
+              "bg-white pr-6",
+              isWebhook && "pointer-events-none opacity-50",
+            )}
+            showHandles={showHandles}
+          />
+          <NodeAdvancedToggle nodeId={nodeId} />
+          {data.uiType != BlockUIType.OUTPUT && (
+            <OutputHandler outputSchema={outputSchema} nodeId={nodeId} />
+          )}
+          <NodeDataRenderer nodeId={nodeId} />
+        </div>
+        <NodeExecutionBadge nodeId={nodeId} />
+      </NodeContainer>
     );
   },
 );

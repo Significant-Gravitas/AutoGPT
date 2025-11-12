@@ -112,7 +112,9 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
                 "line-clamp-1",
                 isCredential && !shouldShowHandle && "ml-3",
                 size == "large" && "ml-0",
-                uiType === BlockUIType.OUTPUT && "ml-3",
+                uiType === BlockUIType.OUTPUT &&
+                  fieldId === "root_name" &&
+                  "ml-3",
                 uiType === BlockUIType.INPUT && "ml-3",
                 uiType === BlockUIType.WEBHOOK && "ml-3",
                 uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
