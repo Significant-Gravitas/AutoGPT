@@ -36,10 +36,7 @@ import {
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
 import { Key, storage } from "@/services/storage/local-storage";
-import {
-  getTypeColor,
-  findNewlyAddedBlockCoordinates,
-} from "@/lib/utils";
+import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
 import { history } from "../history";
 import { CustomEdge } from "../CustomEdge/CustomEdge";
 import ConnectionLine from "../ConnectionLine";
@@ -148,6 +145,9 @@ const FlowEditor: React.FC<{
     flowExecutionID,
     visualizeBeads !== "no",
   );
+  const [immediateNodePositions, setImmediateNodePositions] = useState<
+    Record<string, { x: number; y: number }>
+  >(Object.fromEntries(nodes.map((node) => [node.id, node.position])));
 
   const router = useRouter();
   const pathname = usePathname();
@@ -278,6 +278,28 @@ const FlowEditor: React.FC<{
 
   const onNodesChange = useCallback(
     (nodeChanges: NodeChange<CustomNode>[]) => {
+      // Intercept position changes to update immediate positions & prevent excessive node re-renders
+      const positionChanges = nodeChanges.filter(
+        (change) => change.type === "position",
+      );
+      if (positionChanges.length > 0) {
+        setImmediateNodePositions((prevPositions) => {
+          const newPositions = { ...prevPositions };
+          nodeChanges.forEach((change) => {
+            if (change.type === "position" && change.position) {
+              newPositions[change.id] = change.position;
+            }
+          });
+          return newPositions;
+        });
+
+        // Don't further process ongoing position changes
+        nodeChanges = nodeChanges.filter(
+          (change) => change.type !== "position" || change.dragging !== true,
+        );
+        if (nodeChanges.length === 0) return;
+      }
+
       // Persist the changes
       setNodes((prev) => applyNodeChanges(nodeChanges, prev));
 
@@ -828,11 +850,20 @@ const FlowEditor: React.FC<{
 
   return (
     <BuilderContext.Provider
-      value={{ nodes, libraryAgent, visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
+      value={{
+        nodes,
+        libraryAgent,
+        visualizeBeads,
+        setIsAnyModalOpen,
+        getNextNodeId,
+      }}
     >
       <div className={className}>
         <ReactFlow
-          nodes={nodes}
+          nodes={nodes.map((node) => ({
+            ...node,
+            position: immediateNodePositions[node.id] || node.position,
+          }))}
           edges={edges}
           nodeTypes={{ custom: CustomNode }}
           edgeTypes={{ custom: CustomEdge }}
