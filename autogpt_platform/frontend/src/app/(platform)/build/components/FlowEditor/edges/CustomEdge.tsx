@@ -8,6 +8,7 @@ import {
 
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { XIcon } from "@phosphor-icons/react";
+import { memo } from "react";
 
 const CustomEdge = ({
   id,
@@ -56,4 +57,4 @@ const CustomEdge = ({
   );
 };
 
-export default CustomEdge;
+export default memo(CustomEdge);

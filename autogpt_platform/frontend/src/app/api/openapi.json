@@ -3886,6 +3886,48 @@
         }
       }
     },
+    "/api/executions/admin/execution_analytics": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Generate Execution Analytics",
+        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
+        "operationId": "postV2Generate execution analytics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionAnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
@@ -4795,6 +4837,189 @@
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
       }
     },
+    "/api/chat/sessions": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Create Session",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "operationId": "postV2CreateSession",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/sessions/{session_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Session",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.",
+        "operationId": "getV2GetSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Chat",
+        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "getV2StreamChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "message",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000,
+              "title": "Message"
+            }
+          },
+          {
+            "name": "is_user_message",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Is User Message"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/assign-user": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Session Assign User",
+        "description": "Assign an authenticated user to a chat session.\n\nUsed (typically post-login) to claim an existing anonymous session as the current authenticated user.\n\nArgs:\n    session_id: The identifier for the (previously anonymous) session.\n    user_id: The authenticated user's ID to associate with the session.\n\nReturns:\n    dict: Status of the assignment.",
+        "operationId": "patchV2SessionAssignUser",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Sessionassignuser"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/health": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Health Check",
+        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation, assignment, and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
+        "operationId": "getV2HealthCheck",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Healthcheck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
@@ -5371,6 +5596,20 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateSessionResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "user_id"],
+        "title": "CreateSessionResponse",
+        "description": "Response model containing information on a newly created chat session."
+      },
       "Creator": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -5557,6 +5796,123 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
+      },
+      "ExecutionAnalyticsRequest": {
+        "properties": {
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Graph ID to analyze"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version",
+            "description": "Optional graph version"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id",
+            "description": "Optional user ID filter"
+          },
+          "created_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created After",
+            "description": "Optional created date lower bound"
+          },
+          "model_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model Name",
+            "description": "Model to use for generation",
+            "default": "gpt-4o-mini"
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "description": "Batch size for concurrent processing",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": ["graph_id"],
+        "title": "ExecutionAnalyticsRequest"
+      },
+      "ExecutionAnalyticsResponse": {
+        "properties": {
+          "total_executions": {
+            "type": "integer",
+            "title": "Total Executions"
+          },
+          "processed_executions": {
+            "type": "integer",
+            "title": "Processed Executions"
+          },
+          "successful_analytics": {
+            "type": "integer",
+            "title": "Successful Analytics"
+          },
+          "failed_analytics": {
+            "type": "integer",
+            "title": "Failed Analytics"
+          },
+          "skipped_executions": {
+            "type": "integer",
+            "title": "Skipped Executions"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionAnalyticsResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_executions",
+          "processed_executions",
+          "successful_analytics",
+          "failed_analytics",
+          "skipped_executions",
+          "results"
+        ],
+        "title": "ExecutionAnalyticsResponse"
+      },
+      "ExecutionAnalyticsResult": {
+        "properties": {
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "version_id": { "type": "integer", "title": "Version Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "exec_id": { "type": "string", "title": "Exec Id" },
+          "summary_text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary Text"
+          },
+          "score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Score"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "error_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id",
+          "version_id",
+          "user_id",
+          "exec_id",
+          "summary_text",
+          "score",
+          "status"
+        ],
+        "title": "ExecutionAnalyticsResult"
       },
       "Graph": {
         "properties": {
@@ -7500,6 +7856,26 @@
         "required": ["items", "total_items", "page", "more_pages"],
         "title": "SearchResponse"
       },
+      "SessionDetailResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "updated_at": { "type": "string", "title": "Updated At" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "messages": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "updated_at", "user_id", "messages"],
+        "title": "SessionDetailResponse",
+        "description": "Response model providing complete details for a chat session, including messages."
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -7612,6 +7988,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Activity Status",
             "description": "AI-generated summary of what the agent did"
+          },
+          "correctness_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Correctness Score",
+            "description": "AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose"
           }
         },
         "additionalProperties": true,

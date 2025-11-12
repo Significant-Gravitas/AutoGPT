@@ -37,6 +37,27 @@ export default defineConfig({
     /* Helps debugging failures */
     trace: "retain-on-failure",
     video: "retain-on-failure",
+
+    /* Auto-accept cookies in all tests to prevent banner interference */
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: "http://localhost:3000",
+          localStorage: [
+            {
+              name: "autogpt_cookie_consent",
+              value: JSON.stringify({
+                hasConsented: true,
+                timestamp: Date.now(),
+                analytics: true,
+                monitoring: true,
+              }),
+            },
+          ],
+        },
+      ],
+    },
   },
   /* Maximum time one test can run for */
   timeout: 25000,
