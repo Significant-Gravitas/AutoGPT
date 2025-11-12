@@ -325,6 +325,7 @@ async def test_output_yielding_with_dynamic_fields():
                                 "values___email": {"type": "string"},
                             },
                         },
+                        "_sink_node_id": "test-sink-node-id",
                     },
                 }
             ]
@@ -351,16 +352,16 @@ async def test_output_yielding_with_dynamic_fields():
             ):
                 outputs[output_name] = output_value
 
-            # Verify the outputs use sanitized field names (matching frontend normalizeToolName)
-            assert "tools_^_createdictionaryblock_~_values___name" in outputs
-            assert outputs["tools_^_createdictionaryblock_~_values___name"] == "Alice"
+            # Verify the outputs use sink node ID in output keys
+            assert "tools_^_test-sink-node-id_~_values___name" in outputs
+            assert outputs["tools_^_test-sink-node-id_~_values___name"] == "Alice"
 
-            assert "tools_^_createdictionaryblock_~_values___age" in outputs
-            assert outputs["tools_^_createdictionaryblock_~_values___age"] == 30
+            assert "tools_^_test-sink-node-id_~_values___age" in outputs
+            assert outputs["tools_^_test-sink-node-id_~_values___age"] == 30
 
-            assert "tools_^_createdictionaryblock_~_values___email" in outputs
+            assert "tools_^_test-sink-node-id_~_values___email" in outputs
             assert (
-                outputs["tools_^_createdictionaryblock_~_values___email"]
+                outputs["tools_^_test-sink-node-id_~_values___email"]
                 == "alice@example.com"
             )
 
@@ -505,6 +506,7 @@ async def test_validation_errors_dont_pollute_conversation():
                             },
                             "required": ["correct_param"],
                         },
+                        "_sink_node_id": "test-sink-node-id",
                     },
                 }
             ]

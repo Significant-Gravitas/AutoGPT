@@ -293,6 +293,7 @@ async def test_smart_decision_maker_parameter_validation():
                     },
                     "required": ["query", "max_keyword_difficulty"],
                 },
+                "_sink_node_id": "test-sink-node-id",
             },
         }
     ]
@@ -450,13 +451,13 @@ async def test_smart_decision_maker_parameter_validation():
             outputs[output_name] = output_data
 
         # Verify tool outputs were generated correctly
-        assert "tools_^_search_keywords_~_query" in outputs
-        assert outputs["tools_^_search_keywords_~_query"] == "test"
-        assert "tools_^_search_keywords_~_max_keyword_difficulty" in outputs
-        assert outputs["tools_^_search_keywords_~_max_keyword_difficulty"] == 50
+        assert "tools_^_test-sink-node-id_~_query" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_query"] == "test"
+        assert "tools_^_test-sink-node-id_~_max_keyword_difficulty" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_max_keyword_difficulty"] == 50
         # Optional parameter should be None when not provided
-        assert "tools_^_search_keywords_~_optional_param" in outputs
-        assert outputs["tools_^_search_keywords_~_optional_param"] is None
+        assert "tools_^_test-sink-node-id_~_optional_param" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_optional_param"] is None
 
     # Test case 4: Valid tool call with ALL parameters (should succeed)
     mock_tool_call_all_params = MagicMock()
@@ -504,9 +505,9 @@ async def test_smart_decision_maker_parameter_validation():
             outputs[output_name] = output_data
 
         # Verify all tool outputs were generated correctly
-        assert outputs["tools_^_search_keywords_~_query"] == "test"
-        assert outputs["tools_^_search_keywords_~_max_keyword_difficulty"] == 50
-        assert outputs["tools_^_search_keywords_~_optional_param"] == "custom_value"
+        assert outputs["tools_^_test-sink-node-id_~_query"] == "test"
+        assert outputs["tools_^_test-sink-node-id_~_max_keyword_difficulty"] == 50
+        assert outputs["tools_^_test-sink-node-id_~_optional_param"] == "custom_value"
 
 
 @pytest.mark.asyncio
@@ -530,6 +531,7 @@ async def test_smart_decision_maker_raw_response_conversion():
                     "properties": {"param": {"type": "string"}},
                     "required": ["param"],
                 },
+                "_sink_node_id": "test-sink-node-id",
             },
         }
     ]
@@ -617,8 +619,8 @@ async def test_smart_decision_maker_raw_response_conversion():
             outputs[output_name] = output_data
 
         # Verify the tool output was generated successfully
-        assert "tools_^_test_tool_~_param" in outputs
-        assert outputs["tools_^_test_tool_~_param"] == "test_value"
+        assert "tools_^_test-sink-node-id_~_param" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_param"] == "test_value"
 
         # Verify conversation history was properly maintained
         assert "conversations" in outputs
