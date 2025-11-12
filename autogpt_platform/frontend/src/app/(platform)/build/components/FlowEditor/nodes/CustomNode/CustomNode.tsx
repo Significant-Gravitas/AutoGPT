@@ -8,6 +8,8 @@ import { StandardNodeBlock } from "./StandardNodeBlock";
 import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
+import { OutputBlock } from "./OutputBlock";
+import { InputBlock } from "./InputBlock";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -37,6 +39,21 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
     if (data.uiType === BlockUIType.STANDARD) {
       return (
         <StandardNodeBlock data={data} selected={selected} nodeId={nodeId} />
+      );
+    }
+
+    if (data.uiType === BlockUIType.OUTPUT) {
+      return <OutputBlock data={data} selected={selected} nodeId={nodeId} />;
+    }
+
+    if (data.uiType === BlockUIType.INPUT) {
+      return (
+        <InputBlock
+          data={data}
+          selected={selected}
+          nodeId={nodeId}
+          showHandles={false}
+        />
       );
     }
 

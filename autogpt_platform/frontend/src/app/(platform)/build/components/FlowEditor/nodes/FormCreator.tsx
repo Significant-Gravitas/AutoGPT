@@ -10,10 +10,12 @@ export const FormCreator = React.memo(
     jsonSchema,
     nodeId,
     uiType,
+    showHandles = true,
   }: {
     jsonSchema: RJSFSchema;
     nodeId: string;
     uiType: BlockUIType;
+    showHandles?: boolean;
   }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
     const getHardCodedValues = useNodeStore(
@@ -37,7 +39,7 @@ export const FormCreator = React.memo(
         formContext={{
           nodeId: nodeId,
           uiType: uiType,
-          showHandles: true,
+          showHandles: showHandles,
           size: "small",
         }}
       />

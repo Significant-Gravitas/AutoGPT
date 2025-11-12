@@ -201,7 +201,7 @@ export const CustomNode = React.memo(
 
     useEffect(() => {
       isInitialSetup.current = false;
-      if (data.backend_id) return;  // don't auto-modify existing nodes
+      if (data.backend_id) return; // don't auto-modify existing nodes
 
       if (data.uiType === BlockUIType.AGENT) {
         setHardcodedValues({
@@ -822,7 +822,7 @@ export const CustomNode = React.memo(
                 {isTitleHovered && !isEditingTitle && (
                   <button
                     onClick={handleTitleEdit}
-                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100"
+                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100"
                     aria-label="Edit title"
                   >
                     <Pencil1Icon className="h-4 w-4" />
