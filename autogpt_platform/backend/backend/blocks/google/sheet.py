@@ -1,6 +1,7 @@
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from backend.blocks.google.sheets import format_sheet_name, parse_a1_notation
 from backend.blocks.io import (
     Block,
     BlockCategory,
@@ -8,7 +9,6 @@ from backend.blocks.io import (
     BlockSchemaInput,
     SchemaField,
 )
-from backend.blocks.google.sheets import format_sheet_name, parse_a1_notation
 from backend.data.model import GoogleDriveFile, GoogleDrivePickerField
 from backend.sdk import BlockSchemaOutput
 

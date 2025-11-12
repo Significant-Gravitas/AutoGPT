@@ -8,11 +8,11 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.data.block import (
     Block,
@@ -21,7 +21,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.model import SchemaField
+from backend.data.model import GoogleDriveFile, SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.settings import Settings
 
@@ -33,11 +33,77 @@ from ._auth import (
     GoogleCredentialsField,
     GoogleCredentialsInput,
 )
+from ._drive import GoogleDriveAttachmentField, drive_file_to_media_file
 
 settings = Settings()
 
 # No-wrap policy for plain text emails to prevent 78-char hard-wrap
 NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
+
+
+async def _store_drive_attachment(
+    attachment: GoogleDriveFile,
+    *,
+    graph_exec_id: str,
+    user_id: str,
+) -> str:
+    media_uri = await drive_file_to_media_file(attachment)
+    return await store_media_file(
+        graph_exec_id=graph_exec_id,
+        file=media_uri,
+        user_id=user_id,
+        return_content=False,
+    )
+
+
+async def _resolve_attachment(
+    attachment: Any,
+    *,
+    graph_exec_id: str,
+    user_id: str,
+) -> str:
+    if attachment is None:
+        raise ValueError("Attachment is empty.")
+
+    if isinstance(attachment, GoogleDriveFile):
+        return await _store_drive_attachment(
+            attachment, graph_exec_id=graph_exec_id, user_id=user_id
+        )
+
+    if isinstance(attachment, dict):
+        try:
+            drive_file = GoogleDriveFile.model_validate(attachment)
+        except ValidationError as err:
+            raise ValueError("Invalid Google Drive attachment payload.") from err
+        return await _store_drive_attachment(
+            drive_file, graph_exec_id=graph_exec_id, user_id=user_id
+        )
+
+    return await store_media_file(
+        graph_exec_id=graph_exec_id,
+        file=MediaFileType(str(attachment)),
+        user_id=user_id,
+        return_content=False,
+    )
+
+
+async def _resolve_attachments(
+    attachments: Optional[List[Any]],
+    *,
+    graph_exec_id: str,
+    user_id: str,
+) -> list[str]:
+    if not attachments:
+        return []
+
+    resolved: list[str] = []
+    for attachment in attachments:
+        resolved.append(
+            await _resolve_attachment(
+                attachment, graph_exec_id=graph_exec_id, user_id=user_id
+            )
+        )
+    return resolved
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
@@ -114,24 +180,21 @@ async def create_mime_message(
     message.attach(_make_mime_text(input_data.body, content_type))
 
     # Handle attachments if any
-    if input_data.attachments:
-        for attach in input_data.attachments:
-            local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
-                file=attach,
-                return_content=False,
-            )
-            abs_path = get_exec_file_path(graph_exec_id, local_path)
-            part = MIMEBase("application", "octet-stream")
-            with open(abs_path, "rb") as f:
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={Path(abs_path).name}",
-            )
-            message.attach(part)
+    for local_path in await _resolve_attachments(
+        input_data.attachments,
+        graph_exec_id=graph_exec_id,
+        user_id=user_id,
+    ):
+        abs_path = get_exec_file_path(graph_exec_id, local_path)
+        part = MIMEBase("application", "octet-stream")
+        with open(abs_path, "rb") as f:
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f"attachment; filename={Path(abs_path).name}",
+        )
+        message.attach(part)
 
     return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
@@ -542,8 +605,10 @@ class GmailSendBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[MediaFileType] = SchemaField(
-            description="Files to attach", default_factory=list, advanced=True
+        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
+            title="Attachments",
+            description="Files to attach",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -644,8 +709,10 @@ class GmailCreateDraftBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[MediaFileType] = SchemaField(
-            description="Files to attach", default_factory=list, advanced=True
+        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
+            title="Attachments",
+            description="Files to attach",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -1188,13 +1255,11 @@ async def _build_reply_message(
     msg.attach(_make_mime_text(input_data.body, input_data.content_type))
 
     # Handle attachments
-    for attach in input_data.attachments:
-        local_path = await store_media_file(
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
-            file=attach,
-            return_content=False,
-        )
+    for local_path in await _resolve_attachments(
+        input_data.attachments,
+        graph_exec_id=graph_exec_id,
+        user_id=user_id,
+    ):
         abs_path = get_exec_file_path(graph_exec_id, local_path)
         part = MIMEBase("application", "octet-stream")
         with open(abs_path, "rb") as f:
@@ -1247,8 +1312,10 @@ class GmailReplyBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[MediaFileType] = SchemaField(
-            description="Files to attach", default_factory=list, advanced=True
+        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
+            title="Attachments",
+            description="Files to attach",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -1396,8 +1463,10 @@ class GmailDraftReplyBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[MediaFileType] = SchemaField(
-            description="Files to attach", default_factory=list, advanced=True
+        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
+            title="Attachments",
+            description="Files to attach",
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -1585,9 +1654,9 @@ class GmailForwardBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        additionalAttachments: list[MediaFileType] = SchemaField(
-            description="Additional files to attach",
-            default_factory=list,
+        additionalAttachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
+            title="Additional attachments",
+            description="Extra files to include with the forwarded message",
             advanced=True,
         )
 
@@ -1725,13 +1794,11 @@ To: {original_to}
                 msg.attach(part)
 
         # Add any additional attachments
-        for attach in input_data.additionalAttachments:
-            local_path = await store_media_file(
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
-                file=attach,
-                return_content=False,
-            )
+        for local_path in await _resolve_attachments(
+            input_data.additionalAttachments,
+            graph_exec_id=graph_exec_id,
+            user_id=user_id,
+        ):
             abs_path = get_exec_file_path(graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
             with open(abs_path, "rb") as f:

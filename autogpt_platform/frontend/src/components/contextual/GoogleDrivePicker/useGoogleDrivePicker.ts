@@ -69,7 +69,6 @@ export function useGoogleDrivePicker(options: Props) {
   async function openPicker() {
     try {
       await ensureLoaded();
-      console.log(accessTokenRef.current);
       const token = accessTokenRef.current || (await requestAccessToken());
       buildAndShowPicker(token);
     } catch (e) {

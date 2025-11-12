@@ -167,7 +167,10 @@ class BlockSchema(BaseModel):
         if "properties" in schema:
             for field_name, field_schema in schema["properties"].items():
                 # Check if this field has google_drive_picker_config
-                if isinstance(field_schema, dict) and "google_drive_picker_config" in field_schema:
+                if (
+                    isinstance(field_schema, dict)
+                    and "google_drive_picker_config" in field_schema
+                ):
                     # Ensure format is at the top level
                     if "format" not in field_schema:
                         field_schema["format"] = "google-drive-picker"
