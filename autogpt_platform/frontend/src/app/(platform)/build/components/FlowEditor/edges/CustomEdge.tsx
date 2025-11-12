@@ -49,10 +49,6 @@ const CustomEdge = ({
   const beadDown = data?.beadDown ?? 0;
   const beadData = data?.beadData ?? new Map();
 
-  console.log("beadUp", beadUp);
-  console.log("beadDown", beadDown);
-  console.log("beadData", beadData);
-
   return (
     <>
       <BaseEdge
@@ -70,6 +66,7 @@ const CustomEdge = ({
         beadDown={beadDown}
         edgePath={edgePath}
         beadsKey={`beads-${id}-${sourceX}-${sourceY}-${targetX}-${targetY}`}
+        isStatic={isStatic}
       />
       <EdgeLabelRenderer>
         <Button
