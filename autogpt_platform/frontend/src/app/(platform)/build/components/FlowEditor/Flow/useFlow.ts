@@ -34,6 +34,7 @@ export const useFlow = () => {
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
+  );
   const { screenToFlowPosition } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
   const setBlockMenuOpen = useControlPanelStore(
