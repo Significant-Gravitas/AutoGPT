@@ -778,7 +778,12 @@ async def create_new_graph(
     # as the graph already valid and no sub-graphs are returned back.
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id=user_id)
-    return await on_graph_activate(graph, user_id=user_id)
+    activated_graph = await on_graph_activate(graph, user_id=user_id)
+
+    if create_graph.source == "builder":
+        await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
+
+    return activated_graph
 
 
 @v1_router.delete(

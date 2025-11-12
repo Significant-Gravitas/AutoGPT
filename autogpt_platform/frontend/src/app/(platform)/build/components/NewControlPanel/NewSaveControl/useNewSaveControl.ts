@@ -152,7 +152,7 @@ export const useNewSaveControl = ({
         nodes: graphNodes,
         links: graphLinks,
       };
-      await createNewGraph({ data: { graph: data } });
+      await createNewGraph({ data: { graph: data, source: "builder" } });
     }
   };
 

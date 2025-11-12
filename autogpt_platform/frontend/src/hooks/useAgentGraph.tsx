@@ -700,7 +700,7 @@ export default function useAgentGraph(
             ...payload,
             id: savedAgent.id,
           })
-        : await api.createGraph(payload);
+        : await api.createGraph(payload, "builder");
 
       console.debug("Response from the API:", newSavedAgent);
     }
@@ -772,8 +772,6 @@ export default function useAgentGraph(
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
-
-      completeStep("BUILDER_SAVE_AGENT");
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -786,7 +784,7 @@ export default function useAgentGraph(
     } finally {
       setIsSaving(false);
     }
-  }, [_saveAgent, toast, completeStep]);
+  }, [_saveAgent, toast]);
 
   const saveAndRun = useCallback(
     async (
@@ -801,7 +799,6 @@ export default function useAgentGraph(
       let savedAgent: Graph;
       try {
         savedAgent = await _saveAgent();
-        completeStep("BUILDER_SAVE_AGENT");
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -892,7 +889,6 @@ export default function useAgentGraph(
     [
       _saveAgent,
       toast,
-      completeStep,
       api,
       searchParams,
       pathname,

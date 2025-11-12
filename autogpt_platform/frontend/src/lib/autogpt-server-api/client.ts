@@ -227,8 +227,14 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}/versions`);
   }
 
-  createGraph(graph: GraphCreatable): Promise<Graph> {
-    const requestBody = { graph } as GraphCreateRequestBody;
+  createGraph(
+    graph: GraphCreatable,
+    source?: "builder" | "upload",
+  ): Promise<Graph> {
+    const requestBody: GraphCreateRequestBody = { graph };
+    if (source) {
+      requestBody.source = source;
+    }
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -1291,6 +1297,7 @@ declare global {
 
 type GraphCreateRequestBody = {
   graph: GraphCreatable;
+  source?: "builder" | "upload";
 };
 
 type WebsocketMessageTypeMap = {

@@ -62,6 +62,7 @@ export const useLibraryUploadAgentDialog = () => {
     await createGraph({
       data: {
         graph: payload,
+        source: "upload",
       },
     });
   };
