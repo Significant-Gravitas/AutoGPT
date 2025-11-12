@@ -66,7 +66,6 @@ const CustomEdge = ({
         beadDown={beadDown}
         edgePath={edgePath}
         beadsKey={`beads-${id}-${sourceX}-${sourceY}-${targetX}-${targetY}`}
-        isStatic={isStatic}
       />
       <EdgeLabelRenderer>
         <Button

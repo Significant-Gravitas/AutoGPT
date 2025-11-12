@@ -52,19 +52,9 @@ export const getTForDistance = (
 
 export const setTargetPositions = (
   beads: { t: number; targetT: number; startTime: number }[],
-  totalLength: number,
   beadDiameter: number,
-  isStatic: boolean,
   getTForDistanceFunc: (distanceFromEnd: number) => number,
 ) => {
-  if (isStatic) {
-    const spacing = totalLength / (beads.length + 1);
-    return beads.map((bead, index) => ({
-      ...bead,
-      targetT: getTForDistanceFunc(totalLength - spacing * (index + 1)),
-    }));
-  }
-
   return beads.map((bead, index) => ({
     ...bead,
     targetT: getTForDistanceFunc(beadDiameter * (index + 1)),

@@ -31,7 +31,6 @@ export const JSBeads = ({
   beadDown,
   edgePath,
   beadsKey,
-  isStatic = false,
 }: BeadsProps) => {
   const [beads, setBeads] = useState<{
     beads: Bead[];
@@ -56,15 +55,9 @@ export const JSBeads = ({
 
   const setTargetPositionsWrapper = useCallback(
     (beads: Bead[]) => {
-      return setTargetPositions(
-        beads,
-        totalLength,
-        BEAD_DIAMETER,
-        isStatic,
-        getTForDistanceWrapper,
-      );
+      return setTargetPositions(beads, BEAD_DIAMETER, getTForDistanceWrapper);
     },
-    [totalLength, isStatic],
+    [getTForDistanceWrapper],
   );
 
   beadsRef.current = beads;
@@ -153,7 +146,7 @@ export const JSBeads = ({
         animationFrameRef.current = null;
       }
     };
-  }, [beadUp, beadDown, setTargetPositionsWrapper, isStatic]);
+  }, [beadUp, beadDown, setTargetPositionsWrapper]);
 
   return (
     <>
