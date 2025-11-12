@@ -558,7 +558,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     message=str(ex),
                     block_name=self.name,
                     block_id=self.id,
-                )
+                ) from ex
             else:
                 raise ex
 
