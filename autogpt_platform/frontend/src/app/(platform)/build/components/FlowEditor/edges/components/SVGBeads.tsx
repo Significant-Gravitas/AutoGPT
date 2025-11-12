@@ -1,4 +1,4 @@
-// This component uses SVG animation
+// This component uses SVG animation [Will see in future if we can make it work]
 // Problem - it doesn't work with real time updates
 
 import { useEffect, useMemo, useRef, useState } from "react";

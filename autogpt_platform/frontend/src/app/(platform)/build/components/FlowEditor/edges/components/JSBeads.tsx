@@ -1,12 +1,16 @@
-// This component uses JS animation
+// This component uses JS animation [It's replica of legacy builder]
 // Problem - It lags at real time updates, because of state change
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getLengthOfPathInPixels } from "../helpers";
+import {
+  getLengthOfPathInPixels,
+  getPointAtT,
+  getTForDistance,
+  setTargetPositions,
+} from "../helpers";
 
 const BEAD_DIAMETER = 10;
 const ANIMATION_DURATION = 500;
-const DELTA_TIME = 16;
 
 interface Bead {
   t: number;
@@ -37,45 +41,28 @@ export const JSBeads = ({
 
   const beadsRef = useRef(beads);
   const totalLength = getLengthOfPathInPixels(edgePath);
+  const animationFrameRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number>(0);
 
   const pathRef = useRef<SVGPathElement | null>(null);
 
-  const getPointAtT = (t: number) => {
-    if (!pathRef.current) {
-      pathRef.current = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "path",
-      );
-    }
-    pathRef.current.setAttribute("d", edgePath);
-    const length = pathRef.current.getTotalLength();
-    const point = pathRef.current.getPointAtLength(t * length);
-    return { x: point.x, y: point.y };
+  const getPointAtTWrapper = (t: number) => {
+    return getPointAtT(t, edgePath, pathRef);
   };
 
-  const getTForDistance = (distanceFromEnd: number) => {
-    const distance = Math.max(0, totalLength - distanceFromEnd);
-    return Math.max(0, Math.min(1, distance / totalLength));
+  const getTForDistanceWrapper = (distanceFromEnd: number) => {
+    return getTForDistance(distanceFromEnd, totalLength);
   };
 
-  const setTargetPositions = useCallback(
+  const setTargetPositionsWrapper = useCallback(
     (beads: Bead[]) => {
-      const distanceBetween = Math.min(
-        (totalLength - BEAD_DIAMETER) / (beads.length + 1),
+      return setTargetPositions(
+        beads,
+        totalLength,
         BEAD_DIAMETER,
+        isStatic,
+        getTForDistanceWrapper,
       );
-
-      return beads.map((bead, index) => {
-        const distanceFromEnd = BEAD_DIAMETER * 1.35;
-        const targetPosition = distanceBetween * index + distanceFromEnd;
-        const t = getTForDistance(targetPosition);
-
-        return {
-          ...bead,
-          t: isStatic ? t : bead.t,
-          targetT: t,
-        };
-      });
     },
     [totalLength, isStatic],
   );
@@ -96,6 +83,7 @@ export const JSBeads = ({
       return;
     }
 
+    // Adding beads
     if (beadUp > beads.created) {
       setBeads(({ beads, created, destroyed }) => {
         const newBeads = [];
@@ -103,61 +91,74 @@ export const JSBeads = ({
           newBeads.push({ t: 0, targetT: 0, startTime: Date.now() });
         }
 
-        const b = setTargetPositions([...beads, ...newBeads]);
+        const b = setTargetPositionsWrapper([...beads, ...newBeads]);
         return { beads: b, created: beadUp, destroyed };
       });
     }
 
-    const interval = setInterval(
-      ({ current: beads }) => {
-        if (
-          (beadUp === beads.created && beads.created === beads.destroyed) ||
-          beads.beads.every((bead) => bead.t >= bead.targetT)
-        ) {
-          clearInterval(interval);
-          return;
-        }
+    const animate = (currentTime: number) => {
+      const beads = beadsRef.current;
 
-        setBeads(({ beads, created, destroyed }) => {
-          let destroyedCount = 0;
+      if (
+        (beadUp === beads.created && beads.created === beads.destroyed) ||
+        beads.beads.every((bead) => bead.t >= bead.targetT)
+      ) {
+        animationFrameRef.current = null;
+        return;
+      }
 
-          const newBeads = beads
-            .map((bead) => {
-              const progressIncrement = DELTA_TIME / ANIMATION_DURATION;
-              const t = Math.min(
-                bead.t + bead.targetT * progressIncrement,
-                bead.targetT,
-              );
+      const deltaTime = lastFrameTimeRef.current
+        ? currentTime - lastFrameTimeRef.current
+        : 16;
+      lastFrameTimeRef.current = currentTime;
 
-              return { ...bead, t };
-            })
-            .filter((bead, index) => {
-              const removeCount = beadDown - destroyed;
-              if (bead.t >= bead.targetT && index < removeCount) {
-                destroyedCount++;
-                return false;
-              }
-              return true;
-            });
+      setBeads(({ beads, created, destroyed }) => {
+        let destroyedCount = 0;
 
-          return {
-            beads: setTargetPositions(newBeads),
-            created,
-            destroyed: destroyed + destroyedCount,
-          };
-        });
-      },
-      DELTA_TIME,
-      beadsRef,
-    );
+        const newBeads = beads
+          .map((bead) => {
+            const progressIncrement = deltaTime / ANIMATION_DURATION;
+            const t = Math.min(
+              bead.t + bead.targetT * progressIncrement,
+              bead.targetT,
+            );
 
-    return () => clearInterval(interval);
-  }, [beadUp, beadDown, setTargetPositions, isStatic]);
+            return { ...bead, t };
+          })
+          .filter((bead, index) => {
+            const removeCount = beadDown - destroyed;
+            if (bead.t >= bead.targetT && index < removeCount) {
+              destroyedCount++;
+              return false;
+            }
+            return true;
+          });
+
+        return {
+          beads: setTargetPositionsWrapper(newBeads),
+          created,
+          destroyed: destroyed + destroyedCount,
+        };
+      });
+
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    lastFrameTimeRef.current = 0;
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [beadUp, beadDown, setTargetPositionsWrapper, isStatic]);
 
   return (
     <>
       {beads.beads.map((bead, index) => {
-        const pos = getPointAtT(bead.t);
+        const pos = getPointAtTWrapper(bead.t);
         return (
           <circle
             key={`${beadsKey}-${index}`}
