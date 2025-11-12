@@ -1,6 +1,28 @@
 from typing import Mapping
 
 
+class BlockError(Exception):
+    """An error occurred during the running of a block"""
+
+    def __init__(self, message: str, block_name: str, block_id: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.block_name = block_name
+        self.block_id = block_id
+
+    def __str__(self):
+        return f"raised by {self.block_name} with message: {self.message}. block_id: {self.block_id}"
+
+
+class BlockValueError(BlockError): ...
+
+
+class BlockRuntimeError(BlockError): ...
+
+
+class BlockUnknownError(BlockError): ...
+
+
 class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
@@ -106,3 +128,11 @@ class RedisError(Exception):
     """Raised when there is an error interacting with Redis"""
 
     pass
+
+
+if __name__ == "__main__":
+    raise BlockError(
+        message="Something has gone wrong here",
+        block_name="ExaSearchBlock",
+        block_id="0x12F3A",
+    )

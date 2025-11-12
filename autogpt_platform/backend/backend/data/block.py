@@ -29,6 +29,7 @@ from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.cache import cached
+from backend.util.exceptions import BlockRuntimeError, BlockValueError
 from backend.util.settings import Config
 
 from .model import (
@@ -543,8 +544,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
     async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
-            raise ValueError(
-                f"Unable to execute block with invalid input data: {error}"
+            raise BlockValueError(
+                message=f"Unable to execute block with invalid input data: {error}",
+                block_name=self.name,
+                block_id=self.id,
             )
 
         async for output_name, output_data in self.run(
@@ -552,11 +555,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             **kwargs,
         ):
             if output_name == "error":
-                raise RuntimeError(output_data)
+                raise BlockRuntimeError(
+                    message=output_data, block_name=self.name, block_id=self.id
+                )
             if self.block_type == BlockType.STANDARD and (
                 error := self.output_schema.validate_field(output_name, output_data)
             ):
-                raise ValueError(f"Block produced an invalid output data: {error}")
+                raise BlockValueError(
+                    message=f"Block produced an invalid output data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
             yield output_name, output_data
 
     def is_triggered_by_event_type(
