@@ -29,6 +29,7 @@ export const BlocksList: React.FC<BlocksListProps> = ({
       title={block.name}
       description={block.description}
       onClick={() => addBlock(block)}
+      blockData={block}
     />
   ));
 };

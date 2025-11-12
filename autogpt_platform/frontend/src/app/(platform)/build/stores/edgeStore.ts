@@ -16,7 +16,7 @@ type EdgeStore = {
   setConnections: (connections: Connection[]) => void;
   addConnection: (
     conn: Omit<Connection, "edge_id"> & { edge_id?: string },
-  ) => Connection;
+  ) => void;
   removeConnection: (edge_id: string) => void;
   upsertMany: (conns: Connection[]) => void;
 

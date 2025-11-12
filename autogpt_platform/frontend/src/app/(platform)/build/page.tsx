@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { Flow } from "./components/FlowEditor/Flow/Flow";
 import { BuilderViewTabs } from "./components/BuilderViewTabs/BuilderViewTabs";
 import { useBuilderView } from "./components/BuilderViewTabs/useBuilderViewTabs";
+import { ReactFlowProvider } from "@xyflow/react";
 
 function BuilderContent() {
   const query = useSearchParams();
@@ -42,10 +43,22 @@ export default function BuilderPage() {
     return (
       <div className="relative h-full w-full">
         <BuilderViewTabs value={selectedView} onChange={setSelectedView} />
-        {selectedView === "new" ? <Flow /> : <BuilderContent />}
+        {selectedView === "new" ? (
+          <ReactFlowProvider>
+            <Flow />
+          </ReactFlowProvider>
+        ) : (
+          <BuilderContent />
+        )}
       </div>
     );
   }
 
-  return isNewFlowEditorEnabled ? <Flow /> : <BuilderContent />;
+  return isNewFlowEditorEnabled ? (
+    <ReactFlowProvider>
+      <Flow />
+    </ReactFlowProvider>
+  ) : (
+    <BuilderContent />
+  );
 }

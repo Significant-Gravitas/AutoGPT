@@ -18,7 +18,7 @@ export const BlockMenu = () => {
   const { blockMenuOpen, setBlockMenuOpen } = useControlPanelStore();
   return (
     // pinBlocksPopover ? true : open
-    <Popover onOpenChange={setBlockMenuOpen}>
+    <Popover onOpenChange={setBlockMenuOpen} open={blockMenuOpen}>
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <PopoverTrigger className="hover:cursor-pointer">
