@@ -47,7 +47,6 @@ const CustomEdge = ({
   const isStatic = data?.isStatic ?? false;
   const beadUp = data?.beadUp ?? 0;
   const beadDown = data?.beadDown ?? 0;
-  const beadData = data?.beadData ?? new Map();
 
   return (
     <>
