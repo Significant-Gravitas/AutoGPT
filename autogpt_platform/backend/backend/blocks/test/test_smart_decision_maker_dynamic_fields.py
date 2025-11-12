@@ -241,7 +241,7 @@ async def test_create_function_signature():
         ]
 
         # Call the method that builds signatures
-        tool_functions = await block._create_function_signature("test_node_id")
+        tool_functions = await block._create_tool_node_signatures("test_node_id")
 
         # Verify we got 2 tool functions (one for dict, one for list)
         assert len(tool_functions) == 2
