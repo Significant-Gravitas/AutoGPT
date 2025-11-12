@@ -1655,7 +1655,7 @@ class AIListGeneratorBlock(AIBlockBase):
         )
 
     class Output(BlockSchemaOutput):
-        generated_list: List[str] = SchemaField(description="The generated list.")
+        generated_list: list[str] = SchemaField(description="The generated list.")
         list_item: str = SchemaField(
             description="Each individual item in the list.",
         )
@@ -1729,7 +1729,15 @@ class AIListGeneratorBlock(AIBlockBase):
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 
         # Create a proper expected format for the structured response generator
-        expected_format = {"list": "A JSON array containing the generated list items"}
+        expected_format = {
+            "list": "A JSON array containing the generated string values"
+        }
+        if input_data.force_json_output:
+            # Add reasoning field for better performance
+            expected_format = {
+                "reasoning": "... (optional)",
+                **expected_format,
+            }
 
         # Build the prompt
         if input_data.focus:
@@ -1750,7 +1758,7 @@ class AIListGeneratorBlock(AIBlockBase):
             prompt += "\n\nInvent the data to generate the list from."
 
         # Use the structured response generator to handle all the complexity
-        llm_response = await self.llm_call(
+        response_obj = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 sys_prompt=self.get_list_system_prompt(),
                 prompt=prompt,
@@ -1764,9 +1772,6 @@ class AIListGeneratorBlock(AIBlockBase):
             ),
             credentials=credentials,
         )
-
-        # Extract the list from the structured response
-        response_obj = llm_response["response"]
         logger.debug(f"Response object: {response_obj}")
 
         # Extract the list from the response object
@@ -1796,17 +1801,14 @@ class AIListGeneratorBlock(AIBlockBase):
         """Generate the system prompt for list generation."""
         return trim_prompt(
             """
-            |You are a JSON array generator. Your task is to generate a JSON array based on the user's prompt.
+            |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
             |
-            |The 'list' field should contain a JSON array with the generated items.
-            |The array can contain strings, numbers, or nested arrays as appropriate.
+            |The 'list' field should contain a JSON array with the generated string values.
+            |The array can contain ONLY strings.
             |
             |Valid JSON array formats include:
             |• ["string1", "string2", "string3"]
-            |• [1, 2, 3, 4]
-            |• [["nested1", "nested2"], ["nested3", "nested4"]]
-            |• ["mixed", 1, 2.5, ["nested"]]
             |
-            |Ensure you provide a proper JSON array in the 'list' field.
+            |Ensure you provide a proper JSON array with only string values in the 'list' field.
             """
         )
