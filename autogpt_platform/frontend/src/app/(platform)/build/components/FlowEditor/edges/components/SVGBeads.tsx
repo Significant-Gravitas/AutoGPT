@@ -40,7 +40,7 @@ export const SVGBeads = ({
   useEffect(() => {
     const elem = animateRef.current;
     if (elem) {
-      const handleEnd = (e: Event) => {
+      const handleEnd = () => {
         if (beadDown > 0) {
           const beadsToRemove = Array.from(
             { length: beadDown },
