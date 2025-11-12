@@ -66,6 +66,8 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         ? (data.hardcodedValues.output_schema ?? {})
         : data.outputSchema;
 
+    // Currently all blockTypes design are similar - that's why i am using the same component for all of them
+    // If in future - if we need some drastic change in some blockTypes design - we can create separate components for them
     return (
       <NodeContainer selected={selected} nodeId={nodeId}>
         <div className="rounded-xlarge bg-white">
