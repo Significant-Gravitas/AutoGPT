@@ -380,7 +380,7 @@ class TestLLMStatsTracking:
                 llm_call_count=1,
             )
             # Return a structured response with the expected format
-            return {"response": {"list": ["item1", "item2", "item3"]}}
+            return {"list": ["item1", "item2", "item3"]}
 
         block.llm_call = mock_llm_call  # type: ignore
 

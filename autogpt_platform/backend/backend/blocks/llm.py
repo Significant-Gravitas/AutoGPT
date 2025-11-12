@@ -1698,15 +1698,13 @@ class AIListGeneratorBlock(AIBlockBase):
             ],
             test_mock={
                 "llm_call": lambda input_data, credentials: {
-                    "response": {
-                        "list": [
-                            "Zylora Prime",
-                            "Kharon-9",
-                            "Vortexia",
-                            "Oceara",
-                            "Draknos",
-                        ]
-                    }
+                    "list": [
+                        "Zylora Prime",
+                        "Kharon-9",
+                        "Vortexia",
+                        "Oceara",
+                        "Draknos",
+                    ]
                 },
             },
         )
