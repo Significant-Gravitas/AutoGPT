@@ -114,6 +114,8 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
                 size == "large" && "ml-0",
                 uiType === BlockUIType.OUTPUT && "ml-3",
                 uiType === BlockUIType.INPUT && "ml-3",
+                uiType === BlockUIType.WEBHOOK && "ml-3",
+                uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
               )}
             >
               {isCredential && credentialProvider

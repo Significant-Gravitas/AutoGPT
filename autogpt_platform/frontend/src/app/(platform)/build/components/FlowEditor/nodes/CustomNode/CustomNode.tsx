@@ -10,6 +10,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 import { OutputBlock } from "./OutputBlock";
 import { InputBlock } from "./InputBlock";
+import { WebhookBlock } from "./WebhookBlock";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -44,6 +45,12 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     if (data.uiType === BlockUIType.OUTPUT) {
       return <OutputBlock data={data} selected={selected} nodeId={nodeId} />;
+    }
+
+    if (
+      [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(data.uiType)
+    ) {
+      return <WebhookBlock data={data} selected={selected} nodeId={nodeId} />;
     }
 
     if (data.uiType === BlockUIType.INPUT) {

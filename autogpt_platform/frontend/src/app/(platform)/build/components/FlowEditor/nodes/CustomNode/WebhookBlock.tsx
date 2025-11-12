@@ -5,24 +5,51 @@ import { FormCreator } from "../FormCreator";
 import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { OutputHandler } from "../OutputHandler";
 import { NodeCost } from "./components/NodeCost";
 import { NodeBadges } from "./components/NodeBadges";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
 import { nodeStyleBasedOnStatus } from "./helpers";
 import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
 import { NodeContextMenu } from "./components/NodeContextMenu";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { isValidUUID } from "@/app/(platform)/chat/helpers";
+import Link from "next/link";
+import { parseAsString, useQueryStates } from "nuqs";
+import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
-type OutputBlockType = {
+type WebhookBlockType = {
   data: CustomNodeData;
   selected: boolean;
   nodeId: string;
 };
-export const OutputBlock = ({ data, selected, nodeId }: OutputBlockType) => {
+export const WebhookBlock = ({ data, selected, nodeId }: WebhookBlockType) => {
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] || false,
   );
   const setShowAdvanced = useNodeStore((state) => state.setShowAdvanced);
   const status = useNodeStore((state) => state.getNodeStatus(nodeId));
+  const isNodeSaved = isValidUUID(nodeId);
+
+  const [{ flowID }] = useQueryStates({
+    flowID: parseAsString,
+  });
+
+  // for a single agentId, we are fetching everything - need to make it better in the future
+  const { data: libraryAgent } = useGetV2GetLibraryAgentByGraphId(
+    flowID ?? "",
+    {},
+    {
+      query: {
+        select: (x) => {
+          return x.data as LibraryAgent;
+        },
+        enabled: !!flowID,
+      },
+    },
+  );
+
   return (
     <div
       className={cn(
@@ -58,16 +85,44 @@ export const OutputBlock = ({ data, selected, nodeId }: OutputBlockType) => {
             nodeId={nodeId}
           />
         </div>
+
+        <div className="px-4 pt-4">
+          <Alert className="mb-3 rounded-xlarge">
+            <AlertDescription>
+              <Text variant="small-medium">
+                You can set up and manage this trigger in your{" "}
+                <Link
+                  href={
+                    libraryAgent
+                      ? `/library/agents/${libraryAgent.id}`
+                      : "/library"
+                  }
+                  className="underline"
+                >
+                  Agent Library
+                </Link>
+                {!isNodeSaved && " (after saving the graph)"}.
+              </Text>
+            </AlertDescription>
+          </Alert>
+        </div>
+
+        <Text variant="small" className="mb-4 ml-6 !text-purple-700">
+          Below inputs are only for display purposes and cannot be edited.
+        </Text>
+
         {/* Input Handles */}
-        <div className="bg-white pr-6">
+        <div className="pointer-events-none bg-white pr-6 opacity-50">
           <FormCreator
             jsonSchema={preprocessInputSchema(data.inputSchema)}
             nodeId={nodeId}
             uiType={data.uiType}
+            showHandles={false}
           />
         </div>
+
         {/* Advanced Button */}
-        <div className="flex items-center justify-between gap-2 rounded-b-xlarge border-t border-slate-200/50 bg-white px-5 py-3.5">
+        <div className="flex items-center justify-between gap-2 border-t border-slate-200/50 bg-white px-5 py-3.5">
           <Text variant="body" className="font-medium text-slate-700">
             Advanced
           </Text>
@@ -76,6 +131,8 @@ export const OutputBlock = ({ data, selected, nodeId }: OutputBlockType) => {
             checked={showAdvanced}
           />
         </div>
+        {/* Output Handles */}
+        <OutputHandler outputSchema={data.outputSchema} nodeId={nodeId} />
 
         <NodeDataRenderer nodeId={nodeId} />
       </div>
