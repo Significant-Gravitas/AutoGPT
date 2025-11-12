@@ -14,13 +14,20 @@ class BlockError(Exception):
         return f"raised by {self.block_name} with message: {self.message}. block_id: {self.block_id}"
 
 
-class BlockValueError(BlockError): ...
+class BlockInputError(BlockError, ValueError):
+    """The block had incorrect inputs, resulting in an error condition"""
 
 
-class BlockRuntimeError(BlockError): ...
+class BlockOutputError(BlockError, ValueError):
+    """The block had incorrect outputs, resulting in an error condition"""
 
 
-class BlockUnknownError(BlockError): ...
+class BlockExecutionError(BlockError, ValueError):
+    """The block failed to execute at runtime, resulting in a handled error"""
+
+
+class BlockUnknownError(BlockError):
+    """Critical unknown error with block handling"""
 
 
 class MissingConfigError(Exception):
@@ -128,11 +135,3 @@ class RedisError(Exception):
     """Raised when there is an error interacting with Redis"""
 
     pass
-
-
-if __name__ == "__main__":
-    raise BlockError(
-        message="Something has gone wrong here",
-        block_name="ExaSearchBlock",
-        block_id="0x12F3A",
-    )
