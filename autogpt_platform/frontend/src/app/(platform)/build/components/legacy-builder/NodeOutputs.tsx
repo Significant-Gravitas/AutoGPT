@@ -9,7 +9,6 @@ import { beautifyString } from "@/lib/utils";
 import { BuilderContext } from "./Flow/Flow";
 import ExpandableOutputDialog from "./ExpandableOutputDialog";
 
-
 type NodeOutputsProps = {
   title?: string;
   truncateLongData?: boolean;
@@ -36,15 +35,8 @@ export default function NodeOutputs({
     );
   }
 
-  const { nodes } = builderContext;
+  const { getNodeTitle } = builderContext;
 
-  const getNodeTitle = (nodeID: string) => {
-    const node = nodes.find((n) => n.data.backend_id === nodeID);
-    if (node) {
-      return node.data.metadata?.customized_name || node.data.blockType.replace(/Block$/, "");
-    }
-    return null;
-  };
   const getBeautifiedPinName = (pin: string) => {
     if (!pin.startsWith("tools_^_")) {
       return beautifyString(pin);
@@ -52,7 +44,9 @@ export default function NodeOutputs({
     // Special handling for tool pins: replace node ID with node title
     const toolNodeID = pin.slice(8).split("_~_")[0]; // tools_^_{node_id}_~_{field}
     const toolNodeTitle = getNodeTitle(toolNodeID);
-    return toolNodeTitle ? beautifyString(pin.replace(toolNodeID, toolNodeTitle)) : beautifyString(pin);
+    return toolNodeTitle
+      ? beautifyString(pin.replace(toolNodeID, toolNodeTitle))
+      : beautifyString(pin);
   };
 
   const openExpandedView = (pinName: string, pinData: any[]) => {

@@ -70,11 +70,11 @@ import { BuildActionBar } from "../BuildActionBar";
 const MINIMUM_MOVE_BEFORE_LOG = 50;
 
 type BuilderContextType = {
-  nodes: CustomNode[];
   libraryAgent: LibraryAgent | null;
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
   getNextNodeId: () => string;
+  getNodeTitle: (nodeID: string) => string | null;
 };
 
 export type NodeDimension = {
@@ -241,6 +241,13 @@ const FlowEditor: React.FC<{
     const oldPosition = initialPositionRef.current[node.id];
     const newPosition = node.position;
 
+    // Clear immediate position, because on drag end it is no longer needed
+    setImmediateNodePositions((prevPositions) => {
+      const updatedPositions = { ...prevPositions };
+      delete updatedPositions[node.id];
+      return updatedPositions;
+    });
+
     // Calculate the movement distance
     if (!oldPosition || !newPosition) return;
 
@@ -279,16 +286,14 @@ const FlowEditor: React.FC<{
   const onNodesChange = useCallback(
     (nodeChanges: NodeChange<CustomNode>[]) => {
       // Intercept position changes to update immediate positions & prevent excessive node re-renders
-      const positionChanges = nodeChanges.filter(
-        (change) => change.type === "position",
-      );
-      if (positionChanges.length > 0) {
+      const draggingPosChanges = nodeChanges
+        .filter((c) => c.type === "position")
+        .filter((c) => c.dragging === true);
+      if (draggingPosChanges.length > 0) {
         setImmediateNodePositions((prevPositions) => {
           const newPositions = { ...prevPositions };
-          nodeChanges.forEach((change) => {
-            if (change.type === "position" && change.position) {
-              newPositions[change.id] = change.position;
-            }
+          draggingPosChanges.forEach((change) => {
+            if (change.position) newPositions[change.id] = change.position;
           });
           return newPositions;
         });
@@ -697,6 +702,21 @@ const FlowEditor: React.FC<{
     findNodeDimensions();
   }, [nodes, findNodeDimensions]);
 
+  const getNodeTitle = useCallback(
+    (nodeID: string) => {
+      const node = nodes.find((n) => n.data.backend_id === nodeID);
+      if (!node) return null;
+
+      return (
+        node.data.metadata?.customized_name ||
+        (node.data.uiType == BlockUIType.AGENT &&
+          node.data.hardcodedValues.agent_name) ||
+        node.data.blockType.replace(/Block$/, "")
+      );
+    },
+    [nodes],
+  );
+
   const handleCopyPaste = useCopyPaste(getNextNodeId);
 
   const handleKeyDown = useCallback(
@@ -848,22 +868,29 @@ const FlowEditor: React.FC<{
     ],
   );
 
+  const buildContextValue: BuilderContextType = useMemo(
+    () => ({
+      libraryAgent,
+      visualizeBeads,
+      setIsAnyModalOpen,
+      getNextNodeId,
+      getNodeTitle,
+    }),
+    [libraryAgent, visualizeBeads, getNextNodeId, getNodeTitle],
+  );
+
   return (
-    <BuilderContext.Provider
-      value={{
-        nodes,
-        libraryAgent,
-        visualizeBeads,
-        setIsAnyModalOpen,
-        getNextNodeId,
-      }}
-    >
+    <BuilderContext.Provider value={buildContextValue}>
       <div className={className}>
         <ReactFlow
-          nodes={nodes.map((node) => ({
-            ...node,
-            position: immediateNodePositions[node.id] || node.position,
-          }))}
+          nodes={nodes.map((node) =>
+            node.id in immediateNodePositions
+              ? {
+                  ...node,
+                  position: immediateNodePositions[node.id] || node.position,
+                }
+              : node,
+          )}
           edges={edges}
           nodeTypes={{ custom: CustomNode }}
           edgeTypes={{ custom: CustomEdge }}
