@@ -766,6 +766,7 @@ export default function useAgentGraph(
   ]);
 
   const saveAgent = useCallback(async () => {
+    console.log("saveAgent");
     setIsSaving(true);
     try {
       await _saveAgent();
