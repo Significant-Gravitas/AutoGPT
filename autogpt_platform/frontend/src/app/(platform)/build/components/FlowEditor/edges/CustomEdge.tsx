@@ -20,6 +20,7 @@ export type CustomEdgeData = {
 };
 
 export type CustomEdge = XYEdge<CustomEdgeData, "custom">;
+import { memo } from "react";
 
 const CustomEdge = ({
   id,
@@ -87,4 +88,4 @@ const CustomEdge = ({
   );
 };
 
-export default CustomEdge;
+export default memo(CustomEdge);

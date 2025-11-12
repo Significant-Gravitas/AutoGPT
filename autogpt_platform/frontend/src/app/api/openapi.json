@@ -3886,6 +3886,48 @@
         }
       }
     },
+    "/api/executions/admin/execution_analytics": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Generate Execution Analytics",
+        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
+        "operationId": "postV2Generate execution analytics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionAnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
@@ -5754,6 +5796,123 @@
         "type": "object",
         "required": ["url", "relevance_score"],
         "title": "Document"
+      },
+      "ExecutionAnalyticsRequest": {
+        "properties": {
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Graph ID to analyze"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version",
+            "description": "Optional graph version"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id",
+            "description": "Optional user ID filter"
+          },
+          "created_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created After",
+            "description": "Optional created date lower bound"
+          },
+          "model_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model Name",
+            "description": "Model to use for generation",
+            "default": "gpt-4o-mini"
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "description": "Batch size for concurrent processing",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": ["graph_id"],
+        "title": "ExecutionAnalyticsRequest"
+      },
+      "ExecutionAnalyticsResponse": {
+        "properties": {
+          "total_executions": {
+            "type": "integer",
+            "title": "Total Executions"
+          },
+          "processed_executions": {
+            "type": "integer",
+            "title": "Processed Executions"
+          },
+          "successful_analytics": {
+            "type": "integer",
+            "title": "Successful Analytics"
+          },
+          "failed_analytics": {
+            "type": "integer",
+            "title": "Failed Analytics"
+          },
+          "skipped_executions": {
+            "type": "integer",
+            "title": "Skipped Executions"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionAnalyticsResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_executions",
+          "processed_executions",
+          "successful_analytics",
+          "failed_analytics",
+          "skipped_executions",
+          "results"
+        ],
+        "title": "ExecutionAnalyticsResponse"
+      },
+      "ExecutionAnalyticsResult": {
+        "properties": {
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "version_id": { "type": "integer", "title": "Version Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "exec_id": { "type": "string", "title": "Exec Id" },
+          "summary_text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary Text"
+          },
+          "score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Score"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "error_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id",
+          "version_id",
+          "user_id",
+          "exec_id",
+          "summary_text",
+          "score",
+          "status"
+        ],
+        "title": "ExecutionAnalyticsResult"
       },
       "Graph": {
         "properties": {

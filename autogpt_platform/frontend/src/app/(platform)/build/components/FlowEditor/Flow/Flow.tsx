@@ -12,6 +12,7 @@ import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
+import { useCopyPasteKeyboard } from "../../../hooks/useCopyPasteKeyboard";
 
 export const Flow = () => {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
@@ -23,10 +24,12 @@ export const Flow = () => {
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
-  useFlow();
+  const { onDragOver, onDrop } = useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
+
+  useCopyPasteKeyboard();
 
   const { isFlowContentLoading } = useFlow();
   const { isGraphRunning } = useGraphStore();
@@ -43,6 +46,8 @@ export const Flow = () => {
           onEdgesChange={onEdgesChange}
           maxZoom={2}
           minZoom={0.1}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
         >
           <Background />
           <Controls />

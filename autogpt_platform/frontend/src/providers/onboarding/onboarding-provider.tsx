@@ -91,7 +91,7 @@ export default function OnboardingProvider({
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isUserLoading } = useSupabase();
+  const { isLoggedIn } = useSupabase();
 
   useOnboardingTimezoneDetection();
 
@@ -115,7 +115,7 @@ export default function OnboardingProvider({
 
   useEffect(() => {
     // Prevent multiple initializations
-    if (hasInitialized.current || isUserLoading || !user) {
+    if (hasInitialized.current || !isLoggedIn) {
       return;
     }
 
@@ -161,10 +161,12 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, isOnOnboardingRoute, router, user, isUserLoading, pathname]);
+  }, [api, isOnOnboardingRoute, router, isLoggedIn, pathname]);
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
+      if (!isLoggedIn || !isMounted.current) return;
+
       // Update local state immediately
       setState((prev) => {
         if (!prev) {
@@ -175,12 +177,9 @@ export default function OnboardingProvider({
 
       const updatePromise = (async () => {
         try {
-          if (!isMounted.current) return;
           await api.updateUserOnboarding(newState);
         } catch (error) {
-          if (isMounted.current) {
-            console.error("Failed to update user onboarding:", error);
-          }
+          console.error("Failed to update user onboarding:", error);
 
           toast({
             title: "Failed to update user onboarding",
@@ -196,7 +195,7 @@ export default function OnboardingProvider({
         pendingUpdatesRef.current.delete(updatePromise);
       });
     },
-    [api],
+    [api, isLoggedIn, isMounted],
   );
 
   const completeStep = useCallback(
