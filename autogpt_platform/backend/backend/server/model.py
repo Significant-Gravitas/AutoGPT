@@ -35,9 +35,13 @@ class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
     graph_id: str
 
 
+GraphCreationSource = Literal["builder", "upload"]
+GraphExecutionSource = Literal["builder", "library", "onboarding"]
+
+
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
-    source: Literal["builder", "upload"] | None = None
+    source: GraphCreationSource | None = None
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):

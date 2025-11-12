@@ -6228,6 +6228,13 @@
             },
             "type": "object",
             "title": "Credentials Inputs"
+          },
+          "source": {
+            "anyOf": [
+              { "type": "string", "enum": ["builder", "library"] },
+              { "type": "null" }
+            ],
+            "title": "Source"
           }
         },
         "type": "object",
@@ -6382,7 +6389,16 @@
         "title": "CreateAPIKeyResponse"
       },
       "CreateGraph": {
-        "properties": { "graph": { "$ref": "#/components/schemas/Graph" } },
+        "properties": {
+          "graph": { "$ref": "#/components/schemas/Graph" },
+          "source": {
+            "anyOf": [
+              { "type": "string", "enum": ["builder", "upload"] },
+              { "type": "null" }
+            ],
+            "title": "Source"
+          }
+        },
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"

@@ -85,6 +85,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    GraphExecutionSource,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
@@ -909,6 +910,9 @@ async def execute_graph(
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
     ],
+    source: Annotated[
+        GraphExecutionSource | None, Body(default=None, embed=True)
+    ] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> execution_db.GraphExecutionMeta:
@@ -933,6 +937,10 @@ async def execute_graph(
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         await increment_runs(user_id)
+        if source == "library":
+            await complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_RUN_AGENT)
+        elif source == "builder":
+            await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
         # Record failed graph execution

@@ -194,7 +194,13 @@ export function AgentRunDraftView({
       }
       // TODO: on executing preset with changes, ask for confirmation and offer save+run
       const newRun = await api
-        .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
+        .executeGraph(
+          graph.id,
+          graph.version,
+          inputValues,
+          inputCredentials,
+          "library",
+        )
         .catch(toastOnFail("execute agent"));
 
       if (newRun && onRun) onRun(newRun.id);
@@ -204,8 +210,6 @@ export function AgentRunDraftView({
         .then((newRun) => onRun && onRun(newRun.id))
         .catch(toastOnFail("execute agent preset"));
     }
-    // Mark run agent onboarding step as completed
-    completeOnboardingStep("MARKETPLACE_RUN_AGENT");
 
     analytics.sendDatafastEvent("run_agent", {
       name: graph.name,
@@ -257,7 +261,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    completeOnboardingStep,
   ]);
 
   const doUpdatePreset = useCallback(async () => {
@@ -296,7 +299,6 @@ export function AgentRunDraftView({
     onUpdatePreset,
     toast,
     toastOnFail,
-    completeOnboardingStep,
   ]);
 
   const doSetPresetActive = useCallback(
@@ -343,7 +345,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    completeOnboardingStep,
   ]);
 
   const openScheduleDialog = useCallback(() => {

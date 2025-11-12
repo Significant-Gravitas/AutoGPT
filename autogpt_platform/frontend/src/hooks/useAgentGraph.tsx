@@ -27,7 +27,6 @@ import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 
@@ -65,7 +64,6 @@ export default function useAgentGraph(
   );
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
-  const { state, completeStep } = useOnboarding();
   const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
 
   // Filter blocks based on beta flags
@@ -826,6 +824,7 @@ export default function useAgentGraph(
           savedAgent.version,
           inputs,
           credentialsInputs,
+          "builder",
         );
 
         setActiveExecutionID(graphExecution.id);
@@ -836,10 +835,6 @@ export default function useAgentGraph(
         path.set("flowVersion", savedAgent.version.toString());
         path.set("flowExecutionID", graphExecution.id);
         router.push(`${pathname}?${path.toString()}`);
-
-        if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
-          completeStep("BUILDER_RUN_AGENT");
-        }
       } catch (error) {
         // Check if this is a structured validation error from the backend
         if (error instanceof ApiError && error.isGraphValidationError()) {
@@ -893,7 +888,6 @@ export default function useAgentGraph(
       searchParams,
       pathname,
       router,
-      state,
       isSaving,
       isRunning,
       processedUpdates,

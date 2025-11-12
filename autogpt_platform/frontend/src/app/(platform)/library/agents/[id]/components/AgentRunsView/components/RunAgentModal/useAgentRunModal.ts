@@ -284,6 +284,7 @@ export function useAgentRunModal(
         data: {
           inputs: inputValues,
           credentials_inputs: inputCredentials,
+          source: "library",
         },
       });
     }

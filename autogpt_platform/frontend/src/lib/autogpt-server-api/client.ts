@@ -229,7 +229,7 @@ export default class BackendAPI {
 
   createGraph(
     graph: GraphCreatable,
-    source?: "builder" | "upload",
+    source?: GraphCreationSource,
   ): Promise<Graph> {
     const requestBody: GraphCreateRequestBody = { graph };
     if (source) {
@@ -258,11 +258,13 @@ export default class BackendAPI {
     version: number,
     inputs: { [key: string]: any } = {},
     credentials_inputs: { [key: string]: CredentialsMetaInput } = {},
+    source?: GraphExecutionSource,
   ): Promise<GraphExecutionMeta> {
-    return this._request("POST", `/graphs/${id}/execute/${version}`, {
-      inputs,
-      credentials_inputs,
-    });
+    const body: GraphExecuteRequestBody = { inputs, credentials_inputs };
+    if (source) {
+      body.source = source;
+    }
+    return this._request("POST", `/graphs/${id}/execute/${version}`, body);
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {
@@ -1295,9 +1297,18 @@ declare global {
 
 /* *** UTILITY TYPES *** */
 
+type GraphCreationSource = "builder" | "upload";
+type GraphExecutionSource = "builder" | "library" | "onboarding";
+
 type GraphCreateRequestBody = {
   graph: GraphCreatable;
-  source?: "builder" | "upload";
+  source?: GraphCreationSource;
+};
+
+type GraphExecuteRequestBody = {
+  inputs: { [key: string]: any };
+  credentials_inputs: { [key: string]: CredentialsMetaInput };
+  source?: GraphExecutionSource;
 };
 
 type WebsocketMessageTypeMap = {

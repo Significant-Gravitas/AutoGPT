@@ -118,6 +118,7 @@ export function useOnboardingRunStep() {
         libraryAgent.graph_version,
         onboarding.state.agentInput || {},
         inputCredentials,
+        "onboarding",
       );
 
       onboarding.updateState({ onboardingAgentExecutionId: runID });

@@ -85,7 +85,11 @@ export const useRunInputDialog = ({
     executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
-      data: { inputs: inputValues, credentials_inputs: credentialValues },
+      data: {
+        inputs: inputValues,
+        credentials_inputs: credentialValues,
+        source: "builder",
+      },
     });
   };
 
