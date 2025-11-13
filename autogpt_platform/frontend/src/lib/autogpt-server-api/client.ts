@@ -3,10 +3,8 @@ import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Key, storage } from "@/services/storage/local-storage";
-import {
-  IMPERSONATION_HEADER_NAME,
-  IMPERSONATION_STORAGE_KEY,
-} from "@/lib/constants";
+import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
@@ -982,20 +980,9 @@ export default class BackendAPI {
       "Content-Type": "application/json",
     };
 
-    if (environment.isClientSide()) {
-      try {
-        const impersonatedUserId = sessionStorage.getItem(
-          IMPERSONATION_STORAGE_KEY,
-        );
-        if (impersonatedUserId) {
-          headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
-        }
-      } catch (_error) {
-        console.error(
-          "Admin impersonation: Failed to access sessionStorage:",
-          _error,
-        );
-      }
+    const impersonatedUserId = ImpersonationState.get();
+    if (impersonatedUserId) {
+      headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
     }
 
     const response = await fetch(url, {
@@ -1021,7 +1008,22 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
-    return await makeAuthenticatedRequest(method, url, payload);
+
+    // For server-side requests, try to read impersonation from cookies
+    const impersonationUserId = await ImpersonationState.getServerSide();
+    const fakeRequest = impersonationUserId
+      ? new Request(url, {
+          headers: { "X-Act-As-User-Id": impersonationUserId },
+        })
+      : undefined;
+
+    return await makeAuthenticatedRequest(
+      method,
+      url,
+      payload,
+      "application/json",
+      fakeRequest,
+    );
   }
 
   ////////////////////////////////////////

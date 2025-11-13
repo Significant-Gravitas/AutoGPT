@@ -17,7 +17,6 @@ import {
   LinkCreatable,
   NodeCreatable,
   NodeExecutionResult,
-  SpecialBlockID,
   Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -273,28 +272,6 @@ export default function useAgentGraph(
 
   const cleanupSourceName = (sourceName: string) =>
     isToolSourceName(sourceName) ? "tools" : sourceName;
-
-  const getToolFuncName = useCallback(
-    (nodeID: string) => {
-      const sinkNode = xyNodes.find((node) => node.id === nodeID);
-      if (!sinkNode) return "";
-
-      const sinkNodeName =
-        sinkNode.data.block_id === SpecialBlockID.AGENT
-          ? sinkNode.data.hardcodedValues?.agent_name ||
-            availableFlows.find(
-              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-            )?.name ||
-            "agentexecutorblock"
-          : sinkNode.data.title.split(" ")[0];
-
-      return sinkNodeName;
-    },
-    [xyNodes, availableFlows],
-  );
-
-  const normalizeToolName = (str: string) =>
-    str.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase(); // This normalization rule has to match with the one on smart_decision_maker.py
 
   /** ------------------------------ */
 
@@ -604,17 +581,10 @@ export default function useAgentGraph(
 
   const prepareSaveableGraph = useCallback((): GraphCreatable => {
     const links = xyEdges.map((edge): LinkCreatable => {
-      let sourceName = edge.sourceHandle || "";
+      const sourceName = edge.sourceHandle || "";
       const sourceNode = xyNodes.find((node) => node.id === edge.source);
       const sinkNode = xyNodes.find((node) => node.id === edge.target);
 
-      // Special case for SmartDecisionMakerBlock
-      if (
-        sourceNode?.data.block_id === SpecialBlockID.SMART_DECISION &&
-        sourceName.toLowerCase() === "tools"
-      ) {
-        sourceName = `tools_^_${normalizeToolName(getToolFuncName(edge.target))}_~_${normalizeToolName(edge.targetHandle || "")}`;
-      }
       return {
         source_id: sourceNode?.data.backend_id ?? edge.source,
         sink_id: sinkNode?.data.backend_id ?? edge.target,
@@ -647,7 +617,6 @@ export default function useAgentGraph(
     agentDescription,
     agentRecommendedScheduleCron,
     prepareNodeInputData,
-    getToolFuncName,
   ]);
 
   const resetEdgeBeads = useCallback(() => {
@@ -763,6 +732,7 @@ export default function useAgentGraph(
   ]);
 
   const saveAgent = useCallback(async () => {
+    console.log("saveAgent");
     setIsSaving(true);
     try {
       await _saveAgent();

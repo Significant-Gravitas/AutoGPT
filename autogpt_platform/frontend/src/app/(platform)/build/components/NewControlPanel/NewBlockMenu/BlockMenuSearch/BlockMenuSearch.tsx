@@ -76,6 +76,7 @@ export const BlockMenuSearch = () => {
                   highlightedText={searchQuery}
                   description={data.description}
                   onClick={() => addBlock(data)}
+                  blockData={data}
                 />
               );
 

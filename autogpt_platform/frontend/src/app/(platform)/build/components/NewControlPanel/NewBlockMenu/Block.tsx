@@ -4,10 +4,14 @@ import { beautifyString, cn } from "@/lib/utils";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./helpers";
 import { PlusIcon } from "@phosphor-icons/react";
+import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
+import { useControlPanelStore } from "../../../stores/controlPanelStore";
+import { blockDragPreviewStyle } from "./style";
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   description?: string;
   highlightedText?: string;
+  blockData: BlockInfo;
 }
 
 interface BlockComponent extends React.FC<Props> {
@@ -19,15 +23,38 @@ export const Block: BlockComponent = ({
   description,
   highlightedText,
   className,
+  blockData,
   ...rest
 }) => {
+  const setBlockMenuOpen = useControlPanelStore(
+    (state) => state.setBlockMenuOpen,
+  );
+  const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.dataTransfer.effectAllowed = "copy";
+    e.dataTransfer.setData("application/reactflow", JSON.stringify(blockData));
+
+    setBlockMenuOpen(false);
+
+    // preview when user drags it
+    const dragPreview = document.createElement("div");
+    dragPreview.style.cssText = blockDragPreviewStyle;
+    dragPreview.textContent = beautifyString(title || "");
+
+    document.body.appendChild(dragPreview);
+    e.dataTransfer.setDragImage(dragPreview, 0, 0);
+
+    setTimeout(() => document.body.removeChild(dragPreview), 0);
+  };
+
   return (
     <Button
+      draggable={true}
       className={cn(
         "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
         "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:cursor-not-allowed",
         className,
       )}
+      onDragStart={handleDragStart}
       {...rest}
     >
       <div className="flex flex-1 flex-col items-start gap-0.5">

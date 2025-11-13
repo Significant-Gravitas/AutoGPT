@@ -94,7 +94,7 @@ export default function OnboardingProvider({
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isUserLoading } = useSupabase();
+  const { isLoggedIn } = useSupabase();
 
   useOnboardingTimezoneDetection();
 
@@ -127,7 +127,7 @@ export default function OnboardingProvider({
 
   useEffect(() => {
     // Prevent multiple initializations
-    if (hasInitialized.current || isUserLoading || !user) {
+    if (hasInitialized.current || !isLoggedIn) {
       return;
     }
 
@@ -169,7 +169,7 @@ export default function OnboardingProvider({
     }
 
     initializeOnboarding();
-  }, [api, isOnOnboardingRoute, router, user, isUserLoading, pathname, fetchOnboarding, toast]);
+  }, [api, isOnOnboardingRoute, router, isLoggedIn, pathname]);
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {
@@ -210,9 +210,7 @@ export default function OnboardingProvider({
           if (!isMounted.current) return;
           await patchV1UpdateOnboardingState(newState);
         } catch (error) {
-          if (isMounted.current) {
-            console.error("Failed to update user onboarding:", error);
-          }
+          console.error("Failed to update user onboarding:", error);
 
           toast({
             title: "Failed to update user onboarding",

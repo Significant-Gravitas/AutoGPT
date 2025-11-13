@@ -18,6 +18,7 @@ from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
     is_dynamic_field,
+    is_tool_pin,
 )
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
@@ -367,8 +368,9 @@ class SmartDecisionMakerBlock(Block):
             "required": sorted(required_fields),
         }
 
-        # Store field mapping for later use in output processing
+        # Store field mapping and node info for later use in output processing
         tool_function["_field_mapping"] = field_mapping
+        tool_function["_sink_node_id"] = sink_node.id
 
         return {"type": "function", "function": tool_function}
 
@@ -431,10 +433,13 @@ class SmartDecisionMakerBlock(Block):
             "strict": True,
         }
 
+        # Store node info for later use in output processing
+        tool_function["_sink_node_id"] = sink_node.id
+
         return {"type": "function", "function": tool_function}
 
     @staticmethod
-    async def _create_function_signature(
+    async def _create_tool_node_signatures(
         node_id: str,
     ) -> list[dict[str, Any]]:
         """
@@ -450,7 +455,7 @@ class SmartDecisionMakerBlock(Block):
         tools = [
             (link, node)
             for link, node in await db_client.get_connected_output_nodes(node_id)
-            if link.source_name.startswith("tools_^_") and link.source_id == node_id
+            if is_tool_pin(link.source_name) and link.source_id == node_id
         ]
         if not tools:
             raise ValueError("There is no next node to execute.")
@@ -538,8 +543,14 @@ class SmartDecisionMakerBlock(Block):
                 ),
                 None,
             )
-            if tool_def is None and len(tool_functions) == 1:
-                tool_def = tool_functions[0]
+            if tool_def is None:
+                if len(tool_functions) == 1:
+                    tool_def = tool_functions[0]
+                else:
+                    validation_errors_list.append(
+                        f"Tool call for '{tool_name}' does not match any known "
+                        "tool definition."
+                    )
 
             # Get parameters schema from tool definition
             if (
@@ -591,7 +602,7 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        tool_functions = await self._create_function_signature(node_id)
+        tool_functions = await self._create_tool_node_signatures(node_id)
         yield "tool_functions", json.dumps(tool_functions)
 
         input_data.conversation_history = input_data.conversation_history or []
@@ -661,9 +672,9 @@ class SmartDecisionMakerBlock(Block):
             except ValueError as e:
                 last_error = e
                 error_feedback = (
-                    "Your tool call had parameter errors. Please fix the following issues and try again:\n"
+                    "Your tool call had errors. Please fix the following issues and try again:\n"
                     + f"- {str(e)}\n"
-                    + "\nPlease make sure to use the exact parameter names as specified in the function schema."
+                    + "\nPlease make sure to use the exact tool and parameter names as specified in the function schema."
                 )
                 current_prompt = list(current_prompt) + [
                     {"role": "user", "content": error_feedback}
@@ -690,21 +701,23 @@ class SmartDecisionMakerBlock(Block):
                 ),
                 None,
             )
-            if (
-                tool_def
-                and "function" in tool_def
-                and "parameters" in tool_def["function"]
-            ):
+            if not tool_def:
+                # NOTE: This matches the logic in _attempt_llm_call_with_validation and
+                # relies on its validation for the assumption that this is valid to use.
+                if len(tool_functions) == 1:
+                    tool_def = tool_functions[0]
+                else:
+                    # This should not happen due to prior validation
+                    continue
+
+            if "function" in tool_def and "parameters" in tool_def["function"]:
                 expected_args = tool_def["function"]["parameters"].get("properties", {})
             else:
                 expected_args = {arg: {} for arg in tool_args.keys()}
 
-            # Get field mapping from tool definition
-            field_mapping = (
-                tool_def.get("function", {}).get("_field_mapping", {})
-                if tool_def
-                else {}
-            )
+            # Get the sink node ID and field mapping from tool definition
+            field_mapping = tool_def["function"].get("_field_mapping", {})
+            sink_node_id = tool_def["function"]["_sink_node_id"]
 
             for clean_arg_name in expected_args:
                 # arg_name is now always the cleaned field name (for Anthropic API compliance)
@@ -712,9 +725,8 @@ class SmartDecisionMakerBlock(Block):
                 original_field_name = field_mapping.get(clean_arg_name, clean_arg_name)
                 arg_value = tool_args.get(clean_arg_name)
 
-                sanitized_tool_name = self.cleanup(tool_name)
                 sanitized_arg_name = self.cleanup(original_field_name)
-                emit_key = f"tools_^_{sanitized_tool_name}_~_{sanitized_arg_name}"
+                emit_key = f"tools_^_{sink_node_id}_~_{sanitized_arg_name}"
 
                 logger.debug(
                     "[SmartDecisionMakerBlock|geid:%s|neid:%s] emit %s",
