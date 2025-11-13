@@ -20,6 +20,7 @@ export const Flow = () => {
     useShallow((state) => state.onNodesChange),
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
@@ -51,10 +52,10 @@ export const Flow = () => {
           nodes={nodes}
           onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           edges={edges}
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
-          edgeTypes={{ custom: CustomEdge }}
           maxZoom={2}
           minZoom={0.1}
           onDragOver={onDragOver}
