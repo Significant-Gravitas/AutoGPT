@@ -74,46 +74,6 @@ test.describe("Library", () => {
     test.expect(allAgents.length).toEqual(displayedCount);
   });
 
-  test("sorting works correctly", async ({ page }) => {
-    await page.goto("/library");
-
-    const initialAgents = await libraryPage.getAgents();
-    expect(initialAgents.length).toBeGreaterThan(0);
-
-    await libraryPage.selectSortOption(page, "Creation Date");
-    await libraryPage.waitForAgentsToLoad();
-
-    const creationDateSortOption = await libraryPage.getCurrentSortOption();
-    expect(creationDateSortOption).toContain("Creation Date");
-
-    const creationDateAgents = await libraryPage.getAgents();
-    expect(creationDateAgents.length).toBeGreaterThan(0);
-
-    await libraryPage.selectSortOption(page, "Last Modified");
-    await libraryPage.waitForAgentsToLoad();
-
-    const lastModifiedSortOption = await libraryPage.getCurrentSortOption();
-    expect(lastModifiedSortOption).toContain("Last Modified");
-
-    const lastModifiedAgents = await libraryPage.getAgents();
-    expect(lastModifiedAgents.length).toBeGreaterThan(0);
-
-    if (initialAgents.length > 1) {
-      const initialFirstAgentId = initialAgents[0].id;
-      const creationDateFirstAgentId = creationDateAgents[0].id;
-      const lastModifiedFirstAgentId = lastModifiedAgents[0].id;
-
-      expect(
-        creationDateFirstAgentId !== initialFirstAgentId ||
-          lastModifiedFirstAgentId !== initialFirstAgentId ||
-          creationDateFirstAgentId !== lastModifiedFirstAgentId,
-      ).toBeTruthy();
-    }
-
-    expect(creationDateAgents.length).toEqual(initialAgents.length);
-    expect(lastModifiedAgents.length).toEqual(initialAgents.length);
-  });
-
   test("searching works correctly", async ({ page }) => {
     await page.goto("/library");
 

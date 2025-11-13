@@ -6,6 +6,10 @@ import {
 
 import { transformDates } from "./date-transformer";
 import { environment } from "@/services/environment";
+import {
+  IMPERSONATION_HEADER_NAME,
+  IMPERSONATION_STORAGE_KEY,
+} from "@/lib/constants";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
@@ -53,6 +57,22 @@ export const customMutator = async <
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
 
+  if (environment.isClientSide()) {
+    try {
+      const impersonatedUserId = sessionStorage.getItem(
+        IMPERSONATION_STORAGE_KEY,
+      );
+      if (impersonatedUserId) {
+        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+      }
+    } catch (error) {
+      console.error(
+        "Admin impersonation: Failed to access sessionStorage:",
+        error,
+      );
+    }
+  }
+
   const isFormData = data instanceof FormData;
   const contentType = isFormData ? "multipart/form-data" : "application/json";
 
@@ -94,22 +114,38 @@ export const customMutator = async <
   });
 
   if (!response.ok) {
-    const response_data = await getBody<any>(response);
+    let responseData: any = null;
+    try {
+      responseData = await getBody<any>(response);
+    } catch (error) {
+      console.warn("Failed to parse error response body:", error);
+      responseData = { error: "Failed to parse response" };
+    }
+
     const errorMessage =
-      response_data?.detail || response_data?.message || response.statusText;
+      responseData?.detail ||
+      responseData?.message ||
+      response.statusText ||
+      `HTTP ${response.status}`;
 
     console.error(
       `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
-      { status: response.status, url: fullUrl, data: response_data },
+      {
+        status: response.status,
+        method,
+        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+        errorMessage,
+        responseData: responseData || "No response data",
+      },
     );
 
-    throw new ApiError(errorMessage, response.status, response_data);
+    throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  const response_data = await getBody<T["data"]>(response);
+  const responseData = await getBody<T["data"]>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(response_data);
+  const transformedData = transformDates(responseData);
 
   return {
     status: response.status,

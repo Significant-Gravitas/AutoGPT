@@ -21,6 +21,7 @@ export type CustomNodeData = {
   block_id: string;
   status?: AgentExecutionStatus;
   nodeExecutionResult?: NodeExecutionResult;
+  staticOutput?: boolean;
   // TODO : We need better type safety for the following backend fields.
   costs: BlockCost[];
   categories: BlockInfoCategoriesItem[];

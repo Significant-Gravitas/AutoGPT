@@ -165,7 +165,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     )
     test_graph = await create_graph(server, test_graph, test_user)
 
-    tool_functions = await SmartDecisionMakerBlock._create_function_signature(
+    tool_functions = await SmartDecisionMakerBlock._create_tool_node_signatures(
         test_graph.nodes[0].id
     )
     assert tool_functions is not None, "Tool functions should not be None"
@@ -215,7 +215,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
         "content": "I need to think about this.",
     }
 
-    # Mock the _create_function_signature method to avoid database calls
+    # Mock the _create_tool_node_signatures method to avoid database calls
     from unittest.mock import AsyncMock
 
     with patch(
@@ -224,7 +224,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
         return_value=mock_response,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=[],
     ):
@@ -293,6 +293,7 @@ async def test_smart_decision_maker_parameter_validation():
                     },
                     "required": ["query", "max_keyword_difficulty"],
                 },
+                "_sink_node_id": "test-sink-node-id",
             },
         }
     ]
@@ -318,7 +319,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_with_typo,
     ) as mock_llm_call, patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
@@ -375,7 +376,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_missing_required,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
@@ -425,7 +426,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_valid,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
@@ -450,13 +451,13 @@ async def test_smart_decision_maker_parameter_validation():
             outputs[output_name] = output_data
 
         # Verify tool outputs were generated correctly
-        assert "tools_^_search_keywords_~_query" in outputs
-        assert outputs["tools_^_search_keywords_~_query"] == "test"
-        assert "tools_^_search_keywords_~_max_keyword_difficulty" in outputs
-        assert outputs["tools_^_search_keywords_~_max_keyword_difficulty"] == 50
+        assert "tools_^_test-sink-node-id_~_query" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_query"] == "test"
+        assert "tools_^_test-sink-node-id_~_max_keyword_difficulty" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_max_keyword_difficulty"] == 50
         # Optional parameter should be None when not provided
-        assert "tools_^_search_keywords_~_optional_param" in outputs
-        assert outputs["tools_^_search_keywords_~_optional_param"] is None
+        assert "tools_^_test-sink-node-id_~_optional_param" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_optional_param"] is None
 
     # Test case 4: Valid tool call with ALL parameters (should succeed)
     mock_tool_call_all_params = MagicMock()
@@ -479,7 +480,7 @@ async def test_smart_decision_maker_parameter_validation():
         return_value=mock_response_all_params,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
@@ -504,9 +505,9 @@ async def test_smart_decision_maker_parameter_validation():
             outputs[output_name] = output_data
 
         # Verify all tool outputs were generated correctly
-        assert outputs["tools_^_search_keywords_~_query"] == "test"
-        assert outputs["tools_^_search_keywords_~_max_keyword_difficulty"] == 50
-        assert outputs["tools_^_search_keywords_~_optional_param"] == "custom_value"
+        assert outputs["tools_^_test-sink-node-id_~_query"] == "test"
+        assert outputs["tools_^_test-sink-node-id_~_max_keyword_difficulty"] == 50
+        assert outputs["tools_^_test-sink-node-id_~_optional_param"] == "custom_value"
 
 
 @pytest.mark.asyncio
@@ -530,6 +531,7 @@ async def test_smart_decision_maker_raw_response_conversion():
                     "properties": {"param": {"type": "string"}},
                     "required": ["param"],
                 },
+                "_sink_node_id": "test-sink-node-id",
             },
         }
     ]
@@ -588,7 +590,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         "backend.blocks.llm.llm_call", new_callable=AsyncMock
     ) as mock_llm_call, patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
@@ -617,8 +619,8 @@ async def test_smart_decision_maker_raw_response_conversion():
             outputs[output_name] = output_data
 
         # Verify the tool output was generated successfully
-        assert "tools_^_test_tool_~_param" in outputs
-        assert outputs["tools_^_test_tool_~_param"] == "test_value"
+        assert "tools_^_test-sink-node-id_~_param" in outputs
+        assert outputs["tools_^_test-sink-node-id_~_param"] == "test_value"
 
         # Verify conversation history was properly maintained
         assert "conversations" in outputs
@@ -656,7 +658,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         return_value=mock_response_ollama,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=[],  # No tools for this test
     ):
@@ -702,7 +704,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         return_value=mock_response_dict,
     ), patch.object(
         SmartDecisionMakerBlock,
-        "_create_function_signature",
+        "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=[],
     ):

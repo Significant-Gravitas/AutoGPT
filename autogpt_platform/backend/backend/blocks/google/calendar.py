@@ -8,7 +8,13 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.settings import Settings
 
@@ -43,7 +49,7 @@ class CalendarEvent(BaseModel):
 
 
 class GoogleCalendarReadEventsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/calendar.readonly"]
         )
@@ -73,7 +79,7 @@ class GoogleCalendarReadEventsBlock(Block):
             description="Include events you've declined", default=False
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         events: list[CalendarEvent] = SchemaField(
             description="List of calendar events in the requested time range",
             default_factory=list,
@@ -379,7 +385,7 @@ class RecurringEvent(BaseModel):
 
 
 class GoogleCalendarCreateEventBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/calendar"]
         )
@@ -433,12 +439,11 @@ class GoogleCalendarCreateEventBlock(Block):
             default_factory=lambda: [ReminderPreset.TEN_MINUTES],
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         event_id: str = SchemaField(description="ID of the created event")
         event_link: str = SchemaField(
             description="Link to view the event in Google Calendar"
         )
-        error: str = SchemaField(description="Error message if event creation failed")
 
     def __init__(self):
         super().__init__(

@@ -5,6 +5,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
 import { ReactNode, useState } from "react";
+import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import { useInput } from "./useInput";
 
@@ -30,6 +31,8 @@ export interface TextFieldProps extends Omit<InputProps, "size"> {
     | "datetime-local";
   // Textarea-specific props
   rows?: number;
+  amountPrefix?: string;
+  amountSuffix?: string;
 }
 
 export function Input({
@@ -42,13 +45,16 @@ export function Input({
   error,
   size = "medium",
   wrapperClassName,
+  amountPrefix,
+  amountSuffix,
   ...props
 }: TextFieldProps) {
-  const { handleInputChange, handleTextareaChange } = useInput({
-    type: props.type,
-    onChange: props.onChange,
-    decimalCount,
-  });
+  const { handleInputChange, handleTextareaChange, handleAmountValueChange } =
+    useInput({
+      type: props.type,
+      onChange: props.onChange,
+      decimalCount,
+    });
   const [showPassword, setShowPassword] = useState(false);
 
   const isPasswordType = props.type === "password";
@@ -106,6 +112,44 @@ export function Input({
           id={props.id}
           disabled={props.disabled}
           value={props.value}
+        />
+      );
+    }
+
+    if (props.type === "amount") {
+      return (
+        <CurrencyInput
+          className={cn(
+            baseStyles,
+            errorStyles,
+            // Size variants
+            size === "small" && [
+              "h-[2.25rem]",
+              "py-2",
+              "text-sm leading-[22px]",
+              "placeholder:text-sm placeholder:leading-[22px]",
+            ],
+            size === "medium" && ["h-[2.875rem]", "py-2.5"],
+          )}
+          placeholder={placeholder || label}
+          // CurrencyInput gives unformatted numeric string in value param
+          onValueChange={handleAmountValueChange}
+          value={props.value as string | number | undefined}
+          id={props.id}
+          name={props.name}
+          disabled={props.disabled}
+          inputMode="decimal"
+          decimalsLimit={decimalCount ?? 4}
+          allowDecimals={decimalCount !== 0}
+          groupSeparator=","
+          decimalSeparator="."
+          allowNegativeValue
+          {...(hideLabel ? { "aria-label": label } : {})}
+          // Pass through common handlers
+          onBlur={props.onBlur as any}
+          onFocus={props.onFocus as any}
+          prefix={amountPrefix}
+          suffix={amountSuffix}
         />
       );
     }

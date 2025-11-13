@@ -1,6 +1,7 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { Key, storage } from "@/services/storage/local-storage";
 import { environment } from "@/services/environment";
+import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -81,10 +82,27 @@ export function buildUrlWithQuery(
 
 export async function handleFetchError(response: Response): Promise<ApiError> {
   const errorMessage = await parseApiError(response);
+
+  // Safely parse response body - it might not be JSON (e.g., HTML error pages)
+  let responseData: any = null;
+  try {
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      responseData = await response.json();
+    } else {
+      // For non-JSON responses, get the text content
+      responseData = await response.text();
+    }
+  } catch (e) {
+    // If parsing fails, use null as response data
+    console.warn("Failed to parse error response body:", e);
+    responseData = null;
+  }
+
   return new ApiError(
     errorMessage || "Request failed",
     response.status,
-    await response.json(),
+    responseData,
   );
 }
 
@@ -116,6 +134,7 @@ export function createRequestHeaders(
   token: string,
   hasRequestBody: boolean,
   contentType: string = "application/json",
+  originalRequest?: Request,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
 
@@ -125,6 +144,16 @@ export function createRequestHeaders(
 
   if (token && token !== "no-token-found") {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Forward admin impersonation header if present
+  if (originalRequest) {
+    const impersonationHeader = originalRequest.headers.get(
+      IMPERSONATION_HEADER_NAME,
+    );
+    if (impersonationHeader) {
+      headers[IMPERSONATION_HEADER_NAME] = impersonationHeader;
+    }
   }
 
   return headers;
@@ -232,6 +261,7 @@ export async function makeAuthenticatedRequest(
   url: string,
   payload?: Record<string, any>,
   contentType: string = "application/json",
+  originalRequest?: Request,
 ): Promise<any> {
   const token = await getServerAuthToken();
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
@@ -245,7 +275,12 @@ export async function makeAuthenticatedRequest(
 
   const response = await fetch(requestUrl, {
     method,
-    headers: createRequestHeaders(token, hasRequestBody, contentType),
+    headers: createRequestHeaders(
+      token,
+      hasRequestBody,
+      contentType,
+      originalRequest,
+    ),
     body: hasRequestBody
       ? serializeRequestBody(payload, contentType)
       : undefined,
@@ -283,13 +318,17 @@ export async function makeAuthenticatedRequest(
 export async function makeAuthenticatedFileUpload(
   url: string,
   formData: FormData,
+  originalRequest?: Request,
 ): Promise<string> {
   const token = await getServerAuthToken();
 
-  const headers: Record<string, string> = {};
-  if (token && token !== "no-token-found") {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  // Reuse existing header creation logic but exclude Content-Type for FormData
+  const headers = createRequestHeaders(
+    token,
+    false,
+    "application/json",
+    originalRequest,
+  );
 
   // Don't set Content-Type for FormData - let the browser set it with boundary
   const response = await fetch(url, {

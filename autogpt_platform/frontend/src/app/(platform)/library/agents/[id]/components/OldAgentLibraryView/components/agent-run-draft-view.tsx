@@ -141,18 +141,26 @@ export function AgentRunDraftView({
     const requiredInputs = new Set(
       agentInputSchema.required as string[] | undefined,
     );
-    return [
-      nonEmptyInputs.isSupersetOf(requiredInputs),
-      [...requiredInputs.difference(nonEmptyInputs)],
-    ];
+    // Backwards-compatible implementation of isSupersetOf and difference
+    const isSuperset = Array.from(requiredInputs).every((item) =>
+      nonEmptyInputs.has(item),
+    );
+    const difference = Array.from(requiredInputs).filter(
+      (item) => !nonEmptyInputs.has(item),
+    );
+    return [isSuperset, difference];
   }, [agentInputSchema.required, inputValues]);
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
     const availableCredentials = new Set(Object.keys(inputCredentials));
     const allCredentials = new Set(Object.keys(agentCredentialsInputFields));
-    return [
-      availableCredentials.isSupersetOf(allCredentials),
-      [...allCredentials.difference(availableCredentials)],
-    ];
+    // Backwards-compatible implementation of isSupersetOf and difference
+    const isSuperset = Array.from(allCredentials).every((item) =>
+      availableCredentials.has(item),
+    );
+    const difference = Array.from(allCredentials).filter(
+      (item) => !availableCredentials.has(item),
+    );
+    return [isSuperset, difference];
   }, [agentCredentialsInputFields, inputCredentials]);
   const notifyMissingInputs = useCallback(
     (needPresetName: boolean = true) => {

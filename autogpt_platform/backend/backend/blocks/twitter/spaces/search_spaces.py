@@ -24,7 +24,7 @@ from backend.blocks.twitter._types import (
     TweetUserFieldsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.data.model import SchemaField
 
 
@@ -56,7 +56,7 @@ class TwitterSearchSpacesBlock(Block):
             default=SpaceStatesFilter.all,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs that user commonly uses
         ids: list[str] = SchemaField(description="List of space IDs")
         titles: list[str] = SchemaField(description="List of space titles")
@@ -69,8 +69,6 @@ class TwitterSearchSpacesBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata including pagination info")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

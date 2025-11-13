@@ -3,7 +3,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     BlockType,
     BlockWebhookConfig,
     CredentialsMetaInput,
@@ -32,7 +33,7 @@ class AirtableWebhookTriggerBlock(Block):
     Thin wrapper just forwards the payloads one at a time to the next block.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
@@ -43,7 +44,7 @@ class AirtableWebhookTriggerBlock(Block):
             description="Airtable webhook event filter"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         payload: WebhookPayload = SchemaField(description="Airtable webhook payload")
 
     def __init__(self):

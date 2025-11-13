@@ -3,7 +3,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     OAuth2Credentials,
     SchemaField,
@@ -22,7 +23,7 @@ from .models import CreateIssueResponse, Issue
 class LinearCreateIssueBlock(Block):
     """Block for creating issues on Linear"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = linear.credentials_field(
             description="Linear credentials with issue creation permissions",
             required_scopes={LinearScope.ISSUES_CREATE},
@@ -43,10 +44,9 @@ class LinearCreateIssueBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         issue_id: str = SchemaField(description="ID of the created issue")
         issue_title: str = SchemaField(description="Title of the created issue")
-        error: str = SchemaField(description="Error message if issue creation failed")
 
     def __init__(self):
         super().__init__(
@@ -129,14 +129,14 @@ class LinearCreateIssueBlock(Block):
 class LinearSearchIssuesBlock(Block):
     """Block for searching issues on Linear"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         term: str = SchemaField(description="Term to search for issues")
         credentials: CredentialsMetaInput = linear.credentials_field(
             description="Linear credentials with read permissions",
             required_scopes={LinearScope.READ},
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         issues: list[Issue] = SchemaField(description="List of issues")
 
     def __init__(self):

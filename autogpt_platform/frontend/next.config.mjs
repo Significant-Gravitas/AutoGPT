@@ -5,6 +5,8 @@ const nextConfig = {
   productionBrowserSourceMaps: true,
   images: {
     domains: [
+      // We dont need to maintain alphabetical order here
+      // as we are doing logical grouping of domains
       "images.unsplash.com",
       "ddz4ak4pa3d19.cloudfront.net",
       "upload.wikimedia.org",
@@ -12,6 +14,7 @@ const nextConfig = {
 
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
+      "example.com", // for local test data images
     ],
     remotePatterns: [
       {

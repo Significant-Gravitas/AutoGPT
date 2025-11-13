@@ -23,6 +23,7 @@ import {
 import {
   beautifyString,
   cn,
+  fillObjectDefaultsFromSchema,
   getValue,
   hasNonNullNonObjectValue,
   isObject,
@@ -97,7 +98,7 @@ export type CustomNodeData = {
   errors?: { [key: string]: string };
   isOutputStatic?: boolean;
   uiType: BlockUIType;
-  metadata?: { [key: string]: any };
+  metadata?: { customized_name?: string; [key: string]: any };
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -158,37 +159,6 @@ export const CustomNode = React.memo(
       setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
     }, [isModalOpen, isOutputModalOpen, data, setIsAnyModalOpen]);
 
-    const fillDefaults = useCallback((obj: any, schema: any) => {
-      // Iterate over the schema properties
-      for (const key in schema.properties) {
-        if (schema.properties.hasOwnProperty(key)) {
-          const propertySchema = schema.properties[key];
-
-          // If the property is not in the object, initialize it with the default value
-          if (!obj.hasOwnProperty(key)) {
-            if (propertySchema.default !== undefined) {
-              obj[key] = propertySchema.default;
-            } else if (propertySchema.type === "object") {
-              // Recursively fill defaults for nested objects
-              obj[key] = fillDefaults({}, propertySchema);
-            } else if (propertySchema.type === "array") {
-              // Recursively fill defaults for arrays
-              obj[key] = fillDefaults([], propertySchema);
-            }
-          } else {
-            // If the property exists, recursively fill defaults for nested objects/arrays
-            if (propertySchema.type === "object") {
-              obj[key] = fillDefaults(obj[key], propertySchema);
-            } else if (propertySchema.type === "array") {
-              obj[key] = fillDefaults(obj[key], propertySchema);
-            }
-          }
-        }
-      }
-
-      return obj;
-    }, []);
-
     const setHardcodedValues = useCallback(
       (values: any) => {
         updateNodeData(id, { hardcodedValues: values });
@@ -231,17 +201,19 @@ export const CustomNode = React.memo(
 
     useEffect(() => {
       isInitialSetup.current = false;
+      if (data.backend_id) return; // don't auto-modify existing nodes
+
       if (data.uiType === BlockUIType.AGENT) {
         setHardcodedValues({
           ...data.hardcodedValues,
-          inputs: fillDefaults(
+          inputs: fillObjectDefaultsFromSchema(
             data.hardcodedValues.inputs ?? {},
             data.inputSchema,
           ),
         });
       } else {
         setHardcodedValues(
-          fillDefaults(data.hardcodedValues, data.inputSchema),
+          fillObjectDefaultsFromSchema(data.hardcodedValues, data.inputSchema),
         );
       }
     }, []);
@@ -850,14 +822,16 @@ export const CustomNode = React.memo(
                 {isTitleHovered && !isEditingTitle && (
                   <button
                     onClick={handleTitleEdit}
-                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100"
+                    className="cursor-pointer rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-gray-100"
                     aria-label="Edit title"
                   >
                     <Pencil1Icon className="h-4 w-4" />
                   </button>
                 )}
               </div>
-              <span className="text-xs text-gray-500">#{id.split("-")[0]}</span>
+              <span className="text-xs text-gray-500">
+                #{(data.backend_id || id).split("-")[0]}
+              </span>
 
               <div className="w-auto grow" />
 

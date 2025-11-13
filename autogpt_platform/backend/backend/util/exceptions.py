@@ -1,6 +1,35 @@
 from typing import Mapping
 
 
+class BlockError(Exception):
+    """An error occurred during the running of a block"""
+
+    def __init__(self, message: str, block_name: str, block_id: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.block_name = block_name
+        self.block_id = block_id
+
+    def __str__(self):
+        return f"raised by {self.block_name} with message: {self.message}. block_id: {self.block_id}"
+
+
+class BlockInputError(BlockError, ValueError):
+    """The block had incorrect inputs, resulting in an error condition"""
+
+
+class BlockOutputError(BlockError, ValueError):
+    """The block had incorrect outputs, resulting in an error condition"""
+
+
+class BlockExecutionError(BlockError, ValueError):
+    """The block failed to execute at runtime, resulting in a handled error"""
+
+
+class BlockUnknownError(BlockError):
+    """Critical unknown error with block handling"""
+
+
 class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
@@ -15,6 +44,14 @@ class NeedConfirmation(Exception):
 
 class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
+
+
+class GraphNotAccessibleError(NotAuthorizedError):
+    """Raised when attempting to execute a graph that is not accessible to the user."""
+
+
+class GraphNotInLibraryError(GraphNotAccessibleError):
+    """Raised when attempting to execute a graph that is not / no longer in the user's library."""
 
 
 class InsufficientBalanceError(ValueError):
@@ -90,5 +127,11 @@ class GraphValidationError(ValueError):
 
 class DatabaseError(Exception):
     """Raised when there is an error interacting with the database"""
+
+    pass
+
+
+class RedisError(Exception):
+    """Raised when there is an error interacting with Redis"""
 
     pass

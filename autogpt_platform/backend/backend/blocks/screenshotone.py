@@ -4,7 +4,13 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -25,7 +31,7 @@ class Format(str, Enum):
 class ScreenshotWebPageBlock(Block):
     """Block for taking screenshots using ScreenshotOne API"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.SCREENSHOTONE], Literal["api_key"]
         ] = CredentialsField(description="The ScreenshotOne API key")
@@ -56,9 +62,8 @@ class ScreenshotWebPageBlock(Block):
             description="Whether to enable caching", default=False
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         image: MediaFileType = SchemaField(description="The screenshot image data")
-        error: str = SchemaField(description="Error message if the screenshot failed")
 
     def __init__(self):
         super().__init__(

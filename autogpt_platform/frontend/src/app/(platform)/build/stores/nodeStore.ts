@@ -1,11 +1,13 @@
 import { create } from "zustand";
-import { NodeChange, applyNodeChanges } from "@xyflow/react";
+import { NodeChange, XYPosition, applyNodeChanges } from "@xyflow/react";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
 import { Node } from "@/app/api/__generated__/models/node";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
+import { useHistoryStore } from "./historyStore";
+import { useEdgeStore } from "./edgeStore";
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -14,7 +16,7 @@ type NodeStore = {
   setNodes: (nodes: CustomNode[]) => void;
   onNodesChange: (changes: NodeChange<CustomNode>[]) => void;
   addNode: (node: CustomNode) => void;
-  addBlock: (block: BlockInfo) => void;
+  addBlock: (block: BlockInfo, position?: XYPosition) => void;
   incrementNodeCounter: () => void;
   updateNodeData: (nodeId: string, data: Partial<CustomNode["data"]>) => void;
   toggleAdvanced: (nodeId: string) => void;
@@ -44,15 +46,32 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     set((state) => ({
       nodeCounter: state.nodeCounter + 1,
     })),
-  onNodesChange: (changes) =>
+  onNodesChange: (changes) => {
+    const prevState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+    const shouldTrack = changes.some(
+      (change) =>
+        change.type === "remove" ||
+        change.type === "add" ||
+        (change.type === "position" && change.dragging === false),
+    );
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
-    })),
-  addNode: (node) =>
+    }));
+
+    if (shouldTrack) {
+      useHistoryStore.getState().pushState(prevState);
+    }
+  },
+
+  addNode: (node) => {
     set((state) => ({
       nodes: [...state.nodes, node],
-    })),
-  addBlock: (block: BlockInfo) => {
+    }));
+  },
+  addBlock: (block: BlockInfo, position?: XYPosition) => {
     const customNodeData = convertBlockInfoIntoCustomNodeData(block);
     get().incrementNodeCounter();
     const nodeNumber = get().nodeCounter;
@@ -60,18 +79,26 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       id: nodeNumber.toString(),
       data: customNodeData,
       type: "custom",
-      position: { x: 0, y: 0 },
+      position: position || ({ x: 0, y: 0 } as XYPosition),
     };
     set((state) => ({
       nodes: [...state.nodes, customNode],
     }));
   },
-  updateNodeData: (nodeId, data) =>
+  updateNodeData: (nodeId, data) => {
     set((state) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n,
       ),
-    })),
+    }));
+
+    const newState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
+    useHistoryStore.getState().pushState(newState);
+  },
   toggleAdvanced: (nodeId: string) =>
     set((state) => ({
       nodeAdvancedStates: {
