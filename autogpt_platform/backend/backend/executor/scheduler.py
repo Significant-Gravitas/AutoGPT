@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+import uuid
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -37,6 +38,7 @@ from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
     GraphNotInLibraryError,
+    GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
 )
@@ -168,6 +170,16 @@ async def _execute_graph(**kwargs):
         )
         # Clean up orphaned schedules for this graph
         await _cleanup_orphaned_schedules_for_graph(args.graph_id, args.user_id)
+    except GraphValidationError:
+        logger.error(
+            f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
+        )
+        scheduler_client = get_scheduler_client()
+        scheduler_client.delete_schedule(
+            schedule_id=args.schedule_id,
+            user_id=args.user_id,
+        )
+        # TODO: Notify the user!!
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -220,6 +232,7 @@ class Jobstores(Enum):
 
 
 class GraphExecutionJobArgs(BaseModel):
+    schedule_id: str
     user_id: str
     graph_id: str
     graph_version: int
@@ -468,8 +481,10 @@ class Scheduler(AppService):
         logger.info(
             f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
         )
+        schedule_id = uuid.uuid4()
 
         job_args = GraphExecutionJobArgs(
+            schedule_id=str(schedule_id),
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
@@ -484,6 +499,7 @@ class Scheduler(AppService):
             trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
+            id=schedule_id,
         )
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
