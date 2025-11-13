@@ -24,12 +24,11 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
+from prisma.models import UserOnboarding
 from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
-from prisma.models import UserOnboarding
 
-from backend.server.v2.store.model import StoreAgentDetails
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.v2.library.db as library_db
@@ -51,14 +50,14 @@ from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     FrontendOnboardingStep,
-    UserOnboardingUpdate,
     OnboardingStep,
-    complete_onboarding_step,
+    UserOnboardingUpdate,
     complete_get_results,
+    complete_onboarding_step,
     complete_re_run_agent,
-    increment_runs,
     get_recommended_agents,
     get_user_onboarding,
+    increment_runs,
     onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
@@ -94,6 +93,7 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -265,7 +265,9 @@ async def update_preferences(
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
-async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]) -> UserOnboarding:
+async def get_onboarding(
+    user_id: Annotated[str, Security(get_user_id)]
+) -> UserOnboarding:
     return await get_user_onboarding(user_id)
 
 
@@ -323,7 +325,9 @@ async def is_onboarding_enabled() -> bool:
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
-async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]) -> UserOnboarding:
+async def reset_onboarding(
+    user_id: Annotated[str, Security(get_user_id)]
+) -> UserOnboarding:
     return await reset_user_onboarding(user_id)
 
 
@@ -974,7 +978,9 @@ async def execute_graph(
         await increment_runs(user_id)
         await complete_re_run_agent(user_id, graph_id)
         if source == "library":
-            await complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_RUN_AGENT)
+            await complete_onboarding_step(
+                user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
+            )
         elif source == "builder":
             await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result

@@ -1,16 +1,15 @@
 import logging
 from typing import Optional
 
-from prisma.enums import OnboardingStep
-
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
+from prisma.enums import OnboardingStep
 
-from backend.data.onboarding import complete_onboarding_step
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.data.onboarding import complete_onboarding_step
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)

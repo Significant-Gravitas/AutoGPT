@@ -64,7 +64,6 @@ import type {
   SubmissionStatus,
   TransactionHistory,
   User,
-  UserOnboarding,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
   WebSocketNotification,

@@ -211,14 +211,7 @@ export function AgentRunDraftView({
       name: graph.name,
       id: graph.id,
     });
-  }, [
-    api,
-    graph,
-    inputValues,
-    inputCredentials,
-    onRun,
-    toastOnFail,
-  ]);
+  }, [api, graph, inputValues, inputCredentials, onRun, toastOnFail]);
 
   const doCreatePreset = useCallback(async () => {
     if (!onCreatePreset) return;

@@ -1,5 +1,7 @@
-import BackendAPI from "@/lib/autogpt-server-api";
-import { getV1IsOnboardingEnabled, getV1OnboardingState } from "./__generated__/endpoints/onboarding/onboarding";
+import {
+  getV1IsOnboardingEnabled,
+  getV1OnboardingState,
+} from "./__generated__/endpoints/onboarding/onboarding";
 
 /**
  * Narrow an orval response to its success payload if and only if it is a `200` status with OK shape.
@@ -31,17 +33,17 @@ type ResponseWithData = { status: number; data: unknown };
 type ExtractResponseData<T extends ResponseWithData> = T extends {
   data: infer D;
 }
-? D
-: never;
+  ? D
+  : never;
 type SuccessfulResponses<T extends ResponseWithData> = T extends {
   status: infer S;
 }
-? S extends number
-? `${S}` extends `2${string}`
-? T
-: never
-: never
-: never;
+  ? S extends number
+    ? `${S}` extends `2${string}`
+      ? T
+      : never
+    : never
+  : never;
 
 /**
  * Resolve an Orval response to its payload after asserting the status is either the explicit
@@ -69,10 +71,7 @@ export function resolveResponse<TSuccess extends ResponseWithData>(
 export async function resolveResponse<
   TSuccess extends ResponseWithData,
   TCode extends number,
->(
-  promise: Promise<TSuccess>,
-  expected?: TCode,
-) {
+>(promise: Promise<TSuccess>, expected?: TCode) {
   const res = await promise;
   const isSuccessfulStatus =
     typeof res.status === "number" && res.status >= 200 && res.status < 300;
@@ -89,7 +88,6 @@ export async function resolveResponse<
 }
 
 export async function shouldShowOnboarding() {
-  const api = new BackendAPI();
   const isEnabled = await resolveResponse(getV1IsOnboardingEnabled());
   const onboarding = await resolveResponse(getV1OnboardingState());
   const isCompleted = onboarding.completedSteps.includes("CONGRATS");

@@ -11,9 +11,11 @@ export async function finishOnboarding() {
 
   const listingId = onboarding?.selectedStoreListingVersionId;
   if (listingId) {
-    const data = await resolveResponse(postV2AddMarketplaceAgent({
-      store_listing_version_id: listingId,
-    }));
+    const data = await resolveResponse(
+      postV2AddMarketplaceAgent({
+        store_listing_version_id: listingId,
+      }),
+    );
     revalidatePath(`/library/agents/${data.id}`, "layout");
     redirect(`/library/agents/${data.id}`);
   } else {

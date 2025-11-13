@@ -1,8 +1,6 @@
 import logging
 from typing import Any, Optional
 
-from backend.data.onboarding import increment_runs
-
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 
@@ -12,6 +10,7 @@ from backend.data.execution import GraphExecutionMeta
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput
+from backend.data.onboarding import increment_runs
 from backend.executor.utils import add_graph_execution, make_node_credentials_input_map
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager

@@ -33,7 +33,11 @@ from backend.data.model import (
     OAuth2Credentials,
     UserIntegrations,
 )
-from backend.data.onboarding import OnboardingStep, complete_onboarding_step, increment_runs
+from backend.data.onboarding import (
+    OnboardingStep,
+    complete_onboarding_step,
+    increment_runs,
+)
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform

@@ -7,7 +7,6 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { InfoIcon } from "lucide-react";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 // Base type for cron expression only
 type CronOnlyCallback = (cronExpression: string) => void;

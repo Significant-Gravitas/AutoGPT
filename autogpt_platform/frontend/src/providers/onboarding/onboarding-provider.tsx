@@ -11,7 +11,6 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
 import {
-  OnboardingStep,
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
@@ -35,7 +34,12 @@ import {
   LocalOnboardingStateUpdate,
 } from "./helpers";
 import { resolveResponse } from "@/app/api/helpers";
-import { getV1IsOnboardingEnabled, getV1OnboardingState, patchV1UpdateOnboardingState, postV1CompleteOnboardingStep } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import {
+  getV1IsOnboardingEnabled,
+  getV1OnboardingState,
+  patchV1UpdateOnboardingState,
+  postV1CompleteOnboardingStep,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
 
 type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
@@ -51,7 +55,10 @@ const OnboardingContext = createContext<
   | undefined
 >(undefined);
 
-export function useOnboarding(step?: number, completeStep?: FrontendOnboardingStep) {
+export function useOnboarding(
+  step?: number,
+  completeStep?: FrontendOnboardingStep,
+) {
   const context = useContext(OnboardingContext);
 
   if (!context)
@@ -149,10 +156,7 @@ export default function OnboardingProvider({
         // Handle redirects for completed onboarding
         if (
           isOnOnboardingRoute &&
-          shouldRedirectFromOnboarding(
-            onboarding.completedSteps,
-            pathname,
-          )
+          shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
           router.push("/marketplace");
         }
@@ -182,7 +186,10 @@ export default function OnboardingProvider({
       }
 
       fetchOnboarding().catch((error) => {
-        console.error("Failed to refresh onboarding after notification:", error);
+        console.error(
+          "Failed to refresh onboarding after notification:",
+          error,
+        );
       });
     },
     [fetchOnboarding],

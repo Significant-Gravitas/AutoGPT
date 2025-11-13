@@ -7,7 +7,11 @@ import { UserOnboarding as RawUserOnboarding } from "@/app/api/__generated__/mod
 
 export type LocalOnboardingStateUpdate = Omit<
   Partial<UserOnboarding>,
-  "completedSteps" | "rewardedFor" | "lastRunAt" | "consecutiveRunDays" | "agentRuns"
+  | "completedSteps"
+  | "rewardedFor"
+  | "lastRunAt"
+  | "consecutiveRunDays"
+  | "agentRuns"
 >;
 
 export function fromBackendUserOnboarding(
@@ -17,9 +21,12 @@ export function fromBackendUserOnboarding(
     ...onboarding,
     usageReason: onboarding.usageReason || null,
     otherIntegrations: onboarding.otherIntegrations || null,
-    selectedStoreListingVersionId: onboarding.selectedStoreListingVersionId || null,
-    agentInput: onboarding.agentInput as {} || null,
-    onboardingAgentExecutionId: onboarding.onboardingAgentExecutionId as GraphExecutionID || null,
+    selectedStoreListingVersionId:
+      onboarding.selectedStoreListingVersionId || null,
+    agentInput:
+      (onboarding.agentInput as Record<string, string | number>) || null,
+    onboardingAgentExecutionId:
+      (onboarding.onboardingAgentExecutionId as GraphExecutionID) || null,
     lastRunAt: onboarding.lastRunAt ? new Date(onboarding.lastRunAt) : null,
   };
 }
@@ -45,10 +52,17 @@ export function updateOnboardingState(
     rewardedFor: prevState?.rewardedFor ?? [],
     usageReason: newState.usageReason ?? prevState?.usageReason ?? null,
     integrations: newState.integrations ?? prevState?.integrations ?? [],
-    otherIntegrations: newState.otherIntegrations ?? prevState?.otherIntegrations ?? null,
-    selectedStoreListingVersionId: newState.selectedStoreListingVersionId ?? prevState?.selectedStoreListingVersionId ?? null,
+    otherIntegrations:
+      newState.otherIntegrations ?? prevState?.otherIntegrations ?? null,
+    selectedStoreListingVersionId:
+      newState.selectedStoreListingVersionId ??
+      prevState?.selectedStoreListingVersionId ??
+      null,
     agentInput: newState.agentInput ?? prevState?.agentInput ?? null,
-    onboardingAgentExecutionId: newState.onboardingAgentExecutionId ?? prevState?.onboardingAgentExecutionId ?? null,
+    onboardingAgentExecutionId:
+      newState.onboardingAgentExecutionId ??
+      prevState?.onboardingAgentExecutionId ??
+      null,
     lastRunAt: prevState?.lastRunAt ?? null,
     consecutiveRunDays: prevState?.consecutiveRunDays ?? 0,
     agentRuns: prevState?.agentRuns ?? 0,

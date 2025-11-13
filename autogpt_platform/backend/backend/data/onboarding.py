@@ -9,6 +9,7 @@ from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
+from backend.data import execution as execution_db
 from backend.data.block import get_blocks
 from backend.data.credit import get_user_credit_model
 from backend.data.model import CredentialsMetaInput
@@ -22,7 +23,6 @@ from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
-from backend.data import execution as execution_db
 
 # Mapping from user reason id to categories to search for when choosing agent to show
 REASON_MAPPING: dict[str, list[str]] = {
@@ -202,9 +202,7 @@ async def _send_onboarding_notification(
     )
 
 
-async def complete_re_run_agent(
-    user_id: str, graph_id: str
-) -> None:
+async def complete_re_run_agent(user_id: str, graph_id: str) -> None:
     """
     Complete RE_RUN_AGENT step when a user runs a graph they've run before.
     Keeps overhead low by only counting executions if the step is still pending.
