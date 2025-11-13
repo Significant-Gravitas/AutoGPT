@@ -42,7 +42,6 @@ import {
 } from "@/components/molecules/Toast/use-toast";
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { analytics } from "@/services/analytics";
 
 export function AgentRunDraftView({
@@ -56,7 +55,6 @@ export function AgentRunDraftView({
   doCreateSchedule: _doCreateSchedule,
   onCreateSchedule,
   agentActions,
-  runCount,
   className,
   recommendedScheduleCron,
 }: {
@@ -75,7 +73,6 @@ export function AgentRunDraftView({
     credentialsInputs: Record<string, CredentialsMetaInput>,
   ) => Promise<void>;
   onCreateSchedule?: (schedule: Schedule) => void;
-  runCount: number;
   className?: string;
 } & (
   | {
@@ -104,7 +101,6 @@ export function AgentRunDraftView({
   const [changedPresetAttributes, setChangedPresetAttributes] = useState<
     Set<keyof LibraryAgentPresetUpdatable>
   >(new Set());
-  const { completeStep: completeOnboardingStep } = useOnboarding();
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] = useState(false);
 
   // Update values if agentPreset parameter is changed
@@ -215,10 +211,6 @@ export function AgentRunDraftView({
       name: graph.name,
       id: graph.id,
     });
-
-    if (runCount > 0) {
-      completeOnboardingStep("RE_RUN_AGENT");
-    }
   }, [
     api,
     graph,
@@ -226,7 +218,6 @@ export function AgentRunDraftView({
     inputCredentials,
     onRun,
     toastOnFail,
-    completeOnboardingStep,
   ]);
 
   const doCreatePreset = useCallback(async () => {

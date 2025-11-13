@@ -54,7 +54,8 @@ from backend.data.onboarding import (
     UserOnboardingUpdate,
     OnboardingStep,
     complete_onboarding_step,
-    complete_get_results_if_applicable,
+    complete_get_results,
+    complete_re_run_agent,
     increment_runs,
     get_recommended_agents,
     get_user_onboarding,
@@ -937,6 +938,7 @@ async def execute_graph(
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
         await increment_runs(user_id)
+        await complete_re_run_agent(user_id, graph_id)
         if source == "library":
             await complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_RUN_AGENT)
         elif source == "builder":
@@ -1074,7 +1076,7 @@ async def get_graph_execution(
         )
 
     try:
-        await complete_get_results_if_applicable(user_id, graph_exec_id)
+        await complete_get_results(user_id, graph_exec_id)
     except Exception:
         logger.warning(
             "Failed to auto-complete GET_RESULTS for user %s exec %s",

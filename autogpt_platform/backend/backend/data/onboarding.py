@@ -17,11 +17,12 @@ from backend.data.notification_bus import (
     NotificationEvent,
 )
 from backend.data.user import get_user_by_id
-from backend.server.model import NotificationPayload, OnboardingNotificationPayload
+from backend.server.model import OnboardingNotificationPayload
 from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
+from backend.data import execution as execution_db
 
 # Mapping from user reason id to categories to search for when choosing agent to show
 REASON_MAPPING: dict[str, list[str]] = {
@@ -43,8 +44,6 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.AGENT_INPUT,
     OnboardingStep.CONGRATS,
     OnboardingStep.MARKETPLACE_VISIT,
-    OnboardingStep.RE_RUN_AGENT, # <-
-    OnboardingStep.RE_RUN_AGENT,
     OnboardingStep.BUILDER_OPEN,
 ]
 
@@ -203,7 +202,26 @@ async def _send_onboarding_notification(
     )
 
 
-def clean_and_split(text: str) -> list[str]:
+async def complete_re_run_agent(
+    user_id: str, graph_id: str
+) -> None:
+    """
+    Complete RE_RUN_AGENT step when a user runs a graph they've run before.
+    Keeps overhead low by only counting executions if the step is still pending.
+    """
+    onboarding = await get_user_onboarding(user_id)
+    if OnboardingStep.RE_RUN_AGENT in onboarding.completedSteps:
+        return
+
+    # Includes current execution, so count > 1 means there was at least one prior run.
+    previous_exec_count = await execution_db.get_graph_executions_count(
+        user_id=user_id, graph_id=graph_id
+    )
+    if previous_exec_count > 1:
+        await complete_onboarding_step(user_id, OnboardingStep.RE_RUN_AGENT)
+
+
+def _clean_and_split(text: str) -> list[str]:
     """
     Removes all special characters from a string, truncates it to 100 characters,
     and splits it by whitespace and commas.
@@ -362,7 +380,7 @@ async def increment_runs(user_id: str):
         await complete_onboarding_step(user_id, step)
 
 
-async def complete_get_results_if_applicable(user_id: str, graph_exec_id: str) -> None:
+async def complete_get_results(user_id: str, graph_exec_id: str) -> None:
     onboarding = await get_user_onboarding(user_id)
     if (
         onboarding.onboardingAgentExecutionId == graph_exec_id
@@ -377,7 +395,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
 
     where_clause: dict[str, Any] = {}
 
-    custom = clean_and_split((user_onboarding.usageReason or "").lower())
+    custom = _clean_and_split((user_onboarding.usageReason or "").lower())
 
     if categories:
         where_clause["OR"] = [
