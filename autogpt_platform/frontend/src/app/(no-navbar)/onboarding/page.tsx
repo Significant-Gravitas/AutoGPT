@@ -1,20 +1,19 @@
-import BackendAPI from "@/lib/autogpt-server-api";
 import { redirect } from "next/navigation";
 import { finishOnboarding } from "./6-congrats/actions";
-import { shouldShowOnboarding } from "@/app/api/helpers";
+import { resolveResponse, shouldShowOnboarding } from "@/app/api/helpers";
+import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 
 // Force dynamic rendering to avoid static generation issues with cookies
 export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage() {
-  const api = new BackendAPI();
   const isOnboardingEnabled = await shouldShowOnboarding();
 
   if (!isOnboardingEnabled) {
     redirect("/marketplace");
   }
 
-  const onboarding = await api.getUserOnboarding();
+  const onboarding = await resolveResponse(getV1OnboardingState());
 
   // CONGRATS is the last step in intro onboarding
   if (onboarding.completedSteps.includes("GET_RESULTS"))

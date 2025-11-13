@@ -9,10 +9,12 @@ import { OnboardingText } from "../components/OnboardingText";
 import OnboardingAgentCard from "../components/OnboardingAgentCard";
 import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 import { finishOnboarding } from "../6-congrats/actions";
+import { getV1RecommendedOnboardingAgents } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { resolveResponse } from "@/app/api/helpers";
+import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 
 export default function Page() {
   const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
@@ -20,7 +22,7 @@ export default function Page() {
   const api = useBackendAPI();
 
   useEffect(() => {
-    api.getOnboardingAgents().then((agents) => {
+    resolveResponse(getV1RecommendedOnboardingAgents()).then((agents) => {
       if (agents.length < 2) {
         finishOnboarding();
       }

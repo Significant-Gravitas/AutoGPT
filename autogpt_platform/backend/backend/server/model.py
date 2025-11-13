@@ -1,5 +1,5 @@
 import enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import pydantic
 
@@ -35,8 +35,13 @@ class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
     graph_id: str
 
 
+GraphCreationSource = Literal["builder", "upload"]
+GraphExecutionSource = Literal["builder", "library", "onboarding"]
+
+
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
+    source: GraphCreationSource | None = None
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):

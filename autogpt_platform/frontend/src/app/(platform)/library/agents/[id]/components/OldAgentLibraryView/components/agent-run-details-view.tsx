@@ -151,6 +151,7 @@ export function AgentRunDetailsView({
         graph.version,
         run.inputs!,
         run.credential_inputs!,
+        "library",
       )
       .then(({ id }) => {
         analytics.sendDatafastEvent("run_agent", {

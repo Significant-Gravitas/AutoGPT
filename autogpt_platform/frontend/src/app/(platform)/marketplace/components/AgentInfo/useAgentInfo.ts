@@ -6,7 +6,6 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useRouter } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { analytics } from "@/services/analytics";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,7 +17,6 @@ interface UseAgentInfoProps {
 export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
   const { toast } = useToast();
   const router = useRouter();
-  const { completeStep } = useOnboarding();
   const queryClient = useQueryClient();
 
   const {
@@ -49,8 +47,6 @@ export const useAgentInfo = ({ storeListingVersionId }: UseAgentInfoProps) => {
       const data = response as LibraryAgent;
 
       if (isAddingAgentFirstTime) {
-        completeStep("MARKETPLACE_ADD_AGENT");
-
         await queryClient.invalidateQueries({
           queryKey: getGetV2ListLibraryAgentsQueryKey(),
         });

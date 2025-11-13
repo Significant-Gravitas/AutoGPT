@@ -143,7 +143,7 @@ export const useSaveGraph = ({
           links: graphLinks,
         };
 
-        await createNewGraph({ data: { graph: data } });
+        await createNewGraph({ data: { graph: data, source: "builder" } });
       }
     },
     [graph, toast, createNewGraph, updateGraph],
