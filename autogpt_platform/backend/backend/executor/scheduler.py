@@ -508,10 +508,10 @@ class Scheduler(AppService):
         logger.info(
             f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
         )
-        schedule_id = uuid.uuid4()
+        schedule_id = str(uuid.uuid4())
 
         job_args = GraphExecutionJobArgs(
-            schedule_id=str(schedule_id),
+            schedule_id=schedule_id,
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
