@@ -42,6 +42,7 @@ from backend.server.model import NotificationPayload
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    GraphNotFoundError,
     GraphNotInLibraryError,
     GraphValidationError,
     NotAuthorizedError,
@@ -180,14 +181,10 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
+    except GraphNotFoundError as e:
+        await _handle_graph_not_available(e, args, start_time)
     except GraphNotInLibraryError as e:
-        elapsed = asyncio.get_event_loop().time() - start_time
-        logger.warning(
-            f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
-            f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
-        )
-        # Clean up orphaned schedules for this graph
-        await _cleanup_orphaned_schedules_for_graph(args.graph_id, args.user_id)
+        await _handle_graph_not_available(e, args, start_time)
     except GraphValidationError:
         logger.error(
             f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
@@ -212,6 +209,18 @@ async def _execute_graph(**kwargs):
             f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _handle_graph_not_available(
+    e: Exception, args: "GraphExecutionJobArgs", start_time: float
+) -> None:
+    elapsed = asyncio.get_event_loop().time() - start_time
+    logger.warning(
+        f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
+        f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
+    )
+    # Clean up orphaned schedules for this graph
+    await _cleanup_orphaned_schedules_for_graph(args.graph_id, args.user_id)
 
 
 async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> None:
@@ -532,8 +541,7 @@ class Scheduler(AppService):
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
         )
-        job_info = GraphExecutionJobInfo.from_db(job_args, job)
-        return job_info
+        return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
     def delete_graph_execution_schedule(
