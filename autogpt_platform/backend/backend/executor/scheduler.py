@@ -26,6 +26,10 @@ from sqlalchemy import MetaData, create_engine
 from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
+from backend.data.notification_bus import (
+    AsyncRedisNotificationEventBus,
+    NotificationEvent,
+)
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
     NotificationJobArgs,
@@ -34,6 +38,7 @@ from backend.monitoring import (
     report_block_error_rates,
     report_late_executions,
 )
+from backend.server.model import NotificationPayload
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
@@ -82,6 +87,19 @@ config = Config()
 
 # Timeout constants
 SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
+
+
+async def _send_schedule_event_notification(user_id: str, message: str):
+    """
+    Sends a notification to the user with the specified message.
+    """
+    payload = NotificationPayload(
+        type="scheduler",
+        event=message,
+    )
+    await AsyncRedisNotificationEventBus().publish(
+        NotificationEvent(user_id=user_id, payload=payload)
+    )
 
 
 def job_listener(event):
@@ -180,11 +198,14 @@ async def _execute_graph(**kwargs):
                 schedule_id=args.schedule_id,
                 user_id=args.user_id,
             )
+            await _send_schedule_event_notification(
+                user_id=args.user_id,
+                message=f"Scheduled {args.agent_name} could not be ran and has been unscheduled. Please setup the schedule again.",
+            )
         else:
             logger.error(
                 f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
             )
-        # TODO: Notify the user!!
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -241,6 +262,7 @@ class GraphExecutionJobArgs(BaseModel):
     user_id: str
     graph_id: str
     graph_version: int
+    agent_name: str | None = None
     cron: str
     input_data: BlockInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
@@ -493,6 +515,7 @@ class Scheduler(AppService):
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
+            agent_name=name,
             cron=cron,
             input_data=input_data,
             input_credentials=input_credentials,
