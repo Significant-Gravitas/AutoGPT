@@ -39,8 +39,6 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
-    // TODO : Need to add Ayrshare block here
-
     if (data.uiType === BlockUIType.NOTE) {
       return (
         <StickyNoteBlock data={data} selected={selected} nodeId={nodeId} />
