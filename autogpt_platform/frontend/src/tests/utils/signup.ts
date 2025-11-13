@@ -67,6 +67,7 @@ export async function signupTestUser(
         .getByText(
           "Bringing you AI agents designed by thinkers from around the world",
         )
+        .first()
         .waitFor({ state: "visible", timeout: 10000 });
 
       // Verify user is authenticated (profile menu visible)
