@@ -17,6 +17,7 @@ import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
 import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
 import { cn } from "@/lib/utils";
 import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
+import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -56,6 +57,8 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       BlockUIType.WEBHOOK_MANUAL,
     ].includes(data.uiType);
 
+    const isAyrshare = data.uiType === BlockUIType.AYRSHARE;
+
     const inputSchema =
       data.uiType === BlockUIType.AGENT
         ? (data.hardcodedValues.input_schema ?? {})
@@ -73,6 +76,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         <div className="rounded-xlarge bg-white">
           <NodeHeader data={data} nodeId={nodeId} />
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
+          {isAyrshare && <AyrshareConnectButton />}
           <FormCreator
             jsonSchema={preprocessInputSchema(inputSchema)}
             nodeId={nodeId}
