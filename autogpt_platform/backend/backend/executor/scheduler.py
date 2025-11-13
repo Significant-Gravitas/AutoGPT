@@ -191,7 +191,7 @@ async def _execute_graph(**kwargs):
         )
         if args.schedule_id:
             scheduler_client = get_scheduler_client()
-            scheduler_client.delete_schedule(
+            await scheduler_client.delete_schedule(
                 schedule_id=args.schedule_id,
                 user_id=args.user_id,
             )
