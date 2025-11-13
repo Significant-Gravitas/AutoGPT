@@ -36,7 +36,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 }) => {
   const { isInputConnected } = useEdgeStore();
   const { nodeId, showHandles = true, size = "small" } = formContext;
-  const uiType = useNodeStore((state) => state.getNodeBlockUIType(nodeId));
+  const uiType = formContext.uiType;
 
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
