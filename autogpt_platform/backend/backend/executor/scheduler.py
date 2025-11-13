@@ -174,11 +174,16 @@ async def _execute_graph(**kwargs):
         logger.error(
             f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
         )
-        scheduler_client = get_scheduler_client()
-        scheduler_client.delete_schedule(
-            schedule_id=args.schedule_id,
-            user_id=args.user_id,
-        )
+        if args.schedule_id:
+            scheduler_client = get_scheduler_client()
+            scheduler_client.delete_schedule(
+                schedule_id=args.schedule_id,
+                user_id=args.user_id,
+            )
+        else:
+            logger.error(
+                f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
+            )
         # TODO: Notify the user!!
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
@@ -232,7 +237,7 @@ class Jobstores(Enum):
 
 
 class GraphExecutionJobArgs(BaseModel):
-    schedule_id: str
+    schedule_id: str | None = None
     user_id: str
     graph_id: str
     graph_version: int
@@ -504,7 +509,8 @@ class Scheduler(AppService):
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
         )
-        return GraphExecutionJobInfo.from_db(job_args, job)
+        job_info = GraphExecutionJobInfo.from_db(job_args, job)
+        return job_info
 
     @expose
     def delete_graph_execution_schedule(
