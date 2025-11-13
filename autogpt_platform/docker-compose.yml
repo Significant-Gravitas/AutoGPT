@@ -46,6 +46,8 @@ services:
     extends:
       file: ./docker-compose.platform.yml
       service: rest_server
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
   executor:
     <<: *agpt-services

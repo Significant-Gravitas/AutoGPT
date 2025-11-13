@@ -9,6 +9,14 @@ from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional
 
+
+import pytesseract
+from PIL import Image
+import requests
+import base64
+import io
+
+
 import anthropic
 import ollama
 import openai
@@ -35,6 +43,7 @@ from backend.util import json
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_prompt, estimate_token_count
 from backend.util.text import TextFormatter
+from backend.util.type import MediaFileType
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
@@ -838,6 +847,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default="localhost:11434",
             description="Ollama host for local  models",
         )
+        image: MediaFileType | None = SchemaField(
+            title="Media Input",
+            default=None,
+            description=(
+                "Optional media input file (URL, local path, or base64 data URI)."
+            ),
+        )
 
     class Output(BlockSchemaOutput):
         response: dict[str, Any] | list[dict[str, Any]] = SchemaField(
@@ -917,6 +933,41 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history]
+
+        # Process image with OCR if present
+        if input_data.image:
+            try:
+                # Handle different image input formats
+                if input_data.image.startswith('http'):
+                    # URL image
+                    response = requests.get(input_data.image)
+                    image = Image.open(io.BytesIO(response.content))
+                elif input_data.image.startswith('data:image'):
+                    # Base64 image
+                    base64_data = re.sub('^data:image/.+;base64,', '', input_data.image)
+                    image_data = base64.b64decode(base64_data)
+                    image = Image.open(io.BytesIO(image_data))
+                else:
+                    # Local file path
+                    image = Image.open(input_data.image)
+
+                # Perform OCR
+                ocr_text = pytesseract.image_to_string(image)
+                logger.debug(f"OCR extracted text: {ocr_text}")
+
+                # Append OCR text to prompt if text was extracted
+                if ocr_text.strip():
+                    if input_data.prompt:
+                        input_data.prompt += f"\n\nExtracted text from image:\n{ocr_text}"
+                    else:
+                        input_data.prompt = f"Extracted text from image:\n{ocr_text}"
+
+            except Exception as e:
+                logger.error(f"Error processing image with OCR: {str(e)}")
+                if input_data.prompt:
+                    input_data.prompt += f"\n\nError processing image: {str(e)}"
+                else:
+                    input_data.prompt = f"Error processing image: {str(e)}"
 
         values = input_data.prompt_values
         if values:
@@ -1214,52 +1265,60 @@ def trim_prompt(s: str) -> str:
 class AITextGeneratorBlock(AIBlockBase):
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
-            description="The prompt to send to the language model. You can use any of the {keys} from Prompt Values to fill in the prompt with values from the prompt values dictionary by putting them in curly braces.",
+            description="The prompt to send to the language model.",
             placeholder="Enter your prompt here...",
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
             default=LlmModel.GPT4O,
             description="The language model to use for answering the prompt.",
-            advanced=False,
         )
         credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
             default="",
-            description="The system prompt to provide additional context to the model.",
+            description="Optional system prompt for additional context.",
         )
         retry: int = SchemaField(
             title="Retry Count",
             default=3,
-            description="Number of times to retry the LLM call if the response does not match the expected format.",
+            description="Number of times to retry the LLM call if needed.",
         )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False,
             default_factory=dict,
-            description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
+            description="Values used to fill in the prompt ({{var}} syntax).",
         )
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
-            description="Ollama host for local  models",
+            description="Ollama host for local models.",
         )
         max_tokens: int | None = SchemaField(
             advanced=True,
             default=None,
-            description="The maximum number of tokens to generate in the chat completion.",
+            description="Maximum number of tokens to generate.",
+        )
+        image: MediaFileType | None = SchemaField(
+            title="Media Input",
+            default=None,
+            description=(
+                "Optional media input file (URL, local path, or base64 data URI)."
+            ),
         )
 
     class Output(BlockSchemaOutput):
         response: str = SchemaField(
             description="The response generated by the language model."
         )
-        prompt: list = SchemaField(description="The prompt sent to the language model.")
+        prompt: list = SchemaField(
+            description="The prompt sent to the language model."
+        )
 
     def __init__(self):
         super().__init__(
             id="1f292d4a-41a4-4977-9684-7c8d560b9f91",
-            description="Call a Large Language Model (LLM) to generate a string based on the given prompt.",
+            description="Generate text using a language model.",
             categories={BlockCategory.AI},
             input_schema=AITextGeneratorBlock.Input,
             output_schema=AITextGeneratorBlock.Output,
@@ -1277,26 +1336,40 @@ class AITextGeneratorBlock(AIBlockBase):
 
     async def llm_call(
         self,
-        input_data: AIStructuredResponseGeneratorBlock.Input,
-        credentials: APIKeyCredentials,
-    ) -> dict:
+        input_data: "AIStructuredResponseGeneratorBlock.Input",
+        credentials: "APIKeyCredentials",
+    ) -> str:
+        """Delegate to structured response block and return only the text string."""
         block = AIStructuredResponseGeneratorBlock()
         response = await block.run_once(input_data, "response", credentials=credentials)
+        # Track stats
         self.merge_llm_stats(block)
+
+        # Return plain string for the response
         return response["response"]
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
-    ) -> BlockOutput:
-        object_input_data = AIStructuredResponseGeneratorBlock.Input(
+        self,
+        input_data: Input,
+        *,
+        credentials: "APIKeyCredentials",
+        **kwargs,
+    ) -> "BlockOutput":
+        """Run the block and yield outputs for FastAPI and tests."""
+        # Prepare input for the structured response generator
+        structured_input = AIStructuredResponseGeneratorBlock.Input(
             **{
                 attr: getattr(input_data, attr)
                 for attr in AITextGeneratorBlock.Input.model_fields
             },
             expected_format={},
         )
-        response = await self.llm_call(object_input_data, credentials)
-        yield "response", response
+        print(structured_input)
+        # Call the underlying LLM (mocked in test)
+        response_text = await self.llm_call(structured_input, credentials)
+
+        # Yield outputs
+        yield "response", response_text
         yield "prompt", self.prompt
 
 
@@ -1738,7 +1811,7 @@ class AIListGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
-
+        
         # Check for API key
         api_key_check = credentials.api_key.get_secret_value()
         if not api_key_check:
@@ -1780,6 +1853,7 @@ class AIListGeneratorBlock(AIBlockBase):
             |Do not include any explanations or additional text, just respond with the list in the format specified above.
             |Do not include code fences or any other formatting, just the raw list.
             """
+
         # If a focus is provided, add it to the prompt
         if input_data.focus:
             prompt = f"Generate a list with the following focus:\n<focus>\n\n{input_data.focus}</focus>"
