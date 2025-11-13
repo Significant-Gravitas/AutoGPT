@@ -34,6 +34,7 @@ const nextConfig = {
       },
     ],
   },
+  output: "standalone",
   transpilePackages: ["geist"],
 };
 
