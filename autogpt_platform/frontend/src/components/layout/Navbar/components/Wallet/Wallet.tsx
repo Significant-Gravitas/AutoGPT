@@ -8,7 +8,10 @@ import {
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
-import { OnboardingStep, WebSocketNotification } from "@/lib/autogpt-server-api";
+import {
+  OnboardingStep,
+  WebSocketNotification,
+} from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -21,6 +24,7 @@ import * as party from "party-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export interface Task {
   id: OnboardingStep;
@@ -164,6 +168,7 @@ export function Wallet() {
     ];
   }, [state]);
 
+  const api = useBackendAPI();
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
@@ -280,6 +285,7 @@ export function Wallet() {
     [fetchCredits, fadeOut],
   );
 
+  // WebSocket setup for onboarding notifications
   useEffect(() => {
     const detachMessage = api.onWebSocketMessage(
       "notification",
