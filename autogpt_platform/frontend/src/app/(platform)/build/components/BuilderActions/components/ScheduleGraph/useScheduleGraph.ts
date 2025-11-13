@@ -1,10 +1,10 @@
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
-import { useNewSaveControl } from "../../../NewControlPanel/NewSaveControl/useNewSaveControl";
 import { useState } from "react";
+import { useSaveGraph } from "@/app/(platform)/build/hooks/useSaveGraph";
 
 export const useScheduleGraph = () => {
-  const { onSubmit: onSaveGraph } = useNewSaveControl({
+  const { saveGraph } = useSaveGraph({
     showToast: false,
   });
   const hasInputs = useGraphStore(useShallow((state) => state.hasInputs));
@@ -15,7 +15,7 @@ export const useScheduleGraph = () => {
   const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
 
   const handleScheduleGraph = async () => {
-    await onSaveGraph(undefined);
+    await saveGraph(undefined);
     if (hasInputs() || hasCredentials()) {
       setOpenScheduleInputDialog(true);
     } else {
