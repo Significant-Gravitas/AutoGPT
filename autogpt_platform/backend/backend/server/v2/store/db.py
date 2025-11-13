@@ -141,6 +141,17 @@ async def get_store_agents(
             agents = await prisma.client.get_client().query_raw(
                 typing.cast(typing.LiteralString, sql_query), *params
             )
+            if not agents:
+                # If not store agents are found return a valid response with no agents in it
+                return backend.server.v2.store.model.StoreAgentsResponse(
+                    agents=[],
+                    pagination=backend.server.v2.store.model.Pagination(
+                        current_page=0,
+                        total_items=0,
+                        total_pages=0,
+                        page_size=page_size,
+                    ),
+                )
 
             # For count, use params without pagination (last 2 params)
             count_params = params[:-2]
@@ -174,7 +185,6 @@ async def get_store_agents(
                     continue
 
         else:
-            # Non-search query path (original logic)
             where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
             if featured:
                 where_clause["featured"] = featured
@@ -198,13 +208,24 @@ async def get_store_agents(
                 take=page_size,
             )
 
+            if not agents:
+                # If not store agents are found return a valid response with no agents in it
+                return backend.server.v2.store.model.StoreAgentsResponse(
+                    agents=[],
+                    pagination=backend.server.v2.store.model.Pagination(
+                        current_page=0,
+                        total_items=0,
+                        total_pages=0,
+                        page_size=page_size,
+                    ),
+                )
+
             total = await prisma.models.StoreAgent.prisma().count(where=where_clause)
             total_pages = (total + page_size - 1) // page_size
 
             store_agents: list[backend.server.v2.store.model.StoreAgent] = []
             for agent in agents:
                 try:
-                    # Create the StoreAgent object safely
                     store_agent = backend.server.v2.store.model.StoreAgent(
                         slug=agent.slug,
                         agent_name=agent.agent_name,
@@ -216,11 +237,8 @@ async def get_store_agents(
                         runs=agent.runs,
                         rating=agent.rating,
                     )
-                    # Add to the list only if creation was successful
                     store_agents.append(store_agent)
                 except Exception as e:
-                    # Skip this agent if there was an error
-                    # You could log the error here if needed
                     logger.error(
                         f"Error parsing Store agent when getting store agents from db: {e}"
                     )
