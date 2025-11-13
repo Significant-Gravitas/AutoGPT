@@ -1758,7 +1758,7 @@ class AIListGeneratorBlock(AIBlockBase):
         # Use the structured response generator to handle all the complexity
         response_obj = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
-                sys_prompt=self.get_list_system_prompt(),
+                sys_prompt=self.SYSTEM_PROMPT,
                 prompt=prompt,
                 credentials=input_data.credentials,
                 model=input_data.model,
@@ -1795,18 +1795,16 @@ class AIListGeneratorBlock(AIBlockBase):
         for item in parsed_list:
             yield "list_item", item
 
-    def get_list_system_prompt(self) -> str:
-        """Generate the system prompt for list generation."""
-        return trim_prompt(
-            """
-            |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
-            |
-            |The 'list' field should contain a JSON array with the generated string values.
-            |The array can contain ONLY strings.
-            |
-            |Valid JSON array formats include:
-            |• ["string1", "string2", "string3"]
-            |
-            |Ensure you provide a proper JSON array with only string values in the 'list' field.
-            """
-        )
+    SYSTEM_PROMPT = trim_prompt(
+        """
+        |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
+        |
+        |The 'list' field should contain a JSON array with the generated string values.
+        |The array can contain ONLY strings.
+        |
+        |Valid JSON array formats include:
+        |• ["string1", "string2", "string3"]
+        |
+        |Ensure you provide a proper JSON array with only string values in the 'list' field.
+        """
+    )
