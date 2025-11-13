@@ -8,7 +8,10 @@ import {
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
-import { OnboardingStep } from "@/lib/autogpt-server-api";
+import {
+  OnboardingStep,
+  WebSocketNotification,
+} from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -20,6 +23,7 @@ import * as party from "party-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export interface Task {
   id: OnboardingStep;
@@ -163,6 +167,7 @@ export function Wallet() {
     ];
   }, [state]);
 
+  const api = useBackendAPI();
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
@@ -176,12 +181,8 @@ export function Wallet() {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
   }, [groups]);
 
-  // Get total completed count for all groups
+  // Total completed task count across all groups
   const [completedCount, setCompletedCount] = useState<number | null>(null);
-  // Needed to show confetti when a new step is completed
-  const [prevCompletedCount, setPrevCompletedCount] = useState<number | null>(
-    null,
-  );
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
@@ -250,47 +251,45 @@ export function Wallet() {
   );
 
   // Confetti effect on the wallet button
+  const handleNotification = useCallback(
+    (notification: WebSocketNotification) => {
+      if (notification.type !== "onboarding") {
+        return;
+      }
+
+      if (walletRef.current) {
+        // Fix confetti appearing in the top left corner
+        const rect = walletRef.current.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          return;
+        }
+        fetchCredits();
+        party.confetti(walletRef.current!, {
+          count: 30,
+          spread: 120,
+          shapes: ["square", "circle"],
+          size: party.variation.range(1, 2),
+          speed: party.variation.range(200, 300),
+          modules: [fadeOut],
+        });
+      }
+    },
+    [],
+  );
+
+  // WebSocket setup for onboarding notifications
   useEffect(() => {
-    // It's enough to check completed count,
-    // because the order of completed steps is not important
-    // If the count is the same, we don't need to do anything
-    if (completedCount === null || completedCount === prevCompletedCount) {
-      return;
-    }
-    // Otherwise, we need to set the new prevCompletedCount
-    setPrevCompletedCount(completedCount);
-    // If there was no previous count, we don't show confetti
-    if (prevCompletedCount === null || !walletRef.current) {
-      return;
-    }
-    setTimeout(() => {
-      fetchCredits();
-      if (!walletRef.current) {
-        return;
-      }
-      // Fix confetti appearing in the top left corner
-      const rect = walletRef.current.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) {
-        return;
-      }
-      party.confetti(walletRef.current, {
-        count: 30,
-        spread: 120,
-        shapes: ["square", "circle"],
-        size: party.variation.range(1, 2),
-        speed: party.variation.range(200, 300),
-        modules: [fadeOut],
-      });
-    }, 800);
-  }, [
-    state?.completedSteps,
-    state?.notified,
-    fadeOut,
-    fetchCredits,
-    completedCount,
-    prevCompletedCount,
-    walletRef,
-  ]);
+    const detachMessage = api.onWebSocketMessage(
+      "notification",
+      handleNotification,
+    );
+
+    api.connectWebSocket();
+
+    return () => {
+      detachMessage();
+    };
+  }, [api, handleNotification]);
 
   // Wallet flash on credits change
   useEffect(() => {
