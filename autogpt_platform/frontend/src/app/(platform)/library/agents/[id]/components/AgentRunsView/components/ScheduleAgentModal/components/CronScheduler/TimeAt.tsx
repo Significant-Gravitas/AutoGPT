@@ -6,9 +6,11 @@ import { Select } from "@/components/atoms/Select/Select";
 export function TimeAt({
   value,
   onChange,
+  label = "At",
 }: {
   value: string;
   onChange: (v: string) => void;
+  label?: string;
 }) {
   const [hour12, setHour12] = useState<string>("9");
   const [minute, setMinute] = useState<string>("00");
@@ -54,7 +56,7 @@ export function TimeAt({
     <div className="flex items-end gap-1">
       <div className="relative">
         <label className="mb-0 block text-sm font-medium text-zinc-700">
-          At
+          {label}
         </label>
         <div className="flex items-center gap-2">
           <Select
