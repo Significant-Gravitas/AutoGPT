@@ -23,6 +23,17 @@ from fastapi import (
     Security,
     UploadFile,
 )
+
+from backend.blocks.llm import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    AIBlockBase,
+    AICredentials,
+    AICredentialsField,
+    LlmModel,
+    LLMResponse,
+    llm_call,
+)
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
@@ -63,6 +74,8 @@ from backend.data.user import (
     update_user_notification_preference,
     update_user_timezone,
 )
+
+from backend.blocks.llm import AITextGeneratorBlock
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -1358,3 +1371,56 @@ async def update_permissions(
     return await api_key_db.update_api_key_permissions(
         key_id, user_id, request.permissions
     )
+
+
+# @v1_router.post(
+#     "/VLAD/TEST",
+#     summary="Run AITextGeneratorBlock with prompt via Ollama",
+#     tags=["AI"],
+# )
+# async def llm_call_endpoint(
+#     body: dict = Body(
+#         ...,
+#         example={
+#             "prompt": "Write a poem about the ocean.",
+#             "sys_prompt": "You are a helpful AI assistant.",
+#             "credentials": TEST_CREDENTIALS_INPUT,
+#             "model": "llama3.2",
+#             "retry": 2,
+#             "prompt_values": {"mood": "calm"},
+#             "ollama_host": "http://host.docker.internal:11434",
+#             "max_tokens": 512,
+#             "image": "https://marketplace.canva.com/EAGZEaj1Dl0/1/0/1280w/canva-beige-aesthetic-motivational-quote-instagram-post-WAe2YFurmmg.jpg"
+#         },
+#     ),
+# ):
+#     """Endpoint to run the AITextGeneratorBlock using Ollama."""
+#     print("➡️ Entered /VLAD/TEST endpoint")
+#     print(body["image"])
+#     ai_block = AITextGeneratorBlock()
+#     print('passed ai block')
+#     # Validate and create input schema
+#     try:
+#         input_data = ai_block.Input(**body)
+#         print('passed input data')
+#     except Exception as e:
+#         print("❌ Validation error:", e.errors())
+#         raise HTTPException(status_code=422, detail=e.errors())
+
+#     # print ports and what is running on them
+
+
+#     # Run the block asynchronously
+#     output = {}
+#     async for key, value in ai_block.run(input_data, credentials=None):
+#         output[key] = value
+
+#     print("✅ Block finished executing")
+
+#     return {
+#         "llm_response": output.get("response"),
+#         "prompt_used": output.get("prompt"),
+#         "ollama_host": input_data.ollama_host,
+#         "stats": getattr(ai_block, "execution_stats", None),
+#     }
+
