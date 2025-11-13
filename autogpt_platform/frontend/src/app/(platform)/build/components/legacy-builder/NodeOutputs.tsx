@@ -1,9 +1,12 @@
-import React, { useState } from "react";
-import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
-import { beautifyString } from "@/lib/utils";
+import React, { useContext, useState } from "react";
+import { Button } from "@/components/__legacy__/ui/button";
 import { Maximize2 } from "lucide-react";
-import { Button } from "../../../../../components/__legacy__/ui/button";
 import * as Separator from "@radix-ui/react-separator";
+import { ContentRenderer } from "@/components/__legacy__/ui/render";
+
+import { beautifyString } from "@/lib/utils";
+
+import { BuilderContext } from "./Flow/Flow";
 import ExpandableOutputDialog from "./ExpandableOutputDialog";
 
 type NodeOutputsProps = {
@@ -17,12 +20,34 @@ export default function NodeOutputs({
   truncateLongData,
   data,
 }: NodeOutputsProps) {
+  const builderContext = useContext(BuilderContext);
+
   const [expandedDialog, setExpandedDialog] = useState<{
     isOpen: boolean;
     execId: string;
     pinName: string;
     data: any[];
   } | null>(null);
+
+  if (!builderContext) {
+    throw new Error(
+      "BuilderContext consumer must be inside FlowEditor component",
+    );
+  }
+
+  const { getNodeTitle } = builderContext;
+
+  const getBeautifiedPinName = (pin: string) => {
+    if (!pin.startsWith("tools_^_")) {
+      return beautifyString(pin);
+    }
+    // Special handling for tool pins: replace node ID with node title
+    const toolNodeID = pin.slice(8).split("_~_")[0]; // tools_^_{node_id}_~_{field}
+    const toolNodeTitle = getNodeTitle(toolNodeID);
+    return toolNodeTitle
+      ? beautifyString(pin.replace(toolNodeID, toolNodeTitle))
+      : beautifyString(pin);
+  };
 
   const openExpandedView = (pinName: string, pinData: any[]) => {
     setExpandedDialog({
@@ -44,7 +69,7 @@ export default function NodeOutputs({
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <strong className="mr-2">Pin:</strong>
-              <span>{beautifyString(pin)}</span>
+              <span>{getBeautifiedPinName(pin)}</span>
             </div>
             {(truncateLongData || dataArray.length > 10) && (
               <Button
