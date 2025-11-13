@@ -2,16 +2,16 @@ import {
   usePostV1ExecuteGraphAgent,
   usePostV1StopGraphExecution,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { useNewSaveControl } from "../../../NewControlPanel/NewSaveControl/useNewSaveControl";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { GraphExecutionMeta } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/use-agent-runs";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { useState } from "react";
+import { useSaveGraph } from "@/app/(platform)/build/hooks/useSaveGraph";
 
 export const useRunGraph = () => {
-  const { onSubmit: onSaveGraph, isLoading: isSaving } = useNewSaveControl({
+  const { saveGraph, isSaving } = useSaveGraph({
     showToast: false,
   });
   const { toast } = useToast();
@@ -67,7 +67,7 @@ export const useRunGraph = () => {
   });
 
   const handleRunGraph = async () => {
-    await onSaveGraph(undefined);
+    await saveGraph(undefined);
 
     if (hasInputs() || hasCredentials()) {
       setOpenRunInputDialog(true);

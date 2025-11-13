@@ -98,7 +98,7 @@ export type CustomNodeData = {
   errors?: { [key: string]: string };
   isOutputStatic?: boolean;
   uiType: BlockUIType;
-  metadata?: { [key: string]: any };
+  metadata?: { customized_name?: string; [key: string]: any };
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;

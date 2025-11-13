@@ -26,7 +26,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
-from backend.data.dynamic_fields import extract_base_field_name
+from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
 from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
     CredentialsField,
@@ -578,9 +578,9 @@ class GraphModel(Graph):
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [_sanitize_pin_name(name) for name in node.input_default]
+                [sanitize_pin_name(name) for name in node.input_default]
                 + [
-                    _sanitize_pin_name(link.sink_name)
+                    sanitize_pin_name(link.sink_name)
                     for link in input_links.get(node.id, [])
                 ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
@@ -696,7 +696,7 @@ class GraphModel(Graph):
                         f"{prefix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )
 
-                sanitized_name = _sanitize_pin_name(name)
+                sanitized_name = sanitize_pin_name(name)
                 vals = node.input_default
                 if i == 0:
                     fields = (
@@ -710,7 +710,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not _is_tool_pin(name):
+                if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -748,17 +748,6 @@ class GraphModel(Graph):
                 for sub_graph in sub_graphs or []
             ],
         )
-
-
-def _is_tool_pin(name: str) -> bool:
-    return name.startswith("tools_^_")
-
-
-def _sanitize_pin_name(name: str) -> str:
-    sanitized_name = extract_base_field_name(name)
-    if _is_tool_pin(sanitized_name):
-        return "tools"
-    return sanitized_name
 
 
 class GraphMeta(Graph):
