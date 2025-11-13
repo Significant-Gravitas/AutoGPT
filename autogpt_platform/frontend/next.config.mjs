@@ -54,8 +54,13 @@ export default isDevelopmentBuild
         NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV,
       },
 
-      // Only print logs for uploading source maps in CI
-      silent: !process.env.CI,
+      // Enable debug logging if SENTRY_LOG_LEVEL is set to debug
+      // This helps troubleshoot sourcemap upload issues
+      debug: process.env.SENTRY_LOG_LEVEL === "debug",
+
+      // Show logs in CI/Vercel builds to help debug sourcemap upload issues
+      // Set silent to false to see upload progress and any errors
+      silent: !process.env.CI && process.env.SENTRY_LOG_LEVEL !== "debug",
 
       // For all available options, see:
       // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
@@ -83,8 +88,14 @@ export default isDevelopmentBuild
         disable: false, // Source maps are enabled by default
         assets: ["**/*.js", "**/*.js.map"], // Specify which files to upload
         ignore: ["**/node_modules/**"], // Files to exclude
-        deleteSourcemapsAfterUpload: true, // Security: delete after upload
+        // Keep sourcemaps available for browser debugging (source is public anyway)
+        deleteSourcemapsAfterUpload: false,
       },
+
+      // For monorepo: explicitly set the URL prefix where files will be served
+      // Next.js serves static files from /_next/static/ regardless of monorepo structure
+      // This ensures Sentry can correctly map sourcemaps to the served files
+      urlPrefix: "~/_next/static",
 
       // Automatically tree-shake Sentry logger statements to reduce bundle size
       disableLogger: true,

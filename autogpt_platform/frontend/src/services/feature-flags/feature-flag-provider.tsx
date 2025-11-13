@@ -1,10 +1,10 @@
 "use client";
 
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import * as Sentry from "@sentry/nextjs";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import * as Sentry from "@sentry/nextjs";
 import { environment } from "../environment";
 
 const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
