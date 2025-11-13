@@ -136,6 +136,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       metadata: {
         // TODO: Add more metadata
         position: node.position,
+        customized_name: node.data.metadata?.customized_name,
       },
     };
   },

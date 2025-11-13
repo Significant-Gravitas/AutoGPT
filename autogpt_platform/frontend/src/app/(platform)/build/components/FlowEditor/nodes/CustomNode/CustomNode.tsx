@@ -18,6 +18,7 @@ import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
 import { cn } from "@/lib/utils";
 import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
 import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
+import { NodeModelMetadata } from "@/app/api/__generated__/models/nodeModelMetadata";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -33,6 +34,7 @@ export type CustomNodeData = {
   nodeExecutionResult?: NodeExecutionResult;
   costs: BlockCost[];
   categories: BlockInfoCategoriesItem[];
+  metadata?: NodeModelMetadata;
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
