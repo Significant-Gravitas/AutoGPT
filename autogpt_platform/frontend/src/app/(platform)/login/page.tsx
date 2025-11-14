@@ -1,4 +1,5 @@
 "use client";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -7,7 +8,7 @@ import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import Turnstile from "@/components/auth/Turnstile";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { environment } from "@/services/environment";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
 import { environment } from "@/services/environment";
@@ -23,7 +24,6 @@ export default function LoginPage() {
     isLoading,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable,
     handleSubmit,
@@ -111,7 +111,7 @@ export default function LoginPage() {
           {isCloudEnv ? (
             <GoogleOAuthButton
               onClick={() => handleProviderLogin("google")}
-              isLoading={isGoogleLoading}
+              isLoading={isLoading}
               disabled={isLoading}
             />
           ) : null}
