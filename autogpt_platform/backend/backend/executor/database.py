@@ -32,6 +32,7 @@ from backend.data.graph import (
     get_node,
     validate_graph_execution_permissions,
 )
+from backend.data.human_review import get_or_upsert_human_review, has_pending_review
 from backend.data.notifications import (
     clear_all_user_notification_batches,
     create_or_add_to_user_notification_batch,
@@ -163,6 +164,10 @@ class DatabaseManager(AppService):
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
 
+    # Human In The Loop
+    get_or_upsert_human_review = _(get_or_upsert_human_review)
+    has_pending_review = _(has_pending_review)
+
     # Notifications - async
     clear_all_user_notification_batches = _(clear_all_user_notification_batches)
     create_or_add_to_user_notification_batch = _(
@@ -259,6 +264,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_user_integrations = d.update_user_integrations
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
+
+    # Human In The Loop
+    get_or_upsert_human_review = d.get_or_upsert_human_review
+    has_pending_review = d.has_pending_review
 
     # User Comms
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange

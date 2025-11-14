@@ -239,7 +239,7 @@ async def create_or_update_review(
     )
 
 
-async def handle_review_workflow(
+async def get_or_upsert_human_review(
     user_id: str,
     node_exec_id: str,
     graph_exec_id: str,
@@ -251,12 +251,9 @@ async def handle_review_workflow(
     expected_data_type: type,
 ) -> Optional[ReviewResult]:
     """
-    Handle the complete review workflow.
+    Get existing completed review or upsert a pending review entry.
 
-    This is the main entry point that orchestrates the entire HITL process:
-    1. Check for existing reviews
-    2. Process approved/rejected reviews
-    3. Create new reviews if needed
+    This function either returns completed review results or creates/updates pending reviews.
 
     Args:
         user_id: ID of the user who owns this review
@@ -299,7 +296,7 @@ async def handle_review_workflow(
         editable=editable,
     )
 
-    # Return None to indicate that we're waiting for human input
+    # Return None to indicate we're waiting for human input
     return None
 
 

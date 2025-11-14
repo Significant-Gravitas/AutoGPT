@@ -7,9 +7,10 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.execution import ExecutionStatus, update_graph_execution_stats
-from backend.data.human_review import ReviewResult, handle_review_workflow
+from backend.data.execution import ExecutionStatus, update_node_execution_status
+from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
+from backend.util.clients import get_database_manager_async_client
 
 
 class HumanInTheLoopBlock(Block):
@@ -66,25 +67,21 @@ class HumanInTheLoopBlock(Block):
                 ("review_message", ""),
             ],
             test_mock={
-                "handle_review_workflow": lambda *args, **kwargs: HumanInTheLoopBlock._create_test_result(),
-                "update_graph_execution_stats": lambda *args, **kwargs: None,
+                "get_or_upsert_human_review": lambda *args, **kwargs: ReviewResult(
+                    data={"name": "John Doe", "age": 30}, status="approved", message=""
+                ),
+                "update_node_execution_status": lambda *args, **kwargs: None,
             },
         )
 
-    @staticmethod
-    def _create_test_result():
-        """Create test result for mocking"""
-        return ReviewResult(
-            data={"name": "John Doe", "age": 30}, status="approved", message=""
-        )
+    async def get_or_upsert_human_review(self, *args, **kwargs):
+        """Wrapper method for get_or_upsert_human_review that can be mocked"""
+        db_client = get_database_manager_async_client()
+        return await db_client.get_or_upsert_human_review(*args, **kwargs)
 
-    async def handle_review_workflow(self, *args, **kwargs):
-        """Wrapper method for handle_review_workflow that can be mocked"""
-        return await handle_review_workflow(*args, **kwargs)
-
-    async def update_graph_execution_stats(self, *args, **kwargs):
-        """Wrapper method for update_graph_execution_stats that can be mocked"""
-        return await update_graph_execution_stats(*args, **kwargs)
+    async def update_node_execution_status(self, *args, **kwargs):
+        """Wrapper method for update_node_execution_status that can be mocked"""
+        return await update_node_execution_status(*args, **kwargs)
 
     async def run(
         self,
@@ -100,11 +97,11 @@ class HumanInTheLoopBlock(Block):
         """
         Execute the Human In The Loop block.
 
-        This method uses the HumanInTheLoopService to handle all business logic,
-        keeping the block implementation clean and focused on data flow.
+        This method uses one function to handle the complete workflow - checking existing reviews
+        and creating pending ones as needed.
         """
-        # Use the service to handle the complete workflow
-        result = await self.handle_review_workflow(
+        # Use the data layer to handle the complete workflow
+        result = await self.get_or_upsert_human_review(
             user_id=user_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
@@ -118,9 +115,10 @@ class HumanInTheLoopBlock(Block):
 
         # Check if we're waiting for human input
         if result is None:
-            # Update the graph execution status to indicate waiting state
-            await self.update_graph_execution_stats(
-                graph_exec_id=graph_exec_id, status=ExecutionStatus.WAITING_FOR_REVIEW
+            # Update node execution status to prevent execution manager from marking it as completed
+            await self.update_node_execution_status(
+                node_exec_id=node_exec_id,
+                status=ExecutionStatus.WAITING_FOR_REVIEW,
             )
             # This will pause the execution here
             # The execution will be resumed when the review is approved via the API
@@ -134,4 +132,3 @@ class HumanInTheLoopBlock(Block):
         elif result.status == "rejected":
             yield "status", "rejected"
             yield "review_message", result.message
-            # No exception - let downstream blocks handle rejection gracefully
