@@ -182,6 +182,7 @@ export function PendingReviewCard({
             }
             placeholder="Add any notes about your review..."
             className="min-h-[100px]"
+            maxLength={2000}
             disabled={reviewActionMutation.isPending}
           />
         </div>
