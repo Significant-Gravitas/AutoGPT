@@ -69,6 +69,12 @@ export const useSaveGraph = ({
         },
         onError: (error) => {
           onError?.(error);
+          toast({
+            title: "Error saving graph",
+            description:
+              (error as any).message ?? "An unexpected error occurred.",
+            variant: "destructive",
+          });
         },
       },
     });

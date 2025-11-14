@@ -38,7 +38,7 @@ export const convertNodesPlusBlockInfoIntoCustomNodes = (
   );
   const customNode: CustomNode = {
     id: node.id ?? "",
-    data: customNodeData,
+    data: { ...customNodeData, metadata: node.metadata },
     type: "custom",
     position: {
       x:

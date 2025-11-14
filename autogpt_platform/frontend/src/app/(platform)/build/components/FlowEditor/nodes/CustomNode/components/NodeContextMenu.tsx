@@ -47,7 +47,7 @@ export const NodeContextMenu = ({
       >
         <DropdownMenuItem onClick={handleCopy} className="hover:rounded-xlarge">
           <Copy className="mr-2 h-4 w-4" />
-          Copy
+          Copy Node
         </DropdownMenuItem>
 
         {subGraphID && (
