@@ -2,11 +2,12 @@
 import { postV1ResetOnboardingProgress } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function OnboardingResetPage() {
   const { toast } = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     postV1ResetOnboardingProgress()
@@ -17,7 +18,7 @@ export default function OnboardingResetPage() {
           variant: "success",
         });
 
-        redirect("/onboarding/1-welcome");
+        router.push("/onboarding");
       })
       .catch(() => {
         toast({
@@ -26,7 +27,7 @@ export default function OnboardingResetPage() {
           variant: "destructive",
         });
       });
-  }, []);
+  }, [toast, router]);
 
   return <LoadingSpinner cover />;
 }
