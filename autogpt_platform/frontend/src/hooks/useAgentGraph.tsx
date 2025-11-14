@@ -358,11 +358,12 @@ export default function useAgentGraph(
 
       const statusRank = {
         RUNNING: 0,
-        QUEUED: 1,
-        INCOMPLETE: 2,
-        TERMINATED: 3,
-        COMPLETED: 4,
-        FAILED: 5,
+        WAITING_FOR_REVIEW: 1,
+        QUEUED: 2,
+        INCOMPLETE: 3,
+        TERMINATED: 4,
+        COMPLETED: 5,
+        FAILED: 6,
       };
       const status = executionResults
         .map((v) => v.status)

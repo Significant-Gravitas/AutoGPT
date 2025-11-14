@@ -15,6 +15,7 @@ from backend.data.execution import (
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
+    get_node_executions_count,
     set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
@@ -129,6 +130,7 @@ class DatabaseManager(AppService):
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
     get_node_executions = _(get_node_executions)
+    get_node_executions_count = _(get_node_executions_count)
     get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
     update_node_execution_status_batch = _(update_node_execution_status_batch)
@@ -200,6 +202,7 @@ class DatabaseManagerClient(AppServiceClient):
     get_graph_executions_count = _(d.get_graph_executions_count)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     get_node_executions = _(d.get_node_executions)
+    get_node_executions_count = _(d.get_node_executions_count)
     update_node_execution_status = _(d.update_node_execution_status)
     update_graph_execution_start_time = _(d.update_graph_execution_start_time)
     update_graph_execution_stats = _(d.update_graph_execution_stats)
@@ -245,6 +248,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
+    get_node_executions_count = d.get_node_executions_count
     get_user_by_id = d.get_user_by_id
     get_user_integrations = d.get_user_integrations
     upsert_execution_input = d.upsert_execution_input

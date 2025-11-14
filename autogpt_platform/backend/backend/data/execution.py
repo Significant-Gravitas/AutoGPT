@@ -101,6 +101,7 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.TERMINATED,  # For resuming halted execution
+        ExecutionStatus.WAITING_FOR_REVIEW,  # For resuming after review
     ],
     ExecutionStatus.COMPLETED: [
         ExecutionStatus.RUNNING,
@@ -113,6 +114,9 @@ VALID_STATUS_TRANSITIONS = {
     ExecutionStatus.TERMINATED: [
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
+        ExecutionStatus.RUNNING,
+    ],
+    ExecutionStatus.WAITING_FOR_REVIEW: [
         ExecutionStatus.RUNNING,
     ],
 }
@@ -1000,6 +1004,38 @@ async def get_node_executions(
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
     return res
+
+
+async def get_node_executions_count(
+    graph_exec_id: str | None = None,
+    node_id: str | None = None,
+    block_ids: list[str] | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+) -> int:
+    """
+    Get count of node executions with optional filters.
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+    """
+    where_clause: AgentNodeExecutionWhereInput = {}
+    if graph_exec_id:
+        where_clause["agentGraphExecutionId"] = graph_exec_id
+    if node_id:
+        where_clause["agentNodeId"] = node_id
+    if block_ids:
+        where_clause["Node"] = {"is": {"agentBlockId": {"in": block_ids}}}
+    if statuses:
+        where_clause["OR"] = [{"executionStatus": status} for status in statuses]
+
+    if created_time_gte or created_time_lte:
+        where_clause["addedTime"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+
+    count = await AgentNodeExecution.prisma().count(where=where_clause)
+    return count
 
 
 async def get_latest_node_execution(

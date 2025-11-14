@@ -573,7 +573,21 @@ class ExecutionProcessor:
                 await persist_output(output_name, output_data)
 
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
-            status = ExecutionStatus.COMPLETED
+
+            # Check if this node has pending reviews (Human In The Loop block)
+            try:
+                from prisma.models import PendingHumanReview
+
+                pending_review = await PendingHumanReview.prisma().find_first(
+                    where={"nodeExecId": node_exec.node_exec_id, "status": "WAITING"}
+                )
+                if pending_review:
+                    status = ExecutionStatus.WAITING_FOR_REVIEW
+                else:
+                    status = ExecutionStatus.COMPLETED
+            except Exception:
+                # If there's any issue checking for pending reviews, default to COMPLETED
+                status = ExecutionStatus.COMPLETED
 
         except BaseException as e:
             stats.error = e
@@ -659,6 +673,16 @@ class ExecutionProcessor:
         elif exec_meta.status == ExecutionStatus.RUNNING:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
+            )
+        elif exec_meta.status == ExecutionStatus.WAITING_FOR_REVIEW:
+            exec_meta.status = ExecutionStatus.RUNNING
+            log_metadata.info(
+                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was waiting for review, resuming execution."
+            )
+            update_graph_execution_state(
+                db_client=db_client,
+                graph_exec_id=graph_exec.graph_exec_id,
+                status=ExecutionStatus.RUNNING,
             )
         elif exec_meta.status == ExecutionStatus.FAILED:
             exec_meta.status = ExecutionStatus.RUNNING
@@ -1006,7 +1030,15 @@ class ExecutionProcessor:
             elif error is not None:
                 execution_status = ExecutionStatus.FAILED
             else:
-                execution_status = ExecutionStatus.COMPLETED
+                # Check if there are any nodes waiting for review
+                waiting_nodes_count = db_client.get_node_executions_count(
+                    graph_exec_id=graph_exec.graph_exec_id,
+                    statuses=[ExecutionStatus.WAITING_FOR_REVIEW],
+                )
+                if waiting_nodes_count > 0:
+                    execution_status = ExecutionStatus.WAITING_FOR_REVIEW
+                else:
+                    execution_status = ExecutionStatus.COMPLETED
 
             if error:
                 execution_stats.error = str(error) or type(error).__name__

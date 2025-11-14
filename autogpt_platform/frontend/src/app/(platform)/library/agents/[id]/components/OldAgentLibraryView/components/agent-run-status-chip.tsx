@@ -23,6 +23,7 @@ export const agentRunStatusMap: Record<
   QUEUED: "queued",
   RUNNING: "running",
   TERMINATED: "stopped",
+  WAITING_FOR_REVIEW: "queued", // Map to queued for now
   // TODO: implement "draft" - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
 };
 

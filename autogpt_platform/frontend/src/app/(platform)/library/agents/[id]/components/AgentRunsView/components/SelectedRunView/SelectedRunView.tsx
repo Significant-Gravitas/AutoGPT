@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunOutputs } from "./components/RunOutputs";
+import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 
 interface Props {
   agent: LibraryAgent;
@@ -33,6 +35,12 @@ export function SelectedRunView({
     agent.graph_id,
     runId,
   );
+
+  const {
+    pendingReviews,
+    isLoading: reviewsLoading,
+    refetch: refetchReviews,
+  } = usePendingReviewsForExecution(runId);
 
   if (responseError || httpError) {
     return (
@@ -69,6 +77,11 @@ export function SelectedRunView({
         <TabsLineList>
           <TabsLineTrigger value="output">Output</TabsLineTrigger>
           <TabsLineTrigger value="input">Your input</TabsLineTrigger>
+          {pendingReviews.length > 0 && (
+            <TabsLineTrigger value="reviews">
+              Reviews ({pendingReviews.length})
+            </TabsLineTrigger>
+          )}
         </TabsLineList>
 
         <TabsLineContent value="output">
@@ -92,6 +105,22 @@ export function SelectedRunView({
             />
           </RunDetailCard>
         </TabsLineContent>
+
+        {pendingReviews.length > 0 && (
+          <TabsLineContent value="reviews">
+            <RunDetailCard>
+              {reviewsLoading ? (
+                <div className="text-neutral-500">Loading reviews…</div>
+              ) : (
+                <PendingReviewsList
+                  reviews={pendingReviews}
+                  onReviewComplete={refetchReviews}
+                  emptyMessage="No pending reviews for this execution"
+                />
+              )}
+            </RunDetailCard>
+          </TabsLineContent>
+        )}
       </TabsLine>
     </div>
   );
