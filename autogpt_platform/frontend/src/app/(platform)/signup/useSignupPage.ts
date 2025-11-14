@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -18,7 +18,7 @@ export function useSignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
@@ -42,10 +42,6 @@ export function useSignupPage() {
       agreeToTerms: false,
     },
   });
-
-  useEffect(() => {
-    if (user) router.push("/");
-  }, [user]);
 
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
@@ -85,8 +81,11 @@ export function useSignupPage() {
       }
 
       const { url } = await response.json();
-      if (url) window.location.href = url as string;
-      setFeedback(null);
+      if (url) {
+        setIsRedirecting(true);
+        setFeedback(null);
+        window.location.href = url as string;
+      }
     } catch (error) {
       setIsGoogleLoading(false);
       resetCaptcha();
@@ -160,8 +159,12 @@ export function useSignupPage() {
       }
 
       setFeedback(null);
-      const next = (result?.next as string) || "/";
-      router.push(next);
+
+      const next = result?.next || "/";
+      if (next) {
+        setIsRedirecting(true);
+        router.push(next);
+      }
     } catch (error) {
       setIsLoading(false);
       toast({
@@ -183,6 +186,7 @@ export function useSignupPage() {
     captchaKey,
     isLoggedIn: !!user,
     isLoading,
+    isRedirecting,
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,

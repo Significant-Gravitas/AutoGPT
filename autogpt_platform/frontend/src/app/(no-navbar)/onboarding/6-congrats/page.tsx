@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { finishOnboarding } from "./actions";
+import { useRouter } from "next/navigation";
 import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 import * as party from "party-js";
 
 export default function Page() {
   const { completeStep } = useOnboarding(7, "AGENT_INPUT");
+  const router = useRouter();
   const [showText, setShowText] = useState(false);
   const [showSubtext, setShowSubtext] = useState(false);
   const divRef = useRef(null);
@@ -31,8 +32,9 @@ export default function Page() {
     }, 500);
 
     const timer2 = setTimeout(() => {
+      // Mark CONGRATS as complete - /onboarding page will handle adding agent to library and redirect
       completeStep("CONGRATS");
-      finishOnboarding();
+      router.push("/onboarding");
     }, 3000);
 
     return () => {
@@ -40,7 +42,7 @@ export default function Page() {
       clearTimeout(timer1);
       clearTimeout(timer2);
     };
-  }, []);
+  }, [completeStep, router]);
 
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center bg-violet-100">

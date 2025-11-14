@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getCookieSettings, isAdminPage, isProtectedPage } from "./helpers";
+import {
+  getCookieSettings,
+  isAdminPage,
+  isAuthenticationPage,
+  isProtectedPage,
+} from "./helpers";
 import { environment } from "@/services/environment";
 
 export async function updateSession(request: NextRequest) {
@@ -62,7 +67,13 @@ export async function updateSession(request: NextRequest) {
       }
     }
 
-    // 2. Check if user is authenticated but lacks admin role when accessing admin pages
+    // 2. Check if user is authenticated but trying to access unauthenticated pages
+    if (user && isAuthenticationPage(pathname)) {
+      url.pathname = "/marketplace";
+      return NextResponse.redirect(url);
+    }
+
+    // 3. Check if user is authenticated but lacks admin role when accessing admin pages
     if (user && userRole !== "admin" && isAdminPage(pathname)) {
       url.pathname = "/marketplace";
       return NextResponse.redirect(url);

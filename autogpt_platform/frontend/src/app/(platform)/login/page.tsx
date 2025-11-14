@@ -20,6 +20,7 @@ export default function LoginPage() {
     turnstile,
     captchaKey,
     isLoading,
+    isRedirecting,
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
@@ -30,7 +31,7 @@ export default function LoginPage() {
     handleCloseNotAllowedModal,
   } = useLoginPage();
 
-  if (isUserLoading || user) {
+  if (isUserLoading || user || isRedirecting) {
     return <LoadingLogin />;
   }
 

@@ -12,22 +12,22 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
-import { finishOnboarding } from "../6-congrats/actions";
+import router from "next/router";
 
 export default function Page() {
-  const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
+  const { state, updateState, completeStep } = useOnboarding(4, "INTEGRATIONS");
   const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
   const api = useBackendAPI();
 
   useEffect(() => {
     api.getOnboardingAgents().then((agents) => {
       if (agents.length < 2) {
-        finishOnboarding();
+        completeStep("CONGRATS");
+        router.push("/onboarding");
       }
-
       setAgents(agents);
     });
-  }, [api, setAgents]);
+  }, []);
 
   useEffect(() => {
     // Deselect agent if it's not in the list of agents

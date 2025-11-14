@@ -14,6 +14,8 @@ export const PROTECTED_PAGES = [
 
 export const ADMIN_PAGES = ["/admin"] as const;
 
+export const AUTHENTICATION_PAGES = ["/login", "/signup"] as const;
+
 export function getCookieSettings(): Partial<CookieOptions> {
   return {
     secure: process.env.NODE_ENV === "production",
@@ -29,6 +31,12 @@ export function isProtectedPage(pathname: string): boolean {
 
 export function isAdminPage(pathname: string): boolean {
   return ADMIN_PAGES.some((page) => pathname.startsWith(page));
+}
+
+export function isAuthenticationPage(pathname: string): boolean {
+  return AUTHENTICATION_PAGES.some(
+    (page) => pathname === page || pathname.startsWith(`${page}/`),
+  );
 }
 
 export function shouldRedirectOnLogout(pathname: string): boolean {
