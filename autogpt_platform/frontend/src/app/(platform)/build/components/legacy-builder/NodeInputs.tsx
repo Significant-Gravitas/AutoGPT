@@ -1,18 +1,15 @@
+import {
+  ConnectionData,
+  CustomNodeData,
+} from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { Calendar } from "@/components/__legacy__/ui/calendar";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
-import { beautifyString, cn } from "@/lib/utils";
-import { Node, useNodeId, useNodesData } from "@xyflow/react";
-import {
-  ConnectionData,
-  CustomNodeData,
-} from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
-import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
 import {
   BlockIOArraySubSchema,
   BlockIOBooleanSubSchema,
@@ -29,22 +26,21 @@ import {
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
+import { beautifyString, cn } from "@/lib/utils";
+import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+import { Node, useNodeId, useNodesData } from "@xyflow/react";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
 import React, {
   FC,
   useCallback,
   useEffect,
   useMemo,
-  useState,
   useRef,
+  useState,
 } from "react";
 import { Button } from "../../../../../components/__legacy__/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../../../../components/__legacy__/ui/select";
+import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input";
 import {
   MultiSelector,
   MultiSelectorContent,
@@ -53,11 +49,16 @@ import {
   MultiSelectorList,
   MultiSelectorTrigger,
 } from "../../../../../components/__legacy__/ui/multiselect";
-import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input";
-import NodeHandle from "./NodeHandle";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../../../components/__legacy__/ui/select";
 import { Switch } from "../../../../../components/atoms/Switch/Switch";
 import { NodeTableInput } from "../../../../../components/node-table-input";
+import NodeHandle from "./NodeHandle";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -370,6 +371,104 @@ export const NodeGenericInputField: FC<{
           handleInputChange={handleInputChange}
         />
       );
+    case DataType.GOOGLE_DRIVE_PICKER: {
+      const pickerSchema = propSchema as any;
+      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
+        pickerSchema.google_drive_picker_config || {};
+
+      const isMultiSelect = config.multiselect || false;
+      const currentFiles = isMultiSelect
+        ? Array.isArray(currentValue)
+          ? currentValue
+          : []
+        : currentValue
+          ? [currentValue]
+          : [];
+
+      return (
+        <div className={cn("flex flex-col gap-2", className)}>
+          {/* Picker Button */}
+          <GoogleDrivePicker
+            multiselect={config.multiselect || false}
+            views={(config.allowed_views as any) || ["DOCS"]}
+            scopes={
+              config.scopes || ["https://www.googleapis.com/auth/drive.file"]
+            }
+            disabled={false}
+            onPicked={(files) => {
+              // Convert to GoogleDriveFile format
+              const convertedFiles = files.map((f) => ({
+                id: f.id,
+                name: f.name,
+                mimeType: f.mimeType,
+                url: f.url,
+                iconUrl: f.iconUrl,
+                isFolder: f.mimeType === "application/vnd.google-apps.folder",
+                accessToken: f.accessToken,
+              }));
+
+              // Store based on multiselect mode
+              const value = isMultiSelect ? convertedFiles : convertedFiles[0];
+              handleInputChange(propKey, value);
+            }}
+            onCanceled={() => {
+              // User canceled - no action needed
+            }}
+            onError={(error) => {
+              console.error("Google Drive Picker error:", error);
+            }}
+          />
+
+          {/* Display Selected Files */}
+          {currentFiles.length > 0 && (
+            <div className="space-y-1">
+              {currentFiles.map((file: any, idx: number) => (
+                <div
+                  key={file.id || idx}
+                  className="flex items-center justify-between rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    {file.iconUrl && (
+                      <img
+                        src={file.iconUrl}
+                        alt=""
+                        className="h-4 w-4 flex-shrink-0"
+                      />
+                    )}
+                    <span className="truncate" title={file.name}>
+                      {file.name || file.id}
+                    </span>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 flex-shrink-0"
+                    onClick={() => {
+                      if (isMultiSelect) {
+                        const newFiles = currentFiles.filter(
+                          (_: any, i: number) => i !== idx,
+                        );
+                        handleInputChange(propKey, newFiles);
+                      } else {
+                        handleInputChange(propKey, null);
+                      }
+                    }}
+                  >
+                    <Cross2Icon className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Error Message */}
+          {errors[propKey] && (
+            <span className="text-sm text-red-500">{errors[propKey]}</span>
+          )}
+        </div>
+      );
+    }
 
     case DataType.DATE:
     case DataType.TIME:

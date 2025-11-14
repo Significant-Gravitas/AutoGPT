@@ -253,6 +253,134 @@ def SecretField(
     )
 
 
+class GoogleDriveFile(BaseModel):
+    """Represents a single file/folder picked from Google Drive"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(description="Google Drive file/folder ID")
+    name: Optional[str] = Field(None, description="File/folder name")
+    mime_type: Optional[str] = Field(
+        None,
+        alias="mimeType",
+        description="MIME type (e.g., application/vnd.google-apps.document)",
+    )
+    url: Optional[str] = Field(None, description="URL to open the file")
+    icon_url: Optional[str] = Field(None, alias="iconUrl", description="Icon URL")
+    is_folder: Optional[bool] = Field(
+        None, alias="isFolder", description="Whether this is a folder"
+    )
+    access_token: Optional[str] = Field(
+        None,
+        alias="accessToken",
+        description="OAuth access token from the picker (frontend only)",
+    )
+
+
+def GoogleDrivePickerField(
+    multiselect: bool = False,
+    allow_folder_selection: bool = False,
+    allowed_views: Optional[
+        list[
+            Literal[
+                "DOCS",
+                "DOCUMENTS",
+                "SPREADSHEETS",
+                "PRESENTATIONS",
+                "DOCS_IMAGES",
+                "FOLDERS",
+            ]
+        ]
+    ] = None,
+    allowed_mime_types: Optional[list[str]] = None,
+    scopes: Optional[list[str]] = None,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    placeholder: Optional[str] = None,
+    **kwargs,
+) -> Any:
+    """
+    Creates a Google Drive Picker input field.
+
+    Args:
+        multiselect: Allow selecting multiple files/folders (default: False)
+        allow_folder_selection: Allow selecting folders (default: False)
+        allowed_views: List of view types to show in picker (default: ["DOCS"])
+        allowed_mime_types: Filter by MIME types (e.g., ["application/pdf"])
+        title: Field title shown in UI
+        description: Field description/help text
+        placeholder: Placeholder text for the button
+        **kwargs: Additional SchemaField arguments (advanced, hidden, etc.)
+
+    Returns:
+        Field definition that produces:
+        - Single GoogleDriveFile when multiselect=False
+        - list[GoogleDriveFile] when multiselect=True
+
+    Example:
+        >>> class MyBlock(Block):
+        ...     class Input(BlockSchema):
+        ...         document: GoogleDriveFile = GoogleDrivePickerField(
+        ...             title="Select Document",
+        ...             allowed_views=["DOCUMENTS"],
+        ...         )
+        ...
+        ...         files: list[GoogleDriveFile] = GoogleDrivePickerField(
+        ...             title="Select Multiple Files",
+        ...             multiselect=True,
+        ...             allow_folder_selection=True,
+        ...         )
+    """
+    # Build configuration that will be sent to frontend
+    picker_config = {
+        "multiselect": multiselect,
+        "allow_folder_selection": allow_folder_selection,
+        "allowed_views": allowed_views or ["DOCS"],
+    }
+
+    # Add optional configurations
+    if allowed_mime_types:
+        picker_config["allowed_mime_types"] = allowed_mime_types
+
+    # Determine required scopes based on config
+    base_scopes = scopes if scopes is not None else []
+    picker_scopes: set[str] = set(base_scopes)
+    if allow_folder_selection:
+        picker_scopes.add("https://www.googleapis.com/auth/drive")
+    else:
+        picker_scopes.update(
+            [
+                "https://www.googleapis.com/auth/drive.file",
+                "https://www.googleapis.com/auth/drive.readonly",
+            ]
+        )
+
+    views = set(allowed_views or [])
+    if "SPREADSHEETS" in views:
+        picker_scopes.add("https://www.googleapis.com/auth/spreadsheets.readonly")
+    if "DOCUMENTS" in views or "DOCS" in views:
+        picker_scopes.add("https://www.googleapis.com/auth/documents.readonly")
+
+    picker_config["scopes"] = sorted(picker_scopes)
+
+    # Set appropriate default value
+    default_value = [] if multiselect else None
+
+    # Use Pydantic's json_schema_extra and json_schema_mode to ensure metadata is preserved
+    return Field(
+        default=default_value,
+        title=title,
+        description=description,
+        json_schema_extra={
+            "placeholder": placeholder or "Choose from Google Drive",
+            "format": "google-drive-picker",
+            "google_drive_picker_config": picker_config,
+            "advanced": False,
+            **kwargs,
+        },
+    )
+
+
 def SchemaField(
     default: T | PydanticUndefinedType = PydanticUndefined,
     *args,

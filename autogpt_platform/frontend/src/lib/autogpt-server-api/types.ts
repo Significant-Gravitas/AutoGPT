@@ -80,6 +80,7 @@ export enum DataType {
   KEY_VALUE = "key-value",
   ARRAY = "array",
   TABLE = "table",
+  GOOGLE_DRIVE_PICKER = "google-drive-picker",
 }
 
 export type BlockIOSubSchemaMeta = {
@@ -114,6 +115,32 @@ export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   const?: Array<string>;
   default?: Array<string>;
   secret?: boolean;
+};
+
+export type GoogleDriveFile = {
+  id: string;
+  name?: string;
+  mimeType?: string;
+  url?: string;
+  iconUrl?: string;
+  isFolder?: boolean;
+  accessToken?: string;
+};
+
+export type GoogleDrivePickerConfig = {
+  multiselect?: boolean;
+  allow_folder_selection?: boolean;
+  allowed_views?: string[];
+  allowed_mime_types?: string[];
+  scopes?: string[];
+};
+
+export type GoogleDrivePickerSchema = BlockIOSubSchemaMeta & {
+  // When multiselect=false: type="object"
+  // When multiselect=true: type="array", items={ type="object" }
+  type: "object" | "array";
+  format: "google-drive-picker";
+  google_drive_picker_config?: GoogleDrivePickerConfig;
 };
 
 // Table cell values are typically primitives
@@ -1149,6 +1176,18 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
   // Credentials override
   if ("credentials_provider" in schema) {
     return DataType.CREDENTIALS;
+  }
+
+  if (
+    "google_drive_picker_config" in schema ||
+    "googleDrivePickerConfig" in schema
+  ) {
+    return DataType.GOOGLE_DRIVE_PICKER;
+  }
+
+  // Google Drive Picker - check format field
+  if ("format" in schema && schema.format === "google-drive-picker") {
+    return DataType.GOOGLE_DRIVE_PICKER;
   }
 
   // enum == SELECT

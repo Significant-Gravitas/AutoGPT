@@ -69,7 +69,6 @@ export function useGoogleDrivePicker(options: Props) {
   async function openPicker() {
     try {
       await ensureLoaded();
-      console.log(accessTokenRef.current);
       const token = accessTokenRef.current || (await requestAccessToken());
       buildAndShowPicker(token);
     } catch (e) {
@@ -168,7 +167,12 @@ export function useGoogleDrivePicker(options: Props) {
     try {
       const files = normalizePickerResponse(data);
       if (files.length) {
-        onPicked(files);
+        // Include the access token with each file
+        const filesWithToken = files.map((file) => ({
+          ...file,
+          accessToken: accessTokenRef.current ?? undefined,
+        }));
+        onPicked(filesWithToken);
       } else {
         onCanceled();
       }
@@ -196,5 +200,6 @@ export function useGoogleDrivePicker(options: Props) {
     handleOpenPicker: openPicker,
     credentials,
     hasGoogleOAuth,
+    accessToken: accessTokenRef.current,
   };
 }
