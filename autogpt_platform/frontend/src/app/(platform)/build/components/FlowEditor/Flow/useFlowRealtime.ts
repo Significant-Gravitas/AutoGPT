@@ -9,6 +9,7 @@ import { useShallow } from "zustand/react/shallow";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { useGraphStore } from "../../../stores/graphStore";
+import { useEdgeStore } from "../../../stores/edgeStore";
 
 export const useFlowRealtime = () => {
   const api = useBackendAPI();
@@ -20,6 +21,12 @@ export const useFlowRealtime = () => {
   );
   const setIsGraphRunning = useGraphStore(
     useShallow((state) => state.setIsGraphRunning),
+  );
+  const updateEdgeBeads = useEdgeStore(
+    useShallow((state) => state.updateEdgeBeads),
+  );
+  const resetEdgeBeads = useEdgeStore(
+    useShallow((state) => state.resetEdgeBeads),
   );
 
   const [{ flowExecutionID, flowID }] = useQueryStates({
@@ -34,12 +41,12 @@ export const useFlowRealtime = () => {
         if (data.graph_exec_id != flowExecutionID) {
           return;
         }
-        // TODO: Update the states of nodes
         updateNodeExecutionResult(
           data.node_id,
           data as unknown as NodeExecutionResult,
         );
         updateStatus(data.node_id, data.status);
+        updateEdgeBeads(data.node_id, data as unknown as NodeExecutionResult);
       },
     );
 
@@ -82,8 +89,9 @@ export const useFlowRealtime = () => {
       deregisterNodeExecutionEvent();
       deregisterGraphExecutionSubscription();
       deregisterGraphExecutionStatusEvent();
+      resetEdgeBeads();
     };
-  }, [api, flowExecutionID]);
+  }, [api, flowExecutionID, resetEdgeBeads]);
 
   return {};
 };

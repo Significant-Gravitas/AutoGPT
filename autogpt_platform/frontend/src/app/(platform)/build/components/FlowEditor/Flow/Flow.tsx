@@ -4,7 +4,7 @@ import CustomEdge from "../edges/CustomEdge";
 import { useFlow } from "./useFlow";
 import { useShallow } from "zustand/react/shallow";
 import { useNodeStore } from "../../../stores/nodeStore";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { CustomNode } from "../nodes/CustomNode/CustomNode";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { useFlowRealtime } from "./useFlowRealtime";
@@ -12,7 +12,7 @@ import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
-import { useCopyPasteKeyboard } from "../../../hooks/useCopyPasteKeyboard";
+import { useCopyPaste } from "./useCopyPaste";
 
 export const Flow = () => {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
@@ -20,6 +20,7 @@ export const Flow = () => {
     useShallow((state) => state.onNodesChange),
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
@@ -28,7 +29,19 @@ export const Flow = () => {
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
 
-  useCopyPasteKeyboard();
+  // Copy/paste functionality
+  const handleCopyPaste = useCopyPaste();
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleCopyPaste(event);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleCopyPaste]);
 
   const { isFlowContentLoading } = useFlow();
   const { isGraphRunning } = useGraphStore();
@@ -39,10 +52,10 @@ export const Flow = () => {
           nodes={nodes}
           onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           edges={edges}
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
-          edgeTypes={{ custom: CustomEdge }}
           maxZoom={2}
           minZoom={0.1}
           onDragOver={onDragOver}
