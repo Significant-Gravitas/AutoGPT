@@ -26,8 +26,21 @@ export async function GET(request: NextRequest) {
     const result = await exchangePasswordResetCode(supabase, code);
 
     if (!result.success) {
+      // Check for expired or used link errors
+      const errorMessage = result.error?.toLowerCase() || "";
+      const isExpiredOrUsed =
+        errorMessage.includes("expired") ||
+        errorMessage.includes("invalid") ||
+        errorMessage.includes("otp_expired") ||
+        errorMessage.includes("already") ||
+        errorMessage.includes("used");
+
+      const errorParam = isExpiredOrUsed
+        ? "link_expired"
+        : encodeURIComponent(result.error || "Password reset failed");
+
       return NextResponse.redirect(
-        `${origin}/reset-password?error=${encodeURIComponent(result.error || "Password reset failed")}`,
+        `${origin}/reset-password?error=${errorParam}`,
       );
     }
 
