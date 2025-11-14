@@ -14,7 +14,7 @@ export default function OnboardingPage() {
         // Check if onboarding is enabled
         const isEnabled = await api.isOnboardingEnabled();
         if (!isEnabled) {
-          router.push("/marketplace");
+          router.push("/");
           return;
         }
 
@@ -22,7 +22,7 @@ export default function OnboardingPage() {
 
         // Handle completed onboarding
         if (onboarding.completedSteps.includes("GET_RESULTS")) {
-          router.push("/marketplace");
+          router.push("/");
           return;
         }
 
@@ -79,7 +79,7 @@ export default function OnboardingPage() {
         router.push("/onboarding/1-welcome");
       } catch (error) {
         console.error("Failed to determine onboarding step:", error);
-        router.push("/marketplace");
+        router.push("/");
       }
     }
 
