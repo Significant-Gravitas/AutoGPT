@@ -11,7 +11,6 @@ import Turnstile from "@/components/auth/Turnstile";
 import { environment } from "@/services/environment";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
-import { environment } from "@/services/environment";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function LoginPage() {

@@ -21,7 +21,6 @@ import { environment } from "@/services/environment";
 import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
-import { environment } from "@/services/environment";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function SignupPage() {
