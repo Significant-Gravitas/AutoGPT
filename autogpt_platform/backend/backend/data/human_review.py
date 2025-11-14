@@ -301,3 +301,19 @@ async def handle_review_workflow(
 
     # Return None to indicate that we're waiting for human input
     return None
+
+
+async def has_pending_review(node_exec_id: str) -> bool:
+    """
+    Check if a node execution has a pending review.
+
+    Args:
+        node_exec_id: The node execution ID to check
+
+    Returns:
+        True if there is a pending review waiting, False otherwise
+    """
+    review = await PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": node_exec_id}
+    )
+    return review is not None and review.status == ReviewStatus.WAITING

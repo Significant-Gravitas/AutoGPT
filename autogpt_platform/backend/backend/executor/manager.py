@@ -39,6 +39,7 @@ from backend.data.execution import (
     UserContext,
 )
 from backend.data.graph import Link, Node
+from backend.data.human_review import has_pending_review
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
@@ -576,12 +577,7 @@ class ExecutionProcessor:
 
             # Check if this node has a pending human review
             try:
-                from prisma.models import PendingHumanReview
-
-                pending_review = await PendingHumanReview.prisma().find_unique(
-                    where={"nodeExecId": node_exec.node_exec_id}
-                )
-                if pending_review and pending_review.status == "WAITING":
+                if await has_pending_review(node_exec.node_exec_id):
                     # Node is waiting for human review
                     status = ExecutionStatus.WAITING_FOR_REVIEW
                 else:

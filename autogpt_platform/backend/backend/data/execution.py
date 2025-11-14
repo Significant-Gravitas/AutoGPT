@@ -115,10 +115,10 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.RUNNING,
+        ExecutionStatus.WAITING_FOR_REVIEW,
     ],
     ExecutionStatus.WAITING_FOR_REVIEW: [
         ExecutionStatus.RUNNING,
-        ExecutionStatus.TERMINATED,  # Allow terminating execution during review
     ],
 }
 
@@ -889,8 +889,22 @@ async def update_node_execution_status_batch(
     status: ExecutionStatus,
     stats: dict[str, Any] | None = None,
 ):
+    # Validate status transitions
+    if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
+        # For batch updates, we filter to only update nodes with valid current statuses
+        where_clause = {
+            "id": {"in": node_exec_ids},
+            "executionStatus": {"in": [s.value for s in allowed_from]},
+        }
+    else:
+        # If status cannot be set via update, raise error
+        raise ValueError(
+            f"Status {status} cannot be set via update for node executions. "
+            f"This status can only be set at creation or is not a valid target status."
+        )
+
     await AgentNodeExecution.prisma().update_many(
-        where={"id": {"in": node_exec_ids}},
+        where=cast(AgentNodeExecutionWhereInput, where_clause),
         data=_get_update_status_data(status, None, stats),
     )
 
@@ -904,13 +918,37 @@ async def update_node_execution_status(
     if status == ExecutionStatus.QUEUED and execution_data is None:
         raise ValueError("Execution data must be provided when queuing an execution.")
 
+    # Validate status transitions by checking current status first
+    if status:
+        if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
+            # Get current execution to check its status
+            current_exec = await AgentNodeExecution.prisma().find_unique(
+                where={"id": node_exec_id}
+            )
+            if not current_exec:
+                raise ValueError(f"Execution {node_exec_id} not found.")
+
+            current_status = ExecutionStatus(current_exec.executionStatus)
+            if current_status not in allowed_from:
+                raise ValueError(
+                    f"Invalid status transition from {current_status} to {status} "
+                    f"for execution {node_exec_id}. Allowed transitions: {allowed_from}"
+                )
+        else:
+            raise ValueError(
+                f"Status {status} cannot be set via update for execution {node_exec_id}. "
+                f"This status can only be set at creation or is not a valid target status."
+            )
+
     res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
         data=_get_update_status_data(status, execution_data, stats),
         include=EXECUTION_RESULT_INCLUDE,
     )
     if not res:
-        raise ValueError(f"Execution {node_exec_id} not found.")
+        raise ValueError(
+            f"Execution {node_exec_id} not found or invalid status transition."
+        )
 
     return NodeExecutionResult.from_db(res)
 
