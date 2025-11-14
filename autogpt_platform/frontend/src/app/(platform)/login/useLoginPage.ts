@@ -4,20 +4,17 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
-import { computeReturnURL } from "./helpers";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -117,9 +114,11 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      // Prioritize returnUrl from query params over backend's onboarding logic
-      const next = computeReturnURL(returnUrl, result);
-      if (next) router.replace(next);
+      if (result.onboarding) {
+        router.replace("/onboarding");
+      } else {
+        router.replace("/marketplace");
+      }
     } catch (error) {
       toast({
         title:

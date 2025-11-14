@@ -55,7 +55,6 @@ export async function login(
     return {
       success: true,
       onboarding,
-      next: onboarding ? "/onboarding" : "/",
     };
   } catch (err) {
     Sentry.captureException(err);
