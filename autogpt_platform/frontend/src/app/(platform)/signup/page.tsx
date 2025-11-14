@@ -21,6 +21,7 @@ import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
 import { environment } from "@/services/environment";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function SignupPage() {
   const {
@@ -204,6 +205,7 @@ export default function SignupPage() {
           link={{ text: "Log in", href: "/login" }}
         />
       </AuthCard>
+      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}

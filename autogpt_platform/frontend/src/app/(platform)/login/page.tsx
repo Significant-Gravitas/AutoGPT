@@ -11,6 +11,7 @@ import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
 import { environment } from "@/services/environment";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function LoginPage() {
   const {
@@ -126,6 +127,7 @@ export default function LoginPage() {
           link={{ text: "Sign up", href: "/signup" }}
         />
       </AuthCard>
+      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}
