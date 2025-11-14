@@ -34,29 +34,6 @@ async def get_pending_review_by_node(
     return review
 
 
-async def delete_pending_review(review_id: str) -> None:
-    """
-    Delete a pending review by ID.
-
-    Args:
-        review_id: The review ID to delete
-    """
-    await PendingHumanReview.prisma().delete(where={"id": review_id})
-
-
-async def update_review_status(review_id: str, status: ReviewStatus) -> None:
-    """
-    Update the status of a pending review.
-
-    Args:
-        review_id: The review ID to update
-        status: The new status to set
-    """
-    await PendingHumanReview.prisma().update(
-        where={"id": review_id}, data={"status": status}
-    )
-
-
 async def upsert_pending_review(
     node_exec_id: str,
     user_id: str,
@@ -168,14 +145,16 @@ async def process_approved_review(
         approved_data = convert(approved_data, expected_data_type)
     except Exception as e:
         # Reset review back to WAITING status so user can fix the data
-        await update_review_status(review.id, ReviewStatus.WAITING)
+        await PendingHumanReview.prisma().update(
+            where={"id": review.id}, data={"status": ReviewStatus.WAITING}
+        )
         raise HITLValidationError(
             f"Failed to convert approved data to {expected_data_type.__name__}: {e}",
             review_message="Data conversion failed after approval. Please review and fix the data format.",
         )
 
     # Clean up the review record only after successful conversion
-    await delete_pending_review(review.id)
+    await PendingHumanReview.prisma().delete(where={"id": review.id})
 
     return ReviewResult(
         data=approved_data, status="approved", message=review.reviewMessage or ""
@@ -193,49 +172,10 @@ async def process_rejected_review(review: PendingHumanReview) -> ReviewResult:
         ReviewResult with rejection details
     """
     # Clean up the review record
-    await delete_pending_review(review.id)
+    await PendingHumanReview.prisma().delete(where={"id": review.id})
 
     return ReviewResult(
         data=None, status="rejected", message=review.reviewMessage or ""
-    )
-
-
-async def create_or_update_review(
-    user_id: str,
-    node_exec_id: str,
-    graph_exec_id: str,
-    graph_id: str,
-    graph_version: int,
-    data: Any,
-    message: str,
-    editable: bool,
-) -> None:
-    """
-    Create a new review or update an existing one.
-
-    Args:
-        user_id: ID of the user who owns this review
-        node_exec_id: ID of the node execution
-        graph_exec_id: ID of the graph execution
-        graph_id: ID of the graph template
-        graph_version: Version of the graph template
-        data: The data to be reviewed
-        message: Instructions for the reviewer
-        editable: Whether the data can be edited
-    """
-    review_data = {
-        "data": data,
-        "message": message,
-        "editable": editable,
-    }
-
-    await upsert_pending_review(
-        node_exec_id=node_exec_id,
-        user_id=user_id,
-        graph_exec_id=graph_exec_id,
-        graph_id=graph_id,
-        graph_version=graph_version,
-        review_data=review_data,
     )
 
 
@@ -285,15 +225,19 @@ async def get_or_upsert_human_review(
             return None
 
     # Create the pending review (only if no existing review)
-    await create_or_update_review(
-        user_id=user_id,
+    review_data = {
+        "data": input_data,
+        "message": message,
+        "editable": editable,
+    }
+
+    await upsert_pending_review(
         node_exec_id=node_exec_id,
+        user_id=user_id,
         graph_exec_id=graph_exec_id,
         graph_id=graph_id,
         graph_version=graph_version,
-        data=input_data,
-        message=message,
-        editable=editable,
+        review_data=review_data,
     )
 
     # Return None to indicate we're waiting for human input
