@@ -1,8 +1,11 @@
 import json
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Dict, List, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+# SafeJson-compatible type alias for review data
+SafeJsonData = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 
 class PendingHumanReviewResponse(BaseModel):
@@ -33,7 +36,9 @@ class PendingHumanReviewResponse(BaseModel):
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
-    data: Any = Field(description="Data waiting for review")
+    data: SafeJsonData = Field(
+        description="Data waiting for review (SafeJson serializable structure)"
+    )
     status: Literal["WAITING", "APPROVED", "REJECTED"] = Field(
         description="Review status"
     )
@@ -72,8 +77,9 @@ class ReviewActionRequest(BaseModel):
     """
 
     action: Literal["approve", "reject"] = Field(description="Action to take")
-    reviewed_data: Any | None = Field(
-        description="Modified data (only for approve action)", default=None
+    reviewed_data: SafeJsonData | None = Field(
+        description="Modified data (only for approve action, must be SafeJson compatible)",
+        default=None,
     )
     message: str | None = Field(
         description="Optional message from the reviewer", default=None, max_length=2000
@@ -91,6 +97,7 @@ class ReviewActionRequest(BaseModel):
         - Validates JSON serializability to prevent injection attacks
         - Enforces 1MB size limit to prevent DoS attacks
         - Limits nesting depth to 10 levels to prevent stack overflow
+        - Ensures data conforms to SafeJson compatible types
 
         Args:
             v: The reviewed_data value to validate
@@ -106,6 +113,26 @@ class ReviewActionRequest(BaseModel):
         """
         if v is None:
             return v
+
+        # Validate SafeJson compatibility
+        def validate_safejson_type(obj):
+            """Ensure object only contains SafeJson compatible types."""
+            if obj is None:
+                return True
+            elif isinstance(obj, (str, int, float, bool)):
+                return True
+            elif isinstance(obj, dict):
+                return all(
+                    isinstance(k, str) and validate_safejson_type(v)
+                    for k, v in obj.items()
+                )
+            elif isinstance(obj, list):
+                return all(validate_safejson_type(item) for item in obj)
+            else:
+                return False
+
+        if not validate_safejson_type(v):
+            raise ValueError("reviewed_data contains non-SafeJson compatible types")
 
         # Validate data size to prevent DoS attacks
         try:

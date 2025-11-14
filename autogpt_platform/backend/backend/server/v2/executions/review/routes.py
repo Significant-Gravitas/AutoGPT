@@ -118,6 +118,7 @@ async def list_pending_reviews(
     "/execution/{graph_exec_id}",
     summary="Get Pending Reviews for Execution",
     responses={
+        403: {"description": "Access denied to graph execution"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
@@ -139,12 +140,36 @@ async def list_pending_reviews_for_execution(
         List of pending review objects for the specified execution
 
     Raises:
-        HTTPException: If authentication fails or database error occurs
+        HTTPException:
+            - 403: If user doesn't own the graph execution
+            - 500: If authentication fails or database error occurs
 
     Note:
         Only returns reviews owned by the authenticated user for security.
         Reviews with invalid status are excluded with warning logs.
     """
+
+    # Verify user owns the graph execution before returning reviews
+    db = get_database_manager_async_client()
+    try:
+        graph_exec = await db.get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
+        )
+        if not graph_exec:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to graph execution",
+            )
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
+    except Exception as e:
+        logger.error(
+            f"Database error while verifying graph ownership for execution {graph_exec_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while verifying access",
+        )
 
     reviews = await PendingHumanReview.prisma().find_many(
         where={
@@ -249,7 +274,7 @@ async def review_data(
         graph_exec = await db.get_graph_execution_meta(
             user_id=user_id, execution_id=review.graphExecId
         )
-        if not graph_exec or graph_exec.user_id != user_id:
+        if not graph_exec:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied to graph execution",
@@ -282,6 +307,17 @@ async def review_data(
     was_edited = False
 
     if request.action == "approve" and request.reviewed_data is not None:
+        # Check if editing is allowed based on the editable flag
+        editable = False
+        if isinstance(review.data, dict):
+            editable = review.data.get("editable", False)
+
+        if not editable:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Data modification not allowed - this review is read-only",
+            )
+
         # Check if the data was actually modified
         original_data = (
             review.data.get("data")

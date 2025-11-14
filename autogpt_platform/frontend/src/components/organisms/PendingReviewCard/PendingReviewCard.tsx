@@ -41,6 +41,16 @@ function extractMessageFromReview(reviewData: unknown): string | null {
   return null;
 }
 
+function extractEditableFromReview(reviewData: unknown): boolean {
+  if (
+    isReviewDataStructure(reviewData) &&
+    typeof reviewData.editable === "boolean"
+  ) {
+    return reviewData.editable;
+  }
+  return true; // Default to editable for backward compatibility
+}
+
 export function PendingReviewCard({
   review,
   onReviewComplete,
@@ -49,6 +59,7 @@ export function PendingReviewCard({
     extractDataFromReview(review.data),
   );
   const [reviewMessage, setReviewMessage] = useState<string>("");
+  const isDataEditable = extractEditableFromReview(review.data);
   const { toast } = useToast();
 
   const reviewActionMutation = usePostV2ReviewData({
@@ -72,20 +83,24 @@ export function PendingReviewCard({
 
   function handleApprove() {
     let parsedData;
-    try {
-      parsedData = JSON.parse(reviewData);
-    } catch (_error) {
-      toast({
-        title: "Invalid JSON",
-        description: "Please fix the JSON format before approving",
-        variant: "destructive",
-      });
-      return;
+
+    // Only parse data if it's editable
+    if (isDataEditable) {
+      try {
+        parsedData = JSON.parse(reviewData);
+      } catch (_error) {
+        toast({
+          title: "Invalid JSON",
+          description: "Please fix the JSON format before approving",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     const requestData: ReviewActionRequest = {
       action: "approve",
-      reviewed_data: parsedData,
+      reviewed_data: isDataEditable ? parsedData : undefined,
       message: reviewMessage || undefined,
     };
 
@@ -133,15 +148,25 @@ export function PendingReviewCard({
         <div>
           <Text variant="body" className="mb-2 font-semibold">
             Data to Review:
+            {!isDataEditable && (
+              <span className="ml-2 text-xs text-muted-foreground">
+                (Read-only)
+              </span>
+            )}
           </Text>
           <Textarea
             value={reviewData}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
               setReviewData(e.target.value)
             }
-            placeholder="Edit the JSON data..."
+            placeholder={
+              isDataEditable
+                ? "Edit the JSON data..."
+                : "Data is read-only - you can approve or reject without changes"
+            }
             className="min-h-[200px] font-mono text-sm"
-            disabled={reviewActionMutation.isPending}
+            disabled={reviewActionMutation.isPending || !isDataEditable}
+            readOnly={!isDataEditable}
           />
         </div>
 

@@ -37,9 +37,11 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
     textColor: "!text-yellow-700",
   },
   WAITING_FOR_REVIEW: {
-    icon: <PauseCircleIcon size={16} className="text-blue-700" weight="bold" />,
-    bgColor: "bg-blue-50",
-    textColor: "!text-blue-700",
+    icon: (
+      <PauseCircleIcon size={16} className="text-purple-700" weight="bold" />
+    ),
+    bgColor: "bg-purple-50",
+    textColor: "!text-purple-700",
   },
   COMPLETED: {
     icon: (
