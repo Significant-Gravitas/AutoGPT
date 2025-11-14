@@ -42,7 +42,11 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    GraphValidationError,
+    NotFoundError,
+)
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
@@ -516,7 +520,7 @@ async def validate_and_construct_node_execution_input(
         skip_access_check=True,
     )
     if not graph:
-        raise NotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
 
     # Validate that the user has permission to execute this graph
     # This checks both library membership and execution permissions,

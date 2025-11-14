@@ -38,6 +38,10 @@ class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
 
+class GraphNotFoundError(ValueError):
+    """The requested Agent Graph was not found, resulting in an error condition"""
+
+
 class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 

@@ -6056,9 +6056,17 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "input_data": {
             "additionalProperties": true,
