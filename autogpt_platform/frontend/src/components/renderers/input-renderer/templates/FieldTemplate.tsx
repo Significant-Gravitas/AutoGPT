@@ -36,6 +36,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 }) => {
   const { isInputConnected } = useEdgeStore();
   const { nodeId, showHandles = true, size = "small" } = formContext;
+  const uiType = formContext.uiType;
 
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
@@ -79,9 +80,13 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   }
 
   // Size-based styling
-
-  const shouldShowHandle =
+  let shouldShowHandle =
     showHandles && !suppressHandle && !fromAnyOf && !isCredential;
+
+  // We do not want handle for output block's name field
+  if (uiType === BlockUIType.OUTPUT && fieldId === "root_name") {
+    shouldShowHandle = false;
+  }
 
   return (
     <div
@@ -107,6 +112,12 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
                 "line-clamp-1",
                 isCredential && !shouldShowHandle && "ml-3",
                 size == "large" && "ml-0",
+                uiType === BlockUIType.OUTPUT &&
+                  fieldId === "root_name" &&
+                  "ml-3",
+                uiType === BlockUIType.INPUT && "ml-3",
+                uiType === BlockUIType.WEBHOOK && "ml-3",
+                uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
               )}
             >
               {isCredential && credentialProvider

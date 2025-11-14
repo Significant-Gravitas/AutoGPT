@@ -1,19 +1,19 @@
 import { useMemo } from "react";
-import { FormCreator } from "../FormCreator";
+import { FormCreator } from "../../FormCreator";
 import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
-import { CustomNodeData } from "./CustomNode";
+import { CustomNodeData } from "../CustomNode";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 type StickyNoteBlockType = {
   selected: boolean;
   data: CustomNodeData;
-  id: string;
+  nodeId: string;
 };
 
-export const StickyNoteBlock = ({ data, id }: StickyNoteBlockType) => {
+export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
   const { angle, color } = useMemo(() => {
-    const hash = id.split("").reduce((acc, char) => {
+    const hash = nodeId.split("").reduce((acc, char) => {
       return char.charCodeAt(0) + ((acc << 5) - acc);
     }, 0);
 
@@ -31,7 +31,7 @@ export const StickyNoteBlock = ({ data, id }: StickyNoteBlockType) => {
       angle: (hash % 7) - 3,
       color: colors[Math.abs(hash) % colors.length],
     };
-  }, [id]);
+  }, [nodeId]);
 
   return (
     <div
@@ -42,11 +42,11 @@ export const StickyNoteBlock = ({ data, id }: StickyNoteBlockType) => {
       style={{ transform: `rotate(${angle}deg)` }}
     >
       <Text variant="h3" className="tracking-tight text-slate-800">
-        Notes #{id.split("-")[0]}
+        Notes #{nodeId.split("-")[0]}
       </Text>
       <FormCreator
         jsonSchema={preprocessInputSchema(data.inputSchema)}
-        nodeId={id}
+        nodeId={nodeId}
         uiType={data.uiType}
       />
     </div>
