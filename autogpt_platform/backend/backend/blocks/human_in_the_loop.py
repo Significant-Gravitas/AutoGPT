@@ -69,8 +69,8 @@ class HumanInTheLoopBlock(Block):
                 ("review_message", ""),
             ],
             test_mock={
-                "handle_review_workflow_mock": lambda *args, **kwargs: HumanInTheLoopBlock._create_test_result(),
-                "update_graph_execution_stats_mock": lambda *args, **kwargs: None,
+                "handle_review_workflow": lambda *args, **kwargs: HumanInTheLoopBlock._create_test_result(),
+                "update_graph_execution_stats": lambda *args, **kwargs: None,
             },
         )
 
@@ -83,17 +83,13 @@ class HumanInTheLoopBlock(Block):
             data={"name": "John Doe", "age": 30}, status="approved", message=""
         )
 
-    async def handle_review_workflow_mock(self, *args, **kwargs):
-        """Mock method for testing - simulates approved review"""
-        from backend.blocks.human_in_the_loop_service import ReviewResult
+    async def handle_review_workflow(self, *args, **kwargs):
+        """Wrapper method for HumanInTheLoopService.handle_review_workflow that can be mocked"""
+        return await HumanInTheLoopService.handle_review_workflow(*args, **kwargs)
 
-        return ReviewResult(
-            data={"name": "John Doe", "age": 30}, status="approved", message=""
-        )
-
-    async def update_graph_execution_stats_mock(self, *args, **kwargs):
-        """Mock method for testing - simulates graph execution status update"""
-        pass
+    async def update_graph_execution_stats(self, *args, **kwargs):
+        """Wrapper method for update_graph_execution_stats that can be mocked"""
+        return await update_graph_execution_stats(*args, **kwargs)
 
     async def run(
         self,
@@ -112,32 +108,18 @@ class HumanInTheLoopBlock(Block):
         This method uses the HumanInTheLoopService to handle all business logic,
         keeping the block implementation clean and focused on data flow.
         """
-        # Check if we're in test mode and use mock if available
-        if hasattr(self, "handle_review_workflow_mock"):
-            result = await self.handle_review_workflow_mock(
-                user_id=user_id,
-                node_exec_id=node_exec_id,
-                graph_exec_id=graph_exec_id,
-                graph_id=graph_id,
-                graph_version=graph_version,
-                input_data=input_data.data,
-                message=input_data.message,
-                editable=input_data.editable,
-                expected_data_type=type(input_data.data),
-            )
-        else:
-            # Use the service to handle the complete workflow
-            result = await HumanInTheLoopService.handle_review_workflow(
-                user_id=user_id,
-                node_exec_id=node_exec_id,
-                graph_exec_id=graph_exec_id,
-                graph_id=graph_id,
-                graph_version=graph_version,
-                input_data=input_data.data,
-                message=input_data.message,
-                editable=input_data.editable,
-                expected_data_type=type(input_data.data),
-            )
+        # Use the service to handle the complete workflow
+        result = await self.handle_review_workflow(
+            user_id=user_id,
+            node_exec_id=node_exec_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            input_data=input_data.data,
+            message=input_data.message,
+            editable=input_data.editable,
+            expected_data_type=type(input_data.data),
+        )
 
         if result is not None:
             # Review is complete (approved or rejected)
@@ -156,14 +138,9 @@ class HumanInTheLoopBlock(Block):
 
         # No result means we're waiting for human input
         # Update the graph execution status to indicate waiting state
-        if hasattr(self, "update_graph_execution_stats_mock"):
-            await self.update_graph_execution_stats_mock(
-                graph_exec_id=graph_exec_id, status=ExecutionStatus.WAITING_FOR_REVIEW
-            )
-        else:
-            await update_graph_execution_stats(
-                graph_exec_id=graph_exec_id, status=ExecutionStatus.WAITING_FOR_REVIEW
-            )
+        await self.update_graph_execution_stats(
+            graph_exec_id=graph_exec_id, status=ExecutionStatus.WAITING_FOR_REVIEW
+        )
 
         # This will pause the execution here
         # The execution will be resumed when the review is approved via the API
