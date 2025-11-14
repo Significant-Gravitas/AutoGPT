@@ -574,10 +574,23 @@ class ExecutionProcessor:
 
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
 
-            # Human In The Loop blocks handle their own status setting
-            # They will set WAITING_FOR_REVIEW when appropriate via update_graph_execution_stats
-            # Return COMPLETED here as the execution itself finished successfully
-            status = ExecutionStatus.COMPLETED
+            # Check if this node has a pending human review
+            try:
+                from prisma.models import PendingHumanReview
+
+                pending_review = await PendingHumanReview.prisma().find_unique(
+                    where={"nodeExecId": node_exec.node_exec_id}
+                )
+                if pending_review and pending_review.status == "WAITING":
+                    # Node is waiting for human review
+                    status = ExecutionStatus.WAITING_FOR_REVIEW
+                else:
+                    # Normal completion
+                    status = ExecutionStatus.COMPLETED
+            except Exception:
+                # If there's any issue checking for pending reviews, default to completed
+                # This ensures the system remains stable even if review system has issues
+                status = ExecutionStatus.COMPLETED
 
         except BaseException as e:
             stats.error = e

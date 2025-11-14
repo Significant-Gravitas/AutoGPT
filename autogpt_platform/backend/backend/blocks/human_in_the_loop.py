@@ -1,9 +1,6 @@
 from typing import Any
 
-from backend.blocks.human_in_the_loop_service import (
-    HITLValidationError,
-    HumanInTheLoopService,
-)
+from backend.blocks.human_in_the_loop_service import HumanInTheLoopService
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -139,7 +136,4 @@ class HumanInTheLoopBlock(Block):
         elif result.status == "rejected":
             yield "status", "rejected"
             yield "review_message", result.message
-            # Raise an exception for rejected reviews to stop execution
-            raise HITLValidationError(
-                f"Human review rejected: {result.message}", result.message
-            )
+            # No exception - let downstream blocks handle rejection gracefully
