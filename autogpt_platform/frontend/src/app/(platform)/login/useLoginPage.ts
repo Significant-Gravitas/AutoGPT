@@ -5,7 +5,7 @@ import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { computeReturnURL } from "./helpers";
@@ -43,10 +43,6 @@ export function useLoginPage() {
     setCaptchaKey((k) => k + 1);
     turnstile.reset();
   }, [turnstile]);
-
-  useEffect(() => {
-    if (user && !isRedirecting) router.push("/");
-  }, [user, isRedirecting]);
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);

@@ -32,6 +32,7 @@ export default function SignupPage() {
     isLoading,
     isCloudEnv,
     isUserLoading,
+    isRedirecting,
     isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable,
@@ -40,7 +41,7 @@ export default function SignupPage() {
     handleCloseNotAllowedModal,
   } = useSignupPage();
 
-  if (isUserLoading || isLoggedIn) {
+  if (isUserLoading || isLoggedIn || isRedirecting) {
     return <LoadingSignup />;
   }
 

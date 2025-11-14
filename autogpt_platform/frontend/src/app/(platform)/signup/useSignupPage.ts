@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -42,10 +42,6 @@ export function useSignupPage() {
       agreeToTerms: false,
     },
   });
-
-  useEffect(() => {
-    if (user && !isRedirecting) router.push("/");
-  }, [user, isRedirecting]);
 
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
@@ -190,6 +186,7 @@ export function useSignupPage() {
     captchaKey,
     isLoggedIn: !!user,
     isLoading,
+    isRedirecting,
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
