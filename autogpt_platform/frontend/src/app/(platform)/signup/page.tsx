@@ -21,7 +21,6 @@ import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
 import { environment } from "@/services/environment";
-import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function SignupPage() {
   const {
@@ -58,7 +57,6 @@ export default function SignupPage() {
 
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
-      <MobileWarningBanner />
       <AuthCard title="Create a new account">
         <Form {...form}>
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
