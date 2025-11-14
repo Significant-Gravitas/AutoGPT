@@ -68,7 +68,7 @@ export function ScheduleActions({ agent, scheduleId, onDeleted }: Props) {
           variant="secondary"
           size="small"
           as="NextLink"
-          href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+          href={`/build?flowID=${agent.graph_id}`}
         >
           <PencilSimpleIcon size={16} /> Edit agent
         </Button>
