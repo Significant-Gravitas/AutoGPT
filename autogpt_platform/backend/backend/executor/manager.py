@@ -859,6 +859,7 @@ class ExecutionProcessor:
                     ExecutionStatus.RUNNING,
                     ExecutionStatus.QUEUED,
                     ExecutionStatus.TERMINATED,
+                    ExecutionStatus.WAITING_FOR_REVIEW,  # Include nodes waiting for review
                 ],
             ):
                 node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
