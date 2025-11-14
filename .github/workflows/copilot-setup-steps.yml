@@ -34,7 +34,7 @@ jobs:
 
       # Backend Python/Poetry setup (mirrors platform-backend-ci.yml)
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"  # Use standard version matching CI
 
