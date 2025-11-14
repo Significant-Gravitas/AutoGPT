@@ -9,7 +9,6 @@ from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 from pydantic import BaseModel
 
-from backend.data.db import transaction
 from backend.util.json import SafeJson
 
 
@@ -108,18 +107,16 @@ class HumanInTheLoopService:
             approved_data = convert(approved_data, expected_data_type)
         except Exception as e:
             # Reset review back to WAITING status so user can fix the data
-            async with transaction() as tx:
-                await tx.pendinghumanreview.update(
-                    where={"id": review.id}, data={"status": ReviewStatus.WAITING}
-                )
+            await PendingHumanReview.prisma().update(
+                where={"id": review.id}, data={"status": ReviewStatus.WAITING}
+            )
             raise HITLValidationError(
                 f"Failed to convert approved data to {expected_data_type.__name__}: {e}",
                 review_message="Data conversion failed after approval. Please review and fix the data format.",
             )
 
-        # Clean up the review record atomically only after successful conversion
-        async with transaction() as tx:
-            await tx.pendinghumanreview.delete(where={"id": review.id})
+        # Clean up the review record only after successful conversion
+        await PendingHumanReview.prisma().delete(where={"id": review.id})
 
         return ReviewResult(
             data=approved_data, status="approved", message=review.reviewMessage or ""
@@ -136,9 +133,8 @@ class HumanInTheLoopService:
         Returns:
             ReviewResult with rejection details
         """
-        # Clean up the review record atomically
-        async with transaction() as tx:
-            await tx.pendinghumanreview.delete(where={"id": review.id})
+        # Clean up the review record
+        await PendingHumanReview.prisma().delete(where={"id": review.id})
 
         return ReviewResult(
             data=None, status="rejected", message=review.reviewMessage or ""

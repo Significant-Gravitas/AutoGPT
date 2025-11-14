@@ -121,27 +121,25 @@ class HumanInTheLoopBlock(Block):
             expected_data_type=type(input_data.data),
         )
 
-        if result is not None:
-            # Review is complete (approved or rejected)
-            if result.status == "approved":
-                yield "reviewed_data", result.data
-                yield "status", "approved"
-                yield "review_message", result.message
-            elif result.status == "rejected":
-                yield "status", "rejected"
-                yield "review_message", result.message
-                # Raise an exception for rejected reviews to stop execution
-                raise HITLValidationError(
-                    f"Human review rejected: {result.message}", result.message
-                )
+        # Check if we're waiting for human input
+        if result is None:
+            # Update the graph execution status to indicate waiting state
+            await self.update_graph_execution_stats(
+                graph_exec_id=graph_exec_id, status=ExecutionStatus.WAITING_FOR_REVIEW
+            )
+            # This will pause the execution here
+            # The execution will be resumed when the review is approved via the API
             return
 
-        # No result means we're waiting for human input
-        # Update the graph execution status to indicate waiting state
-        await self.update_graph_execution_stats(
-            graph_exec_id=graph_exec_id, status=ExecutionStatus.WAITING_FOR_REVIEW
-        )
-
-        # This will pause the execution here
-        # The execution will be resumed when the review is approved via the API
-        return
+        # Review is complete (approved or rejected)
+        if result.status == "approved":
+            yield "reviewed_data", result.data
+            yield "status", "approved"
+            yield "review_message", result.message
+        elif result.status == "rejected":
+            yield "status", "rejected"
+            yield "review_message", result.message
+            # Raise an exception for rejected reviews to stop execution
+            raise HITLValidationError(
+                f"Human review rejected: {result.message}", result.message
+            )
