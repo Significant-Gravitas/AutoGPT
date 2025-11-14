@@ -61,13 +61,16 @@ export function ActivityItem({ execution }: Props) {
   function getTimeDisplay() {
     const isActiveStatus =
       execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED;
+      execution.status === AgentExecutionStatus.QUEUED ||
+      execution.status === AgentExecutionStatus.WAITING_FOR_REVIEW;
 
     if (isActiveStatus) {
       const timeAgo = formatTimeAgo(execution.started_at.toString());
       let statusText = "running";
       if (execution.status === AgentExecutionStatus.QUEUED) {
         statusText = "queued";
+      } else if (execution.status === AgentExecutionStatus.WAITING_FOR_REVIEW) {
+        statusText = "waiting for review";
       }
       return `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`;
     }
