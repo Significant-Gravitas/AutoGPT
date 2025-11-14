@@ -11,6 +11,7 @@ import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
 import { environment } from "@/services/environment";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function LoginPage() {
   const {
@@ -44,6 +45,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+      <MobileWarningBanner />
       <AuthCard title="Login to your account">
         <Form {...form}>
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
