@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
+import { computeReturnURL } from "./helpers";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -20,6 +21,7 @@ export function useLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
@@ -43,8 +45,8 @@ export function useLoginPage() {
   }, [turnstile]);
 
   useEffect(() => {
-    if (user) router.push("/");
-  }, [user]);
+    if (user && !isRedirecting) router.push("/");
+  }, [user, isRedirecting]);
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
@@ -80,7 +82,10 @@ export function useLoginPage() {
       }
 
       const { url } = await response.json();
-      if (url) window.location.href = url as string;
+      if (url) {
+        setIsRedirecting(true);
+        window.location.href = url as string;
+      }
     } catch (error) {
       resetCaptcha();
       setIsGoogleLoading(false);
@@ -143,11 +148,11 @@ export function useLoginPage() {
       setFeedback(null);
 
       // Prioritize returnUrl from query params over backend's onboarding logic
-      const next = returnUrl
-        ? returnUrl
-        : (result?.next as string) ||
-          (result?.onboarding ? "/onboarding" : "/");
-      if (next) router.push(next);
+      const next = computeReturnURL(returnUrl, result);
+      if (next) {
+        setIsRedirecting(true);
+        router.push(next);
+      }
     } catch (error) {
       toast({
         title:
@@ -169,6 +174,7 @@ export function useLoginPage() {
     captchaKey,
     user,
     isLoading,
+    isRedirecting,
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
