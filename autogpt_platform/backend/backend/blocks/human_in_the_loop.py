@@ -1,6 +1,5 @@
 from typing import Any, Literal
 
-from backend.blocks.human_in_the_loop_service import HumanInTheLoopService
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -9,6 +8,7 @@ from backend.data.block import (
     BlockSchemaOutput,
 )
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
+from backend.data.human_review import ReviewResult, handle_review_workflow
 from backend.data.model import SchemaField
 
 
@@ -74,15 +74,13 @@ class HumanInTheLoopBlock(Block):
     @staticmethod
     def _create_test_result():
         """Create test result for mocking"""
-        from backend.blocks.human_in_the_loop_service import ReviewResult
-
         return ReviewResult(
             data={"name": "John Doe", "age": 30}, status="approved", message=""
         )
 
     async def handle_review_workflow(self, *args, **kwargs):
-        """Wrapper method for HumanInTheLoopService.handle_review_workflow that can be mocked"""
-        return await HumanInTheLoopService.handle_review_workflow(*args, **kwargs)
+        """Wrapper method for handle_review_workflow that can be mocked"""
+        return await handle_review_workflow(*args, **kwargs)
 
     async def update_graph_execution_stats(self, *args, **kwargs):
         """Wrapper method for update_graph_execution_stats that can be mocked"""
