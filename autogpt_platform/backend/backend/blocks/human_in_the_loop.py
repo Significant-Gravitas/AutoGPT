@@ -115,13 +115,13 @@ class HumanInTheLoopBlock(Block):
 
         # Check if we're waiting for human input
         if result is None:
-            # Update node execution status to prevent execution manager from marking it as completed
+            # Set node status to WAITING_FOR_REVIEW so execution manager can't mark it as COMPLETED
+            # The VALID_STATUS_TRANSITIONS will then prevent any unwanted status changes
             await self.update_node_execution_status(
                 node_exec_id=node_exec_id,
                 status=ExecutionStatus.WAITING_FOR_REVIEW,
             )
-            # This will pause the execution here
-            # The execution will be resumed when the review is approved via the API
+            # Execution pauses here until API routes process the review
             return
 
         # Review is complete (approved or rejected)

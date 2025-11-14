@@ -110,6 +110,7 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.RUNNING,
+        ExecutionStatus.WAITING_FOR_REVIEW,
     ],
     ExecutionStatus.TERMINATED: [
         ExecutionStatus.INCOMPLETE,
@@ -892,17 +893,20 @@ async def update_node_execution_status_batch(
     # Validate status transitions
     if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
         # For batch updates, we filter to only update nodes with valid current statuses
-        where_clause = {
-            "id": {"in": node_exec_ids},
-            "executionStatus": {"in": [s.value for s in allowed_from]},
-        }
+        where_clause = cast(
+            AgentNodeExecutionWhereInput,
+            {
+                "id": {"in": node_exec_ids},
+                "executionStatus": {"in": [s.value for s in allowed_from]},
+            },
+        )
     else:
         # If status cannot be set via update, skip the update (don't raise error)
         # This allows the system to continue functioning even with invalid transitions
         return
 
     await AgentNodeExecution.prisma().update_many(
-        where=cast(AgentNodeExecutionWhereInput, where_clause),
+        where=where_clause,
         data=_get_update_status_data(status, None, stats),
     )
 
@@ -916,48 +920,32 @@ async def update_node_execution_status(
     if status == ExecutionStatus.QUEUED and execution_data is None:
         raise ValueError("Execution data must be provided when queuing an execution.")
 
-    # Validate status transitions by checking current status first
-    if status:
-        if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
-            # Get current execution to check its status
-            current_exec = await AgentNodeExecution.prisma().find_unique(
-                where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
-            )
-            if not current_exec:
-                raise ValueError(f"Execution {node_exec_id} not found.")
+    # Use batch function approach - update_many with status filter then find_unique
+    if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
+        # Filter by status like batch function
+        where_clause = cast(
+            AgentNodeExecutionWhereInput,
+            {
+                "id": node_exec_id,
+                "executionStatus": {"in": [s.value for s in allowed_from]},
+            },
+        )
+    else:
+        # No status validation needed
+        where_clause = cast(AgentNodeExecutionWhereInput, {"id": node_exec_id})
 
-            current_status = ExecutionStatus(current_exec.executionStatus)
-            if current_status not in allowed_from:
-                # Skip the update for invalid transitions, return current state
-                # This allows the system to continue functioning
-                logger.warning(
-                    f"Invalid status transition from {current_status} to {status} "
-                    f"for execution {node_exec_id}. Skipping update."
-                )
-                return NodeExecutionResult.from_db(current_exec)
-        else:
-            # If status cannot be set via update, skip the update and return current state
-            logger.warning(
-                f"Status {status} cannot be set via update for execution {node_exec_id}. "
-                f"Skipping update."
-            )
-            # Get current execution to return
-            current_exec = await AgentNodeExecution.prisma().find_unique(
-                where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
-            )
-            if not current_exec:
-                raise ValueError(f"Execution {node_exec_id} not found.")
-            return NodeExecutionResult.from_db(current_exec)
-
-    res = await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
+    # Update using batch function pattern
+    await AgentNodeExecution.prisma().update_many(
+        where=where_clause,
         data=_get_update_status_data(status, execution_data, stats),
-        include=EXECUTION_RESULT_INCLUDE,
+    )
+
+    # Fetch and return result
+    res = await AgentNodeExecution.prisma().find_unique(
+        where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
     )
     if not res:
-        raise ValueError(
-            f"Execution {node_exec_id} not found or invalid status transition."
-        )
+        raise ValueError(f"Execution {node_exec_id} not found.")
 
     return NodeExecutionResult.from_db(res)
 
