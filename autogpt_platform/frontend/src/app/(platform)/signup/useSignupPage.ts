@@ -1,13 +1,13 @@
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { environment } from "@/services/environment";
 
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -16,9 +16,8 @@ export function useSignupPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
@@ -44,19 +43,21 @@ export function useSignupPage() {
   });
 
   async function handleProviderSignup(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+    setIsLoading(true);
 
     if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "default",
       });
-      setIsGoogleLoading(false);
+      setIsLoading(false);
       resetCaptcha();
       return;
     }
 
     try {
+      setIsCreatingAccount(true);
+
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,29 +66,19 @@ export function useSignupPage() {
 
       if (!response.ok) {
         const { error } = await response.json();
-        setIsGoogleLoading(false);
-        resetCaptcha();
 
         if (error === "not_allowed") {
           setShowNotAllowedModal(true);
           return;
         }
 
-        toast({
-          title: error || "Failed to start OAuth flow",
-          variant: "destructive",
-        });
-        return;
+        throw new Error(error || "Failed to start OAuth flow");
       }
 
       const { url } = await response.json();
-      if (url) {
-        setIsRedirecting(true);
-        setFeedback(null);
-        window.location.href = url as string;
-      }
+      if (url) window.location.href = url as string;
     } catch (error) {
-      setIsGoogleLoading(false);
+      setIsLoading(false);
       resetCaptcha();
       toast({
         title:
@@ -158,15 +149,11 @@ export function useSignupPage() {
         return;
       }
 
-      setFeedback(null);
-
       const next = result?.next || "/";
-      if (next) {
-        setIsRedirecting(true);
-        router.push(next);
-      }
+      if (next) router.replace(next);
     } catch (error) {
       setIsLoading(false);
+      setIsCreatingAccount(false);
       toast({
         title:
           error instanceof Error
@@ -186,10 +173,9 @@ export function useSignupPage() {
     captchaKey,
     isLoggedIn: !!user,
     isLoading,
-    isRedirecting,
+    isCreatingAccount,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleSignup),

@@ -1,7 +1,7 @@
+import { environment } from "@/services/environment";
+import { Key, storage } from "@/services/storage/local-storage";
 import { type CookieOptions } from "@supabase/ssr";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Key, storage } from "@/services/storage/local-storage";
-import { environment } from "@/services/environment";
 
 export const PROTECTED_PAGES = [
   "/monitor",
@@ -13,8 +13,6 @@ export const PROTECTED_PAGES = [
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;
-
-export const AUTHENTICATION_PAGES = ["/login", "/signup"] as const;
 
 export function getCookieSettings(): Partial<CookieOptions> {
   return {
@@ -31,12 +29,6 @@ export function isProtectedPage(pathname: string): boolean {
 
 export function isAdminPage(pathname: string): boolean {
   return ADMIN_PAGES.some((page) => pathname.startsWith(page));
-}
-
-export function isAuthenticationPage(pathname: string): boolean {
-  return AUTHENTICATION_PAGES.some(
-    (page) => pathname === page || pathname.startsWith(`${page}/`),
-  );
 }
 
 export function shouldRedirectOnLogout(pathname: string): boolean {

@@ -1,8 +1,8 @@
 "use client";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -14,7 +14,7 @@ export default function OnboardingPage() {
         // Check if onboarding is enabled
         const isEnabled = await api.isOnboardingEnabled();
         if (!isEnabled) {
-          router.push("/");
+          router.replace("/");
           return;
         }
 
@@ -22,7 +22,7 @@ export default function OnboardingPage() {
 
         // Handle completed onboarding
         if (onboarding.completedSteps.includes("GET_RESULTS")) {
-          router.push("/");
+          router.replace("/");
           return;
         }
 
@@ -33,13 +33,13 @@ export default function OnboardingPage() {
               const libraryAgent = await api.addMarketplaceAgentToLibrary(
                 onboarding.selectedStoreListingVersionId,
               );
-              router.push(`/library/agents/${libraryAgent.id}`);
+              router.replace(`/library/agents/${libraryAgent.id}`);
             } catch (error) {
               console.error("Failed to add agent to library:", error);
-              router.push("/library");
+              router.replace("/library");
             }
           } else {
-            router.push("/library");
+            router.replace("/library");
           }
           return;
         }
@@ -79,7 +79,7 @@ export default function OnboardingPage() {
         router.push("/onboarding/1-welcome");
       } catch (error) {
         console.error("Failed to determine onboarding step:", error);
-        router.push("/");
+        router.replace("/");
       }
     }
 

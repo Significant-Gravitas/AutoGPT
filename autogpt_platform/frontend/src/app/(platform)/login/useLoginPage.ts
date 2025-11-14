@@ -19,9 +19,7 @@ export function useLoginPage() {
   const returnUrl = searchParams.get("returnUrl");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
   const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
@@ -45,7 +43,7 @@ export function useLoginPage() {
   }, [turnstile]);
 
   async function handleProviderLogin(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+    setIsLoading(true);
 
     if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
@@ -53,7 +51,7 @@ export function useLoginPage() {
         variant: "info",
       });
 
-      setIsGoogleLoading(false);
+      setIsLoading(false);
       resetCaptcha();
       return;
     }
@@ -67,24 +65,14 @@ export function useLoginPage() {
 
       if (!response.ok) {
         const { error } = await response.json();
-        if (error === "not_allowed") {
-          setShowNotAllowedModal(true);
-        } else {
-          setFeedback(error || "Failed to start OAuth flow");
-        }
-        resetCaptcha();
-        setIsGoogleLoading(false);
-        return;
+        throw new Error(error || "Failed to start OAuth flow");
       }
 
       const { url } = await response.json();
-      if (url) {
-        setIsRedirecting(true);
-        window.location.href = url as string;
-      }
+      if (url) window.location.href = url as string;
     } catch (error) {
       resetCaptcha();
-      setIsGoogleLoading(false);
+      setIsLoading(false);
       setFeedback(
         error instanceof Error ? error.message : "Failed to start OAuth flow",
       );
@@ -93,6 +81,7 @@ export function useLoginPage() {
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
+
     if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
@@ -129,26 +118,12 @@ export function useLoginPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        toast({
-          title: result?.error || "Login failed",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        resetCaptcha();
-        turnstile.reset();
-        return;
+        throw new Error(result?.error || "Login failed");
       }
-
-      await supabase?.auth.refreshSession();
-      setIsLoading(false);
-      setFeedback(null);
 
       // Prioritize returnUrl from query params over backend's onboarding logic
       const next = computeReturnURL(returnUrl, result);
-      if (next) {
-        setIsRedirecting(true);
-        router.push(next);
-      }
+      if (next) router.replace(next);
     } catch (error) {
       toast({
         title:
@@ -170,10 +145,8 @@ export function useLoginPage() {
     captchaKey,
     user,
     isLoading,
-    isRedirecting,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleLogin),
