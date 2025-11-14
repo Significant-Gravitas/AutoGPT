@@ -966,17 +966,18 @@ async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
     return NodeExecutionResult.from_db(execution)
 
 
-async def get_node_executions(
+def _build_node_execution_where_clause(
     graph_exec_id: str | None = None,
     node_id: str | None = None,
     block_ids: list[str] | None = None,
     statuses: list[ExecutionStatus] | None = None,
-    limit: int | None = None,
     created_time_gte: datetime | None = None,
     created_time_lte: datetime | None = None,
-    include_exec_data: bool = True,
-) -> list[NodeExecutionResult]:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+) -> AgentNodeExecutionWhereInput:
+    """
+    Build where clause for node execution queries.
+    Shared logic between get_node_executions and get_node_executions_count.
+    """
     where_clause: AgentNodeExecutionWhereInput = {}
     if graph_exec_id:
         where_clause["agentGraphExecutionId"] = graph_exec_id
@@ -992,6 +993,29 @@ async def get_node_executions(
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+
+    return where_clause
+
+
+async def get_node_executions(
+    graph_exec_id: str | None = None,
+    node_id: str | None = None,
+    block_ids: list[str] | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    limit: int | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    include_exec_data: bool = True,
+) -> list[NodeExecutionResult]:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    where_clause = _build_node_execution_where_clause(
+        graph_exec_id=graph_exec_id,
+        node_id=node_id,
+        block_ids=block_ids,
+        statuses=statuses,
+        created_time_gte=created_time_gte,
+        created_time_lte=created_time_lte,
+    )
 
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,
@@ -1019,21 +1043,14 @@ async def get_node_executions_count(
     Get count of node executions with optional filters.
     ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
     """
-    where_clause: AgentNodeExecutionWhereInput = {}
-    if graph_exec_id:
-        where_clause["agentGraphExecutionId"] = graph_exec_id
-    if node_id:
-        where_clause["agentNodeId"] = node_id
-    if block_ids:
-        where_clause["Node"] = {"is": {"agentBlockId": {"in": block_ids}}}
-    if statuses:
-        where_clause["OR"] = [{"executionStatus": status} for status in statuses]
-
-    if created_time_gte or created_time_lte:
-        where_clause["addedTime"] = {
-            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
-            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
-        }
+    where_clause = _build_node_execution_where_clause(
+        graph_exec_id=graph_exec_id,
+        node_id=node_id,
+        block_ids=block_ids,
+        statuses=statuses,
+        created_time_gte=created_time_gte,
+        created_time_lte=created_time_lte,
+    )
 
     count = await AgentNodeExecution.prisma().count(where=where_clause)
     return count
