@@ -14,14 +14,39 @@ interface PendingReviewCardProps {
   onReviewComplete?: () => void;
 }
 
+interface ReviewDataStructure {
+  data?: unknown;
+  message?: string;
+  editable?: boolean;
+}
+
+function isReviewDataStructure(data: unknown): data is ReviewDataStructure {
+  return typeof data === "object" && data !== null;
+}
+
+function extractDataFromReview(reviewData: unknown): string {
+  if (isReviewDataStructure(reviewData) && "data" in reviewData) {
+    return JSON.stringify(reviewData.data, null, 2);
+  }
+  return JSON.stringify(reviewData, null, 2);
+}
+
+function extractMessageFromReview(reviewData: unknown): string | null {
+  if (
+    isReviewDataStructure(reviewData) &&
+    typeof reviewData.message === "string"
+  ) {
+    return reviewData.message;
+  }
+  return null;
+}
+
 export function PendingReviewCard({
   review,
   onReviewComplete,
 }: PendingReviewCardProps) {
   const [reviewData, setReviewData] = useState<string>(
-    typeof review.data === "object" && review.data && "data" in review.data
-      ? JSON.stringify((review.data as any).data, null, 2)
-      : JSON.stringify(review.data, null, 2),
+    extractDataFromReview(review.data),
   );
   const [reviewMessage, setReviewMessage] = useState<string>("");
   const { toast } = useToast();
@@ -35,7 +60,7 @@ export function PendingReviewCard({
         });
         onReviewComplete?.();
       },
-      onError: (error: any) => {
+      onError: (error: Error) => {
         toast({
           title: "Failed to submit review",
           description: error.message || "An error occurred",
@@ -92,17 +117,17 @@ export function PendingReviewCard({
           </Text>
         </div>
         {/* Review Message */}
-        {typeof review.data === "object" &&
-          review.data &&
-          "message" in review.data &&
-          (review.data as any).message && (
+        {(() => {
+          const message = extractMessageFromReview(review.data);
+          return message ? (
             <div>
               <Text variant="body" className="mb-2 font-semibold">
                 Instructions:
               </Text>
-              <Text variant="body">{(review.data as any).message}</Text>
+              <Text variant="body">{message}</Text>
             </div>
-          )}
+          ) : null;
+        })()}
 
         {/* Data Editor */}
         <div>

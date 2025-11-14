@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 import sentry_sdk
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
+from prisma.enums import ReviewStatus
+from prisma.models import PendingHumanReview
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
@@ -576,10 +578,11 @@ class ExecutionProcessor:
 
             # Check if this node has pending reviews (Human In The Loop block)
             try:
-                from prisma.models import PendingHumanReview
-
                 pending_review = await PendingHumanReview.prisma().find_first(
-                    where={"nodeExecId": node_exec.node_exec_id, "status": "WAITING"}
+                    where={
+                        "nodeExecId": node_exec.node_exec_id,
+                        "status": ReviewStatus.WAITING,
+                    }
                 )
                 if pending_review:
                     status = ExecutionStatus.WAITING_FOR_REVIEW

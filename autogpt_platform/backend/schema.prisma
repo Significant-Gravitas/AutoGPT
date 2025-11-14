@@ -470,17 +470,24 @@ model AgentNodeExecutionKeyValueData {
   @@id([userId, key])
 }
 
+enum ReviewStatus {
+  WAITING
+  APPROVED
+  REJECTED
+}
+
 // Pending human reviews for Human-in-the-loop blocks
 model PendingHumanReview {
-  id               String    @id @default(uuid())
+  id               String       @id @default(uuid())
   userId           String
   nodeExecId       String
   graphExecId      String
   graphId          String
   graphVersion     Int
-  data             Json      // The data waiting for review
-  status           String    @default("WAITING") // WAITING, APPROVED, REJECTED
+  data             Json         // The data waiting for review
+  status           ReviewStatus @default(WAITING)
   reviewMessage    String?   // Optional message from the reviewer
+  wasEdited        Boolean?  // Whether the data was modified during review
   createdAt        DateTime  @default(now())
   updatedAt        DateTime? @updatedAt
   reviewedAt       DateTime?

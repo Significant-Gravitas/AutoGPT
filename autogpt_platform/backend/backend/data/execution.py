@@ -118,6 +118,7 @@ VALID_STATUS_TRANSITIONS = {
     ],
     ExecutionStatus.WAITING_FOR_REVIEW: [
         ExecutionStatus.RUNNING,
+        ExecutionStatus.TERMINATED,  # Allow terminating execution during review
     ],
 }
 

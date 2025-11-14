@@ -1,7 +1,9 @@
 from typing import Any
 
-from prisma.models import PendingHumanReview
-
+from backend.blocks.human_in_the_loop_service import (
+    HITLValidationError,
+    HumanInTheLoopService,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -9,9 +11,8 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionStatus, update_graph_execution_stats
 from backend.data.model import SchemaField
-from backend.util.json import SafeJson
-from backend.util.type import convert
 
 
 class HumanInTheLoopBlock(Block):
@@ -78,68 +79,48 @@ class HumanInTheLoopBlock(Block):
         graph_exec_id: str,
         graph_id: str,
         graph_version: int,
-        **kwargs
+        **kwargs,
     ) -> BlockOutput:
-        # Check if there's already an approved review for this node execution
-        existing_review = await PendingHumanReview.prisma().find_unique(
-            where={"nodeExecId": node_exec_id}
+        """
+        Execute the Human In The Loop block.
+
+        This method uses the HumanInTheLoopService to handle all business logic,
+        keeping the block implementation clean and focused on data flow.
+        """
+        # Use the service to handle the complete workflow
+        result = await HumanInTheLoopService.handle_review_workflow(
+            user_id=user_id,
+            node_exec_id=node_exec_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            input_data=input_data.data,
+            message=input_data.message,
+            editable=input_data.editable,
+            expected_data_type=type(input_data.data),
         )
 
-        if existing_review and existing_review.status == "APPROVED":
-            # Return the approved data (which may have been modified by the reviewer)
-            # The data field now contains the approved/modified data from the review
-            if (
-                isinstance(existing_review.data, dict)
-                and "data" in existing_review.data
-            ):
-                # Extract the actual data from the review data structure
-                approved_data = existing_review.data["data"]
-            else:
-                # Fallback to the stored data directly
-                approved_data = existing_review.data
-
-            approved_data = convert(approved_data, type(input_data.data))
-            yield "reviewed_data", approved_data
-            yield "status", "approved"
-            yield "review_message", existing_review.reviewMessage or ""
-
-            # Clean up the review record as it's been processed
-            await PendingHumanReview.prisma().delete(where={"id": existing_review.id})
+        if result is not None:
+            # Review is complete (approved or rejected)
+            if result.status == "approved":
+                yield "reviewed_data", result.data
+                yield "status", "approved"
+                yield "review_message", result.message
+            elif result.status == "rejected":
+                yield "status", "rejected"
+                yield "review_message", result.message
+                # Raise an exception for rejected reviews to stop execution
+                raise HITLValidationError(
+                    f"Human review rejected: {result.message}", result.message
+                )
             return
 
-        elif existing_review and existing_review.status == "REJECTED":
-            # Return rejection status without data
-            yield "status", "rejected"
-            yield "review_message", existing_review.reviewMessage or ""
-
-            # Clean up the review record
-            await PendingHumanReview.prisma().delete(where={"id": existing_review.id})
-            return
-
-        # No existing approved review, create a pending review
-        review_data = {
-            "data": input_data.data,
-            "message": input_data.message,
-            "editable": input_data.editable,
-        }
-
-        await PendingHumanReview.prisma().upsert(
-            where={"nodeExecId": node_exec_id},
-            data={
-                "create": {
-                    "userId": user_id,
-                    "nodeExecId": node_exec_id,
-                    "graphExecId": graph_exec_id,
-                    "graphId": graph_id,
-                    "graphVersion": graph_version,
-                    "data": SafeJson(review_data),
-                    "status": "WAITING",
-                },
-                "update": {"data": SafeJson(review_data), "status": "WAITING"},
-            },
+        # No result means we're waiting for human input
+        # Update the graph execution status to indicate waiting state
+        await update_graph_execution_stats(
+            graph_exec_id=graph_exec_id, status=ExecutionStatus.WAITING_FOR_REVIEW
         )
 
-        # This will effectively pause the execution here
-        # The execution will be resumed when the review is approved
-        # The manager will detect the pending review and set the status to WAITING_FOR_REVIEW
+        # This will pause the execution here
+        # The execution will be resumed when the review is approved via the API
         return
