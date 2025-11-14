@@ -86,5 +86,5 @@ export default function OnboardingPage() {
     redirectToStep();
   }, [api, router]);
 
-  return <LoadingSpinner cover />;
+  return <LoadingSpinner size="large" cover />;
 }
