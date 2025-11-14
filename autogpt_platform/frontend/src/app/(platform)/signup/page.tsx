@@ -58,6 +58,7 @@ export default function SignupPage() {
 
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+      <MobileWarningBanner />
       <AuthCard title="Create a new account">
         <Form {...form}>
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
@@ -205,7 +206,6 @@ export default function SignupPage() {
           link={{ text: "Log in", href: "/login" }}
         />
       </AuthCard>
-      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}
