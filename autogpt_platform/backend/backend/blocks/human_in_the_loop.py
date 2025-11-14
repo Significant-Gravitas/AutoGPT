@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from backend.blocks.human_in_the_loop_service import HumanInTheLoopService
 from backend.data.block import (
@@ -41,7 +41,7 @@ class HumanInTheLoopBlock(Block):
         reviewed_data: Any = SchemaField(
             description="The data after human review (may be modified)"
         )
-        status: str = SchemaField(
+        status: Literal["approved", "rejected"] = SchemaField(
             description="Status of the review: 'approved' or 'rejected'"
         )
         review_message: str = SchemaField(
