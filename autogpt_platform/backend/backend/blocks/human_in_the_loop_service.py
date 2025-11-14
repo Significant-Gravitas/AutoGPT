@@ -38,19 +38,26 @@ class HumanInTheLoopService:
     """
 
     @staticmethod
-    async def get_existing_review(node_exec_id: str) -> Optional[PendingHumanReview]:
+    async def get_existing_review(
+        node_exec_id: str, user_id: str
+    ) -> Optional[PendingHumanReview]:
         """
         Get an existing review for a node execution.
 
         Args:
             node_exec_id: The node execution ID to check
+            user_id: The user ID to validate ownership
 
         Returns:
-            The existing review if found, None otherwise
+            The existing review if found and owned by the user, None otherwise
         """
-        return await PendingHumanReview.prisma().find_unique(
+        review = await PendingHumanReview.prisma().find_unique(
             where={"nodeExecId": node_exec_id}
         )
+        # Validate ownership for defense-in-depth security
+        if review and review.userId != user_id:
+            return None
+        return review
 
     @staticmethod
     def extract_approved_data(review: PendingHumanReview) -> Any:
@@ -89,13 +96,28 @@ class HumanInTheLoopService:
 
         Returns:
             ReviewResult with the processed data
+
+        Raises:
+            HITLValidationError: If data conversion fails after approval
         """
         from backend.util.type import convert
 
         approved_data = HumanInTheLoopService.extract_approved_data(review)
-        approved_data = convert(approved_data, expected_data_type)
 
-        # Clean up the review record atomically
+        try:
+            approved_data = convert(approved_data, expected_data_type)
+        except Exception as e:
+            # Reset review back to WAITING status so user can fix the data
+            async with transaction() as tx:
+                await tx.pendinghumanreview.update(
+                    where={"id": review.id}, data={"status": ReviewStatus.WAITING}
+                )
+            raise HITLValidationError(
+                f"Failed to convert approved data to {expected_data_type.__name__}: {e}",
+                review_message="Data conversion failed after approval. Please review and fix the data format.",
+            )
+
+        # Clean up the review record atomically only after successful conversion
         async with transaction() as tx:
             await tx.pendinghumanreview.delete(where={"id": review.id})
 
@@ -206,7 +228,9 @@ class HumanInTheLoopService:
             ReviewResult if the review is complete, None if waiting for human input
         """
         # Check if there's already a review for this node execution
-        existing_review = await HumanInTheLoopService.get_existing_review(node_exec_id)
+        existing_review = await HumanInTheLoopService.get_existing_review(
+            node_exec_id, user_id
+        )
 
         if existing_review:
             if existing_review.status == ReviewStatus.APPROVED:
@@ -219,9 +243,12 @@ class HumanInTheLoopService:
                 return await HumanInTheLoopService.process_rejected_review(
                     existing_review
                 )
-            # If status is WAITING, continue to create/update logic
+            elif existing_review.status == ReviewStatus.WAITING:
+                # Review is already pending - don't overwrite to prevent race condition
+                # User may be actively reviewing or editing the data in the UI
+                return None
 
-        # Create or update the pending review
+        # Create the pending review (only if no existing review)
         await HumanInTheLoopService.create_or_update_review(
             user_id=user_id,
             node_exec_id=node_exec_id,
