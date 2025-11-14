@@ -93,11 +93,13 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Shortform Video Creator](ai_shortform_video_block.md#ai-shortform-video-creator) | Generates short-form videos using AI |
 | [Replicate Flux Advanced Model](replicate_flux_advanced.md#replicate-flux-advanced-model) | Creates images using Replicate's Flux models |
 | [Flux Kontext](flux_kontext.md#flux-kontext) | Text-based image editing using Flux Kontext |
+| [Edit Video by Text](edit_video_by_text.md#edit-video-by-text) | Edit videos by modifying their transcript |
 
 ## Miscellaneous
 | Block Name | Description |
 |------------|-------------|
 | [Transcribe YouTube Video](youtube.md#transcribe-youtube-video) | Transcribes audio from YouTube videos |
+| [Transcribe Video](transcribe_video.md#transcribe-video) | Converts speech in a video file to text |
 | [Send Email](email_block.md#send-email) | Sends emails using SMTP |
 | [Condition Block](branching.md#condition-block) | Evaluates conditions for workflow branching |
 | [Step Through Items](iteration.md#step-through-items) | Iterates through lists or dictionaries |
