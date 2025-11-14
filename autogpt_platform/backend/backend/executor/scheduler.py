@@ -168,24 +168,28 @@ async def _execute_graph(**kwargs):
     except GraphNotInLibraryError as e:
         await _handle_graph_not_available(e, args, start_time)
     except GraphValidationError:
-        logger.error(
-            f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
-        )
-        if args.schedule_id:
-            scheduler_client = get_scheduler_client()
-            await scheduler_client.delete_schedule(
-                schedule_id=args.schedule_id,
-                user_id=args.user_id,
-            )
-        else:
-            logger.error(
-                f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
-            )
+        await _handle_graph_validation_error(args)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
             f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
+        )
+
+
+async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
+    logger.error(
+        f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
+    )
+    if args.schedule_id:
+        scheduler_client = get_scheduler_client()
+        await scheduler_client.delete_schedule(
+            schedule_id=args.schedule_id,
+            user_id=args.user_id,
+        )
+    else:
+        logger.error(
+            f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
         )
 
 
