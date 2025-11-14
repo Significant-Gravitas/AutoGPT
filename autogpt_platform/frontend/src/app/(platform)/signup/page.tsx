@@ -30,6 +30,7 @@ export default function SignupPage() {
     captchaKey,
     isLoggedIn,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
@@ -177,6 +178,7 @@ export default function SignupPage() {
             <Button
               variant="primary"
               loading={isLoading}
+              disabled={isGoogleLoading}
               type="submit"
               className="mt-6 w-full"
             >
@@ -187,7 +189,7 @@ export default function SignupPage() {
         {isCloudEnv ? (
           <GoogleOAuthButton
             onClick={() => handleProviderSignup("google")}
-            isLoading={isLoading}
+            isLoading={isGoogleLoading}
             disabled={isLoading}
           />
         ) : null}

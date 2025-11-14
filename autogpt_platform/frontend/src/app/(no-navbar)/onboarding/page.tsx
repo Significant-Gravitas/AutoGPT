@@ -26,24 +26,6 @@ export default function OnboardingPage() {
           return;
         }
 
-        // Handle CONGRATS - add agent to library and redirect
-        if (onboarding.completedSteps.includes("CONGRATS")) {
-          if (onboarding.selectedStoreListingVersionId) {
-            try {
-              const libraryAgent = await api.addMarketplaceAgentToLibrary(
-                onboarding.selectedStoreListingVersionId,
-              );
-              router.replace(`/library/agents/${libraryAgent.id}`);
-            } catch (error) {
-              console.error("Failed to add agent to library:", error);
-              router.replace("/library");
-            }
-          } else {
-            router.replace("/library");
-          }
-          return;
-        }
-
         // Redirect to appropriate step based on completed steps
         if (onboarding.completedSteps.includes("AGENT_INPUT")) {
           router.push("/onboarding/5-run");
