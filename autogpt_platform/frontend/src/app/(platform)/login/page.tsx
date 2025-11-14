@@ -45,7 +45,6 @@ export default function LoginPage() {
 
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
-      <MobileWarningBanner />
       <AuthCard title="Login to your account">
         <Form {...form}>
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
@@ -128,6 +127,7 @@ export default function LoginPage() {
           link={{ text: "Sign up", href: "/signup" }}
         />
       </AuthCard>
+      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}
