@@ -50,41 +50,6 @@ async def get_pending_review_by_node_exec_id(
     return None
 
 
-async def process_approved_review(review: PendingHumanReviewModel) -> ReviewResult:
-    """
-    Process an approved review and return the result.
-
-    Args:
-        review: The approved review to process
-
-    Returns:
-        ReviewResult with the processed data
-    """
-    # Since payload is SafeJsonData, no conversion needed
-    approved_data = review.payload
-
-    return ReviewResult(
-        data=approved_data, status="approved", message=review.review_message or ""
-    )
-
-
-async def process_rejected_review(review: PendingHumanReviewModel) -> ReviewResult:
-    """
-    Process a rejected review and clean up the database.
-
-    Args:
-        review: The rejected review to process
-
-    Returns:
-        ReviewResult with rejection details
-    """
-    # Review completed - status already updated to REJECTED
-
-    return ReviewResult(
-        data=None, status="rejected", message=review.review_message or ""
-    )
-
-
 async def get_or_upsert_human_review(
     user_id: str,
     node_exec_id: str,
@@ -118,11 +83,19 @@ async def get_or_upsert_human_review(
 
     if existing_review:
         if existing_review.status == "APPROVED":
-            # Process the approved review
-            return await process_approved_review(existing_review)
+            # Return the approved review result
+            return ReviewResult(
+                data=existing_review.payload,
+                status="approved",
+                message=existing_review.review_message or "",
+            )
         elif existing_review.status == "REJECTED":
-            # Process the rejected review
-            return await process_rejected_review(existing_review)
+            # Return the rejected review result
+            return ReviewResult(
+                data=None,
+                status="rejected",
+                message=existing_review.review_message or "",
+            )
         elif existing_review.status == "WAITING":
             # Review is already pending - don't overwrite to prevent race condition
             # User may be actively reviewing or editing the data in the UI
