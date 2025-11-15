@@ -19,10 +19,10 @@ export function PendingReviewCard({
   onReviewComplete,
 }: PendingReviewCardProps) {
   const [reviewData, setReviewData] = useState<string>(
-    JSON.stringify(review.data.data, null, 2),
+    JSON.stringify(review.payload, null, 2),
   );
   const [reviewMessage, setReviewMessage] = useState<string>("");
-  const isDataEditable = review.data.editable;
+  const isDataEditable = review.editable;
   const { toast } = useToast();
 
   const reviewActionMutation = usePostV2ReviewData({
@@ -95,12 +95,12 @@ export function PendingReviewCard({
           </Text>
         </div>
         {/* Review Message */}
-        {review.data.message && (
+        {review.instructions && (
           <div>
             <Text variant="body" className="mb-2 font-semibold">
               Instructions:
             </Text>
-            <Text variant="body">{review.data.message}</Text>
+            <Text variant="body">{review.instructions}</Text>
           </div>
         )}
 

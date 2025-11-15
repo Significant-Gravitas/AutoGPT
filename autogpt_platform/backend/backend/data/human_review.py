@@ -9,7 +9,10 @@ from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 from pydantic import BaseModel
 
-from backend.server.v2.executions.review.model import PendingReviewData, SafeJsonData
+from backend.server.v2.executions.review.model import (
+    PendingHumanReviewModel,
+    SafeJsonData,
+)
 from backend.util.json import SafeJson
 from backend.util.type import convert
 
@@ -32,7 +35,7 @@ class ReviewResult(BaseModel):
 
 async def get_pending_review_by_node_exec_id(
     node_exec_id: str, user_id: str
-) -> Optional[PendingHumanReview]:
+) -> Optional["PendingHumanReviewModel"]:
     """
     Get a pending review by node execution ID with user ownership validation.
 
@@ -43,42 +46,35 @@ async def get_pending_review_by_node_exec_id(
     Returns:
         The existing review if found and owned by the user, None otherwise
     """
-    return await PendingHumanReview.prisma().find_first(
+    review = await PendingHumanReview.prisma().find_first(
         where={
             "nodeExecId": node_exec_id,
             "userId": user_id,
         }
     )
 
+    if review:
+        return PendingHumanReviewModel.from_db(review)
 
-def extract_approved_data(review: PendingHumanReview) -> SafeJsonData:
+    return None
+
+
+def extract_approved_data(review: PendingHumanReviewModel) -> SafeJsonData:
     """
     Extract approved data from a review record.
-
-    Handles both structured and legacy data formats.
 
     Args:
         review: The approved review record
 
     Returns:
-        The extracted data
+        The payload data from the review
     """
-    try:
-        # Try to parse as structured format
-        review_structure = PendingReviewData.model_validate(review.data)
-        return review_structure.data
-    except Exception:
-        # Fallback for legacy data format or corrupted data
-        from backend.util.json import SafeJson
-
-        if isinstance(review.data, dict) and "data" in review.data:
-            return SafeJson(review.data["data"])
-        else:
-            return SafeJson(review.data)
+    # With the new flat structure, just return the payload directly
+    return review.payload
 
 
 async def process_approved_review(
-    review: PendingHumanReview, expected_data_type: type
+    review: PendingHumanReviewModel, expected_data_type: type
 ) -> ReviewResult:
     """
     Process an approved review and clean up the database.
@@ -110,11 +106,11 @@ async def process_approved_review(
     # Review completed successfully - status already updated to APPROVED
 
     return ReviewResult(
-        data=approved_data, status="approved", message=review.reviewMessage or ""
+        data=approved_data, status="approved", message=review.review_message or ""
     )
 
 
-async def process_rejected_review(review: PendingHumanReview) -> ReviewResult:
+async def process_rejected_review(review: PendingHumanReviewModel) -> ReviewResult:
     """
     Process a rejected review and clean up the database.
 
@@ -127,7 +123,7 @@ async def process_rejected_review(review: PendingHumanReview) -> ReviewResult:
     # Review completed - status already updated to REJECTED
 
     return ReviewResult(
-        data=None, status="rejected", message=review.reviewMessage or ""
+        data=None, status="rejected", message=review.review_message or ""
     )
 
 
@@ -165,23 +161,19 @@ async def get_or_upsert_human_review(
     existing_review = await get_pending_review_by_node_exec_id(node_exec_id, user_id)
 
     if existing_review:
-        if existing_review.status == ReviewStatus.APPROVED:
+        if existing_review.status == "APPROVED":
             # Process the approved review
             return await process_approved_review(existing_review, expected_data_type)
-        elif existing_review.status == ReviewStatus.REJECTED:
+        elif existing_review.status == "REJECTED":
             # Process the rejected review
             return await process_rejected_review(existing_review)
-        elif existing_review.status == ReviewStatus.WAITING:
+        elif existing_review.status == "WAITING":
             # Review is already pending - don't overwrite to prevent race condition
             # User may be actively reviewing or editing the data in the UI
             return None
 
     # Create the pending review (only if no existing review)
-    review_data = PendingReviewData(
-        data=input_data,
-        message=message,
-        editable=editable,
-    )
+    # With the new flat structure, we store payload, instructions, editable separately
 
     await PendingHumanReview.prisma().upsert(
         where={"nodeExecId": node_exec_id},
@@ -192,11 +184,15 @@ async def get_or_upsert_human_review(
                 "graphExecId": graph_exec_id,
                 "graphId": graph_id,
                 "graphVersion": graph_version,
-                "data": SafeJson(review_data.model_dump()),
+                "data": SafeJson(input_data),
+                "instructions": message,
+                "editable": editable,
                 "status": ReviewStatus.WAITING,
             },
             "update": {
-                "data": SafeJson(review_data.model_dump()),
+                "data": SafeJson(input_data),
+                "instructions": message,
+                "editable": editable,
                 "status": ReviewStatus.WAITING,
             },
         },

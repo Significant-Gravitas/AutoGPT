@@ -484,12 +484,14 @@ model PendingHumanReview {
   graphExecId      String
   graphId          String
   graphVersion     Int
-  data             Json         // The data waiting for review
+  data             Json         // The actual payload data to be reviewed
+  instructions     String?      // Instructions/message for the reviewer
+  editable         Boolean      @default(true) // Whether the reviewer can edit the data
   status           ReviewStatus @default(WAITING)
-  reviewMessage    String?   // Optional message from the reviewer
-  wasEdited        Boolean?  // Whether the data was modified during review
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime? @updatedAt
+  reviewMessage    String?      // Optional message from the reviewer
+  wasEdited        Boolean?     // Whether the data was modified during review
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime?    @updatedAt
   reviewedAt       DateTime?
   
   User             User @relation(fields: [userId], references: [id], onDelete: Cascade)

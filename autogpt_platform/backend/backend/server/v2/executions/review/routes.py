@@ -248,34 +248,18 @@ async def review_data(
     was_edited = False
 
     if request.action == "approve" and request.reviewed_data is not None:
-        # Check if editing is allowed based on the editable flag
-        editable = False
-        if isinstance(review.data, dict):
-            editable = review.data.get("editable", False)
-
-        if not editable:
+        # Check if editing is allowed using the new editable column
+        if not review.editable:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Data modification not allowed - this review is read-only",
             )
 
-        # Check if the data was actually modified
-        original_data = (
-            review.data.get("data")
-            if isinstance(review.data, dict) and "data" in review.data
-            else review.data
-        )
-        was_edited = original_data != request.reviewed_data
+        # Check if the data was actually modified (compare with original payload)
+        was_edited = review.data != request.reviewed_data
 
-        # Update only the data part while preserving the structure
-        if isinstance(review.data, dict) and "data" in review.data:
-            review_data = {
-                **review.data,
-                "data": request.reviewed_data,  # Update just the data field
-            }
-        else:
-            # Fallback: replace entire data
-            review_data = request.reviewed_data
+        # With the new flat structure, store the reviewed data directly
+        review_data = request.reviewed_data
 
     # Use database transaction for atomic update and status change
 

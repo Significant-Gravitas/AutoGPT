@@ -11,25 +11,6 @@ if TYPE_CHECKING:
 SafeJsonData = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 
-class PendingReviewData(BaseModel):
-    """Data structure for pending human review stored in database.
-
-    This represents the structured format of the 'data' field in PendingHumanReviewResponse
-    when it contains review-specific metadata along with the actual data payload.
-
-    Attributes:
-        data: The actual data payload awaiting review
-        message: Instructions or context message for the reviewer
-        editable: Whether the reviewer is allowed to modify the data
-    """
-
-    data: SafeJsonData = Field(description="The actual data payload awaiting review")
-    message: str = Field(description="Instructions or context message for the reviewer")
-    editable: bool = Field(
-        description="Whether the reviewer is allowed to modify the data"
-    )
-
-
 class PendingHumanReviewModel(BaseModel):
     """Response model for pending human review data.
 
@@ -44,7 +25,9 @@ class PendingHumanReviewModel(BaseModel):
         graph_exec_id: ID of the graph execution containing the node
         graph_id: ID of the graph template being executed
         graph_version: Version number of the graph template
-        data: The data payload awaiting review (can be any JSON structure)
+        payload: The actual data payload awaiting review
+        instructions: Instructions or message for the reviewer
+        editable: Whether the reviewer can edit the data
         status: Current review status (WAITING, APPROVED, or REJECTED)
         review_message: Optional message from the reviewer
         created_at: Timestamp when review was created
@@ -58,7 +41,11 @@ class PendingHumanReviewModel(BaseModel):
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
-    data: PendingReviewData = Field(description="Structured data awaiting human review")
+    payload: SafeJsonData = Field(description="The actual data payload awaiting review")
+    instructions: str | None = Field(
+        description="Instructions or message for the reviewer", default=None
+    )
+    editable: bool = Field(description="Whether the reviewer can edit the data")
     status: Literal["WAITING", "APPROVED", "REJECTED"] = Field(
         description="Review status"
     )
@@ -81,20 +68,9 @@ class PendingHumanReviewModel(BaseModel):
         """
         Convert a database model to a response model.
 
-        Handles parsing of the data field from Json to PendingReviewData,
-        with fallback for legacy data formats.
+        Uses the new flat database structure with separate columns for
+        payload, instructions, and editable flag.
         """
-        # Parse data as PendingReviewData
-        try:
-            parsed_data = PendingReviewData.model_validate(review.data)
-        except Exception:
-            # Fallback for legacy data - create PendingReviewData wrapper
-            parsed_data = PendingReviewData(
-                data=review.data,
-                message="",  # Legacy data has no message
-                editable=True,  # Default to editable for backward compatibility
-            )
-
         # Convert status to literal type
         from typing import cast
 
@@ -116,7 +92,9 @@ class PendingHumanReviewModel(BaseModel):
             graph_exec_id=review.graphExecId,
             graph_id=review.graphId,
             graph_version=review.graphVersion,
-            data=parsed_data,
+            payload=review.data,
+            instructions=review.instructions,
+            editable=review.editable,
             status=converted_status,
             review_message=review.reviewMessage,
             was_edited=review.wasEdited,
