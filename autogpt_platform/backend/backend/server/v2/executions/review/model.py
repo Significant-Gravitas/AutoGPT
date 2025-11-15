@@ -1,8 +1,11 @@
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+if TYPE_CHECKING:
+    from prisma.models import PendingHumanReview
 
 # SafeJson-compatible type alias for review data
 SafeJsonData = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
@@ -27,7 +30,7 @@ class PendingReviewData(BaseModel):
     )
 
 
-class PendingHumanReviewResponse(BaseModel):
+class PendingHumanReviewModel(BaseModel):
     """Response model for pending human review data.
 
     Represents a human review request that is awaiting user action.
@@ -72,6 +75,55 @@ class PendingHumanReviewResponse(BaseModel):
     reviewed_at: datetime | None = Field(
         description="When the review was completed", default=None
     )
+
+    @classmethod
+    def from_db(cls, review: "PendingHumanReview") -> "PendingHumanReviewModel":
+        """
+        Convert a database model to a response model.
+
+        Handles parsing of the data field from Json to PendingReviewData,
+        with fallback for legacy data formats.
+        """
+        # Parse data as PendingReviewData
+        try:
+            parsed_data = PendingReviewData.model_validate(review.data)
+        except Exception:
+            # Fallback for legacy data - create PendingReviewData wrapper
+            parsed_data = PendingReviewData(
+                data=review.data,
+                message="",  # Legacy data has no message
+                editable=True,  # Default to editable for backward compatibility
+            )
+
+        # Convert status to literal type
+        from typing import cast
+
+        from prisma.enums import ReviewStatus
+
+        status_map = {
+            ReviewStatus.WAITING: "WAITING",
+            ReviewStatus.APPROVED: "APPROVED",
+            ReviewStatus.REJECTED: "REJECTED",
+        }
+        converted_status = cast(
+            Literal["WAITING", "APPROVED", "REJECTED"], status_map[review.status]
+        )
+
+        return cls(
+            id=review.id,
+            user_id=review.userId,
+            node_exec_id=review.nodeExecId,
+            graph_exec_id=review.graphExecId,
+            graph_id=review.graphId,
+            graph_version=review.graphVersion,
+            data=parsed_data,
+            status=converted_status,
+            review_message=review.reviewMessage,
+            was_edited=review.wasEdited,
+            created_at=review.createdAt,
+            updated_at=review.updatedAt,
+            reviewed_at=review.reviewedAt,
+        )
 
 
 class ReviewActionRequest(BaseModel):

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import List, Literal
+from typing import List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Security, status
@@ -11,8 +11,7 @@ from prisma.models import PendingHumanReview
 from backend.data.db import transaction
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
 from backend.server.v2.executions.review.model import (
-    PendingHumanReviewResponse,
-    PendingReviewData,
+    PendingHumanReviewModel,
     ReviewActionRequest,
     ReviewActionResponse,
 )
@@ -20,31 +19,6 @@ from backend.util.clients import get_database_manager_async_client
 from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
-
-
-def _convert_review_status(status) -> Literal["WAITING", "APPROVED", "REJECTED"]:
-    """Convert database enum status to typed literal for API response.
-
-    Args:
-        status: Database status value (enum or string)
-
-    Returns:
-        Validated status as typed literal
-
-    Raises:
-        ValueError: If status is not a valid review status
-
-    Note:
-        Handles both enum values (from new schema) and string values
-        (for backward compatibility during migration).
-    """
-    # Handle both enum and string cases (for migration compatibility)
-    status_str = status.value if hasattr(status, "value") else str(status)
-    valid_statuses = {"WAITING", "APPROVED", "REJECTED"}
-    if status_str not in valid_statuses:
-        logger.warning(f"Invalid review status found in database: {status_str}")
-        raise ValueError(f"Invalid review status: {status_str}")
-    return status_str  # type: ignore
 
 
 router = APIRouter(
@@ -63,7 +37,7 @@ router = APIRouter(
 )
 async def list_pending_reviews(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> List[PendingHumanReviewResponse]:
+) -> List[PendingHumanReviewModel]:
     """Get all pending reviews for the current user.
 
     Retrieves all reviews with status "WAITING" that belong to the authenticated user.
@@ -91,36 +65,7 @@ async def list_pending_reviews(
     result = []
     for review in reviews:
         try:
-            converted_status = _convert_review_status(review.status)
-
-            # Parse data as PendingReviewData
-            try:
-                parsed_data = PendingReviewData.model_validate(review.data)
-            except Exception:
-                # Fallback for legacy data - create PendingReviewData wrapper
-                parsed_data = PendingReviewData(
-                    data=review.data,
-                    message="",  # Legacy data has no message
-                    editable=True,  # Default to editable for backward compatibility
-                )
-
-            result.append(
-                PendingHumanReviewResponse(
-                    id=review.id,
-                    user_id=review.userId,
-                    node_exec_id=review.nodeExecId,
-                    graph_exec_id=review.graphExecId,
-                    graph_id=review.graphId,
-                    graph_version=review.graphVersion,
-                    data=parsed_data,
-                    status=converted_status,
-                    review_message=review.reviewMessage,
-                    was_edited=review.wasEdited,
-                    created_at=review.createdAt,
-                    updated_at=review.updatedAt,
-                    reviewed_at=review.reviewedAt,
-                )
-            )
+            result.append(PendingHumanReviewModel.from_db(review))
         except ValueError as e:
             logger.error(f"Skipping review {review.id} due to invalid status: {e}")
             continue
@@ -138,7 +83,7 @@ async def list_pending_reviews(
 async def list_pending_reviews_for_execution(
     graph_exec_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> List[PendingHumanReviewResponse]:
+) -> List[PendingHumanReviewModel]:
     """Get all pending reviews for a specific graph execution.
 
     Retrieves all reviews with status "WAITING" for the specified graph execution
@@ -196,36 +141,7 @@ async def list_pending_reviews_for_execution(
     result = []
     for review in reviews:
         try:
-            converted_status = _convert_review_status(review.status)
-
-            # Parse data as PendingReviewData
-            try:
-                parsed_data = PendingReviewData.model_validate(review.data)
-            except Exception:
-                # Fallback for legacy data - create PendingReviewData wrapper
-                parsed_data = PendingReviewData(
-                    data=review.data,
-                    message="",  # Legacy data has no message
-                    editable=True,  # Default to editable for backward compatibility
-                )
-
-            result.append(
-                PendingHumanReviewResponse(
-                    id=review.id,
-                    user_id=review.userId,
-                    node_exec_id=review.nodeExecId,
-                    graph_exec_id=review.graphExecId,
-                    graph_id=review.graphId,
-                    graph_version=review.graphVersion,
-                    data=parsed_data,
-                    status=converted_status,
-                    review_message=review.reviewMessage,
-                    was_edited=review.wasEdited,
-                    created_at=review.createdAt,
-                    updated_at=review.updatedAt,
-                    reviewed_at=review.reviewedAt,
-                )
-            )
+            result.append(PendingHumanReviewModel.from_db(review))
         except ValueError as e:
             logger.error(f"Skipping review {review.id} due to invalid status: {e}")
             continue
