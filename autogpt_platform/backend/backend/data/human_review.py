@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from backend.util.json import SafeJson
 
 
-async def get_pending_review_by_node(
+async def get_pending_review_by_node_exec_id(
     node_exec_id: str, user_id: str
 ) -> Optional[PendingHumanReview]:
     """
@@ -32,45 +32,6 @@ async def get_pending_review_by_node(
     if review and review.userId != user_id:
         return None
     return review
-
-
-async def upsert_pending_review(
-    node_exec_id: str,
-    user_id: str,
-    graph_exec_id: str,
-    graph_id: str,
-    graph_version: int,
-    review_data: Any,
-) -> None:
-    """
-    Create or update a pending review.
-
-    Args:
-        node_exec_id: ID of the node execution
-        user_id: ID of the user who owns this review
-        graph_exec_id: ID of the graph execution
-        graph_id: ID of the graph template
-        graph_version: Version of the graph template
-        review_data: The structured review data to store
-    """
-    await PendingHumanReview.prisma().upsert(
-        where={"nodeExecId": node_exec_id},
-        data={
-            "create": {
-                "userId": user_id,
-                "nodeExecId": node_exec_id,
-                "graphExecId": graph_exec_id,
-                "graphId": graph_id,
-                "graphVersion": graph_version,
-                "data": SafeJson(review_data),
-                "status": ReviewStatus.WAITING,
-            },
-            "update": {
-                "data": SafeJson(review_data),
-                "status": ReviewStatus.WAITING,
-            },
-        },
-    )
 
 
 class ReviewDataStructure(BaseModel):
@@ -153,8 +114,7 @@ async def process_approved_review(
             review_message="Data conversion failed after approval. Please review and fix the data format.",
         )
 
-    # Clean up the review record only after successful conversion
-    await PendingHumanReview.prisma().delete(where={"id": review.id})
+    # Review completed successfully - status already updated to APPROVED
 
     return ReviewResult(
         data=approved_data, status="approved", message=review.reviewMessage or ""
@@ -171,8 +131,7 @@ async def process_rejected_review(review: PendingHumanReview) -> ReviewResult:
     Returns:
         ReviewResult with rejection details
     """
-    # Clean up the review record
-    await PendingHumanReview.prisma().delete(where={"id": review.id})
+    # Review completed - status already updated to REJECTED
 
     return ReviewResult(
         data=None, status="rejected", message=review.reviewMessage or ""
@@ -210,7 +169,7 @@ async def get_or_upsert_human_review(
         ReviewResult if the review is complete, None if waiting for human input
     """
     # Check if there's already a review for this node execution
-    existing_review = await get_pending_review_by_node(node_exec_id, user_id)
+    existing_review = await get_pending_review_by_node_exec_id(node_exec_id, user_id)
 
     if existing_review:
         if existing_review.status == ReviewStatus.APPROVED:
@@ -231,13 +190,23 @@ async def get_or_upsert_human_review(
         "editable": editable,
     }
 
-    await upsert_pending_review(
-        node_exec_id=node_exec_id,
-        user_id=user_id,
-        graph_exec_id=graph_exec_id,
-        graph_id=graph_id,
-        graph_version=graph_version,
-        review_data=review_data,
+    await PendingHumanReview.prisma().upsert(
+        where={"nodeExecId": node_exec_id},
+        data={
+            "create": {
+                "userId": user_id,
+                "nodeExecId": node_exec_id,
+                "graphExecId": graph_exec_id,
+                "graphId": graph_id,
+                "graphVersion": graph_version,
+                "data": SafeJson(review_data),
+                "status": ReviewStatus.WAITING,
+            },
+            "update": {
+                "data": SafeJson(review_data),
+                "status": ReviewStatus.WAITING,
+            },
+        },
     )
 
     # Return None to indicate we're waiting for human input
@@ -246,15 +215,15 @@ async def get_or_upsert_human_review(
 
 async def has_pending_review(node_exec_id: str) -> bool:
     """
-    Check if a node execution has a pending review.
+    Check if a node execution has a pending review waiting for input.
 
     Args:
         node_exec_id: The node execution ID to check
 
     Returns:
-        True if there is a pending review waiting, False otherwise
+        True if there is a review with WAITING status, False otherwise
     """
-    review = await PendingHumanReview.prisma().find_unique(
-        where={"nodeExecId": node_exec_id}
+    review = await PendingHumanReview.prisma().find_first(
+        where={"nodeExecId": node_exec_id, "status": ReviewStatus.WAITING}
     )
-    return review is not None and review.status == ReviewStatus.WAITING
+    return review is not None

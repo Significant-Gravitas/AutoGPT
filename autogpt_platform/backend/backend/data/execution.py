@@ -920,25 +920,15 @@ async def update_node_execution_status(
     if status == ExecutionStatus.QUEUED and execution_data is None:
         raise ValueError("Execution data must be provided when queuing an execution.")
 
-    # Use batch function approach - update_many with status filter then find_unique
-    if allowed_from := VALID_STATUS_TRANSITIONS.get(status, []):
-        # Filter by status like batch function
-        where_clause = cast(
-            AgentNodeExecutionWhereInput,
-            {
-                "id": node_exec_id,
-                "executionStatus": {"in": [s.value for s in allowed_from]},
-            },
-        )
-    else:
-        # No status validation needed
-        where_clause = cast(AgentNodeExecutionWhereInput, {"id": node_exec_id})
+    # Use the batch function for the update logic
+    await update_node_execution_status_batch([node_exec_id], status, stats)
 
-    # Update using batch function pattern
-    await AgentNodeExecution.prisma().update_many(
-        where=where_clause,
-        data=_get_update_status_data(status, execution_data, stats),
-    )
+    # Handle execution_data separately since batch function doesn't support it
+    if execution_data:
+        await AgentNodeExecution.prisma().update_many(
+            where={"id": node_exec_id},
+            data={"executionData": SafeJson(execution_data)},
+        )
 
     # Fetch and return result
     res = await AgentNodeExecution.prisma().find_unique(
