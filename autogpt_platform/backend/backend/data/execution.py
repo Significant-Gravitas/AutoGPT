@@ -1011,7 +1011,6 @@ def _build_node_execution_where_clause(
 ) -> AgentNodeExecutionWhereInput:
     """
     Build where clause for node execution queries.
-    Shared logic between get_node_executions and get_node_executions_count.
     """
     where_clause: AgentNodeExecutionWhereInput = {}
     if graph_exec_id:
@@ -1064,31 +1063,6 @@ async def get_node_executions(
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
     return res
-
-
-async def get_node_executions_count(
-    graph_exec_id: str | None = None,
-    node_id: str | None = None,
-    block_ids: list[str] | None = None,
-    statuses: list[ExecutionStatus] | None = None,
-    created_time_gte: datetime | None = None,
-    created_time_lte: datetime | None = None,
-) -> int:
-    """
-    Get count of node executions with optional filters.
-    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
-    """
-    where_clause = _build_node_execution_where_clause(
-        graph_exec_id=graph_exec_id,
-        node_id=node_id,
-        block_ids=block_ids,
-        statuses=statuses,
-        created_time_gte=created_time_gte,
-        created_time_lte=created_time_lte,
-    )
-
-    count = await AgentNodeExecution.prisma().count(where=where_clause)
-    return count
 
 
 async def get_latest_node_execution(

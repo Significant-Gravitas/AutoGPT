@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
 
+from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 if TYPE_CHECKING:
@@ -35,9 +36,8 @@ class PendingHumanReviewModel(BaseModel):
         reviewed_at: Timestamp when review was completed (if applicable)
     """
 
-    id: str = Field(description="Unique ID of the pending review")
+    node_exec_id: str = Field(description="Node execution ID (primary key)")
     user_id: str = Field(description="User ID associated with the review")
-    node_exec_id: str = Field(description="Node execution ID")
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
@@ -46,14 +46,16 @@ class PendingHumanReviewModel(BaseModel):
         description="Instructions or message for the reviewer", default=None
     )
     editable: bool = Field(description="Whether the reviewer can edit the data")
-    status: Literal["WAITING", "APPROVED", "REJECTED"] = Field(
-        description="Review status"
-    )
+    status: ReviewStatus = Field(description="Review status")
     review_message: str | None = Field(
         description="Optional message from the reviewer", default=None
     )
     was_edited: bool | None = Field(
         description="Whether the data was modified during review", default=None
+    )
+    processed: bool = Field(
+        description="Whether the review result has been processed by the execution engine",
+        default=False,
     )
     created_at: datetime = Field(description="When the review was created")
     updated_at: datetime | None = Field(
@@ -70,34 +72,22 @@ class PendingHumanReviewModel(BaseModel):
 
         Uses the new flat database structure with separate columns for
         payload, instructions, and editable flag.
+
+        Handles invalid data gracefully by using safe defaults.
         """
-        # Convert status to literal type
-        from typing import cast
-
-        from prisma.enums import ReviewStatus
-
-        status_map = {
-            ReviewStatus.WAITING: "WAITING",
-            ReviewStatus.APPROVED: "APPROVED",
-            ReviewStatus.REJECTED: "REJECTED",
-        }
-        converted_status = cast(
-            Literal["WAITING", "APPROVED", "REJECTED"], status_map[review.status]
-        )
-
         return cls(
-            id=review.id,
-            user_id=review.userId,
             node_exec_id=review.nodeExecId,
+            user_id=review.userId,
             graph_exec_id=review.graphExecId,
             graph_id=review.graphId,
             graph_version=review.graphVersion,
             payload=review.payload,
             instructions=review.instructions,
             editable=review.editable,
-            status=converted_status,
+            status=review.status,
             review_message=review.reviewMessage,
             was_edited=review.wasEdited,
+            processed=review.processed,
             created_at=review.createdAt,
             updated_at=review.updatedAt,
             reviewed_at=review.reviewedAt,

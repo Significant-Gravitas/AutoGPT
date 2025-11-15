@@ -1,22 +1,24 @@
 import logging
-from datetime import datetime, timezone
 from typing import List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Security, status
-from prisma.enums import ReviewStatus
-from prisma.errors import RecordNotFoundError
-from prisma.models import PendingHumanReview
 
-from backend.data.db import transaction
-from backend.data.execution import ExecutionStatus, update_graph_execution_stats
+from backend.data.execution import (
+    ExecutionStatus,
+    get_graph_execution_meta,
+    update_graph_execution_stats,
+)
+from backend.data.human_review import (
+    get_pending_reviews_for_execution,
+    get_pending_reviews_for_user,
+    update_review_action,
+)
 from backend.server.v2.executions.review.model import (
     PendingHumanReviewModel,
     ReviewActionRequest,
     ReviewActionResponse,
 )
-from backend.util.clients import get_database_manager_async_client
-from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -57,19 +59,7 @@ async def list_pending_reviews(
         from results rather than failing the entire request.
     """
 
-    reviews = await PendingHumanReview.prisma().find_many(
-        where={"userId": user_id, "status": ReviewStatus.WAITING},
-        order={"createdAt": "desc"},
-    )
-
-    result = []
-    for review in reviews:
-        try:
-            result.append(PendingHumanReviewModel.from_db(review))
-        except ValueError as e:
-            logger.error(f"Skipping review {review.id} due to invalid status: {e}")
-            continue
-    return result
+    return await get_pending_reviews_for_user(user_id)
 
 
 @router.get(
@@ -108,9 +98,8 @@ async def list_pending_reviews_for_execution(
     """
 
     # Verify user owns the graph execution before returning reviews
-    db = get_database_manager_async_client()
     try:
-        graph_exec = await db.get_graph_execution_meta(
+        graph_exec = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
         if not graph_exec:
@@ -129,27 +118,11 @@ async def list_pending_reviews_for_execution(
             detail="Internal server error while verifying access",
         )
 
-    reviews = await PendingHumanReview.prisma().find_many(
-        where={
-            "userId": user_id,
-            "graphExecId": graph_exec_id,
-            "status": ReviewStatus.WAITING,
-        },
-        order={"createdAt": "asc"},
-    )
-
-    result = []
-    for review in reviews:
-        try:
-            result.append(PendingHumanReviewModel.from_db(review))
-        except ValueError as e:
-            logger.error(f"Skipping review {review.id} due to invalid status: {e}")
-            continue
-    return result
+    return await get_pending_reviews_for_execution(graph_exec_id, user_id)
 
 
 @router.post(
-    "/{review_id}/action",
+    "/{node_exec_id}/action",
     summary="Review Data",
     responses={
         200: {"description": "Success", "content": {"application/json": {}}},
@@ -160,7 +133,7 @@ async def list_pending_reviews_for_execution(
     },
 )
 async def review_data(
-    review_id: str,
+    node_exec_id: str,
     request: ReviewActionRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> ReviewActionResponse:
@@ -176,7 +149,7 @@ async def review_data(
     - Uses database transactions for atomic updates
 
     Args:
-        review_id: Unique identifier of the review to process
+        node_exec_id: Node execution ID of the review to process
         request: Review action details (approve/reject + optional data/message)
         user_id: Authenticated user ID from security dependency
 
@@ -196,91 +169,25 @@ async def review_data(
         All operations use database transactions for consistency.
     """
 
-    # Find the review and verify ownership
-    review = await PendingHumanReview.prisma().find_unique(where={"id": review_id})
-
-    if not review:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Review not found"
-        )
-
-    if review.userId != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this review"
-        )
-
-    # Additional security check: verify user owns the graph execution
-    db = get_database_manager_async_client()
-    try:
-        graph_exec = await db.get_graph_execution_meta(
-            user_id=user_id, execution_id=review.graphExecId
-        )
-        if not graph_exec:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to graph execution",
-            )
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions as-is
-    except Exception as e:
-        logger.error(
-            f"Database error while verifying graph ownership for review {review_id}: {str(e)}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while verifying access",
-        )
-
-    if review.status != ReviewStatus.WAITING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Review is already {review.status.value.lower()}",
-        )
-
-    # Update the review
-    now = datetime.now(timezone.utc)
-    update_status = (
-        ReviewStatus.APPROVED if request.action == "approve" else ReviewStatus.REJECTED
+    # Update the review using the data layer
+    updated_review = await update_review_action(
+        node_exec_id=node_exec_id,
+        user_id=user_id,
+        action=request.action,
+        reviewed_data=request.reviewed_data,
+        message=request.message,
     )
 
-    # Handle reviewed_data for approve action and determine if data was edited
-    review_data = review.payload
-    was_edited = False
-
-    if request.action == "approve" and request.reviewed_data is not None:
-        # Check if editing is allowed using the new editable column
-        if not review.editable:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Data modification not allowed - this review is read-only",
-            )
-
-        # Check if the data was actually modified (compare with original payload)
-        was_edited = review.payload != request.reviewed_data
-
-        # With the new flat structure, store the reviewed data directly
-        review_data = request.reviewed_data
-
-    # Use database transaction for atomic update and status change
-
-    async with transaction() as tx:
-        # Update the review atomically
-        await tx.pendinghumanreview.update(
-            where={"id": review_id},
-            data={
-                "status": update_status,
-                "payload": SafeJson(
-                    review_data
-                ),  # Store the (possibly modified) payload
-                "reviewMessage": request.message,
-                "wasEdited": was_edited if request.action == "approve" else None,
-                "reviewedAt": now,
-            },
+    if updated_review is None:
+        # Could be not found, access denied, already processed, or editing not allowed
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Review not found, access denied, already processed, or editing not allowed",
         )
 
-        # If approved, trigger graph execution resume within the same transaction
-        if request.action == "approve":
-            await _resume_graph_execution_atomic(review.graphExecId, tx)
+    # If approved, trigger graph execution resume
+    if request.action == "approve":
+        await _resume_graph_execution(updated_review.graph_exec_id)
 
     return ReviewActionResponse(action=request.action)
 
@@ -299,8 +206,8 @@ async def _resume_graph_execution(graph_exec_id: str) -> None:
         Exception: For database connection or update errors
 
     Note:
-        This is a non-atomic helper function. For transactional operations,
-        use _resume_graph_execution_atomic instead.
+        This function updates the graph execution status to resume processing
+        after a human review has been completed.
     """
     try:
         # Update the graph execution status to QUEUED so the scheduler picks it up
@@ -317,50 +224,3 @@ async def _resume_graph_execution(graph_exec_id: str) -> None:
     except Exception as e:
         logger.error(f"Failed to resume graph execution {graph_exec_id}: {e}")
         raise  # Re-raise to ensure calling code is aware of the failure
-
-
-async def _resume_graph_execution_atomic(graph_exec_id: str, tx) -> None:
-    """Resume a graph execution by updating its status within a database transaction.
-
-    Atomically updates the graph execution status to QUEUED within an existing
-    database transaction. This ensures consistency with other transaction operations.
-
-    Args:
-        graph_exec_id: Unique identifier of the graph execution to resume
-        tx: Active database transaction context from Prisma
-
-    Raises:
-        ValueError: If graph execution is not found
-        Exception: For database update errors (will rollback transaction)
-
-    Note:
-        This function is designed to be called within a database transaction.
-        Any exceptions will cause transaction rollback to maintain consistency.
-    """
-    try:
-
-        logger.info(f"Resuming graph execution {graph_exec_id} atomically")
-
-        # Update the graph status to QUEUED to restart execution within transaction
-        try:
-            await tx.agentgraphexecution.update(
-                where={"id": graph_exec_id},
-                data={"executionStatus": ExecutionStatus.QUEUED.value},
-            )
-        except RecordNotFoundError:
-            logger.error(
-                f"Graph execution {graph_exec_id} not found during atomic update"
-            )
-            raise ValueError(f"Graph execution {graph_exec_id} not found")
-
-        logger.info(
-            f"Graph execution {graph_exec_id} status updated to QUEUED atomically"
-        )
-
-    except ValueError:
-        raise  # Re-raise validation errors to rollback transaction
-    except Exception as e:
-        logger.error(
-            f"Failed to resume graph execution {graph_exec_id} atomically: {str(e)}"
-        )
-        raise  # Re-raise to rollback the transaction
