@@ -39,7 +39,6 @@ from backend.data.execution import (
     UserContext,
 )
 from backend.data.graph import Link, Node
-from backend.data.human_review import has_pending_review
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
@@ -574,19 +573,7 @@ class ExecutionProcessor:
                 await persist_output(output_name, output_data)
 
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
-
-            # Check if this node has a pending human review
-            try:
-                if await has_pending_review(node_exec.node_exec_id):
-                    # Node is waiting for human review
-                    status = ExecutionStatus.WAITING_FOR_REVIEW
-                else:
-                    # Normal completion
-                    status = ExecutionStatus.COMPLETED
-            except Exception:
-                # If there's any issue checking for pending reviews, default to completed
-                # This ensures the system remains stable even if review system has issues
-                status = ExecutionStatus.COMPLETED
+            status = ExecutionStatus.COMPLETED
 
         except BaseException as e:
             stats.error = e
@@ -868,7 +855,7 @@ class ExecutionProcessor:
                     ExecutionStatus.RUNNING,
                     ExecutionStatus.QUEUED,
                     ExecutionStatus.TERMINATED,
-                    ExecutionStatus.WAITING_FOR_REVIEW,  # Include nodes waiting for review
+                    ExecutionStatus.WAITING_FOR_REVIEW,
                 ],
             ):
                 node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
@@ -877,7 +864,17 @@ class ExecutionProcessor:
             # ------------------------------------------------------------
             # Main dispatch / polling loop -----------------------------
             # ------------------------------------------------------------
-            while not execution_queue.empty():
+
+            def add_unprocessed_reviews_to_queue():
+                """Add nodes with unprocessed reviews to execution queue."""
+                node_entries = db_client.get_unprocessed_review_node_execution_entries(
+                    graph_exec.graph_exec_id, graph_exec.user_context
+                )
+                for entry in node_entries:
+                    execution_queue.add(entry)
+                return len(node_entries)
+
+            while not execution_queue.empty() or add_unprocessed_reviews_to_queue() > 0:
                 if cancel.is_set():
                     break
 
@@ -1030,12 +1027,9 @@ class ExecutionProcessor:
             elif error is not None:
                 execution_status = ExecutionStatus.FAILED
             else:
-                # Check if there are any nodes waiting for review
-                waiting_nodes_count = db_client.get_node_executions_count(
-                    graph_exec_id=graph_exec.graph_exec_id,
-                    statuses=[ExecutionStatus.WAITING_FOR_REVIEW],
-                )
-                if waiting_nodes_count > 0:
+                if db_client.has_pending_reviews_for_graph_exec(
+                    graph_exec.graph_exec_id
+                ):
                     execution_status = ExecutionStatus.WAITING_FOR_REVIEW
                 else:
                     execution_status = ExecutionStatus.COMPLETED

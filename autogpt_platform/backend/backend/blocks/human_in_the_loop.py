@@ -67,8 +67,12 @@ class HumanInTheLoopBlock(Block):
                 ("review_message", ""),
             ],
             test_mock={
-                "get_or_upsert_human_review": lambda *args, **kwargs: ReviewResult(
-                    data={"name": "John Doe", "age": 30}, status="approved", message=""
+                "get_or_create_human_review": lambda *args, **kwargs: ReviewResult(
+                    data={"name": "John Doe", "age": 30},
+                    status="approved",
+                    message="",
+                    processed=False,
+                    node_exec_id="test-node-exec-id",
                 ),
                 "update_node_execution_status": lambda *args, **kwargs: None,
             },
@@ -93,7 +97,7 @@ class HumanInTheLoopBlock(Block):
         """
         # Use the data layer to handle the complete workflow
         db_client = get_database_manager_async_client()
-        result = await db_client.get_or_upsert_human_review(
+        result = await db_client.get_or_create_human_review(
             user_id=user_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
@@ -115,11 +119,18 @@ class HumanInTheLoopBlock(Block):
             # Execution pauses here until API routes process the review
             return
 
-        # Review is complete (approved or rejected)
-        if result.status == "approved":
-            yield "reviewed_data", result.data
-            yield "status", "approved"
-            yield "review_message", result.message
-        elif result.status == "rejected":
-            yield "status", "rejected"
-            yield "review_message", result.message
+        # Review is complete (approved or rejected) - check if unprocessed
+        if not result.processed:
+            # Mark as processed before yielding
+            await db_client.update_review_processed_status(
+                node_exec_id=node_exec_id, processed=True
+            )
+
+            # Yield the results
+            if result.status == "approved":
+                yield "reviewed_data", result.data
+                yield "status", "approved"
+                yield "review_message", result.message
+            elif result.status == "rejected":
+                yield "status", "rejected"
+                yield "review_message", result.message

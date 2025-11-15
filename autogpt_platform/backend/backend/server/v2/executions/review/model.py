@@ -35,9 +35,8 @@ class PendingHumanReviewModel(BaseModel):
         reviewed_at: Timestamp when review was completed (if applicable)
     """
 
-    id: str = Field(description="Unique ID of the pending review")
+    node_exec_id: str = Field(description="Node execution ID (primary key)")
     user_id: str = Field(description="User ID associated with the review")
-    node_exec_id: str = Field(description="Node execution ID")
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
@@ -55,6 +54,10 @@ class PendingHumanReviewModel(BaseModel):
     was_edited: bool | None = Field(
         description="Whether the data was modified during review", default=None
     )
+    processed: bool = Field(
+        description="Whether the review result has been processed by the execution engine",
+        default=False,
+    )
     created_at: datetime = Field(description="When the review was created")
     updated_at: datetime | None = Field(
         description="When the review was last updated", default=None
@@ -70,8 +73,10 @@ class PendingHumanReviewModel(BaseModel):
 
         Uses the new flat database structure with separate columns for
         payload, instructions, and editable flag.
+
+        Handles invalid data gracefully by using safe defaults.
         """
-        # Convert status to literal type
+        # Convert status to literal type with safe fallback
         from typing import cast
 
         from prisma.enums import ReviewStatus
@@ -81,14 +86,16 @@ class PendingHumanReviewModel(BaseModel):
             ReviewStatus.APPROVED: "APPROVED",
             ReviewStatus.REJECTED: "REJECTED",
         }
+
+        # Use safe default for unknown status
         converted_status = cast(
-            Literal["WAITING", "APPROVED", "REJECTED"], status_map[review.status]
+            Literal["WAITING", "APPROVED", "REJECTED"],
+            status_map.get(review.status, "WAITING"),
         )
 
         return cls(
-            id=review.id,
-            user_id=review.userId,
             node_exec_id=review.nodeExecId,
+            user_id=review.userId,
             graph_exec_id=review.graphExecId,
             graph_id=review.graphId,
             graph_version=review.graphVersion,
@@ -98,6 +105,7 @@ class PendingHumanReviewModel(BaseModel):
             status=converted_status,
             review_message=review.reviewMessage,
             was_edited=review.wasEdited,
+            processed=review.processed,
             created_at=review.createdAt,
             updated_at=review.updatedAt,
             reviewed_at=review.reviewedAt,
