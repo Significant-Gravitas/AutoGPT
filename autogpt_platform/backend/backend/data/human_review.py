@@ -11,6 +11,23 @@ from pydantic import BaseModel
 
 from backend.server.v2.executions.review.model import PendingReviewData, SafeJsonData
 from backend.util.json import SafeJson
+from backend.util.type import convert
+
+
+class HITLValidationError(ValueError):
+    """Exception raised when HITL validation fails."""
+
+    def __init__(self, message: str, review_message: str = ""):
+        super().__init__(message)
+        self.review_message = review_message
+
+
+class ReviewResult(BaseModel):
+    """Result of a review operation."""
+
+    data: SafeJsonData
+    status: str
+    message: str = ""
 
 
 async def get_pending_review_by_node_exec_id(
@@ -26,29 +43,12 @@ async def get_pending_review_by_node_exec_id(
     Returns:
         The existing review if found and owned by the user, None otherwise
     """
-    review = await PendingHumanReview.prisma().find_unique(
-        where={"nodeExecId": node_exec_id}
+    return await PendingHumanReview.prisma().find_first(
+        where={
+            "nodeExecId": node_exec_id,
+            "userId": user_id,
+        }
     )
-    # Validate ownership for defense-in-depth security
-    if review and review.userId != user_id:
-        return None
-    return review
-
-
-class ReviewResult(BaseModel):
-    """Result of a review operation."""
-
-    data: SafeJsonData
-    status: str
-    message: str = ""
-
-
-class HITLValidationError(Exception):
-    """Exception raised when HITL validation fails."""
-
-    def __init__(self, message: str, review_message: str = ""):
-        super().__init__(message)
-        self.review_message = review_message
 
 
 def extract_approved_data(review: PendingHumanReview) -> SafeJsonData:
@@ -93,8 +93,6 @@ async def process_approved_review(
     Raises:
         HITLValidationError: If data conversion fails after approval
     """
-    from backend.util.type import convert
-
     approved_data = extract_approved_data(review)
 
     try:
