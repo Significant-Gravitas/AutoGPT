@@ -7,6 +7,7 @@ const statusStyles: Record<AgentExecutionStatus, string> = {
   INCOMPLETE: "text-slate-700 border-slate-400",
   QUEUED: "text-blue-700 border-blue-400",
   RUNNING: "text-amber-700 border-amber-400",
+  WAITING_FOR_REVIEW: "text-purple-700 border-purple-400",
   COMPLETED: "text-green-700 border-green-400",
   TERMINATED: "text-orange-700 border-orange-400",
   FAILED: "text-red-700  border-red-400",
@@ -22,7 +23,7 @@ export const NodeExecutionBadge = ({
       <Badge
         className={cn(statusStyles[status], "gap-2 rounded-full bg-white")}
       >
-        {status}
+        {status === "WAITING_FOR_REVIEW" ? "Waiting for Review" : status}
         {status === AgentExecutionStatus.RUNNING && (
           <LoadingSpinner className="size-4" />
         )}

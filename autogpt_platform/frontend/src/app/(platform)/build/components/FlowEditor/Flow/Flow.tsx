@@ -13,8 +13,13 @@ import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useCopyPaste } from "./useCopyPaste";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { useSearchParams } from "next/navigation";
 
 export const Flow = () => {
+  const searchParams = useSearchParams();
+  const flowExecutionID = searchParams.get("flowExecutionID") || undefined;
+
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
@@ -69,6 +74,7 @@ export const Flow = () => {
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
+      <FloatingReviewsPanel executionId={flowExecutionID} />
     </div>
   );
 };

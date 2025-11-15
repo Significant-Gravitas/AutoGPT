@@ -9,6 +9,7 @@ import {
   WarningOctagonIcon,
   StopCircle,
   CircleDashed,
+  PauseCircleIcon,
 } from "@phosphor-icons/react";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
@@ -44,6 +45,14 @@ export function ActivityItem({ execution }: Props) {
         );
       case AgentExecutionStatus.INCOMPLETE:
         return <CircleDashed size={18} className="text-purple-500" />;
+      case AgentExecutionStatus.WAITING_FOR_REVIEW:
+        return (
+          <PauseCircleIcon
+            size={18}
+            className="text-purple-500"
+            weight="bold"
+          />
+        );
       default:
         return null;
     }
@@ -52,12 +61,17 @@ export function ActivityItem({ execution }: Props) {
   function getTimeDisplay() {
     const isActiveStatus =
       execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED;
+      execution.status === AgentExecutionStatus.QUEUED ||
+      execution.status === AgentExecutionStatus.WAITING_FOR_REVIEW;
 
     if (isActiveStatus) {
       const timeAgo = formatTimeAgo(execution.started_at.toString());
-      const statusText =
-        execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
+      let statusText = "running";
+      if (execution.status === AgentExecutionStatus.QUEUED) {
+        statusText = "queued";
+      } else if (execution.status === AgentExecutionStatus.WAITING_FOR_REVIEW) {
+        statusText = "waiting for review";
+      }
       return `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`;
     }
 
@@ -72,6 +86,8 @@ export function ActivityItem({ execution }: Props) {
           return `Stopped ${timeAgo}`;
         case AgentExecutionStatus.INCOMPLETE:
           return `Incomplete ${timeAgo}`;
+        case AgentExecutionStatus.WAITING_FOR_REVIEW:
+          return `Waiting for review ${timeAgo}`;
         default:
           return `Ended ${timeAgo}`;
       }

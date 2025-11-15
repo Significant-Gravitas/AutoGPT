@@ -34,6 +34,7 @@ from prisma.types import (
     AgentNodeExecutionKeyValueDataCreateInput,
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
+    AgentNodeExecutionWhereUniqueInput,
 )
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
@@ -101,6 +102,7 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.TERMINATED,  # For resuming halted execution
+        ExecutionStatus.WAITING_FOR_REVIEW,  # For resuming after review
     ],
     ExecutionStatus.COMPLETED: [
         ExecutionStatus.RUNNING,
@@ -109,10 +111,15 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.RUNNING,
+        ExecutionStatus.WAITING_FOR_REVIEW,
     ],
     ExecutionStatus.TERMINATED: [
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.WAITING_FOR_REVIEW,
+    ],
+    ExecutionStatus.WAITING_FOR_REVIEW: [
         ExecutionStatus.RUNNING,
     ],
 }
@@ -883,9 +890,25 @@ async def update_node_execution_status_batch(
     node_exec_ids: list[str],
     status: ExecutionStatus,
     stats: dict[str, Any] | None = None,
-):
-    await AgentNodeExecution.prisma().update_many(
-        where={"id": {"in": node_exec_ids}},
+) -> int:
+    # Validate status transitions - allowed_from should never be empty for valid statuses
+    allowed_from = VALID_STATUS_TRANSITIONS.get(status, [])
+    if not allowed_from:
+        raise ValueError(
+            f"Invalid status transition: {status} has no valid source statuses"
+        )
+
+    # For batch updates, we filter to only update nodes with valid current statuses
+    where_clause = cast(
+        AgentNodeExecutionWhereInput,
+        {
+            "id": {"in": node_exec_ids},
+            "executionStatus": {"in": [s.value for s in allowed_from]},
+        },
+    )
+
+    return await AgentNodeExecution.prisma().update_many(
+        where=where_clause,
         data=_get_update_status_data(status, None, stats),
     )
 
@@ -899,15 +922,32 @@ async def update_node_execution_status(
     if status == ExecutionStatus.QUEUED and execution_data is None:
         raise ValueError("Execution data must be provided when queuing an execution.")
 
-    res = await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
+    # Validate status transitions - allowed_from should never be empty for valid statuses
+    allowed_from = VALID_STATUS_TRANSITIONS.get(status, [])
+    if not allowed_from:
+        raise ValueError(
+            f"Invalid status transition: {status} has no valid source statuses"
+        )
+
+    if res := await AgentNodeExecution.prisma().update(
+        where=cast(
+            AgentNodeExecutionWhereUniqueInput,
+            {
+                "id": node_exec_id,
+                "executionStatus": {"in": [s.value for s in allowed_from]},
+            },
+        ),
         data=_get_update_status_data(status, execution_data, stats),
         include=EXECUTION_RESULT_INCLUDE,
-    )
-    if not res:
-        raise ValueError(f"Execution {node_exec_id} not found.")
+    ):
+        return NodeExecutionResult.from_db(res)
 
-    return NodeExecutionResult.from_db(res)
+    if res := await AgentNodeExecution.prisma().find_unique(
+        where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
+    ):
+        return NodeExecutionResult.from_db(res)
+
+    raise ValueError(f"Execution {node_exec_id} not found.")
 
 
 def _get_update_status_data(
@@ -961,17 +1001,17 @@ async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
     return NodeExecutionResult.from_db(execution)
 
 
-async def get_node_executions(
+def _build_node_execution_where_clause(
     graph_exec_id: str | None = None,
     node_id: str | None = None,
     block_ids: list[str] | None = None,
     statuses: list[ExecutionStatus] | None = None,
-    limit: int | None = None,
     created_time_gte: datetime | None = None,
     created_time_lte: datetime | None = None,
-    include_exec_data: bool = True,
-) -> list[NodeExecutionResult]:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+) -> AgentNodeExecutionWhereInput:
+    """
+    Build where clause for node execution queries.
+    """
     where_clause: AgentNodeExecutionWhereInput = {}
     if graph_exec_id:
         where_clause["agentGraphExecutionId"] = graph_exec_id
@@ -987,6 +1027,29 @@ async def get_node_executions(
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+
+    return where_clause
+
+
+async def get_node_executions(
+    graph_exec_id: str | None = None,
+    node_id: str | None = None,
+    block_ids: list[str] | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    limit: int | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    include_exec_data: bool = True,
+) -> list[NodeExecutionResult]:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    where_clause = _build_node_execution_where_clause(
+        graph_exec_id=graph_exec_id,
+        node_id=node_id,
+        block_ids=block_ids,
+        statuses=statuses,
+        created_time_gte=created_time_gte,
+        created_time_lte=created_time_lte,
+    )
 
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,

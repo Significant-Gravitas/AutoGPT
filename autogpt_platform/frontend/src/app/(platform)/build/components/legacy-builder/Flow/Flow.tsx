@@ -64,6 +64,7 @@ import { useCopyPaste } from "../useCopyPaste";
 import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -1008,6 +1009,10 @@ const FlowEditor: React.FC<{
           saveAndRun={saveAndRun}
         />
       )}
+      <FloatingReviewsPanel
+        executionId={flowExecutionID || undefined}
+        className="fixed bottom-24 right-4"
+      />
       <Suspense fallback={null}>
         <OttoChatWidget
           graphID={flowID}

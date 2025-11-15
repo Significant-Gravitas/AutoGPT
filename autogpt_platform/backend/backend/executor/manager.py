@@ -660,6 +660,16 @@ class ExecutionProcessor:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
+        elif exec_meta.status == ExecutionStatus.WAITING_FOR_REVIEW:
+            exec_meta.status = ExecutionStatus.RUNNING
+            log_metadata.info(
+                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was waiting for review, resuming execution."
+            )
+            update_graph_execution_state(
+                db_client=db_client,
+                graph_exec_id=graph_exec.graph_exec_id,
+                status=ExecutionStatus.RUNNING,
+            )
         elif exec_meta.status == ExecutionStatus.FAILED:
             exec_meta.status = ExecutionStatus.RUNNING
             log_metadata.info(
@@ -845,6 +855,7 @@ class ExecutionProcessor:
                     ExecutionStatus.RUNNING,
                     ExecutionStatus.QUEUED,
                     ExecutionStatus.TERMINATED,
+                    ExecutionStatus.WAITING_FOR_REVIEW,
                 ],
             ):
                 node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
@@ -853,7 +864,20 @@ class ExecutionProcessor:
             # ------------------------------------------------------------
             # Main dispatch / polling loop -----------------------------
             # ------------------------------------------------------------
-            while not execution_queue.empty():
+
+            def add_unprocessed_reviews_to_queue():
+                """Add nodes with unprocessed reviews to execution queue."""
+                node_executions = db_client.get_unprocessed_review_node_executions(
+                    graph_exec.graph_exec_id
+                )
+                for node_exec in node_executions:
+                    node_entry = node_exec.to_node_execution_entry(
+                        graph_exec.user_context
+                    )
+                    execution_queue.add(node_entry)
+                return len(node_executions)
+
+            while not execution_queue.empty() or add_unprocessed_reviews_to_queue() > 0:
                 if cancel.is_set():
                     break
 
@@ -1006,7 +1030,12 @@ class ExecutionProcessor:
             elif error is not None:
                 execution_status = ExecutionStatus.FAILED
             else:
-                execution_status = ExecutionStatus.COMPLETED
+                if db_client.has_pending_reviews_for_graph_exec(
+                    graph_exec.graph_exec_id
+                ):
+                    execution_status = ExecutionStatus.WAITING_FOR_REVIEW
+                else:
+                    execution_status = ExecutionStatus.COMPLETED
 
             if error:
                 execution_stats.error = str(error) or type(error).__name__
