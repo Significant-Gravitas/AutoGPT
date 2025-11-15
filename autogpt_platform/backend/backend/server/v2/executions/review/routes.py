@@ -12,6 +12,7 @@ from backend.data.db import transaction
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
 from backend.server.v2.executions.review.model import (
     PendingHumanReviewResponse,
+    PendingReviewData,
     ReviewActionRequest,
     ReviewActionResponse,
 )
@@ -91,6 +92,18 @@ async def list_pending_reviews(
     for review in reviews:
         try:
             converted_status = _convert_review_status(review.status)
+
+            # Parse data as PendingReviewData
+            try:
+                parsed_data = PendingReviewData.model_validate(review.data)
+            except Exception:
+                # Fallback for legacy data - create PendingReviewData wrapper
+                parsed_data = PendingReviewData(
+                    data=review.data,
+                    message="",  # Legacy data has no message
+                    editable=True,  # Default to editable for backward compatibility
+                )
+
             result.append(
                 PendingHumanReviewResponse(
                     id=review.id,
@@ -99,7 +112,7 @@ async def list_pending_reviews(
                     graph_exec_id=review.graphExecId,
                     graph_id=review.graphId,
                     graph_version=review.graphVersion,
-                    data=review.data,
+                    data=parsed_data,
                     status=converted_status,
                     review_message=review.reviewMessage,
                     was_edited=review.wasEdited,
@@ -184,6 +197,18 @@ async def list_pending_reviews_for_execution(
     for review in reviews:
         try:
             converted_status = _convert_review_status(review.status)
+
+            # Parse data as PendingReviewData
+            try:
+                parsed_data = PendingReviewData.model_validate(review.data)
+            except Exception:
+                # Fallback for legacy data - create PendingReviewData wrapper
+                parsed_data = PendingReviewData(
+                    data=review.data,
+                    message="",  # Legacy data has no message
+                    editable=True,  # Default to editable for backward compatibility
+                )
+
             result.append(
                 PendingHumanReviewResponse(
                     id=review.id,
@@ -192,7 +217,7 @@ async def list_pending_reviews_for_execution(
                     graph_exec_id=review.graphExecId,
                     graph_id=review.graphId,
                     graph_version=review.graphVersion,
-                    data=review.data,
+                    data=parsed_data,
                     status=converted_status,
                     review_message=review.reviewMessage,
                     was_edited=review.wasEdited,

@@ -14,52 +14,15 @@ interface PendingReviewCardProps {
   onReviewComplete?: () => void;
 }
 
-interface ReviewDataStructure {
-  data?: unknown;
-  message?: string;
-  editable?: boolean;
-}
-
-function isReviewDataStructure(data: unknown): data is ReviewDataStructure {
-  return typeof data === "object" && data !== null;
-}
-
-function extractDataFromReview(reviewData: unknown): string {
-  if (isReviewDataStructure(reviewData) && "data" in reviewData) {
-    return JSON.stringify(reviewData.data, null, 2);
-  }
-  return JSON.stringify(reviewData, null, 2);
-}
-
-function extractMessageFromReview(reviewData: unknown): string | null {
-  if (
-    isReviewDataStructure(reviewData) &&
-    typeof reviewData.message === "string"
-  ) {
-    return reviewData.message;
-  }
-  return null;
-}
-
-function extractEditableFromReview(reviewData: unknown): boolean {
-  if (
-    isReviewDataStructure(reviewData) &&
-    typeof reviewData.editable === "boolean"
-  ) {
-    return reviewData.editable;
-  }
-  return true; // Default to editable for backward compatibility
-}
-
 export function PendingReviewCard({
   review,
   onReviewComplete,
 }: PendingReviewCardProps) {
   const [reviewData, setReviewData] = useState<string>(
-    extractDataFromReview(review.data),
+    JSON.stringify(review.data.data, null, 2),
   );
   const [reviewMessage, setReviewMessage] = useState<string>("");
-  const isDataEditable = extractEditableFromReview(review.data);
+  const isDataEditable = review.data.editable;
   const { toast } = useToast();
 
   const reviewActionMutation = usePostV2ReviewData({
@@ -132,17 +95,14 @@ export function PendingReviewCard({
           </Text>
         </div>
         {/* Review Message */}
-        {(() => {
-          const message = extractMessageFromReview(review.data);
-          return message ? (
-            <div>
-              <Text variant="body" className="mb-2 font-semibold">
-                Instructions:
-              </Text>
-              <Text variant="body">{message}</Text>
-            </div>
-          ) : null;
-        })()}
+        {review.data.message && (
+          <div>
+            <Text variant="body" className="mb-2 font-semibold">
+              Instructions:
+            </Text>
+            <Text variant="body">{review.data.message}</Text>
+          </div>
+        )}
 
         {/* Data Editor */}
         <div>

@@ -3,12 +3,13 @@ Data layer for Human In The Loop (HITL) review operations.
 Handles all database operations for pending human reviews.
 """
 
-from typing import Any, Optional
+from typing import Optional
 
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 from pydantic import BaseModel
 
+from backend.server.v2.executions.review.model import PendingReviewData, SafeJsonData
 from backend.util.json import SafeJson
 
 
@@ -34,18 +35,10 @@ async def get_pending_review_by_node_exec_id(
     return review
 
 
-class ReviewDataStructure(BaseModel):
-    """Structured representation of review data stored in the database."""
-
-    data: Any
-    message: str
-    editable: bool
-
-
 class ReviewResult(BaseModel):
     """Result of a review operation."""
 
-    data: Any
+    data: SafeJsonData
     status: str
     message: str = ""
 
@@ -58,7 +51,7 @@ class HITLValidationError(Exception):
         self.review_message = review_message
 
 
-def extract_approved_data(review: PendingHumanReview) -> Any:
+def extract_approved_data(review: PendingHumanReview) -> SafeJsonData:
     """
     Extract approved data from a review record.
 
@@ -72,14 +65,16 @@ def extract_approved_data(review: PendingHumanReview) -> Any:
     """
     try:
         # Try to parse as structured format
-        review_structure = ReviewDataStructure.model_validate(review.data)
+        review_structure = PendingReviewData.model_validate(review.data)
         return review_structure.data
     except Exception:
         # Fallback for legacy data format or corrupted data
+        from backend.util.json import SafeJson
+
         if isinstance(review.data, dict) and "data" in review.data:
-            return review.data["data"]
+            return SafeJson(review.data["data"])
         else:
-            return review.data
+            return SafeJson(review.data)
 
 
 async def process_approved_review(
@@ -144,7 +139,7 @@ async def get_or_upsert_human_review(
     graph_exec_id: str,
     graph_id: str,
     graph_version: int,
-    input_data: Any,
+    input_data: SafeJsonData,
     message: str,
     editable: bool,
     expected_data_type: type,
@@ -184,11 +179,11 @@ async def get_or_upsert_human_review(
             return None
 
     # Create the pending review (only if no existing review)
-    review_data = {
-        "data": input_data,
-        "message": message,
-        "editable": editable,
-    }
+    review_data = PendingReviewData(
+        data=input_data,
+        message=message,
+        editable=editable,
+    )
 
     await PendingHumanReview.prisma().upsert(
         where={"nodeExecId": node_exec_id},
@@ -199,11 +194,11 @@ async def get_or_upsert_human_review(
                 "graphExecId": graph_exec_id,
                 "graphId": graph_id,
                 "graphVersion": graph_version,
-                "data": SafeJson(review_data),
+                "data": SafeJson(review_data.model_dump()),
                 "status": ReviewStatus.WAITING,
             },
             "update": {
-                "data": SafeJson(review_data),
+                "data": SafeJson(review_data.model_dump()),
                 "status": ReviewStatus.WAITING,
             },
         },

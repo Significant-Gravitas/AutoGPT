@@ -8,6 +8,25 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 SafeJsonData = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 
+class PendingReviewData(BaseModel):
+    """Data structure for pending human review stored in database.
+
+    This represents the structured format of the 'data' field in PendingHumanReviewResponse
+    when it contains review-specific metadata along with the actual data payload.
+
+    Attributes:
+        data: The actual data payload awaiting review
+        message: Instructions or context message for the reviewer
+        editable: Whether the reviewer is allowed to modify the data
+    """
+
+    data: SafeJsonData = Field(description="The actual data payload awaiting review")
+    message: str = Field(description="Instructions or context message for the reviewer")
+    editable: bool = Field(
+        description="Whether the reviewer is allowed to modify the data"
+    )
+
+
 class PendingHumanReviewResponse(BaseModel):
     """Response model for pending human review data.
 
@@ -36,9 +55,7 @@ class PendingHumanReviewResponse(BaseModel):
     graph_exec_id: str = Field(description="Graph execution ID")
     graph_id: str = Field(description="Graph ID")
     graph_version: int = Field(description="Graph version")
-    data: SafeJsonData = Field(
-        description="Data waiting for review (SafeJson serializable structure)"
-    )
+    data: PendingReviewData = Field(description="Structured data awaiting human review")
     status: Literal["WAITING", "APPROVED", "REJECTED"] = Field(
         description="Review status"
     )
