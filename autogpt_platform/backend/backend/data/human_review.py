@@ -14,15 +14,6 @@ from backend.server.v2.executions.review.model import (
     SafeJsonData,
 )
 from backend.util.json import SafeJson
-from backend.util.type import convert
-
-
-class HITLValidationError(ValueError):
-    """Exception raised when HITL validation fails."""
-
-    def __init__(self, message: str, review_message: str = ""):
-        super().__init__(message)
-        self.review_message = review_message
 
 
 class ReviewResult(BaseModel):
@@ -59,51 +50,18 @@ async def get_pending_review_by_node_exec_id(
     return None
 
 
-def extract_approved_data(review: PendingHumanReviewModel) -> SafeJsonData:
+async def process_approved_review(review: PendingHumanReviewModel) -> ReviewResult:
     """
-    Extract approved data from a review record.
-
-    Args:
-        review: The approved review record
-
-    Returns:
-        The payload data from the review
-    """
-    # With the new flat structure, just return the payload directly
-    return review.payload
-
-
-async def process_approved_review(
-    review: PendingHumanReviewModel, expected_data_type: type
-) -> ReviewResult:
-    """
-    Process an approved review and clean up the database.
+    Process an approved review and return the result.
 
     Args:
         review: The approved review to process
-        expected_data_type: The expected type for the data
 
     Returns:
         ReviewResult with the processed data
-
-    Raises:
-        HITLValidationError: If data conversion fails after approval
     """
-    approved_data = extract_approved_data(review)
-
-    try:
-        approved_data = convert(approved_data, expected_data_type)
-    except Exception as e:
-        # Reset review back to WAITING status so user can fix the data
-        await PendingHumanReview.prisma().update(
-            where={"id": review.id}, data={"status": ReviewStatus.WAITING}
-        )
-        raise HITLValidationError(
-            f"Failed to convert approved data to {expected_data_type.__name__}: {e}",
-            review_message="Data conversion failed after approval. Please review and fix the data format.",
-        )
-
-    # Review completed successfully - status already updated to APPROVED
+    # Since payload is SafeJsonData, no conversion needed
+    approved_data = review.payload
 
     return ReviewResult(
         data=approved_data, status="approved", message=review.review_message or ""
@@ -136,7 +94,6 @@ async def get_or_upsert_human_review(
     input_data: SafeJsonData,
     message: str,
     editable: bool,
-    expected_data_type: type,
 ) -> Optional[ReviewResult]:
     """
     Get existing completed review or upsert a pending review entry.
@@ -152,7 +109,6 @@ async def get_or_upsert_human_review(
         input_data: The data to be reviewed
         message: Instructions for the reviewer
         editable: Whether the data can be edited
-        expected_data_type: Expected type for the output data
 
     Returns:
         ReviewResult if the review is complete, None if waiting for human input
@@ -163,7 +119,7 @@ async def get_or_upsert_human_review(
     if existing_review:
         if existing_review.status == "APPROVED":
             # Process the approved review
-            return await process_approved_review(existing_review, expected_data_type)
+            return await process_approved_review(existing_review)
         elif existing_review.status == "REJECTED":
             # Process the rejected review
             return await process_rejected_review(existing_review)
@@ -184,13 +140,13 @@ async def get_or_upsert_human_review(
                 "graphExecId": graph_exec_id,
                 "graphId": graph_id,
                 "graphVersion": graph_version,
-                "data": SafeJson(input_data),
+                "payload": SafeJson(input_data),
                 "instructions": message,
                 "editable": editable,
                 "status": ReviewStatus.WAITING,
             },
             "update": {
-                "data": SafeJson(input_data),
+                "payload": SafeJson(input_data),
                 "instructions": message,
                 "editable": editable,
                 "status": ReviewStatus.WAITING,

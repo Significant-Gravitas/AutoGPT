@@ -92,7 +92,7 @@ class PendingHumanReviewModel(BaseModel):
             graph_exec_id=review.graphExecId,
             graph_id=review.graphId,
             graph_version=review.graphVersion,
-            payload=review.data,
+            payload=review.payload,
             instructions=review.instructions,
             editable=review.editable,
             status=converted_status,

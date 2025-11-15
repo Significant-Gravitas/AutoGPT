@@ -484,7 +484,7 @@ model PendingHumanReview {
   graphExecId      String
   graphId          String
   graphVersion     Int
-  data             Json         // The actual payload data to be reviewed
+  payload          Json         // The actual payload data to be reviewed
   instructions     String?      // Instructions/message for the reviewer
   editable         Boolean      @default(true) // Whether the reviewer can edit the data
   status           ReviewStatus @default(WAITING)

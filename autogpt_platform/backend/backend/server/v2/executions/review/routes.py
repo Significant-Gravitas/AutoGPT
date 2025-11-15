@@ -244,7 +244,7 @@ async def review_data(
     )
 
     # Handle reviewed_data for approve action and determine if data was edited
-    review_data = review.data
+    review_data = review.payload
     was_edited = False
 
     if request.action == "approve" and request.reviewed_data is not None:
@@ -256,7 +256,7 @@ async def review_data(
             )
 
         # Check if the data was actually modified (compare with original payload)
-        was_edited = review.data != request.reviewed_data
+        was_edited = review.payload != request.reviewed_data
 
         # With the new flat structure, store the reviewed data directly
         review_data = request.reviewed_data
@@ -269,7 +269,9 @@ async def review_data(
             where={"id": review_id},
             data={
                 "status": update_status,
-                "data": SafeJson(review_data),  # Store the (possibly modified) data
+                "payload": SafeJson(
+                    review_data
+                ),  # Store the (possibly modified) payload
                 "reviewMessage": request.message,
                 "wasEdited": was_edited if request.action == "approve" else None,
                 "reviewedAt": now,

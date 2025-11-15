@@ -74,15 +74,6 @@ class HumanInTheLoopBlock(Block):
             },
         )
 
-    async def get_or_upsert_human_review(self, *args, **kwargs):
-        """Wrapper method for get_or_upsert_human_review that can be mocked"""
-        db_client = get_database_manager_async_client()
-        return await db_client.get_or_upsert_human_review(*args, **kwargs)
-
-    async def update_node_execution_status(self, *args, **kwargs):
-        """Wrapper method for update_node_execution_status that can be mocked"""
-        return await update_node_execution_status(*args, **kwargs)
-
     async def run(
         self,
         input_data: Input,
@@ -101,7 +92,8 @@ class HumanInTheLoopBlock(Block):
         and creating pending ones as needed.
         """
         # Use the data layer to handle the complete workflow
-        result = await self.get_or_upsert_human_review(
+        db_client = get_database_manager_async_client()
+        result = await db_client.get_or_upsert_human_review(
             user_id=user_id,
             node_exec_id=node_exec_id,
             graph_exec_id=graph_exec_id,
@@ -110,14 +102,13 @@ class HumanInTheLoopBlock(Block):
             input_data=input_data.data,
             message=input_data.message,
             editable=input_data.editable,
-            expected_data_type=type(input_data.data),
         )
 
         # Check if we're waiting for human input
         if result is None:
             # Set node status to WAITING_FOR_REVIEW so execution manager can't mark it as COMPLETED
             # The VALID_STATUS_TRANSITIONS will then prevent any unwanted status changes
-            await self.update_node_execution_status(
+            await update_node_execution_status(
                 node_exec_id=node_exec_id,
                 status=ExecutionStatus.WAITING_FOR_REVIEW,
             )
