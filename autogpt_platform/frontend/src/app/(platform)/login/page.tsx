@@ -11,6 +11,7 @@ import Turnstile from "@/components/auth/Turnstile";
 import { environment } from "@/services/environment";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function LoginPage() {
   const {
@@ -127,6 +128,7 @@ export default function LoginPage() {
           link={{ text: "Sign up", href: "/signup" }}
         />
       </AuthCard>
+      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}
