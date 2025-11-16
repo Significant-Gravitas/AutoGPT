@@ -39,6 +39,8 @@ import useCredits from "@/hooks/useCredits";
 import { AgentRunOutputView } from "./agent-run-output-view";
 import { analytics } from "@/services/analytics";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 
 export function AgentRunDetailsView({
   agent,
@@ -66,6 +68,12 @@ export function AgentRunDetailsView({
   );
 
   const { completeStep } = useOnboarding();
+
+  const {
+    pendingReviews,
+    isLoading: reviewsLoading,
+    refetch: refetchReviews,
+  } = usePendingReviewsForExecution(run.id);
 
   const toastOnFail = useToastOnFail();
 
@@ -371,6 +379,28 @@ export function AgentRunDetailsView({
 
         {agentRunOutputs !== null && (
           <AgentRunOutputView agentRunOutputs={agentRunOutputs} />
+        )}
+
+        {/* Pending Reviews Section */}
+        {pendingReviews.length > 0 && (
+          <Card className="agpt-box">
+            <CardHeader>
+              <CardTitle className="font-poppins text-lg">
+                Pending Reviews ({pendingReviews.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {reviewsLoading ? (
+                <LoadingBox spinnerSize={12} className="h-24" />
+              ) : (
+                <PendingReviewsList
+                  reviews={pendingReviews}
+                  onReviewComplete={refetchReviews}
+                  emptyMessage="No pending reviews for this execution"
+                />
+              )}
+            </CardContent>
+          </Card>
         )}
 
         <Card className="agpt-box">

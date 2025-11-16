@@ -11,7 +11,8 @@ export type AgentRunStatus =
   | "running"
   | "stopped"
   | "scheduled"
-  | "draft";
+  | "draft"
+  | "waiting_for_review";
 
 export const agentRunStatusMap: Record<
   GraphExecutionMeta["status"],
@@ -23,8 +24,7 @@ export const agentRunStatusMap: Record<
   QUEUED: "queued",
   RUNNING: "running",
   TERMINATED: "stopped",
-  WAITING_FOR_REVIEW: "queued", // Map to queued for now
-  // TODO: implement "draft" - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
+  WAITING_FOR_REVIEW: "waiting_for_review",
 };
 
 const statusData: Record<
@@ -38,6 +38,7 @@ const statusData: Record<
   draft: { label: "Draft", variant: "secondary" },
   stopped: { label: "Stopped", variant: "secondary" },
   scheduled: { label: "Scheduled", variant: "secondary" },
+  waiting_for_review: { label: "Waiting for Review", variant: "warning" },
 };
 
 const statusStyles = {

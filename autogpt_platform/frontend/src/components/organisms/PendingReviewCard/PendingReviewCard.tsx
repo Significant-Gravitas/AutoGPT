@@ -19,10 +19,10 @@ export function PendingReviewCard({
   onReviewComplete,
 }: PendingReviewCardProps) {
   const [reviewData, setReviewData] = useState<string>(
-    JSON.stringify(review.payload, null, 2),
+    JSON.stringify(review.data, null, 2),
   );
   const [reviewMessage, setReviewMessage] = useState<string>("");
-  const isDataEditable = review.editable;
+  const isDataEditable = true; // TODO: Add editable field to API response
   const { toast } = useToast();
 
   const reviewActionMutation = usePostV2ReviewData({
@@ -95,14 +95,7 @@ export function PendingReviewCard({
           </Text>
         </div>
         {/* Review Message */}
-        {review.instructions && (
-          <div>
-            <Text variant="body" className="mb-2 font-semibold">
-              Instructions:
-            </Text>
-            <Text variant="body">{review.instructions}</Text>
-          </div>
-        )}
+        {/* TODO: Add instructions field to API response */}
 
         {/* Data Editor */}
         <div>
