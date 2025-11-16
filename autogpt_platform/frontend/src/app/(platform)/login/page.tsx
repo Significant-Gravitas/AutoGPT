@@ -21,6 +21,7 @@ export default function LoginPage() {
     turnstile,
     captchaKey,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
@@ -101,6 +102,7 @@ export default function LoginPage() {
             <Button
               variant="primary"
               loading={isLoading}
+              disabled={isGoogleLoading}
               type="submit"
               className="mt-6 w-full"
             >
@@ -110,7 +112,7 @@ export default function LoginPage() {
           {isCloudEnv ? (
             <GoogleOAuthButton
               onClick={() => handleProviderLogin("google")}
-              isLoading={isLoading}
+              isLoading={isGoogleLoading}
               disabled={isLoading}
             />
           ) : null}

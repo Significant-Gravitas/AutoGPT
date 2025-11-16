@@ -4,21 +4,20 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { computeReturnURL } from "./helpers";
+import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
@@ -43,7 +42,7 @@ export function useLoginPage() {
   }, [turnstile]);
 
   async function handleProviderLogin(provider: LoginProvider) {
-    setIsLoading(true);
+    setIsGoogleLoading(true);
 
     if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
@@ -51,7 +50,7 @@ export function useLoginPage() {
         variant: "info",
       });
 
-      setIsLoading(false);
+      setIsGoogleLoading(false);
       resetCaptcha();
       return;
     }
@@ -72,7 +71,7 @@ export function useLoginPage() {
       if (url) window.location.href = url as string;
     } catch (error) {
       resetCaptcha();
-      setIsLoading(false);
+      setIsGoogleLoading(false);
       setFeedback(
         error instanceof Error ? error.message : "Failed to start OAuth flow",
       );
@@ -105,25 +104,21 @@ export function useLoginPage() {
     }
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-          turnstileToken: turnstile.token,
-        }),
-      });
+      const result = await loginAction(
+        data.email,
+        data.password,
+        turnstile.token ?? undefined,
+      );
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result?.error || "Login failed");
+      if (!result.success) {
+        throw new Error(result.error || "Login failed");
       }
 
-      // Prioritize returnUrl from query params over backend's onboarding logic
-      const next = computeReturnURL(returnUrl, result);
-      if (next) router.replace(next);
+      if (result.onboarding) {
+        router.replace("/onboarding");
+      } else {
+        router.replace("/marketplace");
+      }
     } catch (error) {
       toast({
         title:
@@ -145,6 +140,7 @@ export function useLoginPage() {
     captchaKey,
     user,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,

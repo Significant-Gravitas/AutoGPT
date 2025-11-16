@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
+import { signup as signupAction } from "./actions";
 
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -16,8 +17,8 @@ export function useSignupPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
@@ -43,21 +44,19 @@ export function useSignupPage() {
   });
 
   async function handleProviderSignup(provider: LoginProvider) {
-    setIsLoading(true);
+    setIsGoogleLoading(true);
 
     if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
         variant: "default",
       });
-      setIsLoading(false);
+      setIsGoogleLoading(false);
       resetCaptcha();
       return;
     }
 
     try {
-      setIsCreatingAccount(true);
-
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,7 +77,7 @@ export function useSignupPage() {
       const { url } = await response.json();
       if (url) window.location.href = url as string;
     } catch (error) {
-      setIsLoading(false);
+      setIsGoogleLoading(false);
       resetCaptcha();
       toast({
         title:
@@ -114,34 +113,29 @@ export function useSignupPage() {
     }
 
     try {
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-          confirmPassword: data.confirmPassword,
-          agreeToTerms: data.agreeToTerms,
-          turnstileToken: turnstile.token,
-        }),
-      });
+      const result = await signupAction(
+        data.email,
+        data.password,
+        data.confirmPassword,
+        data.agreeToTerms,
+        turnstile.token ?? undefined,
+      );
 
-      const result = await response.json();
       setIsLoading(false);
 
-      if (!response.ok) {
-        if (result?.error === "user_already_exists") {
+      if (!result.success) {
+        if (result.error === "user_already_exists") {
           setFeedback("User with this email already exists");
           turnstile.reset();
           return;
         }
-        if (result?.error === "not_allowed") {
+        if (result.error === "not_allowed") {
           setShowNotAllowedModal(true);
           return;
         }
 
         toast({
-          title: result?.error || "Signup failed",
+          title: result.error || "Signup failed",
           variant: "destructive",
         });
         resetCaptcha();
@@ -149,11 +143,10 @@ export function useSignupPage() {
         return;
       }
 
-      const next = result?.next || "/";
+      const next = result.next || "/";
       if (next) router.replace(next);
     } catch (error) {
       setIsLoading(false);
-      setIsCreatingAccount(false);
       toast({
         title:
           error instanceof Error
@@ -173,7 +166,7 @@ export function useSignupPage() {
     captchaKey,
     isLoggedIn: !!user,
     isLoading,
-    isCreatingAccount,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
