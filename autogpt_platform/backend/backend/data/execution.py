@@ -122,6 +122,13 @@ VALID_STATUS_TRANSITIONS = {
     ExecutionStatus.WAITING_FOR_REVIEW: [
         ExecutionStatus.RUNNING,
     ],
+    ExecutionStatus.INCOMPLETE: [
+        ExecutionStatus.QUEUED,
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.WAITING_FOR_REVIEW,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.TERMINATED,
+    ],
 }
 
 
