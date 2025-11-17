@@ -88,10 +88,6 @@ function isVercelPreview() {
   return process.env.VERCEL_ENV === "preview";
 }
 
-function isCAPTCHAEnabled() {
-  return process.env.NEXT_PUBLIC_TURNSTILE === "enabled";
-}
-
 function areFeatureFlagsEnabled() {
   return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
 }
@@ -115,6 +111,5 @@ export const environment = {
   isCloud,
   isLocal,
   isVercelPreview,
-  isCAPTCHAEnabled,
   areFeatureFlagsEnabled,
 };

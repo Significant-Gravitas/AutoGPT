@@ -16,18 +16,16 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import Turnstile from "@/components/auth/Turnstile";
 import { environment } from "@/services/environment";
 import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function SignupPage() {
   const {
     form,
     feedback,
-    turnstile,
-    captchaKey,
     isLoggedIn,
     isLoading,
     isGoogleLoading,
@@ -161,20 +159,6 @@ export default function SignupPage() {
               )}
             />
 
-            {/* Turnstile CAPTCHA Component */}
-            {isCloudEnv && !turnstile.verified ? (
-              <Turnstile
-                key={captchaKey}
-                siteKey={turnstile.siteKey}
-                onVerify={turnstile.handleVerify}
-                onExpire={turnstile.handleExpire}
-                onError={turnstile.handleError}
-                setWidgetId={turnstile.setWidgetId}
-                action="signup"
-                shouldRender={turnstile.shouldRender}
-              />
-            ) : null}
-
             <Button
               variant="primary"
               loading={isLoading}
@@ -205,6 +189,7 @@ export default function SignupPage() {
           link={{ text: "Log in", href: "/login" }}
         />
       </AuthCard>
+      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}

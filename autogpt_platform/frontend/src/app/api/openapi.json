@@ -4715,44 +4715,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/turnstile/verify": {
-      "post": {
-        "tags": ["v2", "turnstile"],
-        "summary": "Verify Turnstile Token",
-        "description": "Verify a Cloudflare Turnstile token.\nThis endpoint verifies a token returned by the Cloudflare Turnstile challenge\non the client side. It returns whether the verification was successful.",
-        "operationId": "postV2Verify turnstile token",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TurnstileVerifyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TurnstileVerifyResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/email/unsubscribe": {
       "post": {
         "tags": ["v1", "email"],
@@ -6056,9 +6018,17 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "input_data": {
             "additionalProperties": true,
@@ -9081,57 +9051,6 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
-      },
-      "TurnstileVerifyRequest": {
-        "properties": {
-          "token": {
-            "type": "string",
-            "title": "Token",
-            "description": "The Turnstile token to verify"
-          },
-          "action": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Action",
-            "description": "The action that the user is attempting to perform"
-          }
-        },
-        "type": "object",
-        "required": ["token"],
-        "title": "TurnstileVerifyRequest",
-        "description": "Request model for verifying a Turnstile token."
-      },
-      "TurnstileVerifyResponse": {
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "title": "Success",
-            "description": "Whether the token verification was successful"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error",
-            "description": "Error message if verification failed"
-          },
-          "challenge_timestamp": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Challenge Timestamp",
-            "description": "Timestamp of the challenge (ISO format)"
-          },
-          "hostname": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Hostname",
-            "description": "Hostname of the site where the challenge was solved"
-          },
-          "action": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Action",
-            "description": "The action associated with this verification"
-          }
-        },
-        "type": "object",
-        "required": ["success"],
-        "title": "TurnstileVerifyResponse",
-        "description": "Response model for the Turnstile verification endpoint."
       },
       "UpdatePermissionsRequest": {
         "properties": {
