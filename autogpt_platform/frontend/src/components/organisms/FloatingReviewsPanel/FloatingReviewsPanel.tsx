@@ -28,10 +28,8 @@ export function FloatingReviewsPanel({
 
   function handleReviewComplete() {
     refetch();
-    // Close panel if no more reviews
-    if (pendingReviews.length <= 1) {
-      setIsOpen(false);
-    }
+    // Close panel and let render logic handle visibility
+    setIsOpen(false);
   }
 
   return (
