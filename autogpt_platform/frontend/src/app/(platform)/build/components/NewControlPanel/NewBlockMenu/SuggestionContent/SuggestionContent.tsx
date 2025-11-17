@@ -77,6 +77,7 @@ export const SuggestionContent = () => {
                     title={block.name}
                     description={block.description}
                     onClick={() => addBlock(block)}
+                    blockData={block}
                   />
                 ))
               : Array(3)

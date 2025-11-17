@@ -141,6 +141,7 @@ export function handleLoginNeeded(
 ) {
   const loginNeededMessage: ChatMessageData = {
     type: "login_needed",
+    toolName: "login_needed",
     message: chunk.message || "Please sign in to use chat and agent features",
     sessionId: chunk.session_id || deps.sessionId,
     agentInfo: chunk.agent_info,

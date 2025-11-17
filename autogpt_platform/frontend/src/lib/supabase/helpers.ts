@@ -1,7 +1,7 @@
+import { environment } from "@/services/environment";
+import { Key, storage } from "@/services/storage/local-storage";
 import { type CookieOptions } from "@supabase/ssr";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { Key, storage } from "@/services/storage/local-storage";
-import { environment } from "@/services/environment";
 
 export const PROTECTED_PAGES = [
   "/monitor",

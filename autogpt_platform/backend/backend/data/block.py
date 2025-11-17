@@ -29,6 +29,13 @@ from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.cache import cached
+from backend.util.exceptions import (
+    BlockError,
+    BlockExecutionError,
+    BlockInputError,
+    BlockOutputError,
+    BlockUnknownError,
+)
 from backend.util.settings import Config
 
 from .model import (
@@ -542,9 +549,25 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         )
 
     async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        try:
+            async for output_name, output_data in self._execute(input_data, **kwargs):
+                yield output_name, output_data
+        except Exception as ex:
+            if not isinstance(ex, BlockError):
+                raise BlockUnknownError(
+                    message=str(ex),
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from ex
+            else:
+                raise ex
+
+    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
-            raise ValueError(
-                f"Unable to execute block with invalid input data: {error}"
+            raise BlockInputError(
+                message=f"Unable to execute block with invalid input data: {error}",
+                block_name=self.name,
+                block_id=self.id,
             )
 
         async for output_name, output_data in self.run(
@@ -552,11 +575,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             **kwargs,
         ):
             if output_name == "error":
-                raise RuntimeError(output_data)
+                raise BlockExecutionError(
+                    message=output_data, block_name=self.name, block_id=self.id
+                )
             if self.block_type == BlockType.STANDARD and (
                 error := self.output_schema.validate_field(output_name, output_data)
             ):
-                raise ValueError(f"Block produced an invalid output data: {error}")
+                raise BlockOutputError(
+                    message=f"Block produced an invalid output data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
             yield output_name, output_data
 
     def is_triggered_by_event_type(

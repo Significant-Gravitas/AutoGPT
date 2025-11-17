@@ -9,12 +9,9 @@ import { ToolCallMessage } from "@/app/(platform)/chat/components/ToolCallMessag
 import { ToolResponseMessage } from "@/app/(platform)/chat/components/ToolResponseMessage/ToolResponseMessage";
 import { AuthPromptWidget } from "@/app/(platform)/chat/components/AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "@/app/(platform)/chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
-import { NoResultsMessage } from "@/app/(platform)/chat/components/NoResultsMessage/NoResultsMessage";
-import { AgentCarouselMessage } from "@/app/(platform)/chat/components/AgentCarouselMessage/AgentCarouselMessage";
-import { ExecutionStartedMessage } from "@/app/(platform)/chat/components/ExecutionStartedMessage/ExecutionStartedMessage";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
-
+import { getToolActionPhrase } from "@/app/(platform)/chat/helpers";
 export interface ChatMessageProps {
   message: ChatMessageData;
   className?: string;
@@ -38,9 +35,6 @@ export function ChatMessage({
     isToolResponse,
     isLoginNeeded,
     isCredentialsNeeded,
-    isNoResults,
-    isAgentCarousel,
-    isExecutionStarted,
   } = useChatMessage(message);
 
   const handleAllCredentialsComplete = useCallback(
@@ -129,60 +123,22 @@ export function ChatMessage({
   if (isToolCall && message.type === "tool_call") {
     return (
       <div className={cn("px-4 py-2", className)}>
-        <ToolCallMessage
-          toolId={message.toolId}
-          toolName={message.toolName}
-          arguments={message.arguments}
-        />
+        <ToolCallMessage toolName={message.toolName} />
       </div>
     );
   }
 
   // Render tool response messages
-  if (isToolResponse && message.type === "tool_response") {
+  if (
+    (isToolResponse && message.type === "tool_response") ||
+    message.type === "no_results" ||
+    message.type === "agent_carousel" ||
+    message.type === "execution_started"
+  ) {
     return (
       <div className={cn("px-4 py-2", className)}>
-        <ToolResponseMessage
-          toolId={message.toolId}
-          toolName={message.toolName}
-          result={message.result}
-          success={message.success}
-        />
+        <ToolResponseMessage toolName={getToolActionPhrase(message.toolName)} />
       </div>
-    );
-  }
-
-  // Render no results messages
-  if (isNoResults && message.type === "no_results") {
-    return (
-      <NoResultsMessage
-        message={message.message}
-        suggestions={message.suggestions}
-        className={className}
-      />
-    );
-  }
-
-  // Render agent carousel messages
-  if (isAgentCarousel && message.type === "agent_carousel") {
-    return (
-      <AgentCarouselMessage
-        agents={message.agents}
-        totalCount={message.totalCount}
-        className={className}
-      />
-    );
-  }
-
-  // Render execution started messages
-  if (isExecutionStarted && message.type === "execution_started") {
-    return (
-      <ExecutionStartedMessage
-        executionId={message.executionId}
-        agentName={message.agentName}
-        message={message.message}
-        className={className}
-      />
     );
   }
 

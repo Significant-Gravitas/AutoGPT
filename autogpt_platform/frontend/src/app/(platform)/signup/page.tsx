@@ -1,5 +1,13 @@
 "use client";
 
+import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+} from "@/components/__legacy__/ui/form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -9,18 +17,10 @@ import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import Turnstile from "@/components/auth/Turnstile";
-import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/__legacy__/ui/form";
+import { environment } from "@/services/environment";
 import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
-import { environment } from "@/services/environment";
 
 export default function SignupPage() {
   const {
@@ -30,9 +30,9 @@ export default function SignupPage() {
     captchaKey,
     isLoggedIn,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable,
     handleSubmit,
@@ -178,6 +178,7 @@ export default function SignupPage() {
             <Button
               variant="primary"
               loading={isLoading}
+              disabled={isGoogleLoading}
               type="submit"
               className="mt-6 w-full"
             >

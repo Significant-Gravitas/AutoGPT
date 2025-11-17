@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo } from "react";
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
 import {
   useGetV1GetExecutionDetails,
@@ -8,12 +9,13 @@ import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useMemo } from "react";
 import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
 import { useGraphStore } from "../../../stores/graphStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { useReactFlow } from "@xyflow/react";
+import { useControlPanelStore } from "../../../stores/controlPanelStore";
 
 export const useFlow = () => {
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
@@ -29,6 +31,14 @@ export const useFlow = () => {
   );
   const setGraphSchemas = useGraphStore(
     useShallow((state) => state.setGraphSchemas),
+  );
+  const updateEdgeBeads = useEdgeStore(
+    useShallow((state) => state.updateEdgeBeads),
+  );
+  const { screenToFlowPosition } = useReactFlow();
+  const addBlock = useNodeStore(useShallow((state) => state.addBlock));
+  const setBlockMenuOpen = useControlPanelStore(
+    useShallow((state) => state.setBlockMenuOpen),
   );
   const [{ flowID, flowVersion, flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
@@ -102,7 +112,7 @@ export const useFlow = () => {
 
     // adding links
     if (graph?.links) {
-      useEdgeStore.getState().setConnections([]);
+      useEdgeStore.getState().setEdges([]);
       addLinks(graph.links);
     }
 
@@ -123,7 +133,7 @@ export const useFlow = () => {
       });
     }
 
-    // update node execution results in nodes
+    // update node execution results in nodes, also update edge beads
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -131,6 +141,7 @@ export const useFlow = () => {
     ) {
       executionDetails.node_executions.forEach((nodeExecution) => {
         updateNodeExecutionResult(nodeExecution.node_id, nodeExecution);
+        updateEdgeBeads(nodeExecution.node_id, nodeExecution);
       });
     }
   }, [customNodes, addNodes, graph?.links, executionDetails, updateNodeStatus]);
@@ -138,11 +149,43 @@ export const useFlow = () => {
   useEffect(() => {
     return () => {
       useNodeStore.getState().setNodes([]);
-      useEdgeStore.getState().setConnections([]);
+      useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
+      useEdgeStore.getState().resetEdgeBeads();
       setIsGraphRunning(false);
     };
   }, []);
 
-  return { isFlowContentLoading: isGraphLoading || isBlocksLoading };
+  // Drag and drop block from block menu
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const onDrop = async (event: React.DragEvent) => {
+    event.preventDefault();
+    const blockDataString = event.dataTransfer.getData("application/reactflow");
+    if (!blockDataString) return;
+
+    try {
+      const blockData = JSON.parse(blockDataString) as BlockInfo;
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      addBlock(blockData, position);
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      setBlockMenuOpen(true);
+    } catch (error) {
+      console.error("Failed to drop block:", error);
+      setBlockMenuOpen(true);
+    }
+  };
+
+  return {
+    isFlowContentLoading: isGraphLoading || isBlocksLoading,
+    onDragOver,
+    onDrop,
+  };
 };

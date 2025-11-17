@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { NodeChange, applyNodeChanges } from "@xyflow/react";
+import { NodeChange, XYPosition, applyNodeChanges } from "@xyflow/react";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { convertBlockInfoIntoCustomNodeData } from "../components/helper";
@@ -16,7 +16,7 @@ type NodeStore = {
   setNodes: (nodes: CustomNode[]) => void;
   onNodesChange: (changes: NodeChange<CustomNode>[]) => void;
   addNode: (node: CustomNode) => void;
-  addBlock: (block: BlockInfo) => void;
+  addBlock: (block: BlockInfo, position?: XYPosition) => void;
   incrementNodeCounter: () => void;
   updateNodeData: (nodeId: string, data: Partial<CustomNode["data"]>) => void;
   toggleAdvanced: (nodeId: string) => void;
@@ -49,7 +49,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   onNodesChange: (changes) => {
     const prevState = {
       nodes: get().nodes,
-      connections: useEdgeStore.getState().connections,
+      edges: useEdgeStore.getState().edges,
     };
     const shouldTrack = changes.some(
       (change) =>
@@ -66,11 +66,12 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     }
   },
 
-  addNode: (node) =>
+  addNode: (node) => {
     set((state) => ({
       nodes: [...state.nodes, node],
-    })),
-  addBlock: (block: BlockInfo) => {
+    }));
+  },
+  addBlock: (block: BlockInfo, position?: XYPosition) => {
     const customNodeData = convertBlockInfoIntoCustomNodeData(block);
     get().incrementNodeCounter();
     const nodeNumber = get().nodeCounter;
@@ -78,7 +79,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       id: nodeNumber.toString(),
       data: customNodeData,
       type: "custom",
-      position: { x: 0, y: 0 },
+      position: position || ({ x: 0, y: 0 } as XYPosition),
     };
     set((state) => ({
       nodes: [...state.nodes, customNode],
@@ -93,7 +94,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
 
     const newState = {
       nodes: get().nodes,
-      connections: useEdgeStore.getState().connections,
+      edges: useEdgeStore.getState().edges,
     };
 
     useHistoryStore.getState().pushState(newState);
