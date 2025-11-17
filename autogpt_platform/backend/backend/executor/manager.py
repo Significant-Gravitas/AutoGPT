@@ -164,6 +164,7 @@ async def execute_node(
     user_id = data.user_id
     graph_exec_id = data.graph_exec_id
     graph_id = data.graph_id
+    graph_version = data.graph_version
     node_exec_id = data.node_exec_id
     node_id = data.node_id
     node_block = node.block
@@ -204,6 +205,7 @@ async def execute_node(
     # Inject extra execution arguments for the blocks via kwargs
     extra_exec_kwargs: dict = {
         "graph_id": graph_id,
+        "graph_version": graph_version,
         "node_id": node_id,
         "graph_exec_id": graph_exec_id,
         "node_exec_id": node_exec_id,
@@ -284,6 +286,7 @@ async def _enqueue_next_nodes(
     user_id: str,
     graph_exec_id: str,
     graph_id: str,
+    graph_version: int,
     log_metadata: LogMetadata,
     nodes_input_masks: Optional[NodesInputMasks],
     user_context: UserContext,
@@ -301,6 +304,7 @@ async def _enqueue_next_nodes(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
+            graph_version=graph_version,
             node_exec_id=node_exec_id,
             node_id=node_id,
             block_id=block_id,
@@ -334,17 +338,14 @@ async def _enqueue_next_nodes(
         # Or the same input to be consumed multiple times.
         async with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
             # Add output data to the earliest incomplete execution, or create a new one.
-            next_node_exec_id, next_node_input = await db_client.upsert_execution_input(
+            next_node_exec, next_node_input = await db_client.upsert_execution_input(
                 node_id=next_node_id,
                 graph_exec_id=graph_exec_id,
                 input_name=next_input_name,
                 input_data=next_data,
             )
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=next_node_exec_id,
-                status=ExecutionStatus.INCOMPLETE,
-            )
+            next_node_exec_id = next_node_exec.node_exec_id
+            await send_async_execution_update(next_node_exec)
 
             # Complete missing static input pins data using the last execution input.
             static_link_names = {
@@ -660,7 +661,7 @@ class ExecutionProcessor:
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
-        elif exec_meta.status == ExecutionStatus.WAITING_FOR_REVIEW:
+        elif exec_meta.status == ExecutionStatus.REVIEW:
             exec_meta.status = ExecutionStatus.RUNNING
             log_metadata.info(
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} was waiting for review, resuming execution."
@@ -855,7 +856,7 @@ class ExecutionProcessor:
                     ExecutionStatus.RUNNING,
                     ExecutionStatus.QUEUED,
                     ExecutionStatus.TERMINATED,
-                    ExecutionStatus.WAITING_FOR_REVIEW,
+                    ExecutionStatus.REVIEW,
                 ],
             ):
                 node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
@@ -1033,7 +1034,7 @@ class ExecutionProcessor:
                 if db_client.has_pending_reviews_for_graph_exec(
                     graph_exec.graph_exec_id
                 ):
-                    execution_status = ExecutionStatus.WAITING_FOR_REVIEW
+                    execution_status = ExecutionStatus.REVIEW
                 else:
                     execution_status = ExecutionStatus.COMPLETED
 
@@ -1171,6 +1172,7 @@ class ExecutionProcessor:
             user_id=graph_exec.user_id,
             graph_exec_id=graph_exec.graph_exec_id,
             graph_id=graph_exec.graph_id,
+            graph_version=graph_exec.graph_version,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
             user_context=graph_exec.user_context,

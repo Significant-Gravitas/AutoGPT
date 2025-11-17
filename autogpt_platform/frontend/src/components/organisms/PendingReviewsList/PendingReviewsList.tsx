@@ -30,21 +30,14 @@ export function PendingReviewsList({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <ClockIcon size={20} className="text-blue-600" />
-        <Text variant="h3">Pending Reviews ({reviews.length})</Text>
-      </div>
-
-      <div className="space-y-4">
-        {reviews.map((review) => (
-          <PendingReviewCard
-            key={review.node_exec_id}
-            review={review}
-            onReviewComplete={onReviewComplete}
-          />
-        ))}
-      </div>
+    <div className="space-y-4">
+      {reviews.map((review) => (
+        <PendingReviewCard
+          key={review.node_exec_id}
+          review={review}
+          onReviewComplete={onReviewComplete}
+        />
+      ))}
     </div>
   );
 }

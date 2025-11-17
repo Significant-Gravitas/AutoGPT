@@ -358,7 +358,7 @@ export default function useAgentGraph(
 
       const statusRank = {
         RUNNING: 0,
-        WAITING_FOR_REVIEW: 1,
+        REVIEW: 1,
         QUEUED: 2,
         INCOMPLETE: 3,
         TERMINATED: 4,

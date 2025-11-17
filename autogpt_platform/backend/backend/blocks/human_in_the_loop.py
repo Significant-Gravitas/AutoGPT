@@ -10,7 +10,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.execution import ExecutionStatus, update_node_execution_status
+from backend.data.execution import ExecutionStatus
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
@@ -23,7 +23,7 @@ class HumanInTheLoopBlock(Block):
     This block pauses execution and waits for human approval or modification of the data.
 
     When executed, it creates a pending review entry and sets the node execution status
-    to WAITING_FOR_REVIEW. The execution will remain paused until a human user either:
+    to REVIEW. The execution will remain paused until a human user either:
     - Approves the data (with or without modifications)
     - Rejects the data
 
@@ -125,11 +125,11 @@ class HumanInTheLoopBlock(Block):
                 f"HITL block pausing execution for node {node_exec_id} - awaiting human review"
             )
             try:
-                # Set node status to WAITING_FOR_REVIEW so execution manager can't mark it as COMPLETED
+                # Set node status to REVIEW so execution manager can't mark it as COMPLETED
                 # The VALID_STATUS_TRANSITIONS will then prevent any unwanted status changes
-                await update_node_execution_status(
+                await db_client.update_node_execution_status(
                     node_exec_id=node_exec_id,
-                    status=ExecutionStatus.WAITING_FOR_REVIEW,
+                    status=ExecutionStatus.REVIEW,
                 )
                 # Execution pauses here until API routes process the review
                 return

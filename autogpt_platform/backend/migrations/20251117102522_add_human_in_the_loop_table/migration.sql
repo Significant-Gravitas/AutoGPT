@@ -2,7 +2,7 @@
 CREATE TYPE "ReviewStatus" AS ENUM ('WAITING', 'APPROVED', 'REJECTED');
 
 -- AlterEnum
-ALTER TYPE "AgentExecutionStatus" ADD VALUE 'WAITING_FOR_REVIEW';
+ALTER TYPE "AgentExecutionStatus" ADD VALUE 'REVIEW';
 
 -- CreateTable
 CREATE TABLE "PendingHumanReview" (

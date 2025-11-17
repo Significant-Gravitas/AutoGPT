@@ -292,6 +292,12 @@ app.include_router(
     tags=["v2", "executions"],
     prefix="/api/executions",
 )
+# Also mount at /api/review for frontend compatibility
+app.include_router(
+    backend.server.v2.executions.review.routes.router,
+    tags=["v2", "review"],
+    prefix="/api",
+)
 
 app.include_router(
     backend.server.routers.postmark.postmark.router,

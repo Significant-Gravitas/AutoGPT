@@ -352,7 +352,7 @@ enum AgentExecutionStatus {
   COMPLETED
   TERMINATED
   FAILED
-  WAITING_FOR_REVIEW
+  REVIEW
 }
 
 // This model describes the execution of an AgentGraph.

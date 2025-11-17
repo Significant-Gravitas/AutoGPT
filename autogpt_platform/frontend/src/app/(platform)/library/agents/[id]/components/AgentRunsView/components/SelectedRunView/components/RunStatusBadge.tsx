@@ -37,10 +37,10 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
   },
-  WAITING_FOR_REVIEW: {
-    icon: <EyeIcon size={16} className="text-purple-700" weight="bold" />,
-    bgColor: "bg-purple-50",
-    textColor: "!text-purple-700",
+  REVIEW: {
+    icon: <EyeIcon size={16} className="text-orange-700" weight="bold" />,
+    bgColor: "bg-orange-50",
+    textColor: "!text-orange-700",
   },
   COMPLETED: {
     icon: (
@@ -78,9 +78,7 @@ export function RunStatusBadge({ status }: Props) {
         variant="small-medium"
         className={cn(statusIconMap[status].textColor, "capitalize")}
       >
-        {status === "WAITING_FOR_REVIEW"
-          ? "Waiting for Review"
-          : status.toLowerCase()}
+        {status.toLowerCase()}
       </Text>
     </div>
   );

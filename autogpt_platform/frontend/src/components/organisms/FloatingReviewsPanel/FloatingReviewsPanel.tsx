@@ -33,19 +33,17 @@ export function FloatingReviewsPanel({
   }
 
   return (
-    <div className={cn("fixed bottom-4 right-4 z-50", className)}>
+    <div className={cn("fixed bottom-20 right-4 z-50", className)}>
       {/* Trigger Button */}
       {!isOpen && pendingReviews.length > 0 && (
         <Button
           onClick={() => setIsOpen(true)}
-          className="flex items-center gap-2 bg-blue-600 shadow-lg hover:bg-blue-700"
           size="large"
+          variant="primary"
+          leftIcon={<ClockIcon size={20} />}
         >
-          <ClockIcon size={20} />
-          <Text variant="body" className="font-semibold text-white">
-            {pendingReviews.length} Review
-            {pendingReviews.length !== 1 ? "s" : ""} Pending
-          </Text>
+          {pendingReviews.length} Review
+          {pendingReviews.length !== 1 ? "s" : ""} Pending
         </Button>
       )}
 
@@ -55,15 +53,10 @@ export function FloatingReviewsPanel({
           {/* Header */}
           <div className="flex items-center justify-between border-b bg-gray-50 p-4">
             <div className="flex items-center gap-2">
-              <ClockIcon size={20} className="text-blue-600" />
+              <ClockIcon size={20} className="text-orange-600" />
               <Text variant="h4">Pending Reviews</Text>
             </div>
-            <Button
-              onClick={() => setIsOpen(false)}
-              variant="ghost"
-              size="small"
-              className="p-1"
-            >
+            <Button onClick={() => setIsOpen(false)} variant="icon" size="icon">
               <XIcon size={16} />
             </Button>
           </div>

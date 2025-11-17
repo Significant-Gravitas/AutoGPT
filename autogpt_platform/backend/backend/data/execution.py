@@ -97,12 +97,14 @@ NodesInputMasks = Mapping[str, NodeInputMask]
 VALID_STATUS_TRANSITIONS = {
     ExecutionStatus.QUEUED: [
         ExecutionStatus.INCOMPLETE,
+        ExecutionStatus.TERMINATED,  # For resuming halted execution
+        ExecutionStatus.REVIEW,  # For resuming after review
     ],
     ExecutionStatus.RUNNING: [
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.TERMINATED,  # For resuming halted execution
-        ExecutionStatus.WAITING_FOR_REVIEW,  # For resuming after review
+        ExecutionStatus.REVIEW,  # For resuming after review
     ],
     ExecutionStatus.COMPLETED: [
         ExecutionStatus.RUNNING,
@@ -111,23 +113,16 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.RUNNING,
-        ExecutionStatus.WAITING_FOR_REVIEW,
+        ExecutionStatus.REVIEW,
     ],
     ExecutionStatus.TERMINATED: [
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.RUNNING,
-        ExecutionStatus.WAITING_FOR_REVIEW,
+        ExecutionStatus.REVIEW,
     ],
-    ExecutionStatus.WAITING_FOR_REVIEW: [
+    ExecutionStatus.REVIEW: [
         ExecutionStatus.RUNNING,
-    ],
-    ExecutionStatus.INCOMPLETE: [
-        ExecutionStatus.QUEUED,
-        ExecutionStatus.RUNNING,
-        ExecutionStatus.WAITING_FOR_REVIEW,
-        ExecutionStatus.FAILED,
-        ExecutionStatus.TERMINATED,
     ],
 }
 
@@ -460,6 +455,7 @@ class NodeExecutionResult(BaseModel):
             user_id=self.user_id,
             graph_exec_id=self.graph_exec_id,
             graph_id=self.graph_id,
+            graph_version=self.graph_version,
             node_exec_id=self.node_exec_id,
             node_id=self.node_id,
             block_id=self.block_id,
@@ -739,7 +735,7 @@ async def upsert_execution_input(
     input_name: str,
     input_data: JsonValue,
     node_exec_id: str | None = None,
-) -> tuple[str, BlockInput]:
+) -> tuple[NodeExecutionResult, BlockInput]:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Input.
     If there is no AgentNodeExecution that has no `input_name` as input, create new one.
@@ -772,7 +768,7 @@ async def upsert_execution_input(
     existing_execution = await AgentNodeExecution.prisma().find_first(
         where=existing_exec_query_filter,
         order={"addedTime": "asc"},
-        include={"Input": True},
+        include={"Input": True, "GraphExecution": True},
     )
     json_input_data = SafeJson(input_data)
 
@@ -784,7 +780,7 @@ async def upsert_execution_input(
                 referencedByInputExecId=existing_execution.id,
             )
         )
-        return existing_execution.id, {
+        return NodeExecutionResult.from_db(existing_execution), {
             **{
                 input_data.name: type_utils.convert(input_data.data, JsonValue)
                 for input_data in existing_execution.Input or []
@@ -799,9 +795,10 @@ async def upsert_execution_input(
                 agentGraphExecutionId=graph_exec_id,
                 executionStatus=ExecutionStatus.INCOMPLETE,
                 Input={"create": {"name": input_name, "data": json_input_data}},
-            )
+            ),
+            include={"GraphExecution": True},
         )
-        return result.id, {input_name: input_data}
+        return NodeExecutionResult.from_db(result), {input_name: input_data}
 
     else:
         raise ValueError(
@@ -1119,6 +1116,7 @@ class NodeExecutionEntry(BaseModel):
     user_id: str
     graph_exec_id: str
     graph_id: str
+    graph_version: int
     node_exec_id: str
     node_id: str
     block_id: str

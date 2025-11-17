@@ -4,16 +4,13 @@ from typing import List
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 
-from backend.data.execution import (
-    ExecutionStatus,
-    get_graph_execution_meta,
-    update_graph_execution_stats,
-)
+from backend.data.execution import get_graph_execution_meta
 from backend.data.human_review import (
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     update_review_action,
 )
+from backend.executor.utils import add_graph_execution
 from backend.server.v2.executions.review.model import (
     PendingHumanReviewModel,
     ReviewActionRequest,
@@ -213,40 +210,10 @@ async def review_data(
 
     # If approved, trigger graph execution resume
     if request.action == "approve":
-        await _resume_graph_execution(updated_review.graph_exec_id)
-
-    return ReviewActionResponse(action=request.action)
-
-
-async def _resume_graph_execution(graph_exec_id: str) -> None:
-    """Resume a graph execution by updating its status to QUEUED.
-
-    Updates the graph execution status to QUEUED so the scheduler will
-    pick it up for continued execution after human review approval.
-
-    Args:
-        graph_exec_id: Unique identifier of the graph execution to resume
-
-    Raises:
-        ValueError: If graph execution is not found
-        Exception: For database connection or update errors
-
-    Note:
-        This function updates the graph execution status to resume processing
-        after a human review has been completed.
-    """
-    try:
-        # Update the graph execution status to QUEUED so the scheduler picks it up
-        # Note: The graph execution is guaranteed to exist due to cascade relationship
-        # with PendingHumanReview, so we can directly update the status
-        await update_graph_execution_stats(
-            graph_exec_id=graph_exec_id, status=ExecutionStatus.QUEUED
+        await add_graph_execution(
+            graph_id=updated_review.graph_id,
+            user_id=user_id,
+            graph_exec_id=updated_review.graph_exec_id,
         )
 
-        logger.info(f"Resumed graph execution {graph_exec_id}")
-
-    except ValueError:
-        raise  # Re-raise validation errors
-    except Exception as e:
-        logger.error(f"Failed to resume graph execution {graph_exec_id}: {e}")
-        raise  # Re-raise to ensure calling code is aware of the failure
+    return ReviewActionResponse(action=request.action)
