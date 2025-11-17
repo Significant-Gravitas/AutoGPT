@@ -177,7 +177,7 @@ export default function OnboardingProvider({
 
   const handleOnboardingNotification = useCallback(
     (notification: WebSocketNotification) => {
-      if (notification.type !== "onboarding") {
+      if (!isLoggedIn || notification.type !== "onboarding") {
         return;
       }
 
@@ -192,7 +192,7 @@ export default function OnboardingProvider({
         );
       });
     },
-    [fetchOnboarding],
+    [fetchOnboarding, isLoggedIn],
   );
 
   useEffect(() => {
@@ -201,15 +201,21 @@ export default function OnboardingProvider({
       handleOnboardingNotification,
     );
 
-    api.connectWebSocket();
+    if (isLoggedIn) {
+      api.connectWebSocket();
+    }
 
     return () => {
       detachMessage();
     };
-  }, [api, handleOnboardingNotification]);
+  }, [api, handleOnboardingNotification, isLoggedIn]);
 
   const updateState = useCallback(
     (newState: LocalOnboardingStateUpdate) => {
+      if (!isLoggedIn) {
+        return;
+      }
+
       setState((prev) => updateOnboardingState(prev, newState));
 
       const updatePromise = (async () => {
@@ -232,12 +238,12 @@ export default function OnboardingProvider({
         pendingUpdatesRef.current.delete(updatePromise);
       });
     },
-    [toast],
+    [toast, isLoggedIn, fetchOnboarding, api, setState],
   );
 
   const completeStep = useCallback(
     (step: FrontendOnboardingStep) => {
-      if (state?.completedSteps?.includes(step)) {
+      if (!isLoggedIn || state?.completedSteps?.includes(step)) {
         return;
       }
 
@@ -262,7 +268,7 @@ export default function OnboardingProvider({
         pendingUpdatesRef.current.delete(completionPromise);
       });
     },
-    [state?.completedSteps, fetchOnboarding, toast],
+    [isLoggedIn, state?.completedSteps, fetchOnboarding, toast],
   );
 
   return (

@@ -900,18 +900,8 @@
                 "AGENT_NEW_RUN",
                 "AGENT_INPUT",
                 "CONGRATS",
-                "GET_RESULTS",
                 "MARKETPLACE_VISIT",
-                "MARKETPLACE_ADD_AGENT",
-                "MARKETPLACE_RUN_AGENT",
-                "BUILDER_SAVE_AGENT",
-                "RE_RUN_AGENT",
-                "RUN_AGENTS",
-                "RUN_3_DAYS",
-                "RUN_14_DAYS",
-                "RUN_AGENTS_100",
-                "BUILDER_OPEN",
-                "BUILDER_RUN_AGENT"
+                "BUILDER_OPEN"
               ],
               "type": "string",
               "title": "Step"
@@ -6273,7 +6263,10 @@
           },
           "source": {
             "anyOf": [
-              { "type": "string", "enum": ["builder", "library"] },
+              {
+                "type": "string",
+                "enum": ["builder", "library", "onboarding"]
+              },
               { "type": "null" }
             ],
             "title": "Source"
@@ -6324,6 +6317,12 @@
           "store_listing_version_id": {
             "type": "string",
             "title": "Store Listing Version Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["onboarding", "marketplace"],
+            "title": "Source",
+            "default": "marketplace"
           }
         },
         "type": "object",

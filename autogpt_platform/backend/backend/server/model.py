@@ -2,6 +2,7 @@ import enum
 from typing import Any, Literal, Optional
 
 import pydantic
+from prisma.enums import OnboardingStep
 
 from backend.data.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
@@ -88,6 +89,8 @@ class NotificationPayload(pydantic.BaseModel):
     type: str
     event: str
 
+    model_config = pydantic.ConfigDict(extra="allow")
+
 
 class OnboardingNotificationPayload(NotificationPayload):
-    step: str
+    step: OnboardingStep

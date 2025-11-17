@@ -14,7 +14,6 @@ import {
 } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { storage, Key as StorageKey } from "@/services/storage/local-storage";
 import { WalletIcon } from "@phosphor-icons/react";
@@ -252,18 +251,21 @@ export function Wallet() {
   );
 
   // React to onboarding notifications emitted by the provider
-  const api = useBackendAPI();
-
   const handleNotification = useCallback(
     (notification: WebSocketNotification) => {
       if (
         notification.type !== "onboarding" ||
-        notification.event !== "step_completed"
+        notification.event !== "step_completed" ||
+        !walletRef.current
       ) {
         return;
       }
 
-      if (!walletRef.current) {
+      // Only trigger confetti for tasks that are in groups
+      const taskIds = groups
+        .flatMap((group) => group.tasks)
+        .map((task) => task.id);
+      if (!taskIds.includes(notification.step as OnboardingStep)) {
         return;
       }
 

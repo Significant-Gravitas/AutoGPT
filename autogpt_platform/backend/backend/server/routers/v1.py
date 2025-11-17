@@ -52,7 +52,6 @@ from backend.data.onboarding import (
     FrontendOnboardingStep,
     OnboardingStep,
     UserOnboardingUpdate,
-    complete_get_results,
     complete_onboarding_step,
     complete_re_run_agent,
     get_recommended_agents,
@@ -949,9 +948,7 @@ async def execute_graph(
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
     ],
-    source: Annotated[
-        GraphExecutionSource | None, Body(default=None, embed=True)
-    ] = None,
+    source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> execution_db.GraphExecutionMeta:
@@ -1096,6 +1093,15 @@ async def list_graph_executions(
     filtered_executions = await hide_activity_summaries_if_disabled(
         paginated_result.executions, user_id
     )
+    onboarding = await get_user_onboarding(user_id)
+    if (
+        onboarding.onboardingAgentExecutionId
+        and onboarding.onboardingAgentExecutionId
+        in [exec.id for exec in filtered_executions]
+        and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
+    ):
+        await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
+
     return execution_db.GraphExecutionsPaginated(
         executions=filtered_executions, pagination=paginated_result.pagination
     )
@@ -1130,16 +1136,12 @@ async def get_graph_execution(
 
     # Apply feature flags to filter out disabled features
     result = await hide_activity_summary_if_disabled(result, user_id)
-
-    try:
-        await complete_get_results(user_id, graph_exec_id)
-    except Exception:
-        logger.warning(
-            "Failed to auto-complete GET_RESULTS for user %s exec %s",
-            user_id,
-            graph_exec_id,
-            exc_info=True,
-        )
+    onboarding = await get_user_onboarding(user_id)
+    if (
+        onboarding.onboardingAgentExecutionId == graph_exec_id
+        and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
+    ):
+        await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return result
 

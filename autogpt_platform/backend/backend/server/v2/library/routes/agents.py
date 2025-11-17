@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
@@ -195,6 +195,9 @@ async def get_library_agent_by_store_listing_version_id(
 )
 async def add_marketplace_agent_to_library(
     store_listing_version_id: str = Body(embed=True),
+    source: Literal["onboarding", "marketplace"] = Body(
+        default="marketplace", embed=True
+    ),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     """
@@ -216,7 +219,10 @@ async def add_marketplace_agent_to_library(
             store_listing_version_id=store_listing_version_id,
             user_id=user_id,
         )
-        await complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_ADD_AGENT)
+        if source != "onboarding":
+            await complete_onboarding_step(
+                user_id, OnboardingStep.MARKETPLACE_ADD_AGENT
+            )
         return agent
 
     except store_exceptions.AgentNotFoundError as e:

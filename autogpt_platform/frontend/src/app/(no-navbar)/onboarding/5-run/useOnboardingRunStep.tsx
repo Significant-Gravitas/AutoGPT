@@ -112,6 +112,7 @@ export function useOnboardingRunStep() {
       const libraryAgent = await resolveResponse(
         postV2AddMarketplaceAgent({
           store_listing_version_id: storeAgent?.store_listing_version_id || "",
+          source: "onboarding",
         }),
       );
 

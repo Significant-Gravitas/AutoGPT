@@ -14,6 +14,7 @@ export async function finishOnboarding() {
     const data = await resolveResponse(
       postV2AddMarketplaceAgent({
         store_listing_version_id: listingId,
+        source: "onboarding",
       }),
     );
     revalidatePath(`/library/agents/${data.id}`, "layout");
