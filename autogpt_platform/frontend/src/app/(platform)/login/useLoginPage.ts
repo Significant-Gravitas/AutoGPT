@@ -1,11 +1,10 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
@@ -13,20 +12,12 @@ import { login as loginAction } from "./actions";
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
-  const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
-
-  const turnstile = useTurnstile({
-    action: "login",
-    autoVerify: false,
-    resetOnError: true,
-  });
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -36,24 +27,8 @@ export function useLoginPage() {
     },
   });
 
-  const resetCaptcha = useCallback(() => {
-    setCaptchaKey((k) => k + 1);
-    turnstile.reset();
-  }, [turnstile]);
-
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
-
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
-      toast({
-        title: "Please complete the CAPTCHA challenge.",
-        variant: "info",
-      });
-
-      setIsGoogleLoading(false);
-      resetCaptcha();
-      return;
-    }
 
     try {
       const response = await fetch("/api/auth/provider", {
@@ -70,7 +45,6 @@ export function useLoginPage() {
       const { url } = await response.json();
       if (url) window.location.href = url as string;
     } catch (error) {
-      resetCaptcha();
       setIsGoogleLoading(false);
       setFeedback(
         error instanceof Error ? error.message : "Failed to start OAuth flow",
@@ -81,17 +55,6 @@ export function useLoginPage() {
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
 
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
-      toast({
-        title: "Please complete the CAPTCHA challenge.",
-        variant: "info",
-      });
-
-      setIsLoading(false);
-      resetCaptcha();
-      return;
-    }
-
     if (data.email.includes("@agpt.co")) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
@@ -99,16 +62,11 @@ export function useLoginPage() {
       });
 
       setIsLoading(false);
-      resetCaptcha();
       return;
     }
 
     try {
-      const result = await loginAction(
-        data.email,
-        data.password,
-        turnstile.token ?? undefined,
-      );
+      const result = await loginAction(data.email, data.password);
 
       if (!result.success) {
         throw new Error(result.error || "Login failed");
@@ -128,16 +86,12 @@ export function useLoginPage() {
         variant: "destructive",
       });
       setIsLoading(false);
-      resetCaptcha();
-      turnstile.reset();
     }
   }
 
   return {
     form,
     feedback,
-    turnstile,
-    captchaKey,
     user,
     isLoading,
     isGoogleLoading,

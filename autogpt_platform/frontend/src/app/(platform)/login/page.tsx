@@ -7,7 +7,6 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import Turnstile from "@/components/auth/Turnstile";
 import { environment } from "@/services/environment";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
@@ -18,8 +17,6 @@ export default function LoginPage() {
     user,
     form,
     feedback,
-    turnstile,
-    captchaKey,
     isLoading,
     isGoogleLoading,
     isCloudEnv,
@@ -84,20 +81,6 @@ export default function LoginPage() {
                 />
               )}
             />
-
-            {/* Turnstile CAPTCHA Component */}
-            {turnstile.shouldRender ? (
-              <Turnstile
-                key={captchaKey}
-                siteKey={turnstile.siteKey}
-                onVerify={turnstile.handleVerify}
-                onExpire={turnstile.handleExpire}
-                onError={turnstile.handleError}
-                setWidgetId={turnstile.setWidgetId}
-                action="login"
-                shouldRender={turnstile.shouldRender}
-              />
-            ) : null}
 
             <Button
               variant="primary"
