@@ -642,7 +642,7 @@ async def get_store_submissions(
 async def delete_store_submission(
     user_id: str,
     submission_id: str,
-) -> bool:
+) -> backend.server.v2.store.model.StoreSubmission:
     """
     Delete a store listing submission as the submitting user.
 
@@ -651,33 +651,67 @@ async def delete_store_submission(
         submission_id: ID of the submission to be deleted
 
     Returns:
-        bool: True if the submission was successfully deleted, False otherwise
+        StoreSubmission: The deleted submission object
+
+    Raises:
+        SubmissionNotFoundError: If submission not found or doesn't belong to user
+        DatabaseError: If deletion fails due to database issues
     """
     logger.debug(f"Deleting store submission {submission_id} for user {user_id}")
 
     try:
-        # Verify the submission belongs to this user
-        submission = await prisma.models.StoreListing.prisma().find_first(
-            where={"agentGraphId": submission_id, "owningUserId": user_id}
+        # First, get the submission details from the view for the response
+        submission_view = await prisma.models.StoreSubmission.prisma().find_first(
+            where={"agent_id": submission_id, "user_id": user_id}
         )
 
-        if not submission:
+        if not submission_view:
             logger.warning(f"Submission not found for user {user_id}: {submission_id}")
             raise backend.server.v2.store.exceptions.SubmissionNotFoundError(
                 f"Submission not found for this user. User ID: {user_id}, Submission ID: {submission_id}"
             )
 
-        # Delete the submission
-        await prisma.models.StoreListing.prisma().delete(where={"id": submission.id})
+        # Convert to response model before deletion
+        submission_model = backend.server.v2.store.model.StoreSubmission(
+            agent_id=submission_view.agent_id,
+            agent_version=submission_view.agent_version,
+            name=submission_view.name,
+            sub_heading=submission_view.sub_heading,
+            slug=submission_view.slug,
+            description=submission_view.description,
+            instructions=getattr(submission_view, "instructions", None),
+            image_urls=submission_view.image_urls or [],
+            date_submitted=submission_view.date_submitted,
+            status=submission_view.status,
+            runs=submission_view.runs or 0,
+            rating=submission_view.rating or 0.0,
+            store_listing_version_id=submission_view.store_listing_version_id,
+            reviewer_id=submission_view.reviewer_id,
+            review_comments=submission_view.review_comments,
+            internal_comments=submission_view.internal_comments,
+            reviewed_at=submission_view.reviewed_at,
+            changes_summary=submission_view.changes_summary,
+            video_url=submission_view.video_url,
+            categories=getattr(submission_view, "categories", []),
+        )
+
+        # Now delete from the actual table using the listing_id
+        await prisma.models.StoreListing.prisma().delete(
+            where={"id": submission_view.listing_id}
+        )
 
         logger.debug(
             f"Successfully deleted submission {submission_id} for user {user_id}"
         )
-        return True
+        return submission_model
 
+    except backend.server.v2.store.exceptions.SubmissionNotFoundError:
+        # Re-raise submission not found errors (will be 404)
+        raise
     except Exception as e:
         logger.error(f"Error deleting store submission: {e}")
-        return False
+        # Let database errors bubble up as 500 errors
+        raise
 
 
 async def create_store_submission(

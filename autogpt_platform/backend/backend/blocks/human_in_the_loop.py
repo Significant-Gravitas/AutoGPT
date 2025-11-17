@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Literal
 
 from prisma.enums import ReviewStatus
@@ -13,6 +14,8 @@ from backend.data.execution import ExecutionStatus, update_node_execution_status
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
 from backend.util.clients import get_database_manager_async_client
+
+logger = logging.getLogger(__name__)
 
 
 class HumanInTheLoopBlock(Block):
@@ -97,29 +100,44 @@ class HumanInTheLoopBlock(Block):
         This method uses one function to handle the complete workflow - checking existing reviews
         and creating pending ones as needed.
         """
-        # Use the data layer to handle the complete workflow
-        db_client = get_database_manager_async_client()
-        result = await db_client.get_or_create_human_review(
-            user_id=user_id,
-            node_exec_id=node_exec_id,
-            graph_exec_id=graph_exec_id,
-            graph_id=graph_id,
-            graph_version=graph_version,
-            input_data=input_data.data,
-            message=input_data.message,
-            editable=input_data.editable,
-        )
+        try:
+            logger.debug(f"HITL block executing for node {node_exec_id}")
+
+            # Use the data layer to handle the complete workflow
+            db_client = get_database_manager_async_client()
+            result = await db_client.get_or_create_human_review(
+                user_id=user_id,
+                node_exec_id=node_exec_id,
+                graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+                input_data=input_data.data,
+                message=input_data.message,
+                editable=input_data.editable,
+            )
+        except Exception as e:
+            logger.error(f"Error in HITL block for node {node_exec_id}: {str(e)}")
+            raise
 
         # Check if we're waiting for human input
         if result is None:
-            # Set node status to WAITING_FOR_REVIEW so execution manager can't mark it as COMPLETED
-            # The VALID_STATUS_TRANSITIONS will then prevent any unwanted status changes
-            await update_node_execution_status(
-                node_exec_id=node_exec_id,
-                status=ExecutionStatus.WAITING_FOR_REVIEW,
+            logger.info(
+                f"HITL block pausing execution for node {node_exec_id} - awaiting human review"
             )
-            # Execution pauses here until API routes process the review
-            return
+            try:
+                # Set node status to WAITING_FOR_REVIEW so execution manager can't mark it as COMPLETED
+                # The VALID_STATUS_TRANSITIONS will then prevent any unwanted status changes
+                await update_node_execution_status(
+                    node_exec_id=node_exec_id,
+                    status=ExecutionStatus.WAITING_FOR_REVIEW,
+                )
+                # Execution pauses here until API routes process the review
+                return
+            except Exception as e:
+                logger.error(
+                    f"Failed to update node status for HITL block {node_exec_id}: {str(e)}"
+                )
+                raise
 
         # Review is complete (approved or rejected) - check if unprocessed
         if not result.processed:

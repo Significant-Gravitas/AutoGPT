@@ -340,7 +340,12 @@ async def get_my_agents(
     summary="Delete store submission",
     tags=["store", "private"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
-    response_model=bool,
+    response_model=backend.server.v2.store.model.StoreSubmission,
+    responses={
+        200: {"description": "Submission deleted successfully"},
+        404: {"description": "Submission not found"},
+        500: {"description": "Server error"},
+    },
 )
 async def delete_submission(
     submission_id: str,
@@ -354,14 +359,12 @@ async def delete_submission(
         submission_id (str): ID of the submission to be deleted
 
     Returns:
-        bool: True if the submission was successfully deleted, False otherwise
+        StoreSubmission: The deleted submission object
     """
-    result = await backend.server.v2.store.db.delete_store_submission(
+    return await backend.server.v2.store.db.delete_store_submission(
         user_id=user_id,
         submission_id=submission_id,
     )
-
-    return result
 
 
 @router.get(

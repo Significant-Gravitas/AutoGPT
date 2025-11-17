@@ -2,7 +2,7 @@ import logging
 from typing import List
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, HTTPException, Security, status
+from fastapi import APIRouter, HTTPException, Query, Security, status
 
 from backend.data.execution import (
     ExecutionStatus,
@@ -23,9 +23,20 @@ from backend.server.v2.executions.review.model import (
 logger = logging.getLogger(__name__)
 
 
+def handle_database_error(
+    operation: str, resource_id: str, error: Exception
+) -> HTTPException:
+    """Centralized database error handling for review operations."""
+    logger.error(f"Database error during {operation} for {resource_id}: {str(error)}")
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Internal server error during {operation}",
+    )
+
+
 router = APIRouter(
     prefix="/review",
-    tags=["execution-review", "private"],
+    tags=["executions", "review", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
 
@@ -33,12 +44,16 @@ router = APIRouter(
 @router.get(
     "/pending",
     summary="Get Pending Reviews",
+    response_model=List[PendingHumanReviewModel],
     responses={
+        200: {"description": "List of pending reviews"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
 async def list_pending_reviews(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(25, ge=1, le=100, description="Number of reviews per page"),
 ) -> List[PendingHumanReviewModel]:
     """Get all pending reviews for the current user.
 
@@ -59,13 +74,16 @@ async def list_pending_reviews(
         from results rather than failing the entire request.
     """
 
-    return await get_pending_reviews_for_user(user_id)
+    return await get_pending_reviews_for_user(user_id, page, page_size)
 
 
 @router.get(
     "/execution/{graph_exec_id}",
     summary="Get Pending Reviews for Execution",
+    response_model=List[PendingHumanReviewModel],
     responses={
+        200: {"description": "List of pending reviews for the execution"},
+        400: {"description": "Invalid graph execution ID"},
         403: {"description": "Access denied to graph execution"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
@@ -110,25 +128,21 @@ async def list_pending_reviews_for_execution(
     except HTTPException:
         raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
-        logger.error(
-            f"Database error while verifying graph ownership for execution {graph_exec_id}: {str(e)}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while verifying access",
-        )
+        raise handle_database_error("graph ownership verification", graph_exec_id, e)
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
 
 
 @router.post(
     "/{node_exec_id}/action",
-    summary="Review Data",
+    summary="Process Review Action",
+    response_model=ReviewActionResponse,
     responses={
-        200: {"description": "Success", "content": {"application/json": {}}},
-        400: {"description": "Review already processed"},
+        200: {"description": "Review action processed successfully"},
+        400: {"description": "Invalid request or review already processed"},
         403: {"description": "Access denied"},
         404: {"description": "Review not found"},
+        422: {"description": "Validation error"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
@@ -169,14 +183,26 @@ async def review_data(
         All operations use database transactions for consistency.
     """
 
-    # Update the review using the data layer
-    updated_review = await update_review_action(
-        node_exec_id=node_exec_id,
-        user_id=user_id,
-        action=request.action,
-        reviewed_data=request.reviewed_data,
-        message=request.message,
-    )
+    try:
+        # Update the review using the data layer
+        updated_review = await update_review_action(
+            node_exec_id=node_exec_id,
+            user_id=user_id,
+            action=request.action,
+            reviewed_data=request.reviewed_data,
+            message=request.message,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Validation error: {str(e)}",
+        )
+    except Exception as e:
+        logger.error(f"Error updating review {node_exec_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while processing review",
+        )
 
     if updated_review is None:
         # Could be not found, access denied, already processed, or editing not allowed

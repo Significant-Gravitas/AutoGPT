@@ -289,8 +289,8 @@ app.include_router(
 )
 app.include_router(
     backend.server.v2.executions.review.routes.router,
-    tags=["v2", "review"],
-    prefix="/api",
+    tags=["v2", "executions"],
+    prefix="/api/executions",
 )
 
 app.include_router(

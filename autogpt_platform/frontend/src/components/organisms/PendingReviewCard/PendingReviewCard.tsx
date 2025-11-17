@@ -9,6 +9,39 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CheckIcon, XIcon } from "@phosphor-icons/react";
 import { usePostV2ReviewData } from "@/app/api/__generated__/endpoints/execution-review/execution-review";
 
+// Type guard for structured review payload
+interface StructuredReviewPayload {
+  data: unknown;
+  instructions?: string;
+}
+
+function isStructuredReviewPayload(
+  payload: unknown,
+): payload is StructuredReviewPayload {
+  return (
+    payload !== null &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    (typeof (payload as any).instructions === "string" ||
+      (payload as any).instructions === undefined)
+  );
+}
+
+function extractReviewData(payload: unknown): {
+  data: unknown;
+  instructions?: string;
+} {
+  if (isStructuredReviewPayload(payload)) {
+    return {
+      data: payload.data,
+      instructions: payload.instructions,
+    };
+  }
+
+  // Fallback: treat entire payload as data
+  return { data: payload };
+}
+
 interface PendingReviewCardProps {
   review: PendingHumanReviewModel;
   onReviewComplete?: () => void;
@@ -18,12 +51,18 @@ export function PendingReviewCard({
   review,
   onReviewComplete,
 }: PendingReviewCardProps) {
+  // Extract structured data and instructions from payload
+  const extractedData = extractReviewData(review.payload);
+
   const [reviewData, setReviewData] = useState<string>(
-    JSON.stringify(review.payload, null, 2),
+    JSON.stringify(extractedData.data, null, 2),
   );
   const [reviewMessage, setReviewMessage] = useState<string>("");
   const isDataEditable = review.editable;
   const { toast } = useToast();
+
+  // Use instructions from payload or from API field
+  const instructions = extractedData.instructions || review.instructions;
 
   const reviewActionMutation = usePostV2ReviewData({
     mutation: {
@@ -51,10 +90,22 @@ export function PendingReviewCard({
     if (isDataEditable) {
       try {
         parsedData = JSON.parse(reviewData);
-      } catch (_error) {
+      } catch (error) {
         toast({
           title: "Invalid JSON",
-          description: "Please fix the JSON format before approving",
+          description: `Please fix the JSON format: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate the parsed data has reasonable size constraints
+      const dataString = JSON.stringify(parsedData);
+      if (dataString.length > 1_000_000) {
+        // 1MB limit
+        toast({
+          title: "Data too large",
+          description: "Review data cannot exceed 1MB in size",
           variant: "destructive",
         });
         return;
@@ -94,13 +145,13 @@ export function PendingReviewCard({
             {new Date(review.created_at).toLocaleString()}
           </Text>
         </div>
-        {/* Review Message */}
-        {review.instructions && (
+        {/* Review Instructions */}
+        {instructions && (
           <div>
             <Text variant="body" className="mb-2 font-semibold">
               Instructions:
             </Text>
-            <Text variant="body">{review.instructions}</Text>
+            <Text variant="body">{instructions}</Text>
           </div>
         )}
 
