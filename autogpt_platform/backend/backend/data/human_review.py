@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class ReviewResult(BaseModel):
     """Result of a review operation."""
 
-    data: SafeJsonData
+    data: Optional[SafeJsonData] = None
     status: ReviewStatus
     message: str = ""
     processed: bool
@@ -310,6 +310,11 @@ async def update_review_action(
         logger.warning(
             f"Review {node_exec_id} is not in WAITING status (current: {existing_review.status})"
         )
+        return None
+
+    # Check if editing is allowed when reviewed_data is provided
+    if not existing_review.editable and reviewed_data is not None:
+        logger.warning(f"Edit denied: review {node_exec_id} is not editable")
         return None
 
     try:
