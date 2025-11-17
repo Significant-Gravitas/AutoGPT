@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PendingHumanReviewResponse } from "@/app/api/__generated__/models/pendingHumanReviewResponse";
+import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { ReviewActionRequest } from "@/app/api/__generated__/models/reviewActionRequest";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -10,7 +10,7 @@ import { CheckIcon, XIcon } from "@phosphor-icons/react";
 import { usePostV2ReviewData } from "@/app/api/__generated__/endpoints/execution-review/execution-review";
 
 interface PendingReviewCardProps {
-  review: PendingHumanReviewResponse;
+  review: PendingHumanReviewModel;
   onReviewComplete?: () => void;
 }
 
@@ -19,10 +19,10 @@ export function PendingReviewCard({
   onReviewComplete,
 }: PendingReviewCardProps) {
   const [reviewData, setReviewData] = useState<string>(
-    JSON.stringify(review.data, null, 2),
+    JSON.stringify(review.payload, null, 2),
   );
   const [reviewMessage, setReviewMessage] = useState<string>("");
-  const isDataEditable = true; // TODO: Add editable field to API response
+  const isDataEditable = review.editable;
   const { toast } = useToast();
 
   const reviewActionMutation = usePostV2ReviewData({
@@ -68,7 +68,7 @@ export function PendingReviewCard({
     };
 
     reviewActionMutation.mutate({
-      reviewId: review.id,
+      nodeExecId: review.node_exec_id,
       data: requestData,
     });
   }
@@ -80,7 +80,7 @@ export function PendingReviewCard({
     };
 
     reviewActionMutation.mutate({
-      reviewId: review.id,
+      nodeExecId: review.node_exec_id,
       data: requestData,
     });
   }
@@ -95,7 +95,14 @@ export function PendingReviewCard({
           </Text>
         </div>
         {/* Review Message */}
-        {/* TODO: Add instructions field to API response */}
+        {review.instructions && (
+          <div>
+            <Text variant="body" className="mb-2 font-semibold">
+              Instructions:
+            </Text>
+            <Text variant="body">{review.instructions}</Text>
+          </div>
+        )}
 
         {/* Data Editor */}
         <div>

@@ -4766,7 +4766,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/PendingHumanReviewResponse"
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
                   },
                   "type": "array",
                   "title": "Response Getv2Get Pending Reviews"
@@ -4808,7 +4808,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/PendingHumanReviewResponse"
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
                   },
                   "title": "Response Getv2Get Pending Reviews For Execution"
                 }
@@ -4834,19 +4834,19 @@
         }
       }
     },
-    "/api/review/{review_id}/action": {
+    "/api/review/{node_exec_id}/action": {
       "post": {
         "tags": ["v2", "review", "execution-review", "private"],
         "summary": "Review Data",
-        "description": "Approve or reject pending review data.\n\nProcesses a human review action (approve/reject) for a pending review.\nIncludes comprehensive security checks and atomic database operations.\n\nSecurity Features:\n- Verifies review ownership by authenticated user\n- Validates graph execution access permissions\n- Prevents modification of non-WAITING reviews\n- Uses database transactions for atomic updates\n\nArgs:\n    review_id: Unique identifier of the review to process\n    request: Review action details (approve/reject + optional data/message)\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    Success response with action status\n\nRaises:\n    HTTPException:\n        - 404: Review not found\n        - 403: Access denied to review or graph execution\n        - 400: Review already processed (not WAITING)\n        - 500: Database or internal server errors\n\nNote:\n    On approval, optionally modified data is stored and graph execution\n    is resumed automatically. On rejection, execution remains paused.\n    All operations use database transactions for consistency.",
+        "description": "Approve or reject pending review data.\n\nProcesses a human review action (approve/reject) for a pending review.\nIncludes comprehensive security checks and atomic database operations.\n\nSecurity Features:\n- Verifies review ownership by authenticated user\n- Validates graph execution access permissions\n- Prevents modification of non-WAITING reviews\n- Uses database transactions for atomic updates\n\nArgs:\n    node_exec_id: Node execution ID of the review to process\n    request: Review action details (approve/reject + optional data/message)\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    Success response with action status\n\nRaises:\n    HTTPException:\n        - 404: Review not found\n        - 403: Access denied to review or graph execution\n        - 400: Review already processed (not WAITING)\n        - 500: Database or internal server errors\n\nNote:\n    On approval, optionally modified data is stored and graph execution\n    is resumed automatically. On rejection, execution remains paused.\n    All operations use database transactions for consistency.",
         "operationId": "postV2Review data",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "review_id",
+            "name": "node_exec_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Review Id" }
+            "schema": { "type": "string", "title": "Node Exec Id" }
           }
         ],
         "requestBody": {
@@ -7444,22 +7444,17 @@
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
       },
-      "PendingHumanReviewResponse": {
+      "PendingHumanReviewModel": {
         "properties": {
-          "id": {
+          "node_exec_id": {
             "type": "string",
-            "title": "Id",
-            "description": "Unique ID of the pending review"
+            "title": "Node Exec Id",
+            "description": "Node execution ID (primary key)"
           },
           "user_id": {
             "type": "string",
             "title": "User Id",
             "description": "User ID associated with the review"
-          },
-          "node_exec_id": {
-            "type": "string",
-            "title": "Node Exec Id",
-            "description": "Node execution ID"
           },
           "graph_exec_id": {
             "type": "string",
@@ -7476,14 +7471,31 @@
             "title": "Graph Version",
             "description": "Graph version"
           },
-          "data": {
-            "$ref": "#/components/schemas/PendingReviewData",
-            "description": "Structured data awaiting human review"
+          "payload": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "items": {}, "type": "array" },
+              { "type": "string" },
+              { "type": "integer" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ],
+            "title": "Payload",
+            "description": "The actual data payload awaiting review"
+          },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions",
+            "description": "Instructions or message for the reviewer"
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "description": "Whether the reviewer can edit the data"
           },
           "status": {
-            "type": "string",
-            "enum": ["WAITING", "APPROVED", "REJECTED"],
-            "title": "Status",
+            "$ref": "#/components/schemas/ReviewStatus",
             "description": "Review status"
           },
           "review_message": {
@@ -7495,6 +7507,12 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Was Edited",
             "description": "Whether the data was modified during review"
+          },
+          "processed": {
+            "type": "boolean",
+            "title": "Processed",
+            "description": "Whether the review result has been processed by the execution engine",
+            "default": false
           },
           "created_at": {
             "type": "string",
@@ -7521,49 +7539,18 @@
         },
         "type": "object",
         "required": [
-          "id",
-          "user_id",
           "node_exec_id",
+          "user_id",
           "graph_exec_id",
           "graph_id",
           "graph_version",
-          "data",
+          "payload",
+          "editable",
           "status",
           "created_at"
         ],
-        "title": "PendingHumanReviewResponse",
-        "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    data: The data payload awaiting review (can be any JSON structure)\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
-      },
-      "PendingReviewData": {
-        "properties": {
-          "data": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "items": {}, "type": "array" },
-              { "type": "string" },
-              { "type": "integer" },
-              { "type": "number" },
-              { "type": "boolean" },
-              { "type": "null" }
-            ],
-            "title": "Data",
-            "description": "The actual data payload awaiting review"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "Instructions or context message for the reviewer"
-          },
-          "editable": {
-            "type": "boolean",
-            "title": "Editable",
-            "description": "Whether the reviewer is allowed to modify the data"
-          }
-        },
-        "type": "object",
-        "required": ["data", "message", "editable"],
-        "title": "PendingReviewData",
-        "description": "Data structure for pending human review stored in database.\n\nThis represents the structured format of the 'data' field in PendingHumanReviewResponse\nwhen it contains review-specific metadata along with the actual data payload.\n\nAttributes:\n    data: The actual data payload awaiting review\n    message: Instructions or context message for the reviewer\n    editable: Whether the reviewer is allowed to modify the data"
+        "title": "PendingHumanReviewModel",
+        "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
       "PostmarkBounceEnum": {
         "type": "integer",
@@ -8089,6 +8076,11 @@
         "required": ["action"],
         "title": "ReviewActionResponse",
         "description": "Response model for review action completion.\n\nConfirms that a review action (approve/reject) was successfully processed.\n\nAttributes:\n    status: Always \"success\" to indicate successful processing\n    action: The action that was performed (\"approve\" or \"reject\")"
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": ["WAITING", "APPROVED", "REJECTED"],
+        "title": "ReviewStatus"
       },
       "ReviewSubmissionRequest": {
         "properties": {

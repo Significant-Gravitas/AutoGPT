@@ -1,10 +1,10 @@
-import { PendingHumanReviewResponse } from "@/app/api/__generated__/models/pendingHumanReviewResponse";
+import { PendingHumanReviewModel } from "@/app/api/__generated__/models/pendingHumanReviewModel";
 import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/PendingReviewCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { ClockIcon } from "@phosphor-icons/react";
 
 interface PendingReviewsListProps {
-  reviews: PendingHumanReviewResponse[];
+  reviews: PendingHumanReviewModel[];
   onReviewComplete?: () => void;
   emptyMessage?: string;
 }
@@ -39,7 +39,7 @@ export function PendingReviewsList({
       <div className="space-y-4">
         {reviews.map((review) => (
           <PendingReviewCard
-            key={review.id}
+            key={review.node_exec_id}
             review={review}
             onReviewComplete={onReviewComplete}
           />
