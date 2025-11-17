@@ -4,18 +4,17 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
+import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl");
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -42,10 +41,6 @@ export function useLoginPage() {
     turnstile.reset();
   }, [turnstile]);
 
-  useEffect(() => {
-    if (user) router.push("/");
-  }, [user]);
-
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
 
@@ -69,14 +64,7 @@ export function useLoginPage() {
 
       if (!response.ok) {
         const { error } = await response.json();
-        if (error === "not_allowed") {
-          setShowNotAllowedModal(true);
-        } else {
-          setFeedback(error || "Failed to start OAuth flow");
-        }
-        resetCaptcha();
-        setIsGoogleLoading(false);
-        return;
+        throw new Error(error || "Failed to start OAuth flow");
       }
 
       const { url } = await response.json();
@@ -92,6 +80,7 @@ export function useLoginPage() {
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
+
     if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
       toast({
         title: "Please complete the CAPTCHA challenge.",
@@ -115,39 +104,21 @@ export function useLoginPage() {
     }
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-          turnstileToken: turnstile.token,
-        }),
-      });
+      const result = await loginAction(
+        data.email,
+        data.password,
+        turnstile.token ?? undefined,
+      );
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        toast({
-          title: result?.error || "Login failed",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        resetCaptcha();
-        turnstile.reset();
-        return;
+      if (!result.success) {
+        throw new Error(result.error || "Login failed");
       }
 
-      await supabase?.auth.refreshSession();
-      setIsLoading(false);
-      setFeedback(null);
-
-      // Prioritize returnUrl from query params over backend's onboarding logic
-      const next = returnUrl
-        ? returnUrl
-        : (result?.next as string) ||
-          (result?.onboarding ? "/onboarding" : "/");
-      if (next) router.push(next);
+      if (result.onboarding) {
+        router.replace("/onboarding");
+      } else {
+        router.replace("/marketplace");
+      }
     } catch (error) {
       toast({
         title:
@@ -169,9 +140,9 @@ export function useLoginPage() {
     captchaKey,
     user,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleLogin),
