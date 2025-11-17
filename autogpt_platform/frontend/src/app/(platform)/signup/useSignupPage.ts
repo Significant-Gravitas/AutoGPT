@@ -1,11 +1,10 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
@@ -13,25 +12,12 @@ import { signup as signupAction } from "./actions";
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [captchaKey, setCaptchaKey] = useState(0);
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
-  const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
-
-  const turnstile = useTurnstile({
-    action: "signup",
-    autoVerify: false,
-    resetOnError: true,
-  });
-
-  const resetCaptcha = useCallback(() => {
-    setCaptchaKey((k) => k + 1);
-    turnstile.reset();
-  }, [turnstile]);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -45,16 +31,6 @@ export function useSignupPage() {
 
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
-
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
-      toast({
-        title: "Please complete the CAPTCHA challenge.",
-        variant: "default",
-      });
-      setIsGoogleLoading(false);
-      resetCaptcha();
-      return;
-    }
 
     try {
       const response = await fetch("/api/auth/provider", {
@@ -78,7 +54,6 @@ export function useSignupPage() {
       if (url) window.location.href = url as string;
     } catch (error) {
       setIsGoogleLoading(false);
-      resetCaptcha();
       toast({
         title:
           error instanceof Error ? error.message : "Failed to start OAuth flow",
@@ -90,16 +65,6 @@ export function useSignupPage() {
   async function handleSignup(data: z.infer<typeof signupFormSchema>) {
     setIsLoading(true);
 
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
-      toast({
-        title: "Please complete the CAPTCHA challenge.",
-        variant: "default",
-      });
-      setIsLoading(false);
-      resetCaptcha();
-      return;
-    }
-
     if (data.email.includes("@agpt.co")) {
       toast({
         title:
@@ -108,7 +73,6 @@ export function useSignupPage() {
       });
 
       setIsLoading(false);
-      resetCaptcha();
       return;
     }
 
@@ -118,7 +82,6 @@ export function useSignupPage() {
         data.password,
         data.confirmPassword,
         data.agreeToTerms,
-        turnstile.token ?? undefined,
       );
 
       setIsLoading(false);
@@ -126,7 +89,6 @@ export function useSignupPage() {
       if (!result.success) {
         if (result.error === "user_already_exists") {
           setFeedback("User with this email already exists");
-          turnstile.reset();
           return;
         }
         if (result.error === "not_allowed") {
@@ -138,8 +100,6 @@ export function useSignupPage() {
           title: result.error || "Signup failed",
           variant: "destructive",
         });
-        resetCaptcha();
-        turnstile.reset();
         return;
       }
 
@@ -154,16 +114,12 @@ export function useSignupPage() {
             : "Unexpected error during signup",
         variant: "destructive",
       });
-      resetCaptcha();
-      turnstile.reset();
     }
   }
 
   return {
     form,
     feedback,
-    turnstile,
-    captchaKey,
     isLoggedIn: !!user,
     isLoading,
     isGoogleLoading,
