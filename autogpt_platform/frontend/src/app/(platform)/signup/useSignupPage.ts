@@ -1,13 +1,14 @@
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { environment } from "@/services/environment";
+import { signup as signupAction } from "./actions";
 
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -18,7 +19,6 @@ export function useSignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-
   const isCloudEnv = environment.isCloud();
   const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
@@ -43,10 +43,6 @@ export function useSignupPage() {
     },
   });
 
-  useEffect(() => {
-    if (user) router.push("/");
-  }, [user]);
-
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
 
@@ -69,24 +65,17 @@ export function useSignupPage() {
 
       if (!response.ok) {
         const { error } = await response.json();
-        setIsGoogleLoading(false);
-        resetCaptcha();
 
         if (error === "not_allowed") {
           setShowNotAllowedModal(true);
           return;
         }
 
-        toast({
-          title: error || "Failed to start OAuth flow",
-          variant: "destructive",
-        });
-        return;
+        throw new Error(error || "Failed to start OAuth flow");
       }
 
       const { url } = await response.json();
       if (url) window.location.href = url as string;
-      setFeedback(null);
     } catch (error) {
       setIsGoogleLoading(false);
       resetCaptcha();
@@ -124,34 +113,29 @@ export function useSignupPage() {
     }
 
     try {
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-          confirmPassword: data.confirmPassword,
-          agreeToTerms: data.agreeToTerms,
-          turnstileToken: turnstile.token,
-        }),
-      });
+      const result = await signupAction(
+        data.email,
+        data.password,
+        data.confirmPassword,
+        data.agreeToTerms,
+        turnstile.token ?? undefined,
+      );
 
-      const result = await response.json();
       setIsLoading(false);
 
-      if (!response.ok) {
-        if (result?.error === "user_already_exists") {
+      if (!result.success) {
+        if (result.error === "user_already_exists") {
           setFeedback("User with this email already exists");
           turnstile.reset();
           return;
         }
-        if (result?.error === "not_allowed") {
+        if (result.error === "not_allowed") {
           setShowNotAllowedModal(true);
           return;
         }
 
         toast({
-          title: result?.error || "Signup failed",
+          title: result.error || "Signup failed",
           variant: "destructive",
         });
         resetCaptcha();
@@ -159,9 +143,8 @@ export function useSignupPage() {
         return;
       }
 
-      setFeedback(null);
-      const next = (result?.next as string) || "/";
-      router.push(next);
+      const next = result.next || "/";
+      if (next) router.replace(next);
     } catch (error) {
       setIsLoading(false);
       toast({
@@ -183,9 +166,9 @@ export function useSignupPage() {
     captchaKey,
     isLoggedIn: !!user,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleSignup),

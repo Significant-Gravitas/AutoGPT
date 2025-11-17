@@ -1,12 +1,15 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { cn } from "@/lib/utils";
-import { finishOnboarding } from "./actions";
-import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
+import { useRouter } from "next/navigation";
 import * as party from "party-js";
+import { useEffect, useRef, useState } from "react";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 
 export default function Page() {
   const { completeStep } = useOnboarding(7, "AGENT_INPUT");
+  const router = useRouter();
+  const api = useBackendAPI();
   const [showText, setShowText] = useState(false);
   const [showSubtext, setShowSubtext] = useState(false);
   const divRef = useRef(null);
@@ -30,9 +33,28 @@ export default function Page() {
       setShowSubtext(true);
     }, 500);
 
-    const timer2 = setTimeout(() => {
+    const timer2 = setTimeout(async () => {
       completeStep("CONGRATS");
-      finishOnboarding();
+
+      try {
+        const onboarding = await api.getUserOnboarding();
+        if (onboarding?.selectedStoreListingVersionId) {
+          try {
+            const libraryAgent = await api.addMarketplaceAgentToLibrary(
+              onboarding.selectedStoreListingVersionId,
+            );
+            router.replace(`/library/agents/${libraryAgent.id}`);
+          } catch (error) {
+            console.error("Failed to add agent to library:", error);
+            router.replace("/library");
+          }
+        } else {
+          router.replace("/library");
+        }
+      } catch (error) {
+        console.error("Failed to get onboarding data:", error);
+        router.replace("/library");
+      }
     }, 3000);
 
     return () => {
@@ -40,7 +62,7 @@ export default function Page() {
       clearTimeout(timer1);
       clearTimeout(timer2);
     };
-  }, []);
+  }, [completeStep, router, api]);
 
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center bg-violet-100">
