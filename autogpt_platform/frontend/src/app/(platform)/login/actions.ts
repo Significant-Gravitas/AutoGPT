@@ -2,17 +2,11 @@
 
 import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { verifyTurnstileToken } from "@/lib/turnstile";
-import { environment } from "@/services/environment";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { shouldShowOnboarding } from "../../api/helpers";
 
-export async function login(
-  email: string,
-  password: string,
-  turnstileToken?: string,
-) {
+export async function login(email: string, password: string) {
   try {
     const parsed = loginFormSchema.safeParse({ email, password });
 
@@ -20,14 +14,6 @@ export async function login(
       return {
         success: false,
         error: "Invalid email or password",
-      };
-    }
-
-    const captchaOk = await verifyTurnstileToken(turnstileToken ?? "", "login");
-    if (!captchaOk && !environment.isVercelPreview()) {
-      return {
-        success: false,
-        error: "CAPTCHA verification failed. Please try again.",
       };
     }
 
