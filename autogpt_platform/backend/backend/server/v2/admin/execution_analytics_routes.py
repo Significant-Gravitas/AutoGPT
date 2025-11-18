@@ -15,6 +15,8 @@ from backend.data.execution import (
 )
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
+    DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_USER_PROMPT,
     generate_activity_status_for_execution,
 )
 from backend.executor.manager import get_db_async_client
@@ -30,11 +32,20 @@ class ExecutionAnalyticsRequest(BaseModel):
     created_after: Optional[datetime] = Field(
         None, description="Optional created date lower bound"
     )
-    model_name: Optional[str] = Field(
-        "gpt-4o-mini", description="Model to use for generation"
-    )
+    model_name: str = Field("gpt-4o-mini", description="Model to use for generation")
     batch_size: int = Field(
         10, description="Batch size for concurrent processing", le=25, ge=1
+    )
+    system_prompt: Optional[str] = Field(
+        None, description="Custom system prompt (default: built-in prompt)"
+    )
+    user_prompt: Optional[str] = Field(
+        None,
+        description="Custom user prompt with {{GRAPH_NAME}} and {{EXECUTION_DATA}} placeholders (default: built-in prompt)",
+    )
+    skip_existing: bool = Field(
+        True,
+        description="Whether to skip executions that already have activity status and correctness score",
     )
 
 
@@ -121,7 +132,6 @@ async def generate_execution_analytics(
                 or not execution.stats.activity_status
                 or execution.stats.correctness_score is None
             ):
-
                 # If version is specified, filter by it
                 if (
                     request.graph_version is None
@@ -152,9 +162,7 @@ async def generate_execution_analytics(
                     f"Processing batch {batch_idx + 1}/{total_batches} with {len(batch)} executions"
                 )
 
-                batch_results = await _process_batch(
-                    batch, request.model_name or "gpt-4o-mini", db_client
-                )
+                batch_results = await _process_batch(batch, request, db_client)
 
                 for result in batch_results:
                     results.append(result)
@@ -212,7 +220,7 @@ async def generate_execution_analytics(
 
 
 async def _process_batch(
-    executions, model_name: str, db_client
+    executions, request: ExecutionAnalyticsRequest, db_client
 ) -> list[ExecutionAnalyticsResult]:
     """Process a batch of executions concurrently."""
 
@@ -237,8 +245,11 @@ async def _process_batch(
                 db_client=db_client,
                 user_id=execution.user_id,
                 execution_status=execution.status,
-                model_name=model_name,  # Pass model name parameter
+                model_name=request.model_name,
                 skip_feature_flag=True,  # Admin endpoint bypasses feature flags
+                system_prompt=request.system_prompt or DEFAULT_SYSTEM_PROMPT,
+                user_prompt=request.user_prompt or DEFAULT_USER_PROMPT,
+                skip_existing=request.skip_existing,
             )
 
             if not activity_response:

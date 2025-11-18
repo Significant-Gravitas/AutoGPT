@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Checkbox } from "@/components/__legacy__/ui/checkbox";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { usePostV2GenerateExecutionAnalytics } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
@@ -24,6 +26,9 @@ interface FormData {
   created_after?: string;
   model_name: string;
   batch_size: number;
+  system_prompt?: string;
+  user_prompt?: string;
+  skip_existing: boolean;
 }
 import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
 
@@ -31,8 +36,13 @@ const MODEL_OPTIONS = [
   { value: "gpt-4o-mini", label: "GPT-4o Mini (Recommended)" },
   { value: "gpt-4o", label: "GPT-4o" },
   { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-  { value: "gpt-4.1", label: "GPT-4.1" },
-  { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+  { value: "gpt-4.1-2025-04-14", label: "GPT-4.1" },
+  { value: "gpt-4.1-mini-2025-04-14", label: "GPT-4.1 Mini" },
+  { value: "claude-sonnet-4-5-20250929", label: "Claude 4.5 Sonnet" },
+  { value: "claude-haiku-4-5-20251001", label: "Claude 4.5 Haiku" },
+  { value: "claude-opus-4-1-20250805", label: "Claude 4.1 Opus" },
+  { value: "gpt-5-2025-08-07", label: "GPT-5" },
+  { value: "gpt-5-mini-2025-08-07", label: "GPT-5 Mini" },
 ];
 
 export function ExecutionAnalyticsForm() {
@@ -71,6 +81,7 @@ export function ExecutionAnalyticsForm() {
     graph_id: "",
     model_name: "gpt-4o-mini",
     batch_size: 10, // Fixed internal value
+    skip_existing: true, // Default to skip existing
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -88,10 +99,11 @@ export function ExecutionAnalyticsForm() {
     setResults(null);
 
     // Prepare the request payload
-    const payload: ExecutionAnalyticsRequest = {
+    const payload: any = {
       graph_id: formData.graph_id.trim(),
       model_name: formData.model_name,
       batch_size: formData.batch_size,
+      skip_existing: formData.skip_existing,
     };
 
     if (formData.graph_version) {
@@ -108,6 +120,14 @@ export function ExecutionAnalyticsForm() {
       formData.created_after.trim()
     ) {
       payload.created_after = new Date(formData.created_after.trim());
+    }
+
+    if (formData.system_prompt?.trim()) {
+      payload.system_prompt = formData.system_prompt.trim();
+    }
+
+    if (formData.user_prompt?.trim()) {
+      payload.user_prompt = formData.user_prompt.trim();
     }
 
     generateAnalytics.mutate({ data: payload });
@@ -189,6 +209,75 @@ export function ExecutionAnalyticsForm() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        {/* Advanced Options Section */}
+        <div className="space-y-4 border-t pt-6">
+          <h3 className="text-lg font-semibold text-gray-700">
+            Advanced Options
+          </h3>
+
+          {/* Skip Existing Checkbox */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="skip_existing"
+              checked={formData.skip_existing}
+              onCheckedChange={(checked) =>
+                handleInputChange("skip_existing", checked)
+              }
+            />
+            <Label htmlFor="skip_existing" className="text-sm">
+              Skip executions that already have activity status and correctness
+              score
+            </Label>
+          </div>
+
+          {/* Custom System Prompt */}
+          <div className="space-y-2">
+            <Label htmlFor="system_prompt">
+              Custom System Prompt (Optional)
+            </Label>
+            <Textarea
+              id="system_prompt"
+              value={formData.system_prompt || ""}
+              onChange={(e) =>
+                handleInputChange("system_prompt", e.target.value)
+              }
+              placeholder="Leave empty to use default system prompt. This defines the AI evaluation criteria..."
+              rows={4}
+              className="resize-y"
+            />
+            <p className="text-sm text-gray-600">
+              Customize how the AI evaluates execution success and failure.
+              Leave empty to use the built-in prompt.
+            </p>
+          </div>
+
+          {/* Custom User Prompt */}
+          <div className="space-y-2">
+            <Label htmlFor="user_prompt">
+              Custom User Prompt Template (Optional)
+            </Label>
+            <Textarea
+              id="user_prompt"
+              value={formData.user_prompt || ""}
+              onChange={(e) => handleInputChange("user_prompt", e.target.value)}
+              placeholder="Leave empty to use default template. Use {{GRAPH_NAME}} and {{EXECUTION_DATA}} as placeholders..."
+              rows={6}
+              className="resize-y"
+            />
+            <p className="text-sm text-gray-600">
+              Customize the analysis instructions. Use{" "}
+              <code className="rounded bg-gray-100 px-1">
+                {"{{GRAPH_NAME}}"}
+              </code>{" "}
+              and{" "}
+              <code className="rounded bg-gray-100 px-1">
+                {"{{EXECUTION_DATA}}"}
+              </code>{" "}
+              as placeholders. Leave empty to use the built-in template.
+            </p>
           </div>
         </div>
 
