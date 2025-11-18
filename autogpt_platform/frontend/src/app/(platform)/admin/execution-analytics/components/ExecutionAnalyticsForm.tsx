@@ -22,16 +22,10 @@ import {
 import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 
-// Use the generated type with local adjustments for form handling
-interface FormData
-  extends Omit<
-    ExecutionAnalyticsRequest,
-    "created_after" | "model_name" | "batch_size" | "skip_existing"
-  > {
+// Use the generated type with minimal adjustment for form handling
+interface FormData extends Omit<ExecutionAnalyticsRequest, "created_after"> {
   created_after?: string; // Keep as string for datetime-local input
-  model_name: string; // Required in form (has default)
-  batch_size: number; // Required in form (has default)
-  skip_existing: boolean; // Required in form (has default)
+  // All other fields use the generated types as-is
 }
 import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
 
