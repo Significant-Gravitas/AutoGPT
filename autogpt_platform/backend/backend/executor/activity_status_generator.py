@@ -136,7 +136,12 @@ async def generate_activity_status_for_execution(
 
         # Get graph metadata and full graph structure for name, description, and links
         graph_metadata = await db_client.get_graph_metadata(graph_id, graph_version)
-        graph = await db_client.get_graph(graph_id, graph_version)
+        graph = await db_client.get_graph(
+            graph_id=graph_id,
+            version=graph_version,
+            user_id=user_id,
+            skip_access_check=True,
+        )
 
         graph_name = graph_metadata.name if graph_metadata else f"Graph {graph_id}"
         graph_description = graph_metadata.description if graph_metadata else ""
