@@ -885,9 +885,9 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
 async def get_graph(
     graph_id: str,
-    version: int | None = None,
+    version: int | None,
+    user_id: str | None,
     *,
-    user_id: str | None = None,
     for_export: bool = False,
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
