@@ -235,15 +235,14 @@ async def generate_execution_analytics(
             ):
                 continue
 
-            # Check if we should skip existing analytics based on the skip_existing parameter
-            if request.skip_existing:
-                # Skip if both activity_status and correctness_score exist
-                if (
-                    execution.stats
-                    and execution.stats.activity_status
-                    and execution.stats.correctness_score is not None
-                ):
-                    continue
+            # Skip if we should skip existing analytics and both activity_status and correctness_score exist
+            if (
+                request.skip_existing
+                and execution.stats
+                and execution.stats.activity_status
+                and execution.stats.correctness_score is not None
+            ):
+                continue
 
             # Add execution to processing list
             executions_to_process.append(execution)
