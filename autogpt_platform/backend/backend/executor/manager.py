@@ -252,9 +252,9 @@ async def execute_node(
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
-    except Exception:
+    except Exception as ex:
         # Capture exception WITH context still set before restoring scope
-        sentry_sdk.capture_exception(scope=scope)
+        sentry_sdk.capture_exception(error=ex, scope=scope)
         sentry_sdk.flush()  # Ensure it's sent before we restore scope
         # Re-raise to maintain normal error flow
         raise
