@@ -114,21 +114,7 @@ async def get_execution_analytics_config(
         """Generate a user-friendly label from the model enum value."""
         value = model.value
 
-        # Handle special cases for better display names
-        if value == "gpt-4o-mini":
-            return "GPT-4o Mini (Recommended)"
-        elif value == "gpt-4o":
-            return "GPT-4o"
-        elif value == "o1-mini":
-            return "O1 Mini"
-        elif value == "o1":
-            return "O1"
-        elif value == "o3-mini":
-            return "O3 Mini"
-        elif value == "o3-2025-04-16":
-            return "O3"
-
-        # For other models, convert underscores/hyphens to title case
+        # For all models, convert underscores/hyphens to title case
         # e.g., "gpt-4-turbo" -> "GPT-4 Turbo", "claude-3-haiku-20240307" -> "Claude 3 Haiku"
         parts = value.replace("_", "-").split("-")
 
@@ -154,14 +140,26 @@ async def get_execution_analytics_config(
                     else part.capitalize()
                 )
 
-        return " ".join(formatted_parts)
+        model_name = " ".join(formatted_parts)
+
+        # Format provider name for better display
+        provider_name = model.provider.replace("_", " ").title()
+
+        # Return with provider prefix for clarity
+        return f"{provider_name}: {model_name}"
 
     # Include all LlmModel values (no more filtering by hardcoded list)
+    recommended_model = "gpt-4o-mini"  # Current recommendation
     for model in LlmModel:
+        label = generate_model_label(model)
+        # Add "(Recommended)" suffix to the recommended model
+        if model.value == recommended_model:
+            label += " (Recommended)"
+
         available_models.append(
             ModelInfo(
                 value=model.value,
-                label=generate_model_label(model),
+                label=label,
                 provider=model.provider,
             )
         )
@@ -173,7 +171,7 @@ async def get_execution_analytics_config(
         available_models=available_models,
         default_system_prompt=DEFAULT_SYSTEM_PROMPT,
         default_user_prompt=DEFAULT_USER_PROMPT,
-        recommended_model="gpt-4o-mini",  # Current recommendation
+        recommended_model=recommended_model,
     )
 
 
