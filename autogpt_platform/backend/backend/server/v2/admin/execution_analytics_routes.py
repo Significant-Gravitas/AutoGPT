@@ -225,20 +225,28 @@ async def generate_execution_analytics(
             f"Found {len(executions)} total executions for graph {request.graph_id}"
         )
 
-        # Filter executions that need analytics generation (missing activity_status or correctness_score)
+        # Filter executions that need analytics generation
         executions_to_process = []
         for execution in executions:
+            # Apply version filter first
             if (
-                not execution.stats
-                or not execution.stats.activity_status
-                or execution.stats.correctness_score is None
+                request.graph_version is not None
+                and execution.graph_version != request.graph_version
             ):
-                # If version is specified, filter by it
+                continue
+
+            # Check if we should skip existing analytics based on the skip_existing parameter
+            if request.skip_existing:
+                # Skip if both activity_status and correctness_score exist
                 if (
-                    request.graph_version is None
-                    or execution.graph_version == request.graph_version
+                    execution.stats
+                    and execution.stats.activity_status
+                    and execution.stats.correctness_score is not None
                 ):
-                    executions_to_process.append(execution)
+                    continue
+
+            # Add execution to processing list
+            executions_to_process.append(execution)
 
         logger.info(
             f"Found {len(executions_to_process)} executions needing analytics generation"
