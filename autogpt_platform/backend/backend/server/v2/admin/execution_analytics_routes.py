@@ -7,6 +7,7 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
+from backend.blocks.llm import LlmModel
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionMeta,
@@ -69,11 +70,111 @@ class ExecutionAnalyticsResponse(BaseModel):
     results: list[ExecutionAnalyticsResult]
 
 
+class ModelInfo(BaseModel):
+    value: str
+    label: str
+    provider: str
+
+
+class ExecutionAnalyticsConfig(BaseModel):
+    available_models: list[ModelInfo]
+    default_system_prompt: str
+    default_user_prompt: str
+    recommended_model: str
+
+
 router = APIRouter(
     prefix="/admin",
     tags=["admin", "execution_analytics"],
     dependencies=[Security(requires_admin_user)],
 )
+
+
+@router.get(
+    "/execution_analytics/config",
+    response_model=ExecutionAnalyticsConfig,
+    summary="Get Execution Analytics Configuration",
+)
+async def get_execution_analytics_config(
+    admin_user_id: str = Security(get_user_id),
+):
+    """
+    Get the configuration for execution analytics including:
+    - Available AI models with metadata
+    - Default system and user prompts
+    - Recommended model selection
+    """
+    logger.info(f"Admin user {admin_user_id} requesting execution analytics config")
+
+    # Generate model list from LlmModel enum with provider information
+    available_models = []
+
+    # Function to generate friendly display names from model values
+    def generate_model_label(model: LlmModel) -> str:
+        """Generate a user-friendly label from the model enum value."""
+        value = model.value
+
+        # Handle special cases for better display names
+        if value == "gpt-4o-mini":
+            return "GPT-4o Mini (Recommended)"
+        elif value == "gpt-4o":
+            return "GPT-4o"
+        elif value == "o1-mini":
+            return "O1 Mini"
+        elif value == "o1":
+            return "O1"
+        elif value == "o3-mini":
+            return "O3 Mini"
+        elif value == "o3-2025-04-16":
+            return "O3"
+
+        # For other models, convert underscores/hyphens to title case
+        # e.g., "gpt-4-turbo" -> "GPT-4 Turbo", "claude-3-haiku-20240307" -> "Claude 3 Haiku"
+        parts = value.replace("_", "-").split("-")
+
+        # Handle provider prefixes (e.g., "google/", "x-ai/")
+        if "/" in value:
+            _, model_name = value.split("/", 1)
+            parts = model_name.replace("_", "-").split("-")
+
+        # Capitalize and format parts
+        formatted_parts = []
+        for part in parts:
+            # Skip date-like patterns (e.g., "20240307", "2025-04-16")
+            if part.isdigit() and len(part) >= 6:
+                continue
+            # Keep version numbers as-is
+            elif part.replace(".", "").isdigit():
+                formatted_parts.append(part)
+            # Capitalize normal words
+            else:
+                formatted_parts.append(
+                    part.upper()
+                    if part.upper() in ["GPT", "LLM", "API", "V0"]
+                    else part.capitalize()
+                )
+
+        return " ".join(formatted_parts)
+
+    # Include all LlmModel values (no more filtering by hardcoded list)
+    for model in LlmModel:
+        available_models.append(
+            ModelInfo(
+                value=model.value,
+                label=generate_model_label(model),
+                provider=model.provider,
+            )
+        )
+
+    # Sort models by provider and name for better UX
+    available_models.sort(key=lambda x: (x.provider, x.label))
+
+    return ExecutionAnalyticsConfig(
+        available_models=available_models,
+        default_system_prompt=DEFAULT_SYSTEM_PROMPT,
+        default_user_prompt=DEFAULT_USER_PROMPT,
+        recommended_model="gpt-4o-mini",  # Current recommendation
+    )
 
 
 @router.post(

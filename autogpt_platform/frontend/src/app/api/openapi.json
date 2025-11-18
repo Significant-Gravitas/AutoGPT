@@ -5785,7 +5785,7 @@
             "description": "Optional created date lower bound"
           },
           "model_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "type": "string",
             "title": "Model Name",
             "description": "Model to use for generation",
             "default": "gpt-4o-mini"
@@ -5797,6 +5797,22 @@
             "title": "Batch Size",
             "description": "Batch size for concurrent processing",
             "default": 10
+          },
+          "system_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "System Prompt",
+            "description": "Custom system prompt (default: built-in prompt)"
+          },
+          "user_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Prompt",
+            "description": "Custom user prompt with {{GRAPH_NAME}} and {{EXECUTION_DATA}} placeholders (default: built-in prompt)"
+          },
+          "skip_existing": {
+            "type": "boolean",
+            "title": "Skip Existing",
+            "description": "Whether to skip executions that already have activity status and correctness score",
+            "default": true
           }
         },
         "type": "object",
