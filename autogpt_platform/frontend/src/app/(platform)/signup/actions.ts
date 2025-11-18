@@ -1,8 +1,6 @@
 "use server";
 
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { verifyTurnstileToken } from "@/lib/turnstile";
-import { environment } from "@/services/environment";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
@@ -13,7 +11,6 @@ export async function signup(
   password: string,
   confirmPassword: string,
   agreeToTerms: boolean,
-  turnstileToken?: string,
 ) {
   try {
     const parsed = signupFormSchema.safeParse({
@@ -27,18 +24,6 @@ export async function signup(
       return {
         success: false,
         error: "Invalid signup payload",
-      };
-    }
-
-    const captchaOk = await verifyTurnstileToken(
-      turnstileToken ?? "",
-      "signup",
-    );
-
-    if (!captchaOk && !environment.isVercelPreview()) {
-      return {
-        success: false,
-        error: "CAPTCHA verification failed. Please try again.",
       };
     }
 
