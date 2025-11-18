@@ -2,7 +2,6 @@
 import * as Sentry from "@sentry/nextjs";
 import type { User } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getRedirectPath } from "./helpers";
 import { getServerSupabase } from "./server/getServerSupabase";
 
@@ -157,8 +156,7 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
       const supabase = await getServerSupabase();
 
       if (!supabase) {
-        redirect("/login");
-        return;
+        return { success: true };
       }
 
       try {
@@ -170,14 +168,18 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
 
         if (error) {
           console.error("Error logging out:", error);
+          return { success: false, error: error.message };
         }
       } catch (error) {
         console.error("Logout error:", error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
       }
 
-      // Clear all cached data and redirect
       revalidatePath("/", "layout");
-      redirect("/login");
+      return { success: true };
     },
   );
 }
