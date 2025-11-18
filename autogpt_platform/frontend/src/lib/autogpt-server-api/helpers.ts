@@ -1,7 +1,7 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { Key, storage } from "@/services/storage/local-storage";
-import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { environment } from "@/services/environment";
+import { Key, storage } from "@/services/storage/local-storage";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -221,7 +221,7 @@ export async function parseApiResponse(response: Response): Promise<any> {
   }
 }
 
-function isAuthenticationError(
+export function isAuthenticationError(
   response: Response,
   errorDetail: string,
 ): boolean {
@@ -234,7 +234,7 @@ function isAuthenticationError(
   );
 }
 
-function isLogoutInProgress(): boolean {
+export function isLogoutInProgress(): boolean {
   if (environment.isServerSide()) return false;
 
   try {

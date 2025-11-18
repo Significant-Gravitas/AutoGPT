@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+import uuid
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -36,7 +37,9 @@ from backend.monitoring import (
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    GraphNotFoundError,
     GraphNotInLibraryError,
+    GraphValidationError,
     NotAuthorizedError,
     NotFoundError,
 )
@@ -160,20 +163,46 @@ async def _execute_graph(**kwargs):
                 f"Graph execution {graph_exec.id} took {elapsed:.2f}s to create/publish - "
                 f"this is unusually slow and may indicate resource contention"
             )
+    except GraphNotFoundError as e:
+        await _handle_graph_not_available(e, args, start_time)
     except GraphNotInLibraryError as e:
-        elapsed = asyncio.get_event_loop().time() - start_time
-        logger.warning(
-            f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
-            f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
-        )
-        # Clean up orphaned schedules for this graph
-        await _cleanup_orphaned_schedules_for_graph(args.graph_id, args.user_id)
+        await _handle_graph_not_available(e, args, start_time)
+    except GraphValidationError:
+        await _handle_graph_validation_error(args)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
             f"Error executing graph {args.graph_id} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
+    logger.error(
+        f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
+    )
+    if args.schedule_id:
+        scheduler_client = get_scheduler_client()
+        await scheduler_client.delete_schedule(
+            schedule_id=args.schedule_id,
+            user_id=args.user_id,
+        )
+    else:
+        logger.error(
+            f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
+        )
+
+
+async def _handle_graph_not_available(
+    e: Exception, args: "GraphExecutionJobArgs", start_time: float
+) -> None:
+    elapsed = asyncio.get_event_loop().time() - start_time
+    logger.warning(
+        f"Scheduled execution blocked for deleted/archived graph {args.graph_id} "
+        f"(user {args.user_id}) after {elapsed:.2f}s: {e}"
+    )
+    # Clean up orphaned schedules for this graph
+    await _cleanup_orphaned_schedules_for_graph(args.graph_id, args.user_id)
 
 
 async def _cleanup_orphaned_schedules_for_graph(graph_id: str, user_id: str) -> None:
@@ -220,9 +249,11 @@ class Jobstores(Enum):
 
 
 class GraphExecutionJobArgs(BaseModel):
+    schedule_id: str | None = None
     user_id: str
     graph_id: str
     graph_version: int
+    agent_name: str | None = None
     cron: str
     input_data: BlockInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
@@ -468,11 +499,14 @@ class Scheduler(AppService):
         logger.info(
             f"Scheduling job for user {user_id} with timezone {user_timezone} (cron: {cron})"
         )
+        schedule_id = str(uuid.uuid4())
 
         job_args = GraphExecutionJobArgs(
+            schedule_id=schedule_id,
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
+            agent_name=name,
             cron=cron,
             input_data=input_data,
             input_credentials=input_credentials,
@@ -484,6 +518,7 @@ class Scheduler(AppService):
             trigger=CronTrigger.from_crontab(cron, timezone=user_timezone),
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
+            id=schedule_id,
         )
         logger.info(
             f"Added job {job.id} with cron schedule '{cron}' in timezone {user_timezone}, input data: {input_data}"
