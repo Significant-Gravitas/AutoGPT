@@ -8,6 +8,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
 import { useHistoryStore } from "./historyStore";
 import { useEdgeStore } from "./edgeStore";
+import { BlockUIType } from "../components/types";
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -35,6 +36,8 @@ type NodeStore = {
     result: NodeExecutionResult,
   ) => void;
   getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
+
+  getNodeBlockUIType: (nodeId: string) => BlockUIType;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -163,5 +166,11 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
   },
   getNodeExecutionResult: (nodeId: string) => {
     return get().nodes.find((n) => n.id === nodeId)?.data?.nodeExecutionResult;
+  },
+  getNodeBlockUIType: (nodeId: string) => {
+    return (
+      get().nodes.find((n) => n.id === nodeId)?.data?.uiType ??
+      BlockUIType.STANDARD
+    );
   },
 }));
