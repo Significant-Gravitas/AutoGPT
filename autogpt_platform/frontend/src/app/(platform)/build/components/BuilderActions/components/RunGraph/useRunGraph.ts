@@ -72,7 +72,6 @@ export const useRunGraph = () => {
     if (hasInputs() || hasCredentials()) {
       setOpenRunInputDialog(true);
     } else {
-      setIsGraphRunning(true);
       await executeGraph({
         graphId: flowID ?? "",
         graphVersion: flowVersion || null,

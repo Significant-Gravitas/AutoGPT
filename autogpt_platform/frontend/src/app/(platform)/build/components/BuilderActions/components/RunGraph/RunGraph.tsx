@@ -23,7 +23,6 @@ export const RunGraph = () => {
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
   );
-
   return (
     <>
       <Tooltip>

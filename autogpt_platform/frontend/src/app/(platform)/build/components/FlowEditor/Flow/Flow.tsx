@@ -24,7 +24,7 @@ export const Flow = () => {
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
-  const { onDragOver, onDrop } = useFlow();
+  const { onDragOver, onDrop, isFlowContentLoading } = useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
@@ -43,7 +43,6 @@ export const Flow = () => {
     };
   }, [handleCopyPaste]);
 
-  const { isFlowContentLoading } = useFlow();
   const { isGraphRunning } = useGraphStore();
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
@@ -65,7 +64,7 @@ export const Flow = () => {
           <Controls />
           <NewControlPanel />
           <BuilderActions />
-          {isFlowContentLoading && <GraphLoadingBox />}
+          {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
