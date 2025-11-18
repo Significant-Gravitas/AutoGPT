@@ -803,7 +803,9 @@ async def create_new_graph(
 async def delete_graph(
     graph_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> DeleteGraphResponse:
-    if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
+    if active_version := await graph_db.get_graph(
+        graph_id=graph_id, version=None, user_id=user_id
+    ):
         await on_graph_deactivate(active_version, user_id=user_id)
 
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
@@ -883,7 +885,11 @@ async def set_graph_active_version(
     if not new_active_graph:
         raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
 
-    current_active_graph = await graph_db.get_graph(graph_id, user_id=user_id)
+    current_active_graph = await graph_db.get_graph(
+        graph_id=graph_id,
+        version=None,
+        user_id=user_id,
+    )
 
     # Handle activation of the new graph first to ensure continuity
     await on_graph_activate(new_active_graph, user_id=user_id)
@@ -1069,20 +1075,23 @@ async def get_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
-    graph = await graph_db.get_graph(graph_id=graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
-        )
-
     result = await execution_db.get_graph_execution(
         user_id=user_id,
         execution_id=graph_exec_id,
-        include_node_executions=graph.user_id == user_id,
+        include_node_executions=True,
     )
     if not result or result.graph_id != graph_id:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
+        )
+
+    if not await graph_db.get_graph(
+        graph_id=result.graph_id,
+        version=result.graph_version,
+        user_id=user_id,
+    ):
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
         )
 
     # Apply feature flags to filter out disabled features
