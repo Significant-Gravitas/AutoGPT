@@ -61,9 +61,11 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O1_MINI: 4,
     # GPT-5 models
     LlmModel.GPT5: 2,
+    LlmModel.GPT5_1: 5,
+    LlmModel.GPT5_1_CODEX: 5,
     LlmModel.GPT5_MINI: 1,
     LlmModel.GPT5_NANO: 1,
-    LlmModel.GPT5_CHAT: 2,
+    LlmModel.GPT5_CHAT: 5,
     LlmModel.GPT41: 2,
     LlmModel.GPT41_MINI: 1,
     LlmModel.GPT4O_MINI: 1,

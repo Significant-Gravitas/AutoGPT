@@ -93,6 +93,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1_MINI = "o1-mini"
     # GPT-5 models
     GPT5 = "gpt-5-2025-08-07"
+    GPT5_1 = "gpt-5.1-2025-11-13"
+    GPT5_1_CODEX = "gpt-5.1-codex"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
@@ -189,6 +191,8 @@ MODEL_METADATA = {
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_1_CODEX: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
