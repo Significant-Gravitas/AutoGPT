@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useMemo } from "react";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { AgentActivityDropdown } from "./AgentActivityDropdown/AgentActivityDropdown";
@@ -12,7 +13,6 @@ import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./NavbarLink";
 import { Wallet } from "./Wallet/Wallet";
-import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 interface NavbarViewProps {
   isLoggedIn: boolean;
 }
@@ -41,7 +41,7 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
       <nav className="sticky top-0 z-40 inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
         {/* Left section */}
         {!isSmallScreen ? (
-          <div className="flex flex-1 items-center gap-3 gap-5">
+          <div className="flex flex-1 items-center gap-5">
             {isLoggedIn
               ? linksWithChat.map((link) => (
                   <NavbarLink

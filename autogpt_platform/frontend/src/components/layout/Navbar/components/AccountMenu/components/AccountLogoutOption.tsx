@@ -1,15 +1,13 @@
 "use client";
 import { IconLogOut } from "@/components/__legacy__/ui/icons";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
-import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { toast } from "@/components/molecules/Toast/use-toast";
 
 export function AccountLogoutOption() {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const supabase = useSupabase();
 
@@ -17,7 +15,6 @@ export function AccountLogoutOption() {
     startTransition(async () => {
       try {
         await supabase.logOut();
-        router.refresh();
       } catch (e) {
         Sentry.captureException(e);
         toast({
