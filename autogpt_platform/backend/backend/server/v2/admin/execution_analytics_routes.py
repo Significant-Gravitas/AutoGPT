@@ -210,6 +210,7 @@ async def generate_execution_analytics(
         # Fetch executions to process
         executions = await get_graph_executions(
             graph_id=request.graph_id,
+            graph_version=request.graph_version,
             user_id=request.user_id,
             created_time_gte=request.created_after,
             statuses=[
@@ -226,13 +227,6 @@ async def generate_execution_analytics(
         # Filter executions that need analytics generation
         executions_to_process = []
         for execution in executions:
-            # Apply version filter first
-            if (
-                request.graph_version is not None
-                and execution.graph_version != request.graph_version
-            ):
-                continue
-
             # Skip if we should skip existing analytics and both activity_status and correctness_score exist
             if (
                 request.skip_existing
