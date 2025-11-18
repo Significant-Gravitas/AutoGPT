@@ -6,7 +6,9 @@ class BlockError(Exception):
 
     def __init__(self, message: str, block_name: str, block_id: str) -> None:
         super().__init__(message)
-        self.message = f"raised by {block_name} with message: {message}. block_id: {block_id}"
+        self.message = (
+            f"raised by {block_name} with message: {message}. block_id: {block_id}"
+        )
 
 
 class BlockInputError(BlockError, ValueError):
