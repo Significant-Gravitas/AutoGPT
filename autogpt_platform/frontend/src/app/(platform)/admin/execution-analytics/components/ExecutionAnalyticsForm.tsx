@@ -22,17 +22,16 @@ import {
 import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 
-// Local interface for form state to simplify handling
-interface FormData {
-  graph_id: string;
-  graph_version?: number;
-  user_id?: string;
-  created_after?: string;
-  model_name: string;
-  batch_size: number;
-  system_prompt?: string;
-  user_prompt?: string;
-  skip_existing: boolean;
+// Use the generated type with local adjustments for form handling
+interface FormData
+  extends Omit<
+    ExecutionAnalyticsRequest,
+    "created_after" | "model_name" | "batch_size" | "skip_existing"
+  > {
+  created_after?: string; // Keep as string for datetime-local input
+  model_name: string; // Required in form (has default)
+  batch_size: number; // Required in form (has default)
+  skip_existing: boolean; // Required in form (has default)
 }
 import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
 
@@ -109,7 +108,7 @@ export function ExecutionAnalyticsForm() {
     setResults(null);
 
     // Prepare the request payload
-    const payload: any = {
+    const payload: ExecutionAnalyticsRequest = {
       graph_id: formData.graph_id.trim(),
       model_name: formData.model_name,
       batch_size: formData.batch_size,
