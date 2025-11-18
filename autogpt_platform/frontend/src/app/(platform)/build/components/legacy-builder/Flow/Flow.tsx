@@ -1,33 +1,21 @@
 "use client";
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  MouseEvent,
-  Suspense,
-} from "react";
-import Link from "next/link";
+import { BlocksControl } from "@/app/(platform)/build/components/legacy-builder/BlocksControl";
 import {
-  ReactFlow,
-  ReactFlowProvider,
-  Controls,
-  Background,
-  Node,
-  OnConnect,
-  Connection,
-  MarkerType,
-  NodeChange,
-  EdgeChange,
-  useReactFlow,
-  applyEdgeChanges,
-  applyNodeChanges,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import { CustomNode } from "../CustomNode/CustomNode";
-import "./flow.css";
+  Control,
+  ControlPanel,
+} from "@/app/(platform)/build/components/legacy-builder/ControlPanel";
+import { GraphSearchControl } from "@/app/(platform)/build/components/legacy-builder/GraphSearchControl";
+import OttoChatWidget from "@/app/(platform)/build/components/legacy-builder/OttoChatWidget";
+import { SaveControl } from "@/app/(platform)/build/components/legacy-builder/SaveControl";
+import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
+import { IconRedo2, IconUndo2 } from "@/components/__legacy__/ui/icons";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/molecules/Alert/Alert";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import useAgentGraph from "@/hooks/useAgentGraph";
 import {
   BlockUIType,
   formatEdgeID,
@@ -35,35 +23,47 @@ import {
   GraphID,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
-import { Key, storage } from "@/services/storage/local-storage";
 import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
-import { history } from "../history";
-import { CustomEdge } from "../CustomEdge/CustomEdge";
-import ConnectionLine from "../ConnectionLine";
-import {
-  Control,
-  ControlPanel,
-} from "@/app/(platform)/build/components/legacy-builder/ControlPanel";
-import { SaveControl } from "@/app/(platform)/build/components/legacy-builder/SaveControl";
-import { BlocksControl } from "@/app/(platform)/build/components/legacy-builder/BlocksControl";
-import { GraphSearchControl } from "@/app/(platform)/build/components/legacy-builder/GraphSearchControl";
-import { IconUndo2, IconRedo2 } from "@/components/__legacy__/ui/icons";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/molecules/Alert/Alert";
-import { startTutorial } from "../tutorial";
-import useAgentGraph from "@/hooks/useAgentGraph";
-import { v4 as uuidv4 } from "uuid";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import RunnerUIWrapper, { RunnerUIWrapperRef } from "../RunnerUIWrapper";
-import OttoChatWidget from "@/app/(platform)/build/components/legacy-builder/OttoChatWidget";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useCopyPaste } from "../useCopyPaste";
-import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Key, storage } from "@/services/storage/local-storage";
+import {
+  applyEdgeChanges,
+  applyNodeChanges,
+  Background,
+  Connection,
+  Controls,
+  EdgeChange,
+  MarkerType,
+  Node,
+  NodeChange,
+  OnConnect,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import React, {
+  createContext,
+  MouseEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { v4 as uuidv4 } from "uuid";
 import { BuildActionBar } from "../BuildActionBar";
+import ConnectionLine from "../ConnectionLine";
+import { CustomEdge } from "../CustomEdge/CustomEdge";
+import { CustomNode } from "../CustomNode/CustomNode";
+import { history } from "../history";
+import RunnerUIWrapper, { RunnerUIWrapperRef } from "../RunnerUIWrapper";
+import { startTutorial } from "../tutorial";
+import { useCopyPaste } from "../useCopyPaste";
+import "./flow.css";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -762,6 +762,10 @@ const FlowEditor: React.FC<{
     [],
   );
 
+  const handleSaveAgent = useCallback(async () => {
+    await saveAgent();
+  }, [saveAgent]);
+
   const handleRunButton = useCallback(async () => {
     if (isRunning) return;
     if (!savedAgent) {
@@ -770,8 +774,10 @@ const FlowEditor: React.FC<{
       });
       return;
     }
-    await saveAgent();
-    runnerUIRef.current?.runOrOpenInput();
+    const saved = await saveAgent();
+    if (saved) {
+      runnerUIRef.current?.runOrOpenInput(saved);
+    }
   }, [isRunning, savedAgent, toast, saveAgent]);
 
   const handleScheduleButton = useCallback(async () => {
@@ -946,7 +952,7 @@ const FlowEditor: React.FC<{
                 <SaveControl
                   agentMeta={savedAgent}
                   canSave={!isSaving && !isRunning && !isStopping}
-                  onSave={saveAgent}
+                  onSave={handleSaveAgent}
                   agentDescription={agentDescription}
                   onDescriptionChange={setAgentDescription}
                   agentName={agentName}

@@ -1,5 +1,6 @@
 import { CustomEdge } from "@/app/(platform)/build/components/legacy-builder/CustomEdge/CustomEdge";
 import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   ApiError,
@@ -15,20 +16,19 @@ import {
   GraphMeta,
   LibraryAgent,
   LinkCreatable,
+  Node,
   NodeCreatable,
   NodeExecutionResult,
-  Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { deepEquals, getTypeColor, pruneEmptyValues } from "@/lib/utils";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useQueryClient } from "@tanstack/react-query";
 import { MarkerType } from "@xyflow/react";
 import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
-import { useQueryClient } from "@tanstack/react-query";
-import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 
 export default function useAgentGraph(
   flowID?: GraphID,
@@ -734,17 +734,18 @@ export default function useAgentGraph(
     resetEdgeBeads,
   ]);
 
-  const saveAgent = useCallback(async () => {
+  const saveAgent = useCallback(async (): Promise<Graph | null> => {
     console.log("saveAgent");
     setIsSaving(true);
     try {
-      await _saveAgent();
+      const saved = await _saveAgent();
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
 
       completeStep("BUILDER_SAVE_AGENT");
+      return saved;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -754,10 +755,11 @@ export default function useAgentGraph(
         title: "Error saving agent",
         description: errorMessage,
       });
+      return null;
     } finally {
       setIsSaving(false);
     }
-  }, [_saveAgent, toast, completeStep]);
+  }, [_saveAgent, toast, completeStep, queryClient]);
 
   const saveAndRun = useCallback(
     async (

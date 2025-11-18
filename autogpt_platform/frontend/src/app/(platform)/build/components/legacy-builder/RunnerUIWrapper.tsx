@@ -1,18 +1,13 @@
-import React, {
-  useState,
-  forwardRef,
-  useImperativeHandle,
-  useMemo,
-} from "react";
-import { Node } from "@xyflow/react";
 import { CustomNodeData } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import {
   BlockUIType,
   CredentialsMetaInput,
   GraphMeta,
 } from "@/lib/autogpt-server-api/types";
-import RunnerOutputUI, { OutputNodeInfo } from "./RunnerOutputUI";
+import { Node } from "@xyflow/react";
+import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { RunnerInputDialog } from "./RunnerInputUI";
+import RunnerOutputUI, { OutputNodeInfo } from "./RunnerOutputUI";
 
 interface RunnerUIWrapperProps {
   graph: GraphMeta;
@@ -33,7 +28,7 @@ interface RunnerUIWrapperProps {
 export interface RunnerUIWrapperRef {
   openRunInputDialog: () => void;
   openRunnerOutput: () => void;
-  runOrOpenInput: () => void;
+  runOrOpenInput: (graphOverride?: GraphMeta) => void;
 }
 
 const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
@@ -43,8 +38,8 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
   ) => {
     const [isRunInputDialogOpen, setIsRunInputDialogOpen] = useState(false);
     const [isRunnerOutputOpen, setIsRunnerOutputOpen] = useState(false);
-
-    const graphInputs = graph.input_schema.properties;
+    const [graphOverride, setGraphOverride] = useState<GraphMeta | null>(null);
+    const graphToUse = graphOverride || graph;
 
     const graphOutputs = useMemo((): OutputNodeInfo[] => {
       const outputNodes = nodes.filter(
@@ -71,10 +66,17 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     const openRunInputDialog = () => setIsRunInputDialogOpen(true);
     const openRunnerOutput = () => setIsRunnerOutputOpen(true);
 
-    const runOrOpenInput = () => {
+    const runOrOpenInput = (graphOverrideParam?: GraphMeta) => {
+      if (graphOverrideParam) {
+        setGraphOverride(graphOverrideParam);
+      }
+      const graphToCheck = graphOverrideParam || graph;
+      const inputs = graphToCheck.input_schema.properties;
+      const credentials = graphToCheck.credentials_input_schema.properties;
+
       if (
-        Object.keys(graphInputs).length > 0 ||
-        Object.keys(graph.credentials_input_schema.properties).length > 0
+        Object.keys(inputs).length > 0 ||
+        Object.keys(credentials).length > 0
       ) {
         openRunInputDialog();
       } else {
@@ -96,8 +98,11 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       <>
         <RunnerInputDialog
           isOpen={isRunInputDialogOpen}
-          doClose={() => setIsRunInputDialogOpen(false)}
-          graph={graph}
+          doClose={() => {
+            setIsRunInputDialogOpen(false);
+            setGraphOverride(null);
+          }}
+          graph={graphToUse}
           doRun={saveAndRun}
           doCreateSchedule={createRunSchedule}
         />
