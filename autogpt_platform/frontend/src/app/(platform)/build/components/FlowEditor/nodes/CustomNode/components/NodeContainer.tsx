@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { nodeStyleBasedOnStatus } from "../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { useShallow } from "zustand/react/shallow";
 
 export const NodeContainer = ({
   children,
@@ -12,7 +13,9 @@ export const NodeContainer = ({
   nodeId: string;
   selected: boolean;
 }) => {
-  const status = useNodeStore((state) => state.getNodeStatus(nodeId));
+  const status = useNodeStore(
+    useShallow((state) => state.getNodeStatus(nodeId)),
+  );
   return (
     <div
       className={cn(
