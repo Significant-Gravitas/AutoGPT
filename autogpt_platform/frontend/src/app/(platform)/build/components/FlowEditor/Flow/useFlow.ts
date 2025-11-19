@@ -69,7 +69,9 @@ export const useFlow = () => {
   );
 
   const nodes = graph?.nodes;
-  const blockIds = nodes?.map((node) => node.block_id);
+  const blockIds = nodes
+    ? Array.from(new Set(nodes.map((node) => node.block_id)))
+    : undefined;
 
   const { data: blocks, isLoading: isBlocksLoading } =
     useGetV2GetSpecificBlocks(
