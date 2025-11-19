@@ -168,21 +168,7 @@ class BlockSchema(BaseModel):
 
             return obj
 
-        schema = cast(dict[str, Any], ref_to_dict(model))
-
-        # Post-process to ensure Google Drive Picker fields have format at top level
-        if "properties" in schema:
-            for field_name, field_schema in schema["properties"].items():
-                # Check if this field has google_drive_picker_config
-                if (
-                    isinstance(field_schema, dict)
-                    and "google_drive_picker_config" in field_schema
-                ):
-                    # Ensure format is at the top level
-                    if "format" not in field_schema:
-                        field_schema["format"] = "google-drive-picker"
-
-        cls.cached_jsonschema = schema
+        cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
 
         return cls.cached_jsonschema
 

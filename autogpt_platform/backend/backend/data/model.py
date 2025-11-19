@@ -362,16 +362,16 @@ def GoogleDrivePickerField(
     # Set appropriate default value
     default_value = [] if multiselect else None
 
-    # Use Pydantic's json_schema_extra and json_schema_mode to ensure metadata is preserved
-    return Field(
+    # Use SchemaField to handle format properly
+    return SchemaField(
         default=default_value,
         title=title,
         description=description,
+        placeholder=placeholder or "Choose from Google Drive",
+        format="google-drive-picker",
+        advanced=False,
         json_schema_extra={
-            "placeholder": placeholder or "Choose from Google Drive",
-            "format": "google-drive-picker",
             "google_drive_picker_config": picker_config,
-            "advanced": False,
             **kwargs,
         },
     )
