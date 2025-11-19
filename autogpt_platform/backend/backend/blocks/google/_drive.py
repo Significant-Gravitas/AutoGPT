@@ -30,11 +30,6 @@ class GoogleDriveFile(BaseModel):
     is_folder: Optional[bool] = Field(
         None, alias="isFolder", description="Whether this is a folder"
     )
-    access_token: Optional[str] = Field(
-        None,
-        alias="accessToken",
-        description="OAuth access token from the picker (frontend only)",
-    )
 
 
 def GoogleDrivePickerField(
@@ -178,18 +173,16 @@ def GoogleDriveAttachmentField(
 
 
 async def drive_file_to_media_file(
-    drive_file: GoogleDriveFile, *, graph_exec_id: str, user_id: str
+    drive_file: GoogleDriveFile, *, graph_exec_id: str, access_token: str
 ) -> MediaFileType:
     if drive_file.is_folder:
         raise ValueError("Google Drive selection must be a file.")
-    if not drive_file.access_token:
-        raise ValueError(
-            "Google Drive selection is missing an access token. Please re-select the file."
-        )
+    if not access_token:
+        raise ValueError("Google Drive access token is required for file download.")
 
     url = f"{DRIVE_API_URL}/{drive_file.id}?alt=media"
     response = await _requests.get(
-        url, headers={"Authorization": f"Bearer {drive_file.access_token}"}
+        url, headers={"Authorization": f"Bearer {access_token}"}
     )
 
     mime_type = drive_file.mime_type or response.headers.get(

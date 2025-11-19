@@ -124,7 +124,6 @@ export type GoogleDriveFile = {
   url?: string;
   iconUrl?: string;
   isFolder?: boolean;
-  accessToken?: string;
 };
 
 export type GoogleDrivePickerConfig = {

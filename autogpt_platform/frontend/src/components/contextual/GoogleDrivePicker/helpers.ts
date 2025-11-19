@@ -82,7 +82,6 @@ export type NormalizedPickedFile = {
   mimeType?: string;
   url?: string;
   iconUrl?: string;
-  accessToken?: string;
 };
 
 export function normalizePickerResponse(data: any): NormalizedPickedFile[] {

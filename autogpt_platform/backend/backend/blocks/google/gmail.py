@@ -47,10 +47,13 @@ async def _store_drive_attachment(
     attachment: GoogleDriveFile,
     *,
     graph_exec_id: str,
-    user_id: str,
+    credentials: GoogleCredentials,
 ) -> str:
+    access_token = (
+        credentials.access_token.get_secret_value() if credentials.access_token else ""
+    )
     return await drive_file_to_media_file(
-        attachment, graph_exec_id=graph_exec_id, user_id=user_id
+        attachment, graph_exec_id=graph_exec_id, access_token=access_token
     )
 
 
@@ -59,13 +62,14 @@ async def _resolve_attachment(
     *,
     graph_exec_id: str,
     user_id: str,
+    credentials: GoogleCredentials,
 ) -> str:
     if attachment is None:
         raise ValueError("Attachment is empty.")
 
     if isinstance(attachment, GoogleDriveFile):
         return await _store_drive_attachment(
-            attachment, graph_exec_id=graph_exec_id, user_id=user_id
+            attachment, graph_exec_id=graph_exec_id, credentials=credentials
         )
 
     if isinstance(attachment, dict):
@@ -74,7 +78,7 @@ async def _resolve_attachment(
         except ValidationError as err:
             raise ValueError("Invalid Google Drive attachment payload.") from err
         return await _store_drive_attachment(
-            drive_file, graph_exec_id=graph_exec_id, user_id=user_id
+            drive_file, graph_exec_id=graph_exec_id, credentials=credentials
         )
 
     return await store_media_file(
@@ -90,6 +94,7 @@ async def _resolve_attachments(
     *,
     graph_exec_id: str,
     user_id: str,
+    credentials: GoogleCredentials,
 ) -> list[str]:
     if not attachments:
         return []
@@ -97,7 +102,10 @@ async def _resolve_attachments(
     return await asyncio.gather(
         *[
             _resolve_attachment(
-                attachment, graph_exec_id=graph_exec_id, user_id=user_id
+                attachment,
+                graph_exec_id=graph_exec_id,
+                user_id=user_id,
+                credentials=credentials,
             )
             for attachment in attachments
         ]
@@ -161,6 +169,7 @@ async def create_mime_message(
     input_data,
     graph_exec_id: str,
     user_id: str,
+    credentials: GoogleCredentials,
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
 
@@ -182,6 +191,7 @@ async def create_mime_message(
         input_data.attachments,
         graph_exec_id=graph_exec_id,
         user_id=user_id,
+        credentials=credentials,
     )
 
     async def _create_attachment_part(local_path: str) -> MIMEBase:
@@ -664,17 +674,25 @@ class GmailSendBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
+            credentials,
         )
         yield "result", result
 
     async def _send_email(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self,
+        service,
+        input_data: Input,
+        graph_exec_id: str,
+        user_id: str,
+        credentials: GoogleCredentials,
     ) -> dict:
         if not input_data.to or not input_data.subject or not input_data.body:
             raise ValueError(
                 "At least one recipient, subject, and body are required for sending an email"
             )
-        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        raw_message = await create_mime_message(
+            input_data, graph_exec_id, user_id, credentials
+        )
         sent_message = await asyncio.to_thread(
             lambda: service.users()
             .messages()
@@ -776,20 +794,28 @@ class GmailCreateDraftBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
+            credentials,
         )
         yield "result", GmailDraftResult(
             id=result["id"], message_id=result["message"]["id"], status="draft_created"
         )
 
     async def _create_draft(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self,
+        service,
+        input_data: Input,
+        graph_exec_id: str,
+        user_id: str,
+        credentials: GoogleCredentials,
     ) -> dict:
         if not input_data.to or not input_data.subject:
             raise ValueError(
                 "At least one recipient and subject are required for creating a draft"
             )
 
-        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
+        raw_message = await create_mime_message(
+            input_data, graph_exec_id, user_id, credentials
+        )
         draft = await asyncio.to_thread(
             lambda: service.users()
             .drafts()
@@ -1174,7 +1200,11 @@ class GmailGetThreadBlock(GmailBase):
 
 
 async def _build_reply_message(
-    service, input_data, graph_exec_id: str, user_id: str
+    service,
+    input_data,
+    graph_exec_id: str,
+    user_id: str,
+    credentials: GoogleCredentials,
 ) -> tuple[str, str]:
     """
     Builds a reply MIME message for Gmail threads.
@@ -1277,6 +1307,7 @@ async def _build_reply_message(
         input_data.attachments,
         graph_exec_id=graph_exec_id,
         user_id=user_id,
+        credentials=credentials,
     )
 
     if local_paths:
@@ -1404,6 +1435,7 @@ class GmailReplyBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
+            credentials,
         )
         yield "messageId", message["id"]
         yield "threadId", message.get("threadId", input_data.threadId)
@@ -1426,11 +1458,16 @@ class GmailReplyBlock(GmailBase):
         yield "email", email
 
     async def _reply(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self,
+        service,
+        input_data: Input,
+        graph_exec_id: str,
+        user_id: str,
+        credentials: GoogleCredentials,
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id
+            service, input_data, graph_exec_id, user_id, credentials
         )
 
         # Send the message
@@ -1536,6 +1573,7 @@ class GmailDraftReplyBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
+            credentials,
         )
         yield "draftId", draft["id"]
         yield "messageId", draft["message"]["id"]
@@ -1543,11 +1581,16 @@ class GmailDraftReplyBlock(GmailBase):
         yield "status", "draft_created"
 
     async def _create_draft_reply(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self,
+        service,
+        input_data: Input,
+        graph_exec_id: str,
+        user_id: str,
+        credentials: GoogleCredentials,
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id
+            service, input_data, graph_exec_id, user_id, credentials
         )
 
         # Create draft with proper thread association
@@ -1724,13 +1767,19 @@ class GmailForwardBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
+            credentials,
         )
         yield "messageId", result["id"]
         yield "threadId", result.get("threadId", "")
         yield "status", "forwarded"
 
     async def _forward_message(
-        self, service, input_data: Input, graph_exec_id: str, user_id: str
+        self,
+        service,
+        input_data: Input,
+        graph_exec_id: str,
+        user_id: str,
+        credentials: GoogleCredentials,
     ) -> dict:
         if not input_data.to:
             raise ValueError("At least one recipient is required for forwarding")
@@ -1825,6 +1874,7 @@ To: {original_to}
             input_data.additionalAttachments,
             graph_exec_id=graph_exec_id,
             user_id=user_id,
+            credentials=credentials,
         )
 
         if local_paths:

@@ -44,7 +44,6 @@ export function GoogleDrivePickerInput({
       url: f.url,
       iconUrl: f.iconUrl,
       isFolder: f.mimeType === "application/vnd.google-apps.folder",
-      accessToken: f.accessToken,
     }));
 
     // Store based on multiselect mode
