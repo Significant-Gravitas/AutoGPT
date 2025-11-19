@@ -188,6 +188,41 @@ def _build_sheets_service_from_picker(access_token: str):
     return build("sheets", "v4", credentials=creds, cache_discovery=False)
 
 
+def _validate_spreadsheet_file(spreadsheet_file: "GoogleDriveFile") -> str | None:
+    """Validate that the selected file is a Google Sheets spreadsheet.
+
+    Returns None if valid, error message string if invalid.
+    """
+    if spreadsheet_file.mime_type != "application/vnd.google-apps.spreadsheet":
+        file_type = spreadsheet_file.mime_type
+        file_name = spreadsheet_file.name
+        if file_type == "text/csv":
+            return f"Cannot use CSV file '{file_name}' with Google Sheets block. Please use a CSV reader block instead, or convert the CSV to a Google Sheets spreadsheet first."
+        elif file_type in [
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ]:
+            return f"Cannot use Excel file '{file_name}' with Google Sheets block. Please use an Excel reader block instead, or convert to Google Sheets first."
+        else:
+            return f"Cannot use file '{file_name}' (type: {file_type}) with Google Sheets block. This block only works with Google Sheets spreadsheets."
+    return None
+
+
+def _handle_sheets_api_error(error_msg: str, operation: str = "access") -> str:
+    """Convert common Google Sheets API errors to user-friendly messages."""
+    if "Request contains an invalid argument" in error_msg:
+        return f"Invalid request to Google Sheets API. This usually means the file is not a Google Sheets spreadsheet, the range is invalid, or you don't have permission to {operation} this file."
+    elif "The caller does not have permission" in error_msg or "Forbidden" in error_msg:
+        if operation in ["write", "modify", "update", "append", "clear"]:
+            return "Permission denied. You don't have edit access to this spreadsheet. Make sure it's shared with edit permissions."
+        else:
+            return "Permission denied. You don't have access to this spreadsheet. Make sure it's shared with you and try re-selecting the file."
+    elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+        return "Spreadsheet not found. The file may have been deleted or the link is invalid."
+    else:
+        return f"Failed to {operation} Google Sheet: {error_msg}"
+
+
 class SheetOperation(str, Enum):
     CREATE = "create"
     DELETE = "delete"
@@ -285,6 +320,12 @@ class GoogleSheetsReadBlock(Block):
                 yield "error", "No access token available. Please re-select the file."
                 return
 
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
             service = _build_sheets_service_from_picker(
                 input_data.spreadsheet.access_token
             )
@@ -294,7 +335,7 @@ class GoogleSheetsReadBlock(Block):
             )
             yield "result", data
         except Exception as e:
-            yield "error", f"Failed to read Google Sheet: {str(e)}"
+            yield "error", _handle_sheets_api_error(str(e), "read")
 
     def _read_sheet(self, service, spreadsheet_id: str, range: str) -> list[list[str]]:
         sheet = service.spreadsheets()
@@ -384,6 +425,19 @@ class GoogleSheetsWriteBlock(Block):
                 yield "error", "No spreadsheet selected or access token missing"
                 return
 
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                # Customize message for write operations on CSV files
+                if "CSV file" in validation_error:
+                    yield "error", validation_error.replace(
+                        "Please use a CSV reader block instead, or",
+                        "CSV files are read-only through Google Drive. Please",
+                    )
+                else:
+                    yield "error", validation_error
+                return
+
             service = _build_sheets_service_from_picker(
                 input_data.spreadsheet.access_token
             )
@@ -396,7 +450,7 @@ class GoogleSheetsWriteBlock(Block):
             )
             yield "result", result
         except Exception as e:
-            yield "error", f"Failed to write to Google Sheet: {str(e)}"
+            yield "error", _handle_sheets_api_error(str(e), "write")
 
     def _write_sheet(
         self, service, spreadsheet_id: str, range: str, values: list[list[str]]
