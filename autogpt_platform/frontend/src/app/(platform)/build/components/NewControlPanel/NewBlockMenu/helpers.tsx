@@ -3,6 +3,7 @@ import { BlockUIType } from "../../types";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { BlockCategory } from "../../helper";
 import { RJSFSchema } from "@rjsf/utils";
+import { SpecialBlockID } from "@/lib/autogpt-server-api";
 
 export const highlightText = (
   text: string | undefined,
@@ -33,7 +34,7 @@ export const convertLibraryAgentIntoCustomNode = (
   outputSchema: RJSFSchema = {} as RJSFSchema,
 ) => {
   const block: BlockInfo = {
-    id: agent.id,
+    id: SpecialBlockID.AGENT,
     name: agent.name,
     description:
       `Ver.${agent.graph_version}` +
