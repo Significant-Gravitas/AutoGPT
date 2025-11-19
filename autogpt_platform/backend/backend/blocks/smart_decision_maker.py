@@ -121,13 +121,16 @@ def _convert_raw_response_to_dict(raw_response: Any) -> dict[str, Any]:
         return json.to_dict(raw_response)
 
 
-def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
+def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, int]:
     """
     All the tool calls entry in the conversation history requires a response.
     This function returns the pending tool calls that has not generated an output yet.
 
     Return: dict[str, int] - A dictionary of pending tool call IDs with their count.
     """
+    if not conversation_history:
+        return {}
+
     pending_calls = Counter()
     for history in conversation_history:
         for call_id in _get_tool_requests(history):
@@ -173,7 +176,7 @@ class SmartDecisionMakerBlock(Block):
             "Function parameters that has no default value and not optional typed has to be provided. ",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[dict] = SchemaField(
+        conversation_history: list[dict] | None = SchemaField(
             default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
@@ -605,10 +608,10 @@ class SmartDecisionMakerBlock(Block):
         tool_functions = await self._create_tool_node_signatures(node_id)
         yield "tool_functions", json.dumps(tool_functions)
 
-        input_data.conversation_history = input_data.conversation_history or []
-        prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
+        conversation_history = input_data.conversation_history or []
+        prompt = [json.to_dict(p) for p in conversation_history if p]
 
-        pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
+        pending_tool_calls = get_pending_tool_calls(conversation_history)
         if pending_tool_calls and input_data.last_tool_output is None:
             raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
 
