@@ -249,9 +249,13 @@ class GoogleSheetsReadBlock(Block):
             output_schema=GoogleSheetsReadBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "range": "Sheet1!A1:B2",
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -346,13 +350,17 @@ class GoogleSheetsWriteBlock(Block):
             output_schema=GoogleSheetsWriteBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "range": "Sheet1!A1:B2",
                 "values": [
                     ["Name", "Score"],
                     ["Bob", "90"],
                 ],
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -460,9 +468,13 @@ class GoogleSheetsAppendBlock(Block):
             output_schema=GoogleSheetsAppendBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "values": [["Charlie", "95"]],
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -583,9 +595,13 @@ class GoogleSheetsClearBlock(Block):
             output_schema=GoogleSheetsClearBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "range": "Sheet1!A1:B2",
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -653,8 +669,12 @@ class GoogleSheetsMetadataBlock(Block):
             output_schema=GoogleSheetsMetadataBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -745,10 +765,14 @@ class GoogleSheetsManageSheetBlock(Block):
             output_schema=GoogleSheetsManageSheetBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "operation": SheetOperation.CREATE,
                 "sheet_name": "NewSheet",
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("result", {"success": True, "sheetId": 123})],
@@ -858,7 +882,12 @@ class GoogleSheetsBatchOperationsBlock(Block):
             output_schema=GoogleSheetsBatchOperationsBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "operations": [
                     {
                         "type": BatchOperationType.UPDATE,
@@ -871,7 +900,6 @@ class GoogleSheetsBatchOperationsBlock(Block):
                         "values": [["Data1", "Data2"]],
                     },
                 ],
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -995,12 +1023,16 @@ class GoogleSheetsFindReplaceBlock(Block):
             output_schema=GoogleSheetsFindReplaceBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "find_text": "old_value",
                 "replace_text": "new_value",
                 "match_case": False,
                 "match_entire_cell": False,
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -1122,13 +1154,17 @@ class GoogleSheetsFindBlock(Block):
             output_schema=GoogleSheetsFindBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "find_text": "search_value",
                 "match_case": False,
                 "match_entire_cell": False,
                 "find_all": True,
                 "range": "Sheet1!A1:C10",
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -1369,11 +1405,15 @@ class GoogleSheetsFormatBlock(Block):
             output_schema=GoogleSheetsFormatBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                    "accessToken": "test_access_token",
+                },
                 "range": "A1:B2",
                 "background_color": {"red": 1.0, "green": 0.9, "blue": 0.9},
                 "bold": True,
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("result", {"success": True})],
