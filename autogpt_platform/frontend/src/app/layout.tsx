@@ -6,12 +6,14 @@ import "./globals.css";
 
 import { Providers } from "@/app/providers";
 import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
+import { PreviewBanner } from "@/components/molecules/PreviewBanner/PreviewBanner";
 import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { headers } from "next/headers";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
+import { AppEnv, environment } from "@/services/environment";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
@@ -25,6 +27,8 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
+  const previewStealingDev = environment.getPreviewStealingDev();
+  const isDev = environment.getAppEnv() === AppEnv.DEV;
 
   return (
     <html
@@ -49,12 +53,15 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
+            {previewStealingDev ? (
+              <PreviewBanner branchName={previewStealingDev} />
+            ) : null}
             {children}
             <TallyPopupSimple />
             <VercelAnalyticsWrapper />
 
             {/* React Query DevTools is only available in development */}
-            {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
+            {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && isDev && (
               <ReactQueryDevtools
                 initialIsOpen={false}
                 buttonPosition={"bottom-left"}

@@ -60,6 +60,10 @@ function getEnvironmentStr() {
   return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
 }
 
+function getPreviewStealingDev() {
+  return process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
+}
+
 function isProd() {
   return process.env.NODE_ENV === "production";
 }
@@ -103,6 +107,7 @@ export const environment = {
   getAGPTWsServerUrl,
   getSupabaseUrl,
   getSupabaseAnonKey,
+  getPreviewStealingDev,
   // Assertions
   isServerSide,
   isClientSide,
