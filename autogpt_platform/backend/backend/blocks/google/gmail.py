@@ -1,4 +1,5 @@
 import asyncio
+import aiofiles
 import base64
 from abc import ABC
 from email import encoders
@@ -47,12 +48,8 @@ async def _store_drive_attachment(
     graph_exec_id: str,
     user_id: str,
 ) -> str:
-    media_uri = await drive_file_to_media_file(attachment)
-    return await store_media_file(
-        graph_exec_id=graph_exec_id,
-        file=media_uri,
-        user_id=user_id,
-        return_content=False,
+    return await drive_file_to_media_file(
+        attachment, graph_exec_id=graph_exec_id, user_id=user_id
     )
 
 
@@ -96,14 +93,14 @@ async def _resolve_attachments(
     if not attachments:
         return []
 
-    resolved: list[str] = []
-    for attachment in attachments:
-        resolved.append(
-            await _resolve_attachment(
+    return await asyncio.gather(
+        *[
+            _resolve_attachment(
                 attachment, graph_exec_id=graph_exec_id, user_id=user_id
             )
-        )
-    return resolved
+            for attachment in attachments
+        ]
+    )
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
@@ -180,21 +177,28 @@ async def create_mime_message(
     message.attach(_make_mime_text(input_data.body, content_type))
 
     # Handle attachments if any
-    for local_path in await _resolve_attachments(
+    local_paths = await _resolve_attachments(
         input_data.attachments,
         graph_exec_id=graph_exec_id,
         user_id=user_id,
-    ):
+    )
+
+    async def _create_attachment_part(local_path: str) -> MIMEBase:
         abs_path = get_exec_file_path(graph_exec_id, local_path)
         part = MIMEBase("application", "octet-stream")
-        with open(abs_path, "rb") as f:
-            part.set_payload(f.read())
+        async with aiofiles.open(abs_path, "rb") as f:
+            part.set_payload(await f.read())
         encoders.encode_base64(part)
         part.add_header(
             "Content-Disposition",
             f"attachment; filename={Path(abs_path).name}",
         )
-        message.attach(part)
+        return part
+
+    if local_paths:
+        parts = await asyncio.gather(*[_create_attachment_part(path) for path in local_paths])
+        for part in parts:
+            message.attach(part)
 
     return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
