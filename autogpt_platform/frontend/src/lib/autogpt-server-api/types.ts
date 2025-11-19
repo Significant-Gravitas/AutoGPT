@@ -1183,13 +1183,8 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
 
   if (
     "google_drive_picker_config" in schema ||
-    "googleDrivePickerConfig" in schema
+    ("format" in schema && schema.format === "google-drive-picker")
   ) {
-    return DataType.GOOGLE_DRIVE_PICKER;
-  }
-
-  // Google Drive Picker - check format field
-  if ("format" in schema && schema.format === "google-drive-picker") {
     return DataType.GOOGLE_DRIVE_PICKER;
   }
 
