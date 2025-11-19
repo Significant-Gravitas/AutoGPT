@@ -65,6 +65,12 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
 class Config(UpdateTrackingModel["Config"], BaseSettings):
     """Config for the server."""
 
+    database_url: str = Field(
+        default="",
+        description="PostgreSQL database connection URL. "
+        "Format: postgresql://user:pass@host:port/db?schema=platform&connect_timeout=60",
+    )
+
     num_graph_workers: int = Field(
         default=10,
         ge=1,
@@ -265,6 +271,44 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    # SQLAlchemy Configuration
+    sqlalchemy_pool_size: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Number of persistent connections in the SQLAlchemy pool. "
+        "Guidelines: REST API (high traffic) 10-20, Background workers 3-5. "
+        "Total across all services should not exceed PostgreSQL max_connections (default: 100).",
+    )
+
+    sqlalchemy_max_overflow: int = Field(
+        default=5,
+        ge=0,
+        le=50,
+        description="Additional connections beyond pool_size when pool is exhausted. "
+        "Total max connections = pool_size + max_overflow.",
+    )
+
+    sqlalchemy_pool_timeout: int = Field(
+        default=30,
+        ge=1,
+        le=300,
+        description="Seconds to wait for available connection before raising error. "
+        "If all connections are busy and max_overflow is reached, requests wait this long before failing.",
+    )
+
+    sqlalchemy_connect_timeout: int = Field(
+        default=10,
+        ge=1,
+        le=60,
+        description="Seconds to wait when establishing new connection to PostgreSQL.",
+    )
+
+    sqlalchemy_echo: bool = Field(
+        default=False,
+        description="Whether to log all SQL statements. Useful for debugging but very verbose. Should be False in production.",
     )
 
     rabbitmq_host: str = Field(

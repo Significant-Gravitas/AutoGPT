@@ -14,6 +14,7 @@ aiohttp = "^3.10.0"
 aiodns = "^3.5.0"
 anthropic = "^0.59.0"
 apscheduler = "^3.11.1"
+asyncpg = "^0.29.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
 click = "^8.2.0"
