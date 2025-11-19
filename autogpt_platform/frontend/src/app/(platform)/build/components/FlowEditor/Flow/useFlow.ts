@@ -16,6 +16,7 @@ import { useGraphStore } from "../../../stores/graphStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
+import { useHistoryStore } from "../../../stores/historyStore";
 
 export const useFlow = () => {
   const [isLocked, setIsLocked] = useState(false);
@@ -36,7 +37,7 @@ export const useFlow = () => {
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
   );
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
   const setBlockMenuOpen = useControlPanelStore(
     useShallow((state) => state.setBlockMenuOpen),
@@ -131,7 +132,7 @@ export const useFlow = () => {
       executionDetails?.status === AgentExecutionStatus.QUEUED;
 
     setIsGraphRunning(isRunning);
-  }, [executionDetails?.status]);
+  }, [executionDetails?.status, customNodes]);
 
   // update node execution status in nodes
   useEffect(() => {
@@ -144,7 +145,7 @@ export const useFlow = () => {
         updateNodeStatus(nodeExecution.node_id, nodeExecution.status);
       });
     }
-  }, [executionDetails, updateNodeStatus]);
+  }, [executionDetails, updateNodeStatus, customNodes]);
 
   // update node execution results in nodes, also update edge beads
   useEffect(() => {
@@ -158,7 +159,21 @@ export const useFlow = () => {
         updateEdgeBeads(nodeExecution.node_id, nodeExecution);
       });
     }
-  }, [executionDetails, updateNodeExecutionResult, updateEdgeBeads]);
+  }, [
+    executionDetails,
+    updateNodeExecutionResult,
+    updateEdgeBeads,
+    customNodes,
+  ]);
+
+  useEffect(() => {
+    if (customNodes.length > 0 && graph?.links) {
+      const timer = setTimeout(() => {
+        useHistoryStore.getState().initializeHistory();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [customNodes, graph?.links]);
 
   useEffect(() => {
     return () => {
@@ -169,6 +184,10 @@ export const useFlow = () => {
       setIsGraphRunning(false);
     };
   }, []);
+
+  useEffect(() => {
+    fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+  }, [fitView]);
 
   // Drag and drop block from block menu
   const onDragOver = useCallback((event: React.DragEvent) => {
