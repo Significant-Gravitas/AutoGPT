@@ -1,3 +1,4 @@
+import asyncio
 import mimetypes
 import uuid
 from pathlib import Path
@@ -82,6 +83,6 @@ async def drive_file_to_media_file(
     target_path = base_path / filename
 
     await scan_content_safe(response.content, filename=filename)
-    target_path.write_bytes(response.content)
+    await asyncio.to_thread(target_path.write_bytes, response.content)
 
     return MediaFileType(str(target_path.relative_to(base_path)))

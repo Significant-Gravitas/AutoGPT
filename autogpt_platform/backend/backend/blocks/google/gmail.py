@@ -1,5 +1,4 @@
 import asyncio
-import aiofiles
 import base64
 from abc import ABC
 from email import encoders
@@ -11,6 +10,7 @@ from email.utils import getaddresses, parseaddr
 from pathlib import Path
 from typing import Any, List, Literal, Optional
 
+import aiofiles
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel, Field, ValidationError
@@ -196,7 +196,9 @@ async def create_mime_message(
         return part
 
     if local_paths:
-        parts = await asyncio.gather(*[_create_attachment_part(path) for path in local_paths])
+        parts = await asyncio.gather(
+            *[_create_attachment_part(path) for path in local_paths]
+        )
         for part in parts:
             message.attach(part)
 
@@ -1259,20 +1261,29 @@ async def _build_reply_message(
     msg.attach(_make_mime_text(input_data.body, input_data.content_type))
 
     # Handle attachments
-    for local_path in await _resolve_attachments(
-        input_data.attachments,
-        graph_exec_id=graph_exec_id,
-        user_id=user_id,
-    ):
+    async def _create_reply_attachment_part(local_path: str) -> MIMEBase:
         abs_path = get_exec_file_path(graph_exec_id, local_path)
         part = MIMEBase("application", "octet-stream")
-        with open(abs_path, "rb") as f:
-            part.set_payload(f.read())
+        async with aiofiles.open(abs_path, "rb") as f:
+            part.set_payload(await f.read())
         encoders.encode_base64(part)
         part.add_header(
             "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
         )
-        msg.attach(part)
+        return part
+
+    local_paths = await _resolve_attachments(
+        input_data.attachments,
+        graph_exec_id=graph_exec_id,
+        user_id=user_id,
+    )
+
+    if local_paths:
+        parts = await asyncio.gather(
+            *[_create_reply_attachment_part(path) for path in local_paths]
+        )
+        for part in parts:
+            msg.attach(part)
 
     # Encode message
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
@@ -1798,20 +1809,29 @@ To: {original_to}
                 msg.attach(part)
 
         # Add any additional attachments
-        for local_path in await _resolve_attachments(
-            input_data.additionalAttachments,
-            graph_exec_id=graph_exec_id,
-            user_id=user_id,
-        ):
+        async def _create_forward_attachment_part(local_path: str) -> MIMEBase:
             abs_path = get_exec_file_path(graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
-            with open(abs_path, "rb") as f:
-                part.set_payload(f.read())
+            async with aiofiles.open(abs_path, "rb") as f:
+                part.set_payload(await f.read())
             encoders.encode_base64(part)
             part.add_header(
                 "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
             )
-            msg.attach(part)
+            return part
+
+        local_paths = await _resolve_attachments(
+            input_data.additionalAttachments,
+            graph_exec_id=graph_exec_id,
+            user_id=user_id,
+        )
+
+        if local_paths:
+            parts = await asyncio.gather(
+                *[_create_forward_attachment_part(path) for path in local_paths]
+            )
+            for part in parts:
+                msg.attach(part)
 
         # Send the forwarded message
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")

@@ -293,8 +293,8 @@ class GoogleSheetsReadBlock(Block):
 
     def _read_sheet(self, service, spreadsheet_id: str, range: str) -> list[list[str]]:
         sheet = service.spreadsheets()
-        range_to_use = range
-        sheet_name, cell_range = parse_a1_notation(range)
+        range_to_use = range or "A:Z"
+        sheet_name, cell_range = parse_a1_notation(range_to_use)
         if sheet_name:
             cleaned_sheet = sheet_name.strip().strip("'\"")
             formatted_sheet = format_sheet_name(cleaned_sheet)
@@ -303,8 +303,7 @@ class GoogleSheetsReadBlock(Block):
                 range_to_use = f"{formatted_sheet}!{cell_part}"
             else:
                 range_to_use = f"{formatted_sheet}!A:Z"
-        else:
-            range_to_use = "A:Z"
+        # If no sheet name, keep the original range (e.g., "A1:B2" or "B:B")
         result = (
             sheet.values()
             .get(spreadsheetId=spreadsheet_id, range=range_to_use)
@@ -793,17 +792,21 @@ class GoogleSheetsManageSheetBlock(Block):
     ) -> dict:
         requests = []
 
-        # Ensure a target sheet name when needed
-        target_name = resolve_sheet_name(service, spreadsheet_id, sheet_name)
-
         if operation == SheetOperation.CREATE:
+            # For CREATE, use sheet_name directly or default to "New Sheet"
+            target_name = sheet_name or "New Sheet"
             requests.append({"addSheet": {"properties": {"title": target_name}}})
         elif operation == SheetOperation.DELETE:
+            # For DELETE, resolve sheet name (fall back to first sheet if empty)
+            target_name = resolve_sheet_name(
+                service, spreadsheet_id, sheet_name or None
+            )
             sid = sheet_id_by_name(service, spreadsheet_id, target_name)
             if sid is None:
                 return {"error": f"Sheet '{target_name}' not found"}
             requests.append({"deleteSheet": {"sheetId": sid}})
         elif operation == SheetOperation.COPY:
+            # For COPY, use source_sheet_id and destination_sheet_name directly
             requests.append(
                 {
                     "duplicateSheet": {
