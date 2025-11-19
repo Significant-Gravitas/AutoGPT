@@ -15,6 +15,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.blocks.google._drive import GoogleDriveFile
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -22,7 +23,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.model import GoogleDriveFile, SchemaField
+from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.settings import Settings
 
