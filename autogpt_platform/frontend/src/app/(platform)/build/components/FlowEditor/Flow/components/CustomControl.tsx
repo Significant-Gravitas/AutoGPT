@@ -1,4 +1,4 @@
-import { useReactFlow, ControlButton } from "@xyflow/react";
+import { useReactFlow } from "@xyflow/react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -76,3 +76,5 @@ export const CustomControls = memo(
     );
   },
 );
+
+CustomControls.displayName = "CustomControls";

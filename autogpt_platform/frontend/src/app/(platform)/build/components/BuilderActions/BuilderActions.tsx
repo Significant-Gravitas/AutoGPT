@@ -16,3 +16,5 @@ export const BuilderActions = memo(() => {
     </div>
   );
 });
+
+BuilderActions.displayName = "BuilderActions";

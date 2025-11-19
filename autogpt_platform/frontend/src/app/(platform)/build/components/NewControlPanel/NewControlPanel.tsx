@@ -1,14 +1,12 @@
 // import { Separator } from "@/components/__legacy__/ui/separator";
 import { cn } from "@/lib/utils";
-import React, { memo, useMemo } from "react";
+import React, { memo } from "react";
 import { BlockMenu } from "./NewBlockMenu/BlockMenu/BlockMenu";
 import { useNewControlPanel } from "./useNewControlPanel";
 // import { NewSaveControl } from "../SaveControl/NewSaveControl";
 import { GraphExecutionID } from "@/lib/autogpt-server-api";
 // import { ControlPanelButton } from "../ControlPanelButton";
-import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 // import { GraphSearchMenu } from "../GraphMenu/GraphMenu";
-import { history } from "@/app/(platform)/build/components/legacy-builder/history";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { NewSaveControl } from "./NewSaveControl/NewSaveControl";
@@ -55,24 +53,6 @@ export const NewControlPanel = memo(
       // isStopping,
     } = useNewControlPanel({});
 
-    const _controls: Control[] = useMemo(
-      () => [
-        {
-          label: "Undo",
-          icon: <ArrowUUpLeftIcon size={20} weight="bold" />,
-          onClick: history.undo,
-          disabled: !history.canUndo(),
-        },
-        {
-          label: "Redo",
-          icon: <ArrowUUpRightIcon size={20} weight="bold" />,
-          onClick: history.redo,
-          disabled: !history.canRedo(),
-        },
-      ],
-      [],
-    );
-
     return (
       <section
         className={cn(
@@ -117,3 +97,5 @@ export const NewControlPanel = memo(
 );
 
 export default NewControlPanel;
+
+NewControlPanel.displayName = "NewControlPanel";

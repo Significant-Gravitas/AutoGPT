@@ -161,7 +161,7 @@ export function findFreePosition(
     const lastNodeHeight = lastNode.measured?.height ?? 400;
 
     // Try right
-    let candidate = {
+    const candidate = {
       x: lastNode.position.x + lastNodeWidth + margin,
       y: lastNode.position.y,
       width: newNodeWidth,
