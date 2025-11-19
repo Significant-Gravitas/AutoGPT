@@ -93,8 +93,8 @@ export const IntegrationBlocks = () => {
               key={block.id}
               title={block.name}
               description={block.description}
+              blockData={block}
               icon_url={`/integrations/${integration}.png`}
-              onClick={() => addBlock(block)}
             />
           ))}
         </div>

@@ -186,7 +186,7 @@ export const useFlow = () => {
         x: event.clientX,
         y: event.clientY,
       });
-      addBlock(blockData, position);
+      addBlock(blockData, {}, position);
 
       await new Promise((resolve) => setTimeout(resolve, 200));
       setBlockMenuOpen(true);

@@ -8,12 +8,13 @@ import { convertLibraryAgentIntoCustomNode } from "../helpers";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useShallow } from "zustand/react/shallow";
+import { useReactFlow } from "@xyflow/react";
 
 export const useMyAgentsContent = () => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [isGettingAgentDetails, setIsGettingAgentDetails] = useState(false);
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
-
+  const { setViewport } = useReactFlow();
   // This endpoints is not giving info about inputSchema and outputSchema
   // Will create new endpoint for this
   const {
@@ -70,7 +71,17 @@ export const useMyAgentsContent = () => {
         input_schema,
         output_schema,
       );
-      addBlock(block, hardcodedValues);
+      const customNode = addBlock(block, hardcodedValues);
+      setTimeout(() => {
+        setViewport(
+          {
+            x: -customNode.position.x * 0.8 + window.innerWidth / 2,
+            y: -customNode.position.y * 0.8 + (window.innerHeight - 400) / 2,
+            zoom: 0.8,
+          },
+          { duration: 500 },
+        );
+      }, 50);
     } catch (error) {
       console.error("Error adding block:", error);
     } finally {
