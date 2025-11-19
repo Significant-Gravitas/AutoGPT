@@ -114,8 +114,8 @@ async def get_execution_analytics_config(
         """Generate a user-friendly label from the model enum value."""
         value = model.value
 
-        # For all models, convert underscores/hyphens to title case
-        # e.g., "gpt-4-turbo" -> "GPT-4 Turbo", "claude-3-haiku-20240307" -> "Claude 3 Haiku"
+        # For all models, convert underscores/hyphens to spaces and title case
+        # e.g., "gpt-4-turbo" -> "GPT 4 Turbo", "claude-3-haiku-20240307" -> "Claude 3 Haiku"
         parts = value.replace("_", "-").split("-")
 
         # Handle provider prefixes (e.g., "google/", "x-ai/")
@@ -126,11 +126,20 @@ async def get_execution_analytics_config(
         # Capitalize and format parts
         formatted_parts = []
         for part in parts:
-            # Skip date-like patterns (e.g., "20240307", "2025-04-16")
-            if part.isdigit() and len(part) >= 6:
-                continue
+            # Skip date-like patterns - check for various date formats:
+            # - Long dates like "20240307" (8 digits)
+            # - Year components like "2024", "2025" (4 digit years >= 2020)
+            # - Month/day components like "04", "16" when they appear to be dates
+            if part.isdigit():
+                if len(part) >= 8:  # Long date format like "20240307"
+                    continue
+                elif len(part) == 4 and int(part) >= 2020:  # Year like "2024", "2025"
+                    continue
+                elif len(part) <= 2 and int(part) <= 31:  # Month/day like "04", "16"
+                    # Skip if this looks like a date component (basic heuristic)
+                    continue
             # Keep version numbers as-is
-            elif part.replace(".", "").isdigit():
+            if part.replace(".", "").isdigit():
                 formatted_parts.append(part)
             # Capitalize normal words
             else:
@@ -149,7 +158,9 @@ async def get_execution_analytics_config(
         return f"{provider_name}: {model_name}"
 
     # Include all LlmModel values (no more filtering by hardcoded list)
-    recommended_model = "gpt-4o-mini"  # Current recommendation
+    recommended_model = (
+        LlmModel.GPT4O_MINI.value
+    )  # Use enum value instead of hardcoded string
     for model in LlmModel:
         label = generate_model_label(model)
         # Add "(Recommended)" suffix to the recommended model
