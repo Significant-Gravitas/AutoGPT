@@ -150,7 +150,9 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
         </label>
       )}
       {(isAnyOf || !isConnected) && (
-        <div className={cn(size === "small" ? "pl-2" : "")}>{children}</div>
+        <div className={cn(size === "small" ? "max-w-[340px] pl-2" : "")}>
+          {children}
+        </div>
       )}{" "}
     </div>
   );

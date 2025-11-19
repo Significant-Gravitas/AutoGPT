@@ -1,9 +1,7 @@
-import { Button } from "@/components/atoms/Button/Button";
-import { PlayIcon } from "lucide-react";
 import { useRunGraph } from "./useRunGraph";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
-import { StopIcon } from "@phosphor-icons/react";
+import { PlayIcon, StopIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
 import {
@@ -11,14 +9,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { BuilderActionButton } from "../BuilderActionButton";
 
-export const RunGraph = () => {
+export const RunGraph = ({ flowID }: { flowID: string | null }) => {
   const {
     handleRunGraph,
     handleStopGraph,
-    isSaving,
     openRunInputDialog,
     setOpenRunInputDialog,
+    isExecutingGraph,
+    isSaving,
   } = useRunGraph();
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
@@ -28,20 +28,21 @@ export const RunGraph = () => {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="primary"
-            size="large"
+          <BuilderActionButton
             className={cn(
-              "relative min-w-0 border-none bg-gradient-to-r from-purple-500 to-pink-500 text-lg",
+              isGraphRunning &&
+                "border-red-500 bg-gradient-to-br from-red-400 to-red-500 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.5),0_2px_4px_0_rgba(0,0,0,0.2)]",
             )}
             onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
+            disabled={!flowID || isExecutingGraph}
+            isLoading={isExecutingGraph || isSaving}
           >
-            {!isGraphRunning && !isSaving ? (
-              <PlayIcon className="size-6" />
+            {!isGraphRunning ? (
+              <PlayIcon className="size-6 drop-shadow-sm" />
             ) : (
-              <StopIcon className="size-6" />
+              <StopIcon className="size-6 drop-shadow-sm" />
             )}
-          </Button>
+          </BuilderActionButton>
         </TooltipTrigger>
         <TooltipContent>
           {isGraphRunning ? "Stop agent" : "Run agent"}
