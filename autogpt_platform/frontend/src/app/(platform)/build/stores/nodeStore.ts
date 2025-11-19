@@ -17,7 +17,11 @@ type NodeStore = {
   setNodes: (nodes: CustomNode[]) => void;
   onNodesChange: (changes: NodeChange<CustomNode>[]) => void;
   addNode: (node: CustomNode) => void;
-  addBlock: (block: BlockInfo, position?: XYPosition) => void;
+  addBlock: (
+    block: BlockInfo,
+    hardcodedValues?: Record<string, any>,
+    position?: XYPosition,
+  ) => void;
   incrementNodeCounter: () => void;
   updateNodeData: (nodeId: string, data: Partial<CustomNode["data"]>) => void;
   toggleAdvanced: (nodeId: string) => void;
@@ -74,8 +78,15 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       nodes: [...state.nodes, node],
     }));
   },
-  addBlock: (block: BlockInfo, position?: XYPosition) => {
-    const customNodeData = convertBlockInfoIntoCustomNodeData(block);
+  addBlock: (
+    block: BlockInfo,
+    hardcodedValues?: Record<string, any>,
+    position?: XYPosition,
+  ) => {
+    const customNodeData = convertBlockInfoIntoCustomNodeData(
+      block,
+      hardcodedValues,
+    );
     get().incrementNodeCounter();
     const nodeNumber = get().nodeCounter;
     const customNode: CustomNode = {
