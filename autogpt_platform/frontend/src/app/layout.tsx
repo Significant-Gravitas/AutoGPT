@@ -53,7 +53,7 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
-            {previewStealingDev ? (
+            {previewStealingDev && isDev ? (
               <PreviewBanner branchName={previewStealingDev} />
             ) : null}
             {children}
@@ -61,7 +61,7 @@ export default async function RootLayout({
             <VercelAnalyticsWrapper />
 
             {/* React Query DevTools is only available in development */}
-            {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && isDev && (
+            {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
               <ReactQueryDevtools
                 initialIsOpen={false}
                 buttonPosition={"bottom-left"}
