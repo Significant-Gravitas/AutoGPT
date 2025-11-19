@@ -18,6 +18,7 @@ from prisma.types import (
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
+    StoreListingVersionWhereInput,
 )
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
@@ -26,7 +27,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
-from backend.data.dynamic_fields import extract_base_field_name
+from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
 from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
     CredentialsField,
@@ -578,9 +579,9 @@ class GraphModel(Graph):
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [_sanitize_pin_name(name) for name in node.input_default]
+                [sanitize_pin_name(name) for name in node.input_default]
                 + [
-                    _sanitize_pin_name(link.sink_name)
+                    sanitize_pin_name(link.sink_name)
                     for link in input_links.get(node.id, [])
                 ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
@@ -696,7 +697,7 @@ class GraphModel(Graph):
                         f"{prefix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )
 
-                sanitized_name = _sanitize_pin_name(name)
+                sanitized_name = sanitize_pin_name(name)
                 vals = node.input_default
                 if i == 0:
                     fields = (
@@ -710,7 +711,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not _is_tool_pin(name):
+                if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -748,17 +749,6 @@ class GraphModel(Graph):
                 for sub_graph in sub_graphs or []
             ],
         )
-
-
-def _is_tool_pin(name: str) -> bool:
-    return name.startswith("tools_^_")
-
-
-def _sanitize_pin_name(name: str) -> str:
-    sanitized_name = extract_base_field_name(name)
-    if _is_tool_pin(sanitized_name):
-        return "tools"
-    return sanitized_name
 
 
 class GraphMeta(Graph):
@@ -895,9 +885,9 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
 async def get_graph(
     graph_id: str,
-    version: int | None = None,
+    version: int | None,
+    user_id: str | None,
     *,
-    user_id: str | None = None,
     for_export: bool = False,
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
@@ -908,25 +898,43 @@ async def get_graph(
 
     Returns `None` if the record is not found.
     """
-    where_clause: AgentGraphWhereInput = {
-        "id": graph_id,
-    }
+    graph = None
 
-    if version is not None:
-        where_clause["version"] = version
+    # Only search graph directly on owned graph (or access check is skipped)
+    if skip_access_check or user_id is not None:
+        graph_where_clause: AgentGraphWhereInput = {
+            "id": graph_id,
+        }
+        if version is not None:
+            graph_where_clause["version"] = version
+        if not skip_access_check and user_id is not None:
+            graph_where_clause["userId"] = user_id
 
-    graph = await AgentGraph.prisma().find_first(
-        where=where_clause,
-        include=AGENT_GRAPH_INCLUDE,
-        order={"version": "desc"},
-    )
+        graph = await AgentGraph.prisma().find_first(
+            where=graph_where_clause,
+            include=AGENT_GRAPH_INCLUDE,
+            order={"version": "desc"},
+        )
+
+    # Use store listed graph to find not owned graph
+    if graph is None:
+        store_where_clause: StoreListingVersionWhereInput = {
+            "agentGraphId": graph_id,
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        }
+        if version is not None:
+            store_where_clause["agentGraphVersion"] = version
+
+        if store_listing := await StoreListingVersion.prisma().find_first(
+            where=store_where_clause,
+            order={"agentGraphVersion": "desc"},
+            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+        ):
+            graph = store_listing.AgentGraph
+
     if graph is None:
         return None
-
-    if not skip_access_check and graph.userId != user_id:
-        # For access, the graph must be owned by the user or listed in the store
-        if not await is_graph_published_in_marketplace(graph_id, graph.version):
-            return None
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)

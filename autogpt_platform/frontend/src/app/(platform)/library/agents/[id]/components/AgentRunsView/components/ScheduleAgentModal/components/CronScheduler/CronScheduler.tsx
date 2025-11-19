@@ -259,9 +259,18 @@ export function CronScheduler({
         <YearlyPicker values={selectedMonths} onChange={setSelectedMonths} />
       )}
 
-      {frequency !== "hourly" && (
-        <TimeAt value={selectedTime} onChange={setSelectedTime} />
-      )}
+      {frequency !== "hourly" &&
+        !(frequency === "custom" && customInterval.unit === "hours") && (
+          <TimeAt
+            value={selectedTime}
+            onChange={setSelectedTime}
+            label={
+              frequency === "custom" && customInterval.unit === "days"
+                ? "Starting at"
+                : "At"
+            }
+          />
+        )}
     </div>
   );
 }

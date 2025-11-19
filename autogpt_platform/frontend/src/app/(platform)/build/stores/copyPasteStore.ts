@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
-import { Connection, useEdgeStore } from "./edgeStore";
+import { useEdgeStore } from "./edgeStore";
 import { Key, storage } from "@/services/storage/local-storage";
 import { useNodeStore } from "./nodeStore";
+import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 
 interface CopyableData {
   nodes: CustomNode[];
-  connections: Connection[];
+  edges: CustomEdge[];
 }
 
 type CopyPasteStore = {
@@ -17,14 +18,14 @@ type CopyPasteStore = {
 export const useCopyPasteStore = create<CopyPasteStore>(() => ({
   copySelectedNodes: () => {
     const { nodes } = useNodeStore.getState();
-    const { connections } = useEdgeStore.getState();
+    const { edges } = useEdgeStore.getState();
 
     const selectedNodes = nodes.filter((node) => node.selected);
     const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
 
-    const selectedConnections = connections.filter(
-      (conn) =>
-        selectedNodeIds.has(conn.source) && selectedNodeIds.has(conn.target),
+    const selectedEdges = edges.filter(
+      (edge) =>
+        selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target),
     );
 
     const copiedData: CopyableData = {
@@ -34,7 +35,7 @@ export const useCopyPasteStore = create<CopyPasteStore>(() => ({
           ...node.data,
         },
       })),
-      connections: selectedConnections,
+      edges: selectedEdges,
     };
 
     storage.set(Key.COPIED_FLOW_DATA, JSON.stringify(copiedData));
@@ -46,7 +47,7 @@ export const useCopyPasteStore = create<CopyPasteStore>(() => ({
 
     const copiedData = JSON.parse(copiedDataString) as CopyableData;
     const { addNode } = useNodeStore.getState();
-    const { addConnection } = useEdgeStore.getState();
+    const { addEdge } = useEdgeStore.getState();
 
     const oldToNewIdMap: Record<string, string> = {};
 
@@ -85,15 +86,15 @@ export const useCopyPasteStore = create<CopyPasteStore>(() => ({
       });
     });
 
-    copiedData.connections.forEach((conn) => {
-      const newSourceId = oldToNewIdMap[conn.source] ?? conn.source;
-      const newTargetId = oldToNewIdMap[conn.target] ?? conn.target;
+    copiedData.edges.forEach((edge) => {
+      const newSourceId = oldToNewIdMap[edge.source] ?? edge.source;
+      const newTargetId = oldToNewIdMap[edge.target] ?? edge.target;
 
-      addConnection({
+      addEdge({
         source: newSourceId,
         target: newTargetId,
-        sourceHandle: conn.sourceHandle ?? "",
-        targetHandle: conn.targetHandle ?? "",
+        sourceHandle: edge.sourceHandle ?? "",
+        targetHandle: edge.targetHandle ?? "",
       });
     });
   },

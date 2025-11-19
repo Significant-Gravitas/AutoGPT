@@ -1343,6 +1343,7 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
     graph = await get_graph(
         graph_id=store_listing_version.agentGraphId,
         version=store_listing_version.agentGraphVersion,
+        user_id=None,
         for_export=True,
     )
     if not graph:

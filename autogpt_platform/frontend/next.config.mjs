@@ -80,10 +80,10 @@ export default isDevelopmentBuild
 
       // This helps Sentry with sourcemaps... https://docs.sentry.io/platforms/javascript/guides/nextjs/sourcemaps/
       sourcemaps: {
-        disable: false, // Source maps are enabled by default
-        assets: ["**/*.js", "**/*.js.map"], // Specify which files to upload
-        ignore: ["**/node_modules/**"], // Files to exclude
-        deleteSourcemapsAfterUpload: true, // Security: delete after upload
+        disable: false,
+        assets: [".next/**/*.js", ".next/**/*.js.map"],
+        ignore: ["**/node_modules/**"],
+        deleteSourcemapsAfterUpload: false, // Source is public anyway :)
       },
 
       // Automatically tree-shake Sentry logger statements to reduce bundle size

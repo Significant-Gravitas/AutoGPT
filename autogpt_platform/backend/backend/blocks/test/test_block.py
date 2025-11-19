@@ -6,12 +6,12 @@ from backend.data.block import Block, get_blocks
 from backend.util.test import execute_block_test
 
 
-@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b.name)
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
 async def test_available_blocks(block: Type[Block]):
     await execute_block_test(block())
 
 
-@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b.name)
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
 async def test_block_ids_valid(block: Type[Block]):
     # add the tests here to check they are uuid4
     import uuid
