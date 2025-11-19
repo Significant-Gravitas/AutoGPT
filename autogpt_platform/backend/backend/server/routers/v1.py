@@ -24,7 +24,6 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from prisma.models import UserOnboarding
 from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
@@ -117,6 +116,25 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+
+# Needed to avoid including User from UserOnboarding prisma model in router
+# that causes schema generation for prisma and our LibraryAgent in openapi.json
+class UserOnboarding(pydantic.BaseModel):
+    userId: str
+    completedSteps: list[OnboardingStep]
+    walletShown: bool
+    notified: list[OnboardingStep]
+    rewardedFor: list[OnboardingStep]
+    usageReason: Optional[str]
+    integrations: list[str]
+    otherIntegrations: Optional[str]
+    selectedStoreListingVersionId: Optional[str]
+    agentInput: dict[str, Any]
+    onboardingAgentExecutionId: Optional[str]
+    agentRuns: int
+    lastRunAt: Optional[datetime]
+    consecutiveRunDays: int
 
 
 async def hide_activity_summaries_if_disabled(
@@ -263,10 +281,9 @@ async def update_preferences(
     summary="Onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
-async def get_onboarding(
-    user_id: Annotated[str, Security(get_user_id)]
-) -> UserOnboarding:
+async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await get_user_onboarding(user_id)
 
 
@@ -275,10 +292,11 @@ async def get_onboarding(
     summary="Update onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
 async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
-) -> UserOnboarding:
+):
     return await update_user_onboarding(user_id, data)
 
 
@@ -323,10 +341,9 @@ async def is_onboarding_enabled() -> bool:
     summary="Reset onboarding progress",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
-async def reset_onboarding(
-    user_id: Annotated[str, Security(get_user_id)]
-) -> UserOnboarding:
+async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await reset_user_onboarding(user_id)
 
 

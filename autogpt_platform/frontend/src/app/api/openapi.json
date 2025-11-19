@@ -2611,7 +2611,7 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Profile-Input" }
+              "schema": { "$ref": "#/components/schemas/Profile" }
             }
           },
           "required": true
@@ -4421,9 +4421,7 @@
             "description": "Agent added successfully",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-                }
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
               }
             }
           },
@@ -4526,9 +4524,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-                }
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
               }
             }
           },
@@ -4574,9 +4570,7 @@
             "description": "Agent updated successfully",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-                }
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
               }
             }
           },
@@ -4658,9 +4652,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-                }
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
               }
             }
           },
@@ -4700,9 +4692,7 @@
               "application/json": {
                 "schema": {
                   "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-                    },
+                    { "$ref": "#/components/schemas/LibraryAgent" },
                     { "type": "null" }
                   ],
                   "title": "Response Getv2Get Agent By Store Id"
@@ -4743,9 +4733,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-                }
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
               }
             }
           },
@@ -5084,69 +5072,6 @@
   },
   "components": {
     "schemas": {
-      "APIKey": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "head": { "type": "string", "title": "Head" },
-          "tail": { "type": "string", "title": "Tail" },
-          "hash": { "type": "string", "title": "Hash" },
-          "salt": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Salt"
-          },
-          "status": { "$ref": "#/components/schemas/APIKeyStatus" },
-          "permissions": {
-            "items": { "$ref": "#/components/schemas/APIKeyPermission" },
-            "type": "array",
-            "title": "Permissions"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "lastUsedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Lastusedat"
-          },
-          "revokedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Revokedat"
-          },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "head",
-          "tail",
-          "hash",
-          "status",
-          "permissions",
-          "createdAt",
-          "userId"
-        ],
-        "title": "APIKey",
-        "description": "Represents a APIKey record"
-      },
       "APIKeyCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -5254,28 +5179,6 @@
         "required": ["new_balance", "transaction_key"],
         "title": "AddUserCreditsResponse"
       },
-      "AgentBlock": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "inputSchema": { "type": "string", "title": "Inputschema" },
-          "outputSchema": { "type": "string", "title": "Outputschema" },
-          "ReferencedByAgentNode": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentNode" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Referencedbyagentnode"
-          }
-        },
-        "type": "object",
-        "required": ["id", "name", "inputSchema", "outputSchema"],
-        "title": "AgentBlock",
-        "description": "Represents a AgentBlock record"
-      },
       "AgentExecutionStatus": {
         "type": "string",
         "enum": [
@@ -5287,658 +5190,6 @@
           "FAILED"
         ],
         "title": "AgentExecutionStatus"
-      },
-      "AgentGraph": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "version": { "type": "integer", "title": "Version" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Updatedat"
-          },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Description"
-          },
-          "instructions": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Instructions"
-          },
-          "recommendedScheduleCron": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Recommendedschedulecron"
-          },
-          "isActive": { "type": "boolean", "title": "Isactive" },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "forkedFromId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Forkedfromid"
-          },
-          "forkedFromVersion": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Forkedfromversion"
-          },
-          "forkedFrom": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraph" },
-              { "type": "null" }
-            ]
-          },
-          "forks": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentGraph" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Forks"
-          },
-          "Nodes": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentNode" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Nodes"
-          },
-          "Executions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentGraphExecution" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Executions"
-          },
-          "Presets": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentPreset" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Presets"
-          },
-          "LibraryAgents": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/prisma__models__LibraryAgent"
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Libraryagents"
-          },
-          "StoreListings": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/StoreListing" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Storelistings"
-          },
-          "StoreListingVersions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/StoreListingVersion" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Storelistingversions"
-          }
-        },
-        "type": "object",
-        "required": ["id", "version", "createdAt", "isActive", "userId"],
-        "title": "AgentGraph",
-        "description": "Represents a AgentGraph record"
-      },
-      "AgentGraphExecution": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Updatedat"
-          },
-          "startedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Startedat"
-          },
-          "isDeleted": { "type": "boolean", "title": "Isdeleted" },
-          "executionStatus": {
-            "$ref": "#/components/schemas/AgentExecutionStatus"
-          },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
-          "agentGraphVersion": {
-            "type": "integer",
-            "title": "Agentgraphversion"
-          },
-          "AgentGraph": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraph" },
-              { "type": "null" }
-            ]
-          },
-          "agentPresetId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Agentpresetid"
-          },
-          "AgentPreset": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentPreset" },
-              { "type": "null" }
-            ]
-          },
-          "inputs": { "anyOf": [{}, { "type": "null" }], "title": "Inputs" },
-          "credentialInputs": {
-            "anyOf": [{}, { "type": "null" }],
-            "title": "Credentialinputs"
-          },
-          "nodesInputMasks": {
-            "anyOf": [{}, { "type": "null" }],
-            "title": "Nodesinputmasks"
-          },
-          "NodeExecutions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentNodeExecution" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Nodeexecutions"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "stats": { "anyOf": [{}, { "type": "null" }], "title": "Stats" },
-          "parentGraphExecutionId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Parentgraphexecutionid"
-          },
-          "ParentExecution": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraphExecution" },
-              { "type": "null" }
-            ]
-          },
-          "ChildExecutions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentGraphExecution" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Childexecutions"
-          },
-          "isShared": { "type": "boolean", "title": "Isshared" },
-          "shareToken": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Sharetoken"
-          },
-          "sharedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Sharedat"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "createdAt",
-          "isDeleted",
-          "executionStatus",
-          "agentGraphId",
-          "agentGraphVersion",
-          "userId",
-          "isShared"
-        ],
-        "title": "AgentGraphExecution",
-        "description": "Represents a AgentGraphExecution record"
-      },
-      "AgentNode": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "agentBlockId": { "type": "string", "title": "Agentblockid" },
-          "AgentBlock": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentBlock" },
-              { "type": "null" }
-            ]
-          },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
-          "agentGraphVersion": {
-            "type": "integer",
-            "title": "Agentgraphversion"
-          },
-          "AgentGraph": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraph" },
-              { "type": "null" }
-            ]
-          },
-          "Input": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentNodeLink" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Input"
-          },
-          "Output": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentNodeLink" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Output"
-          },
-          "constantInput": { "title": "Constantinput" },
-          "webhookId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Webhookid"
-          },
-          "Webhook": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/IntegrationWebhook" },
-              { "type": "null" }
-            ]
-          },
-          "metadata": { "title": "Metadata" },
-          "Executions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentNodeExecution" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Executions"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "agentBlockId",
-          "agentGraphId",
-          "agentGraphVersion",
-          "constantInput",
-          "metadata"
-        ],
-        "title": "AgentNode",
-        "description": "Represents a AgentNode record"
-      },
-      "AgentNodeExecution": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "agentGraphExecutionId": {
-            "type": "string",
-            "title": "Agentgraphexecutionid"
-          },
-          "GraphExecution": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraphExecution" },
-              { "type": "null" }
-            ]
-          },
-          "agentNodeId": { "type": "string", "title": "Agentnodeid" },
-          "Node": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentNode" },
-              { "type": "null" }
-            ]
-          },
-          "Input": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/AgentNodeExecutionInputOutput"
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Input"
-          },
-          "Output": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/AgentNodeExecutionInputOutput"
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Output"
-          },
-          "executionStatus": {
-            "$ref": "#/components/schemas/AgentExecutionStatus"
-          },
-          "executionData": {
-            "anyOf": [{}, { "type": "null" }],
-            "title": "Executiondata"
-          },
-          "addedTime": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Addedtime"
-          },
-          "queuedTime": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Queuedtime"
-          },
-          "startedTime": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Startedtime"
-          },
-          "endedTime": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Endedtime"
-          },
-          "stats": { "anyOf": [{}, { "type": "null" }], "title": "Stats" }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "agentGraphExecutionId",
-          "agentNodeId",
-          "executionStatus",
-          "addedTime"
-        ],
-        "title": "AgentNodeExecution",
-        "description": "Represents a AgentNodeExecution record"
-      },
-      "AgentNodeExecutionInputOutput": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "data": { "anyOf": [{}, { "type": "null" }], "title": "Data" },
-          "time": { "type": "string", "format": "date-time", "title": "Time" },
-          "referencedByInputExecId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Referencedbyinputexecid"
-          },
-          "ReferencedByInputExec": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentNodeExecution" },
-              { "type": "null" }
-            ]
-          },
-          "referencedByOutputExecId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Referencedbyoutputexecid"
-          },
-          "ReferencedByOutputExec": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentNodeExecution" },
-              { "type": "null" }
-            ]
-          },
-          "agentPresetId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Agentpresetid"
-          },
-          "AgentPreset": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentPreset" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "required": ["id", "name", "time"],
-        "title": "AgentNodeExecutionInputOutput",
-        "description": "Represents a AgentNodeExecutionInputOutput record"
-      },
-      "AgentNodeLink": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "agentNodeSourceId": {
-            "type": "string",
-            "title": "Agentnodesourceid"
-          },
-          "AgentNodeSource": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentNode" },
-              { "type": "null" }
-            ]
-          },
-          "sourceName": { "type": "string", "title": "Sourcename" },
-          "agentNodeSinkId": { "type": "string", "title": "Agentnodesinkid" },
-          "AgentNodeSink": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentNode" },
-              { "type": "null" }
-            ]
-          },
-          "sinkName": { "type": "string", "title": "Sinkname" },
-          "isStatic": { "type": "boolean", "title": "Isstatic" }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "agentNodeSourceId",
-          "sourceName",
-          "agentNodeSinkId",
-          "sinkName",
-          "isStatic"
-        ],
-        "title": "AgentNodeLink",
-        "description": "Represents a AgentNodeLink record"
-      },
-      "AgentPreset": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "isActive": { "type": "boolean", "title": "Isactive" },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
-          "agentGraphVersion": {
-            "type": "integer",
-            "title": "Agentgraphversion"
-          },
-          "AgentGraph": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraph" },
-              { "type": "null" }
-            ]
-          },
-          "InputPresets": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/AgentNodeExecutionInputOutput"
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Inputpresets"
-          },
-          "Executions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentGraphExecution" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Executions"
-          },
-          "webhookId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Webhookid"
-          },
-          "Webhook": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/IntegrationWebhook" },
-              { "type": "null" }
-            ]
-          },
-          "isDeleted": { "type": "boolean", "title": "Isdeleted" }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "name",
-          "description",
-          "isActive",
-          "userId",
-          "agentGraphId",
-          "agentGraphVersion",
-          "isDeleted"
-        ],
-        "title": "AgentPreset",
-        "description": "Represents a AgentPreset record"
-      },
-      "AnalyticsDetails": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "type": { "type": "string", "title": "Type" },
-          "data": { "anyOf": [{}, { "type": "null" }], "title": "Data" },
-          "dataIndex": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Dataindex"
-          }
-        },
-        "type": "object",
-        "required": ["id", "createdAt", "updatedAt", "userId", "type"],
-        "title": "AnalyticsDetails",
-        "description": "Represents a AnalyticsDetails record"
-      },
-      "AnalyticsMetrics": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "analyticMetric": { "type": "string", "title": "Analyticmetric" },
-          "value": { "type": "number", "title": "Value" },
-          "dataString": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Datastring"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "analyticMetric",
-          "value",
-          "userId"
-        ],
-        "title": "AnalyticsMetrics",
-        "description": "/////////////////////////////////////////////////////////\n/////////////////////////////////////////////////////////\n///////////   METRICS TRACKING TABLES    ////////////////\n/////////////////////////////////////////////////////////\n/////////////////////////////////////////////////////////"
       },
       "ApiResponse": {
         "properties": {
@@ -6584,42 +5835,6 @@
         "type": "object",
         "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
-      },
-      "CreditTransaction": {
-        "properties": {
-          "transactionKey": { "type": "string", "title": "Transactionkey" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "amount": { "type": "integer", "title": "Amount" },
-          "type": { "$ref": "#/components/schemas/CreditTransactionType" },
-          "runningBalance": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Runningbalance"
-          },
-          "isActive": { "type": "boolean", "title": "Isactive" },
-          "metadata": { "anyOf": [{}, { "type": "null" }], "title": "Metadata" }
-        },
-        "type": "object",
-        "required": [
-          "transactionKey",
-          "createdAt",
-          "userId",
-          "amount",
-          "type",
-          "isActive"
-        ],
-        "title": "CreditTransaction",
-        "description": "Represents a CreditTransaction record"
       },
       "CreditTransactionType": {
         "type": "string",
@@ -7416,80 +6631,99 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
-      "IntegrationWebhook": {
+      "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
-          "createdAt": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "image_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Image Url"
+          },
+          "creator_name": { "type": "string", "title": "Creator Name" },
+          "creator_image_url": {
+            "type": "string",
+            "title": "Creator Image Url"
+          },
+          "status": { "$ref": "#/components/schemas/LibraryAgentStatus" },
+          "updated_at": {
             "type": "string",
             "format": "date-time",
-            "title": "Createdat"
+            "title": "Updated At"
           },
-          "updatedAt": {
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Schema"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Schema"
+          },
+          "credentials_input_schema": {
             "anyOf": [
-              { "type": "string", "format": "date-time" },
+              { "additionalProperties": true, "type": "object" },
               { "type": "null" }
             ],
-            "title": "Updatedat"
+            "title": "Credentials Input Schema",
+            "description": "Input schema for credentials required by the agent"
           },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "description": "Whether the agent has an external trigger (e.g. webhook) node"
+          },
+          "trigger_setup_info": {
             "anyOf": [
-              { "$ref": "#/components/schemas/User" },
+              { "$ref": "#/components/schemas/GraphTriggerInfo" },
               { "type": "null" }
             ]
           },
-          "provider": { "type": "string", "title": "Provider" },
-          "credentialsId": { "type": "string", "title": "Credentialsid" },
-          "webhookType": { "type": "string", "title": "Webhooktype" },
-          "resource": { "type": "string", "title": "Resource" },
-          "events": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Events"
+          "new_output": { "type": "boolean", "title": "New Output" },
+          "can_access_graph": {
+            "type": "boolean",
+            "title": "Can Access Graph"
           },
-          "config": { "title": "Config" },
-          "secret": { "type": "string", "title": "Secret" },
-          "providerWebhookId": {
-            "type": "string",
-            "title": "Providerwebhookid"
+          "is_latest_version": {
+            "type": "boolean",
+            "title": "Is Latest Version"
           },
-          "AgentNodes": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentNode" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Agentnodes"
-          },
-          "AgentPresets": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentPreset" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Agentpresets"
+          "is_favorite": { "type": "boolean", "title": "Is Favorite" },
+          "recommended_schedule_cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended Schedule Cron"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "createdAt",
-          "userId",
-          "provider",
-          "credentialsId",
-          "webhookType",
-          "resource",
-          "events",
-          "config",
-          "secret",
-          "providerWebhookId"
+          "graph_id",
+          "graph_version",
+          "image_url",
+          "creator_name",
+          "creator_image_url",
+          "status",
+          "updated_at",
+          "name",
+          "description",
+          "input_schema",
+          "output_schema",
+          "credentials_input_schema",
+          "has_external_trigger",
+          "new_output",
+          "can_access_graph",
+          "is_latest_version",
+          "is_favorite"
         ],
-        "title": "IntegrationWebhook",
-        "description": "Represents a IntegrationWebhook record"
+        "title": "LibraryAgent",
+        "description": "Represents an agent in the library, including metadata for display and\nuser interaction within the system."
       },
       "LibraryAgentPreset": {
         "properties": {
@@ -7668,9 +6902,7 @@
       "LibraryAgentResponse": {
         "properties": {
           "agents": {
-            "items": {
-              "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-            },
+            "items": { "$ref": "#/components/schemas/LibraryAgent" },
             "type": "array",
             "title": "Agents"
           },
@@ -7953,37 +7185,6 @@
         "type": "object",
         "required": ["block_id", "graph_id", "graph_version"],
         "title": "NodeModel"
-      },
-      "NotificationEvent": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "UserNotificationBatch": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/UserNotificationBatch" },
-              { "type": "null" }
-            ]
-          },
-          "userNotificationBatchId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Usernotificationbatchid"
-          },
-          "type": { "$ref": "#/components/schemas/NotificationType" },
-          "data": { "title": "Data" }
-        },
-        "type": "object",
-        "required": ["id", "createdAt", "updatedAt", "type", "data"],
-        "title": "NotificationEvent",
-        "description": "Represents a NotificationEvent record"
       },
       "NotificationPreference": {
         "properties": {
@@ -8482,7 +7683,7 @@
         ],
         "title": "PostmarkSubscriptionChangeWebhook"
       },
-      "Profile-Input": {
+      "Profile": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
@@ -8502,69 +7703,6 @@
         "type": "object",
         "required": ["name", "username", "description", "links", "avatar_url"],
         "title": "Profile"
-      },
-      "Profile-Output": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "userId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Userid"
-          },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
-          "avatarUrl": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Avatarurl"
-          },
-          "isFeatured": { "type": "boolean", "title": "Isfeatured" },
-          "LibraryAgents": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/prisma__models__LibraryAgent"
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Libraryagents"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "name",
-          "username",
-          "description",
-          "links",
-          "isFeatured"
-        ],
-        "title": "Profile",
-        "description": "Represents a Profile record"
       },
       "ProfileDetails": {
         "properties": {
@@ -8760,9 +7898,7 @@
             "items": {
               "anyOf": [
                 { "$ref": "#/components/schemas/BlockInfo" },
-                {
-                  "$ref": "#/components/schemas/backend__server__v2__library__model__LibraryAgent"
-                },
+                { "$ref": "#/components/schemas/LibraryAgent" },
                 { "$ref": "#/components/schemas/StoreAgent" }
               ]
             },
@@ -9042,270 +8178,6 @@
         "type": "object",
         "required": ["agents", "pagination"],
         "title": "StoreAgentsResponse"
-      },
-      "StoreListing": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "isDeleted": { "type": "boolean", "title": "Isdeleted" },
-          "hasApprovedVersion": {
-            "type": "boolean",
-            "title": "Hasapprovedversion"
-          },
-          "slug": { "type": "string", "title": "Slug" },
-          "useForOnboarding": {
-            "type": "boolean",
-            "title": "Useforonboarding"
-          },
-          "activeVersionId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Activeversionid"
-          },
-          "ActiveVersion": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/StoreListingVersion" },
-              { "type": "null" }
-            ]
-          },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
-          "agentGraphVersion": {
-            "type": "integer",
-            "title": "Agentgraphversion"
-          },
-          "AgentGraph": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraph" },
-              { "type": "null" }
-            ]
-          },
-          "owningUserId": { "type": "string", "title": "Owninguserid" },
-          "OwningUser": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "Versions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/StoreListingVersion" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Versions"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "isDeleted",
-          "hasApprovedVersion",
-          "slug",
-          "useForOnboarding",
-          "agentGraphId",
-          "agentGraphVersion",
-          "owningUserId"
-        ],
-        "title": "StoreListing",
-        "description": "Represents a StoreListing record"
-      },
-      "StoreListingReview": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "storeListingVersionId": {
-            "type": "string",
-            "title": "Storelistingversionid"
-          },
-          "StoreListingVersion": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/StoreListingVersion" },
-              { "type": "null" }
-            ]
-          },
-          "reviewByUserId": { "type": "string", "title": "Reviewbyuserid" },
-          "ReviewByUser": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "score": { "type": "integer", "title": "Score" },
-          "comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Comments"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "storeListingVersionId",
-          "reviewByUserId",
-          "score"
-        ],
-        "title": "StoreListingReview",
-        "description": "Represents a StoreListingReview record"
-      },
-      "StoreListingVersion": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "version": { "type": "integer", "title": "Version" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
-          "agentGraphVersion": {
-            "type": "integer",
-            "title": "Agentgraphversion"
-          },
-          "AgentGraph": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraph" },
-              { "type": "null" }
-            ]
-          },
-          "name": { "type": "string", "title": "Name" },
-          "subHeading": { "type": "string", "title": "Subheading" },
-          "videoUrl": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Videourl"
-          },
-          "imageUrls": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Imageurls"
-          },
-          "description": { "type": "string", "title": "Description" },
-          "instructions": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Instructions"
-          },
-          "categories": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Categories"
-          },
-          "isFeatured": { "type": "boolean", "title": "Isfeatured" },
-          "isDeleted": { "type": "boolean", "title": "Isdeleted" },
-          "isAvailable": { "type": "boolean", "title": "Isavailable" },
-          "submissionStatus": {
-            "$ref": "#/components/schemas/SubmissionStatus"
-          },
-          "submittedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Submittedat"
-          },
-          "storeListingId": { "type": "string", "title": "Storelistingid" },
-          "StoreListing": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/StoreListing" },
-              { "type": "null" }
-            ]
-          },
-          "ActiveFor": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/StoreListing" },
-              { "type": "null" }
-            ]
-          },
-          "changesSummary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Changessummary"
-          },
-          "reviewerId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reviewerid"
-          },
-          "Reviewer": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "internalComments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Internalcomments"
-          },
-          "reviewComments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reviewcomments"
-          },
-          "reviewedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Reviewedat"
-          },
-          "recommendedScheduleCron": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Recommendedschedulecron"
-          },
-          "Reviews": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/StoreListingReview" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Reviews"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "version",
-          "createdAt",
-          "updatedAt",
-          "agentGraphId",
-          "agentGraphVersion",
-          "name",
-          "subHeading",
-          "imageUrls",
-          "description",
-          "categories",
-          "isFeatured",
-          "isDeleted",
-          "isAvailable",
-          "submissionStatus",
-          "storeListingId"
-        ],
-        "title": "StoreListingVersion",
-        "description": "Represents a StoreListingVersion record"
       },
       "StoreListingWithVersions": {
         "properties": {
@@ -10920,280 +9792,6 @@
         ],
         "title": "UploadFileResponse"
       },
-      "User": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "email": { "type": "string", "title": "Email" },
-          "emailVerified": { "type": "boolean", "title": "Emailverified" },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "metadata": { "title": "Metadata" },
-          "integrations": { "type": "string", "title": "Integrations" },
-          "stripeCustomerId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Stripecustomerid"
-          },
-          "topUpConfig": {
-            "anyOf": [{}, { "type": "null" }],
-            "title": "Topupconfig"
-          },
-          "maxEmailsPerDay": { "type": "integer", "title": "Maxemailsperday" },
-          "notifyOnAgentRun": {
-            "type": "boolean",
-            "title": "Notifyonagentrun"
-          },
-          "notifyOnZeroBalance": {
-            "type": "boolean",
-            "title": "Notifyonzerobalance"
-          },
-          "notifyOnLowBalance": {
-            "type": "boolean",
-            "title": "Notifyonlowbalance"
-          },
-          "notifyOnBlockExecutionFailed": {
-            "type": "boolean",
-            "title": "Notifyonblockexecutionfailed"
-          },
-          "notifyOnContinuousAgentError": {
-            "type": "boolean",
-            "title": "Notifyoncontinuousagenterror"
-          },
-          "notifyOnDailySummary": {
-            "type": "boolean",
-            "title": "Notifyondailysummary"
-          },
-          "notifyOnWeeklySummary": {
-            "type": "boolean",
-            "title": "Notifyonweeklysummary"
-          },
-          "notifyOnMonthlySummary": {
-            "type": "boolean",
-            "title": "Notifyonmonthlysummary"
-          },
-          "notifyOnAgentApproved": {
-            "type": "boolean",
-            "title": "Notifyonagentapproved"
-          },
-          "notifyOnAgentRejected": {
-            "type": "boolean",
-            "title": "Notifyonagentrejected"
-          },
-          "timezone": { "type": "string", "title": "Timezone" },
-          "AgentGraphs": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentGraph" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Agentgraphs"
-          },
-          "AgentGraphExecutions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentGraphExecution" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Agentgraphexecutions"
-          },
-          "AnalyticsDetails": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AnalyticsDetails" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Analyticsdetails"
-          },
-          "AnalyticsMetrics": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AnalyticsMetrics" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Analyticsmetrics"
-          },
-          "CreditTransactions": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/CreditTransaction" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Credittransactions"
-          },
-          "UserBalance": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/UserBalance" },
-              { "type": "null" }
-            ]
-          },
-          "AgentPresets": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/AgentPreset" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Agentpresets"
-          },
-          "LibraryAgents": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/prisma__models__LibraryAgent"
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Libraryagents"
-          },
-          "Profile": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/Profile-Output" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Profile"
-          },
-          "UserOnboarding": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/UserOnboarding" },
-              { "type": "null" }
-            ]
-          },
-          "StoreListings": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/StoreListing" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Storelistings"
-          },
-          "StoreListingReviews": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/StoreListingReview" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Storelistingreviews"
-          },
-          "StoreVersionsReviewed": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/StoreListingVersion" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Storeversionsreviewed"
-          },
-          "APIKeys": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/APIKey" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Apikeys"
-          },
-          "IntegrationWebhooks": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/IntegrationWebhook" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Integrationwebhooks"
-          },
-          "NotificationBatches": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/UserNotificationBatch"
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Notificationbatches"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "email",
-          "emailVerified",
-          "createdAt",
-          "updatedAt",
-          "metadata",
-          "integrations",
-          "maxEmailsPerDay",
-          "notifyOnAgentRun",
-          "notifyOnZeroBalance",
-          "notifyOnLowBalance",
-          "notifyOnBlockExecutionFailed",
-          "notifyOnContinuousAgentError",
-          "notifyOnDailySummary",
-          "notifyOnWeeklySummary",
-          "notifyOnMonthlySummary",
-          "notifyOnAgentApproved",
-          "notifyOnAgentRejected",
-          "timezone"
-        ],
-        "title": "User",
-        "description": "Represents a User record"
-      },
-      "UserBalance": {
-        "properties": {
-          "userId": { "type": "string", "title": "Userid" },
-          "balance": { "type": "integer", "title": "Balance" },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "user": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "required": ["userId", "balance", "updatedAt"],
-        "title": "UserBalance",
-        "description": "Represents a UserBalance record"
-      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -11208,58 +9806,9 @@
         "title": "UserHistoryResponse",
         "description": "Response model for listings with version history"
       },
-      "UserNotificationBatch": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "type": { "$ref": "#/components/schemas/NotificationType" },
-          "Notifications": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/NotificationEvent" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Notifications"
-          }
-        },
-        "type": "object",
-        "required": ["id", "createdAt", "updatedAt", "userId", "type"],
-        "title": "UserNotificationBatch",
-        "description": "Represents a UserNotificationBatch record"
-      },
       "UserOnboarding": {
         "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Updatedat"
-          },
+          "userId": { "type": "string", "title": "Userid" },
           "completedSteps": {
             "items": { "$ref": "#/components/schemas/OnboardingStep" },
             "type": "array",
@@ -11294,7 +9843,8 @@
             "title": "Selectedstorelistingversionid"
           },
           "agentInput": {
-            "anyOf": [{}, { "type": "null" }],
+            "additionalProperties": true,
+            "type": "object",
             "title": "Agentinput"
           },
           "onboardingAgentExecutionId": {
@@ -11312,30 +9862,26 @@
           "consecutiveRunDays": {
             "type": "integer",
             "title": "Consecutiverundays"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
           }
         },
         "type": "object",
         "required": [
-          "id",
-          "createdAt",
+          "userId",
           "completedSteps",
           "walletShown",
           "notified",
           "rewardedFor",
+          "usageReason",
           "integrations",
+          "otherIntegrations",
+          "selectedStoreListingVersionId",
+          "agentInput",
+          "onboardingAgentExecutionId",
           "agentRuns",
-          "consecutiveRunDays",
-          "userId"
+          "lastRunAt",
+          "consecutiveRunDays"
         ],
-        "title": "UserOnboarding",
-        "description": "Represents a UserOnboarding record"
+        "title": "UserOnboarding"
       },
       "UserOnboardingUpdate": {
         "properties": {
@@ -11547,171 +10093,6 @@
           "url"
         ],
         "title": "Webhook"
-      },
-      "backend__server__v2__library__model__LibraryAgent": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" },
-          "image_url": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Image Url"
-          },
-          "creator_name": { "type": "string", "title": "Creator Name" },
-          "creator_image_url": {
-            "type": "string",
-            "title": "Creator Image Url"
-          },
-          "status": { "$ref": "#/components/schemas/LibraryAgentStatus" },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "instructions": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Instructions"
-          },
-          "input_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Input Schema"
-          },
-          "output_schema": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Output Schema"
-          },
-          "credentials_input_schema": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Credentials Input Schema",
-            "description": "Input schema for credentials required by the agent"
-          },
-          "has_external_trigger": {
-            "type": "boolean",
-            "title": "Has External Trigger",
-            "description": "Whether the agent has an external trigger (e.g. webhook) node"
-          },
-          "trigger_setup_info": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/GraphTriggerInfo" },
-              { "type": "null" }
-            ]
-          },
-          "new_output": { "type": "boolean", "title": "New Output" },
-          "can_access_graph": {
-            "type": "boolean",
-            "title": "Can Access Graph"
-          },
-          "is_latest_version": {
-            "type": "boolean",
-            "title": "Is Latest Version"
-          },
-          "is_favorite": { "type": "boolean", "title": "Is Favorite" },
-          "recommended_schedule_cron": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Recommended Schedule Cron"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "graph_id",
-          "graph_version",
-          "image_url",
-          "creator_name",
-          "creator_image_url",
-          "status",
-          "updated_at",
-          "name",
-          "description",
-          "input_schema",
-          "output_schema",
-          "credentials_input_schema",
-          "has_external_trigger",
-          "new_output",
-          "can_access_graph",
-          "is_latest_version",
-          "is_favorite"
-        ],
-        "title": "LibraryAgent",
-        "description": "Represents an agent in the library, including metadata for display and\nuser interaction within the system."
-      },
-      "prisma__models__LibraryAgent": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Createdat"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updatedat"
-          },
-          "userId": { "type": "string", "title": "Userid" },
-          "User": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
-          "imageUrl": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Imageurl"
-          },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
-          "agentGraphVersion": {
-            "type": "integer",
-            "title": "Agentgraphversion"
-          },
-          "AgentGraph": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AgentGraph" },
-              { "type": "null" }
-            ]
-          },
-          "creatorId": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Creatorid"
-          },
-          "Creator": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/Profile-Output" },
-              { "type": "null" }
-            ]
-          },
-          "useGraphIsActiveVersion": {
-            "type": "boolean",
-            "title": "Usegraphisactiveversion"
-          },
-          "isFavorite": { "type": "boolean", "title": "Isfavorite" },
-          "isCreatedByUser": { "type": "boolean", "title": "Iscreatedbyuser" },
-          "isArchived": { "type": "boolean", "title": "Isarchived" },
-          "isDeleted": { "type": "boolean", "title": "Isdeleted" }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "userId",
-          "agentGraphId",
-          "agentGraphVersion",
-          "useGraphIsActiveVersion",
-          "isFavorite",
-          "isCreatedByUser",
-          "isArchived",
-          "isDeleted"
-        ],
-        "title": "LibraryAgent",
-        "description": "Represents a LibraryAgent record"
       }
     },
     "securitySchemes": {
