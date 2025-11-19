@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
 import {
   useGetV1GetExecutionDetails,
@@ -18,6 +18,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 
 export const useFlow = () => {
+  const [isLocked, setIsLocked] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
@@ -69,7 +70,9 @@ export const useFlow = () => {
   );
 
   const nodes = graph?.nodes;
-  const blockIds = nodes?.map((node) => node.block_id);
+  const blockIds = nodes
+    ? Array.from(new Set(nodes.map((node) => node.block_id)))
+    : undefined;
 
   const { data: blocks, isLoading: isBlocksLoading } =
     useGetV2GetSpecificBlocks(
@@ -95,34 +98,43 @@ export const useFlow = () => {
     });
   }, [nodes, blocks]);
 
+  // load graph schemas
   useEffect(() => {
-    // load graph schemas
     if (graph) {
       setGraphSchemas(
         graph.input_schema as Record<string, any> | null,
         graph.credentials_input_schema as Record<string, any> | null,
       );
     }
+  }, [graph]);
 
-    // adding nodes
+  // adding nodes
+  useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
       addNodes(customNodes);
     }
+  }, [customNodes, addNodes]);
 
-    // adding links
+  // adding links
+  useEffect(() => {
     if (graph?.links) {
       useEdgeStore.getState().setEdges([]);
       addLinks(graph.links);
     }
+  }, [graph?.links, addLinks]);
 
-    // update graph running status
+  // update graph running status
+  useEffect(() => {
     const isRunning =
       executionDetails?.status === AgentExecutionStatus.RUNNING ||
       executionDetails?.status === AgentExecutionStatus.QUEUED;
-    setIsGraphRunning(isRunning);
 
-    // update node execution status in nodes
+    setIsGraphRunning(isRunning);
+  }, [executionDetails?.status]);
+
+  // update node execution status in nodes
+  useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -132,8 +144,10 @@ export const useFlow = () => {
         updateNodeStatus(nodeExecution.node_id, nodeExecution.status);
       });
     }
+  }, [executionDetails, updateNodeStatus]);
 
-    // update node execution results in nodes, also update edge beads
+  // update node execution results in nodes, also update edge beads
+  useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -144,7 +158,7 @@ export const useFlow = () => {
         updateEdgeBeads(nodeExecution.node_id, nodeExecution);
       });
     }
-  }, [customNodes, addNodes, graph?.links, executionDetails, updateNodeStatus]);
+  }, [executionDetails, updateNodeExecutionResult, updateEdgeBeads]);
 
   useEffect(() => {
     return () => {
@@ -162,30 +176,37 @@ export const useFlow = () => {
     event.dataTransfer.dropEffect = "copy";
   }, []);
 
-  const onDrop = async (event: React.DragEvent) => {
-    event.preventDefault();
-    const blockDataString = event.dataTransfer.getData("application/reactflow");
-    if (!blockDataString) return;
+  const onDrop = useCallback(
+    async (event: React.DragEvent) => {
+      event.preventDefault();
+      const blockDataString = event.dataTransfer.getData(
+        "application/reactflow",
+      );
+      if (!blockDataString) return;
 
-    try {
-      const blockData = JSON.parse(blockDataString) as BlockInfo;
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      addBlock(blockData, position);
+      try {
+        const blockData = JSON.parse(blockDataString) as BlockInfo;
+        const position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        addBlock(blockData, {}, position);
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      setBlockMenuOpen(true);
-    } catch (error) {
-      console.error("Failed to drop block:", error);
-      setBlockMenuOpen(true);
-    }
-  };
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        setBlockMenuOpen(true);
+      } catch (error) {
+        console.error("Failed to drop block:", error);
+        setBlockMenuOpen(true);
+      }
+    },
+    [screenToFlowPosition, addBlock, setBlockMenuOpen],
+  );
 
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
     onDragOver,
     onDrop,
+    isLocked,
+    setIsLocked,
   };
 };

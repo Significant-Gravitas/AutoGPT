@@ -1,4 +1,4 @@
-import { ReactFlow, Background, Controls } from "@xyflow/react";
+import { ReactFlow, Background } from "@xyflow/react";
 import NewControlPanel from "../../NewControlPanel/NewControlPanel";
 import CustomEdge from "../edges/CustomEdge";
 import { useFlow } from "./useFlow";
@@ -13,6 +13,7 @@ import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useCopyPaste } from "./useCopyPaste";
+import { CustomControls } from "./components/CustomControl";
 
 export const Flow = () => {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
@@ -24,7 +25,8 @@ export const Flow = () => {
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
-  const { onDragOver, onDrop } = useFlow();
+  const { onDragOver, onDrop, isFlowContentLoading, isLocked, setIsLocked } =
+    useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
@@ -42,8 +44,6 @@ export const Flow = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleCopyPaste]);
-
-  const { isFlowContentLoading } = useFlow();
   const { isGraphRunning } = useGraphStore();
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
@@ -60,12 +60,15 @@ export const Flow = () => {
           minZoom={0.1}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          nodesDraggable={!isLocked}
+          nodesConnectable={!isLocked}
+          elementsSelectable={!isLocked}
         >
           <Background />
-          <Controls />
+          <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
           <NewControlPanel />
           <BuilderActions />
-          {isFlowContentLoading && <GraphLoadingBox />}
+          {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
