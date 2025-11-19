@@ -95,34 +95,43 @@ export const useFlow = () => {
     });
   }, [nodes, blocks]);
 
+  // load graph schemas
   useEffect(() => {
-    // load graph schemas
     if (graph) {
       setGraphSchemas(
         graph.input_schema as Record<string, any> | null,
         graph.credentials_input_schema as Record<string, any> | null,
       );
     }
+  }, [graph]);
 
-    // adding nodes
+  // adding nodes
+  useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
       addNodes(customNodes);
     }
+  }, [customNodes, addNodes]);
 
-    // adding links
+  // adding links
+  useEffect(() => {
     if (graph?.links) {
       useEdgeStore.getState().setEdges([]);
       addLinks(graph.links);
     }
+  }, [graph?.links, addLinks]);
 
-    // update graph running status
+  // update graph running status
+  useEffect(() => {
     const isRunning =
       executionDetails?.status === AgentExecutionStatus.RUNNING ||
       executionDetails?.status === AgentExecutionStatus.QUEUED;
-    setIsGraphRunning(isRunning);
 
-    // update node execution status in nodes
+    setIsGraphRunning(isRunning);
+  }, [executionDetails?.status]);
+
+  // update node execution status in nodes
+  useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -132,8 +141,10 @@ export const useFlow = () => {
         updateNodeStatus(nodeExecution.node_id, nodeExecution.status);
       });
     }
+  }, [executionDetails, updateNodeStatus]);
 
-    // update node execution results in nodes, also update edge beads
+  // update node execution results in nodes, also update edge beads
+  useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -144,7 +155,7 @@ export const useFlow = () => {
         updateEdgeBeads(nodeExecution.node_id, nodeExecution);
       });
     }
-  }, [customNodes, addNodes, graph?.links, executionDetails, updateNodeStatus]);
+  }, [executionDetails, updateNodeExecutionResult, updateEdgeBeads]);
 
   useEffect(() => {
     return () => {

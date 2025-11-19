@@ -42,7 +42,6 @@ export const Flow = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleCopyPaste]);
-
   const { isGraphRunning } = useGraphStore();
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
