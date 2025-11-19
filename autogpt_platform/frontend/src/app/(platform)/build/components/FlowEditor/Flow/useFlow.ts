@@ -176,26 +176,31 @@ export const useFlow = () => {
     event.dataTransfer.dropEffect = "copy";
   }, []);
 
-  const onDrop = async (event: React.DragEvent) => {
-    event.preventDefault();
-    const blockDataString = event.dataTransfer.getData("application/reactflow");
-    if (!blockDataString) return;
+  const onDrop = useCallback(
+    async (event: React.DragEvent) => {
+      event.preventDefault();
+      const blockDataString = event.dataTransfer.getData(
+        "application/reactflow",
+      );
+      if (!blockDataString) return;
 
-    try {
-      const blockData = JSON.parse(blockDataString) as BlockInfo;
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      addBlock(blockData, {}, position);
+      try {
+        const blockData = JSON.parse(blockDataString) as BlockInfo;
+        const position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        addBlock(blockData, {}, position);
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      setBlockMenuOpen(true);
-    } catch (error) {
-      console.error("Failed to drop block:", error);
-      setBlockMenuOpen(true);
-    }
-  };
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        setBlockMenuOpen(true);
+      } catch (error) {
+        console.error("Failed to drop block:", error);
+        setBlockMenuOpen(true);
+      }
+    },
+    [screenToFlowPosition, addBlock, setBlockMenuOpen],
+  );
 
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,

@@ -2,8 +2,9 @@ import { parseAsString, useQueryStates } from "nuqs";
 import { AgentOutputs } from "./components/AgentOutputs/AgentOutputs";
 import { RunGraph } from "./components/RunGraph/RunGraph";
 import { ScheduleGraph } from "./components/ScheduleGraph/ScheduleGraph";
+import { memo } from "react";
 
-export const BuilderActions = () => {
+export const BuilderActions = memo(() => {
   const [{ flowID }] = useQueryStates({
     flowID: parseAsString,
   });
@@ -14,4 +15,4 @@ export const BuilderActions = () => {
       <ScheduleGraph flowID={flowID} />
     </div>
   );
-};
+});

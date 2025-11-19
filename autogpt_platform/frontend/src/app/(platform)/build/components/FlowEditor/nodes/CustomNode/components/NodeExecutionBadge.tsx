@@ -3,6 +3,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { Badge } from "@/components/__legacy__/ui/badge";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
 import { cn } from "@/lib/utils";
+import { useShallow } from "zustand/react/shallow";
 
 const statusStyles: Record<AgentExecutionStatus, string> = {
   INCOMPLETE: "text-slate-700 border-slate-400",
@@ -14,7 +15,9 @@ const statusStyles: Record<AgentExecutionStatus, string> = {
 };
 
 export const NodeExecutionBadge = ({ nodeId }: { nodeId: string }) => {
-  const status = useNodeStore((state) => state.getNodeStatus(nodeId));
+  const status = useNodeStore(
+    useShallow((state) => state.getNodeStatus(nodeId)),
+  );
   if (!status) return null;
   return (
     <div className="flex items-center justify-end rounded-b-xl py-2 pr-4">

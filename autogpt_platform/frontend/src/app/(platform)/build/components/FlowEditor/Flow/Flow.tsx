@@ -60,9 +60,9 @@ export const Flow = () => {
           minZoom={0.1}
           onDragOver={onDragOver}
           onDrop={onDrop}
-          nodesDraggable={isLocked}
-          nodesConnectable={isLocked}
-          elementsSelectable={isLocked}
+          nodesDraggable={!isLocked}
+          nodesConnectable={!isLocked}
+          elementsSelectable={!isLocked}
         >
           <Background />
           <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
