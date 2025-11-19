@@ -158,9 +158,7 @@ async def get_execution_analytics_config(
         return f"{provider_name}: {model_name}"
 
     # Include all LlmModel values (no more filtering by hardcoded list)
-    recommended_model = (
-        LlmModel.GPT4O_MINI.value
-    )  # Use enum value instead of hardcoded string
+    recommended_model = LlmModel.GPT4O_MINI.value
     for model in LlmModel:
         label = generate_model_label(model)
         # Add "(Recommended)" suffix to the recommended model
