@@ -3886,6 +3886,30 @@
         }
       }
     },
+    "/api/executions/admin/execution_analytics/config": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Get Execution Analytics Configuration",
+        "description": "Get the configuration for execution analytics including:\n- Available AI models with metadata\n- Default system and user prompts\n- Recommended model selection",
+        "operationId": "getV2Get execution analytics configuration",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsConfig"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/executions/admin/execution_analytics": {
       "post": {
         "tags": ["v2", "admin", "admin", "execution_analytics"],
@@ -5759,6 +5783,35 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "ExecutionAnalyticsConfig": {
+        "properties": {
+          "available_models": {
+            "items": { "$ref": "#/components/schemas/ModelInfo" },
+            "type": "array",
+            "title": "Available Models"
+          },
+          "default_system_prompt": {
+            "type": "string",
+            "title": "Default System Prompt"
+          },
+          "default_user_prompt": {
+            "type": "string",
+            "title": "Default User Prompt"
+          },
+          "recommended_model": {
+            "type": "string",
+            "title": "Recommended Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available_models",
+          "default_system_prompt",
+          "default_user_prompt",
+          "recommended_model"
+        ],
+        "title": "ExecutionAnalyticsConfig"
+      },
       "ExecutionAnalyticsRequest": {
         "properties": {
           "graph_id": {
@@ -6915,6 +6968,16 @@
         "type": "object",
         "required": ["query", "response"],
         "title": "Message"
+      },
+      "ModelInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "provider": { "type": "string", "title": "Provider" }
+        },
+        "type": "object",
+        "required": ["value", "label", "provider"],
+        "title": "ModelInfo"
       },
       "MyAgent": {
         "properties": {

@@ -17,7 +17,7 @@ import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   usePostV2GenerateExecutionAnalytics,
-  useGetV2ExecutionAnalyticsConfig,
+  useGetV2GetExecutionAnalyticsConfiguration,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
@@ -40,7 +40,7 @@ export function ExecutionAnalyticsForm() {
     data: config,
     isLoading: configLoading,
     error: configError,
-  } = useGetV2ExecutionAnalyticsConfig();
+  } = useGetV2GetExecutionAnalyticsConfiguration();
 
   const generateAnalytics = usePostV2GenerateExecutionAnalytics({
     mutation: {
