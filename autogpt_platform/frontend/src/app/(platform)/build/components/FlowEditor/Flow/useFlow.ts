@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
 import {
   useGetV1GetExecutionDetails,
@@ -18,6 +18,7 @@ import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 
 export const useFlow = () => {
+  const [isLocked, setIsLocked] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
@@ -200,5 +201,7 @@ export const useFlow = () => {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
     onDragOver,
     onDrop,
+    isLocked,
+    setIsLocked,
   };
 };
