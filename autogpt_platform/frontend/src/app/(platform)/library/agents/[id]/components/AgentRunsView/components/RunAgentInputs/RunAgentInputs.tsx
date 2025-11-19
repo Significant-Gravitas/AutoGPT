@@ -8,7 +8,7 @@ import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { GoogleDrivePicker } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePicker";
+import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePickerInput";
 import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import {
   BlockIOObjectSubSchema,
@@ -96,63 +96,14 @@ export function RunAgentInputs({
       const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
         pickerSchema.google_drive_picker_config || {};
 
-      const isMultiSelect = config.multiselect || false;
-      const currentFiles = isMultiSelect
-        ? Array.isArray(value)
-          ? value
-          : []
-        : value
-          ? [value]
-          : [];
-
       innerInputElement = (
-        <div className="flex w-full flex-col gap-2">
-          <GoogleDrivePicker
-            multiselect={config.multiselect || false}
-            views={(config.allowed_views as any) || ["DOCS"]}
-            scopes={
-              config.scopes || ["https://www.googleapis.com/auth/drive.file"]
-            }
-            disabled={false}
-            onPicked={(files) => {
-              const convertedFiles = files.map((f) => ({
-                id: f.id,
-                name: f.name,
-                mimeType: f.mimeType,
-                url: f.url,
-                iconUrl: f.iconUrl,
-                isFolder: f.mimeType === "application/vnd.google-apps.folder",
-                accessToken: f.accessToken,
-              }));
-
-              const newValue = isMultiSelect
-                ? convertedFiles
-                : convertedFiles[0];
-              onChange(newValue);
-            }}
-            onCanceled={() => {}}
-            onError={(error) => {
-              console.error("Google Drive Picker error:", error);
-            }}
-          />
-
-          {/* Display Selected Files */}
-          {currentFiles.length > 0 && (
-            <div className="space-y-1 text-sm">
-              {currentFiles.map((file: any, idx: number) => (
-                <div
-                  key={file.id || idx}
-                  className="flex items-center gap-2 text-gray-600 dark:text-gray-400"
-                >
-                  {file.iconUrl && (
-                    <img src={file.iconUrl} alt="" className="h-4 w-4" />
-                  )}
-                  <span className="truncate">{file.name || file.id}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <GoogleDrivePickerInput
+          config={config}
+          value={value}
+          onChange={onChange}
+          className="w-full"
+          showRemoveButton={false}
+        />
       );
       break;
     }
