@@ -348,8 +348,8 @@ def GoogleDrivePickerField(
     if allow_folder_selection:
         picker_scopes.add("https://www.googleapis.com/auth/drive")
     else:
-        # Use drive.readonly for reading any files (not just app-created ones)
-        picker_scopes.add("https://www.googleapis.com/auth/drive.readonly")
+        # Use drive.file for minimal scope - only access files selected by user in picker
+        picker_scopes.add("https://www.googleapis.com/auth/drive.file")
 
     views = set(allowed_views or [])
     if "SPREADSHEETS" in views:

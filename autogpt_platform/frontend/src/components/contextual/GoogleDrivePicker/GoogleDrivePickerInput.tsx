@@ -1,6 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { cn } from "@/lib/utils";
 import { Cross2Icon } from "@radix-ui/react-icons";
+import React from "react";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
 import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 
@@ -21,6 +22,7 @@ export function GoogleDrivePickerInput({
   className,
   showRemoveButton = true,
 }: GoogleDrivePickerInputProps) {
+  const [pickerError, setPickerError] = React.useState<string | null>(null);
   const isMultiSelect = config.multiselect || false;
   const currentFiles = isMultiSelect
     ? Array.isArray(value)
@@ -31,6 +33,9 @@ export function GoogleDrivePickerInput({
       : [];
 
   function handlePicked(files: any[]) {
+    // Clear any previous picker errors
+    setPickerError(null);
+
     // Convert to GoogleDriveFile format
     const convertedFiles = files.map((f) => ({
       id: f.id,
@@ -58,6 +63,7 @@ export function GoogleDrivePickerInput({
 
   function handleError(error: any) {
     console.error("Google Drive Picker error:", error);
+    setPickerError(error instanceof Error ? error.message : String(error));
   }
 
   return (
@@ -116,8 +122,11 @@ export function GoogleDrivePickerInput({
         </div>
       )}
 
-      {/* Error Message */}
+      {/* Error Messages */}
       {error && <span className="text-sm text-red-500">{error}</span>}
+      {pickerError && (
+        <span className="text-sm text-red-500">{pickerError}</span>
+      )}
     </div>
   );
 }

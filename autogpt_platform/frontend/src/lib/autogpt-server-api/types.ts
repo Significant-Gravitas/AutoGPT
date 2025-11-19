@@ -135,9 +135,12 @@ export type GoogleDrivePickerConfig = {
   scopes?: string[];
 };
 
+/**
+ * Schema for Google Drive Picker input fields.
+ * When multiselect=false: type="object" (single GoogleDriveFile)
+ * When multiselect=true: type="array" with items={ type="object" } (array of GoogleDriveFile)
+ */
 export type GoogleDrivePickerSchema = BlockIOSubSchemaMeta & {
-  // When multiselect=false: type="object"
-  // When multiselect=true: type="array", items={ type="object" }
   type: "object" | "array";
   format: "google-drive-picker";
   google_drive_picker_config?: GoogleDrivePickerConfig;
