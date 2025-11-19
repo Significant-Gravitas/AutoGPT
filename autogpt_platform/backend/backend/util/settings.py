@@ -274,6 +274,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     # SQLAlchemy Configuration
+    enable_sqlalchemy: bool = Field(
+        default=False,
+        description="Enable SQLAlchemy database connections. Set to true to enable gradual migration from Prisma to SQLAlchemy. "
+        "When disabled, only Prisma is used. When enabled, both ORMs coexist during transition.",
+    )
+
     sqlalchemy_pool_size: int = Field(
         default=10,
         ge=1,

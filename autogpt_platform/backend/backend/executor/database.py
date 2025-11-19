@@ -88,10 +88,42 @@ class DatabaseManager(AppService):
             logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
             await db.connect()
 
+            # Initialize SQLAlchemy if enabled (for gradual migration from Prisma)
+            if config.enable_sqlalchemy:
+                try:
+                    from backend.data import sqlalchemy as sa
+
+                    engine = sa.create_engine()
+                    sa.initialize(engine)
+                    app.state.db_engine = engine
+                    logger.info(
+                        f"[{self.service_name}] ✓ SQLAlchemy initialized "
+                        f"(pool_size={config.sqlalchemy_pool_size}, "
+                        f"max_overflow={config.sqlalchemy_max_overflow})"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"[{self.service_name}] Failed to initialize SQLAlchemy: {e}"
+                    )
+                    raise
+
             logger.info(f"[{self.service_name}] ✅ Ready")
             yield
 
             logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+
+            # Dispose SQLAlchemy if it was enabled
+            if config.enable_sqlalchemy:
+                try:
+                    from backend.data import sqlalchemy as sa
+
+                    await sa.dispose()
+                    logger.info(f"[{self.service_name}] ✓ SQLAlchemy disposed")
+                except Exception as e:
+                    logger.warning(
+                        f"[{self.service_name}] Error disposing SQLAlchemy: {e}"
+                    )
+
             await db.disconnect()
 
     async def health_check(self) -> str:

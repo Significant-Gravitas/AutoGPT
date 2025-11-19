@@ -78,6 +78,24 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.db.connect()
 
+    # Initialize SQLAlchemy if enabled (for gradual migration from Prisma)
+    config = backend.util.settings.Config()
+    if config.enable_sqlalchemy:
+        try:
+            from backend.data import sqlalchemy as sa
+
+            engine = sa.create_engine()
+            sa.initialize(engine)
+            app.state.db_engine = engine
+            logger.info(
+                f"✓ AgentServer: SQLAlchemy initialized "
+                f"(pool_size={config.sqlalchemy_pool_size}, "
+                f"max_overflow={config.sqlalchemy_max_overflow})"
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize SQLAlchemy: {e}")
+            raise
+
     # Configure thread pool for FastAPI sync operation performance
     # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
     # - Any endpoint defined with 'def' (not async def)
@@ -117,6 +135,16 @@ async def lifespan_context(app: fastapi.FastAPI):
         await shutdown_cloud_storage_handler()
     except Exception as e:
         logger.warning(f"Error shutting down cloud storage handler: {e}")
+
+    # Dispose SQLAlchemy if it was enabled
+    if config.enable_sqlalchemy:
+        try:
+            from backend.data import sqlalchemy as sa
+
+            await sa.dispose()
+            logger.info("✓ AgentServer: SQLAlchemy disposed")
+        except Exception as e:
+            logger.warning(f"Error disposing SQLAlchemy: {e}")
 
     await backend.data.db.disconnect()
 
