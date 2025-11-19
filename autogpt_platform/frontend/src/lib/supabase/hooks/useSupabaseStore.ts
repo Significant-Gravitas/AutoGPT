@@ -122,20 +122,16 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     broadcastLogout();
 
-    try {
-      await serverLogout(options);
-    } catch (error) {
-      console.error("Error logging out:", error);
-    } finally {
-      set({
-        user: null,
-        hasLoadedUser: false,
-        isUserLoading: false,
-      });
+    set({
+      user: null,
+      hasLoadedUser: false,
+      isUserLoading: false,
+    });
 
-      if (router) {
-        router.refresh();
-      }
+    const result = await serverLogout(options);
+
+    if (result.success && router) {
+      router.push("/login");
     }
   }
 

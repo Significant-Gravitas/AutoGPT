@@ -1,11 +1,12 @@
-import { getWebSocketToken } from "@/lib/supabase/actions";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { createBrowserClient } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { Key, storage } from "@/services/storage/local-storage";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { ImpersonationState } from "@/lib/impersonation";
+import { getWebSocketToken } from "@/lib/supabase/actions";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { environment } from "@/services/environment";
+import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -70,7 +71,6 @@ import type {
   UsersBalanceHistoryResponse,
   WebSocketNotification,
 } from "./types";
-import { environment } from "@/services/environment";
 
 const isClient = environment.isClientSide();
 
@@ -1006,8 +1006,13 @@ export default class BackendAPI {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
-    const { buildClientUrl, buildUrlWithQuery, handleFetchError } =
-      await import("./helpers");
+    const {
+      buildClientUrl,
+      buildUrlWithQuery,
+      handleFetchError,
+      isLogoutInProgress,
+      isAuthenticationError,
+    } = await import("./helpers");
 
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
     let url = buildClientUrl(path);
@@ -1034,7 +1039,18 @@ export default class BackendAPI {
     });
 
     if (!response.ok) {
-      throw await handleFetchError(response);
+      const error = await handleFetchError(response);
+      if (
+        isAuthenticationError(response, error.message) &&
+        isLogoutInProgress()
+      ) {
+        console.debug(
+          "Authentication request failed during logout, ignoring:",
+          error.message,
+        );
+        return null;
+      }
+      throw error;
     }
 
     return await response.json();
