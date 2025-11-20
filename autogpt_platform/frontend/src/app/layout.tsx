@@ -52,7 +52,7 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
-            {previewStealingDev && environment.isDev() ? (
+            {previewStealingDev ? (
               <PreviewBanner branchName={previewStealingDev} />
             ) : null}
             {children}
