@@ -6,7 +6,8 @@
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const isProdOrDev = environment.isProd() || environment.isDev();
+const isProdOrDev =
+  environment.isProductionBuild() || environment.isDevelopmentBuild();
 const isCloud = environment.isCloud();
 const isDisabled = process.env.DISABLE_SENTRY === "true";
 

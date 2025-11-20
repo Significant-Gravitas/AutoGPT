@@ -64,12 +64,20 @@ function getPreviewStealingDev() {
   return process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
 }
 
-function isProd() {
+function isProductionBuild() {
   return process.env.NODE_ENV === "production";
 }
 
-function isDev() {
+function isDevelopmentBuild() {
   return process.env.NODE_ENV === "development";
+}
+
+function isDev() {
+  return isCloud() && getAppEnv() === AppEnv.DEV;
+}
+
+function isProd() {
+  return isCloud() && getAppEnv() === AppEnv.PROD;
 }
 
 function isCloud() {
@@ -111,8 +119,10 @@ export const environment = {
   // Assertions
   isServerSide,
   isClientSide,
-  isProd,
+  isProductionBuild,
+  isDevelopmentBuild,
   isDev,
+  isProd,
   isCloud,
   isLocal,
   isVercelPreview,
