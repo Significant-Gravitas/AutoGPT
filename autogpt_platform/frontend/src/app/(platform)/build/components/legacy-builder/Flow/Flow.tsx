@@ -762,6 +762,22 @@ const FlowEditor: React.FC<{
     [],
   );
 
+  // Track when we should run or schedule after save completes
+  const [shouldRunAfterSave, setShouldRunAfterSave] = useState(false);
+  const [shouldScheduleAfterSave, setShouldScheduleAfterSave] = useState(false);
+
+  // Effect to trigger runOrOpenInput or openRunInputDialog after saving completes
+  useEffect(() => {
+    if (!isSaving && shouldRunAfterSave) {
+      runnerUIRef.current?.runOrOpenInput();
+      setShouldRunAfterSave(false);
+    }
+    if (!isSaving && shouldScheduleAfterSave) {
+      runnerUIRef.current?.openRunInputDialog();
+      setShouldScheduleAfterSave(false);
+    }
+  }, [isSaving, shouldRunAfterSave, shouldScheduleAfterSave]);
+
   const handleRunButton = useCallback(async () => {
     if (isRunning) return;
     if (!savedAgent) {
@@ -771,7 +787,7 @@ const FlowEditor: React.FC<{
       return;
     }
     await saveAgent();
-    runnerUIRef.current?.runOrOpenInput();
+    setShouldRunAfterSave(true);
   }, [isRunning, savedAgent, toast, saveAgent]);
 
   const handleScheduleButton = useCallback(async () => {
@@ -783,7 +799,7 @@ const FlowEditor: React.FC<{
       return;
     }
     await saveAgent();
-    runnerUIRef.current?.openRunInputDialog();
+    setShouldScheduleAfterSave(true);
   }, [isScheduling, savedAgent, toast, saveAgent]);
 
   const isNewBlockEnabled = useGetFlag(Flag.NEW_BLOCK_MENU);

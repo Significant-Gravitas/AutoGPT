@@ -129,6 +129,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
@@ -241,6 +242,7 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
+    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
@@ -252,12 +254,12 @@ MODEL_METADATA = {
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
     LlmModel.DEEPSEEK_R1_0528: ModelMetadata("open_router", 163840, 163840),
-    LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 127000),
+    LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 8000),
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 8000),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
         "open_router",
         128000,
-        128000,
+        16000,
     ),
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
         "open_router", 131000, 4096
@@ -797,7 +799,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default="",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[dict] = SchemaField(
+        conversation_history: list[dict] | None = SchemaField(
             default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
@@ -904,7 +906,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
-        prompt = [json.to_dict(p) for p in input_data.conversation_history]
+        prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
 
         values = input_data.prompt_values
         if values:

@@ -27,6 +27,101 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Default system prompt template for activity status generation
+DEFAULT_SYSTEM_PROMPT = """You are an AI assistant analyzing what an agent execution accomplished and whether it worked correctly. 
+You need to provide both a user-friendly summary AND a correctness assessment.
+
+FOR THE ACTIVITY STATUS:
+- Write from the user's perspective about what they accomplished, NOT about technical execution details
+- Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps
+- Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc.
+- Keep it to 3 sentences maximum. Be conversational and human-friendly
+
+FOR THE CORRECTNESS SCORE:
+- Provide a score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose
+- Use this scoring guide:
+  0.0-0.2: Failure - The result clearly did not meet the task requirements
+  0.2-0.4: Poor - Major issues; only small parts of the goal were achieved
+  0.4-0.6: Partial Success - Some objectives met, but with noticeable gaps or inaccuracies
+  0.6-0.8: Mostly Successful - Largely achieved the intended outcome, with minor flaws
+  0.8-1.0: Success - Fully met or exceeded the task requirements
+- Base the score on actual outputs produced, not just technical completion
+
+UNDERSTAND THE INTENDED PURPOSE:
+- FIRST: Read the graph description carefully to understand what the user wanted to accomplish
+- The graph name and description tell you the main goal/intention of this automation
+- Use this intended purpose as your PRIMARY criteria for success/failure evaluation
+- Ask yourself: 'Did this execution actually accomplish what the graph was designed to do?'
+
+CRITICAL OUTPUT ANALYSIS:
+- Check if blocks that should produce user-facing results actually produced outputs
+- Blocks with names containing 'Output', 'Post', 'Create', 'Send', 'Publish', 'Generate' are usually meant to produce final results
+- If these critical blocks have NO outputs (empty recent_outputs), the task likely FAILED even if status shows 'completed'
+- Sub-agents (AgentExecutorBlock) that produce no outputs usually indicate failed sub-tasks
+- Most importantly: Does the execution result match what the graph description promised to deliver?
+
+SUCCESS EVALUATION BASED ON INTENTION:
+- If the graph is meant to 'create blog posts' → check if blog content was actually created
+- If the graph is meant to 'send emails' → check if emails were actually sent
+- If the graph is meant to 'analyze data' → check if analysis results were produced
+- If the graph is meant to 'generate reports' → check if reports were generated
+- Technical completion ≠ goal achievement. Focus on whether the USER'S INTENDED OUTCOME was delivered
+
+IMPORTANT: Be HONEST about what actually happened:
+- If the input was invalid/nonsensical, say so directly
+- If the task failed, explain what went wrong in simple terms
+- If errors occurred, focus on what the user needs to know
+- Only claim success if the INTENDED PURPOSE was genuinely accomplished AND produced expected outputs
+- Don't sugar-coat failures or present them as helpful feedback
+- ESPECIALLY: If the graph's main purpose wasn't achieved, this is a failure regardless of 'completed' status
+
+Understanding Errors:
+- Node errors: Individual steps may fail but the overall task might still complete (e.g., one data source fails but others work)
+- Graph error (in overall_status.graph_error): This means the entire execution failed and nothing was accomplished
+- Missing outputs from critical blocks: Even if no errors, this means the task failed to produce expected results
+- Focus on whether the graph's intended purpose was fulfilled, not whether technical steps completed"""
+
+# Default user prompt template for activity status generation
+DEFAULT_USER_PROMPT = """A user ran '{{GRAPH_NAME}}' to accomplish something. Based on this execution data, 
+provide both an activity summary and correctness assessment:
+
+{{EXECUTION_DATA}}
+
+ANALYSIS CHECKLIST:
+1. READ graph_info.description FIRST - this tells you what the user intended to accomplish
+2. Check overall_status.graph_error - if present, the entire execution failed
+3. Look for nodes with 'Output', 'Post', 'Create', 'Send', 'Publish', 'Generate' in their block_name
+4. Check if these critical blocks have empty recent_outputs arrays - this indicates failure
+5. Look for AgentExecutorBlock (sub-agents) with no outputs - this suggests sub-task failures
+6. Count how many nodes produced outputs vs total nodes - low ratio suggests problems
+7. MOST IMPORTANT: Does the execution outcome match what graph_info.description promised?
+
+INTENTION-BASED EVALUATION:
+- If description mentions 'blog writing' → did it create blog content?
+- If description mentions 'email automation' → were emails actually sent?
+- If description mentions 'data analysis' → were analysis results produced?
+- If description mentions 'content generation' → was content actually generated?
+- If description mentions 'social media posting' → were posts actually made?
+- Match the outputs to the stated intention, not just technical completion
+
+PROVIDE:
+activity_status: 1-3 sentences about what the user accomplished, such as:
+- 'I analyzed your resume and provided detailed feedback for the IT industry.'
+- 'I couldn't complete the task because critical steps failed to produce any results.'
+- 'I failed to generate the content you requested due to missing API access.'
+- 'I extracted key information from your documents and organized it into a summary.'
+- 'The task failed because the blog post creation step didn't produce any output.'
+
+correctness_score: A float score from 0.0 to 1.0 based on how well the intended purpose was achieved:
+- 0.0-0.2: Failure (didn't meet requirements)
+- 0.2-0.4: Poor (major issues, minimal achievement)
+- 0.4-0.6: Partial Success (some objectives met with gaps)
+- 0.6-0.8: Mostly Successful (largely achieved with minor flaws)
+- 0.8-1.0: Success (fully met or exceeded requirements)
+
+BE CRITICAL: If the graph's intended purpose (from description) wasn't achieved, use a low score (0.0-0.4) even if status is 'completed'."""
+
+
 class ErrorInfo(TypedDict):
     """Type definition for error information."""
 
@@ -93,6 +188,9 @@ async def generate_activity_status_for_execution(
     execution_status: ExecutionStatus | None = None,
     model_name: str = "gpt-4o-mini",
     skip_feature_flag: bool = False,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    user_prompt: str = DEFAULT_USER_PROMPT,
+    skip_existing: bool = True,
 ) -> ActivityStatusResponse | None:
     """
     Generate an AI-based activity status summary and correctness assessment for a graph execution.
@@ -108,10 +206,15 @@ async def generate_activity_status_for_execution(
         db_client: Database client for fetching data
         user_id: User ID for LaunchDarkly feature flag evaluation
         execution_status: The overall execution status (COMPLETED, FAILED, TERMINATED)
+        model_name: AI model to use for generation (default: gpt-4o-mini)
+        skip_feature_flag: Whether to skip LaunchDarkly feature flag check
+        system_prompt: Custom system prompt template (default: DEFAULT_SYSTEM_PROMPT)
+        user_prompt: Custom user prompt template with placeholders (default: DEFAULT_USER_PROMPT)
+        skip_existing: Whether to skip if activity_status and correctness_score already exist
 
     Returns:
         AI-generated activity status response with activity_status and correctness_status,
-        or None if feature is disabled
+        or None if feature is disabled or skipped
     """
     # Check LaunchDarkly feature flag for AI activity status generation with full context support
     if not skip_feature_flag and not await is_feature_enabled(
@@ -119,6 +222,20 @@ async def generate_activity_status_for_execution(
     ):
         logger.debug("AI activity status generation is disabled via LaunchDarkly")
         return None
+
+    # Check if we should skip existing data (for admin regeneration option)
+    if (
+        skip_existing
+        and execution_stats.activity_status
+        and execution_stats.correctness_score is not None
+    ):
+        logger.debug(
+            f"Skipping activity status generation for {graph_exec_id}: already exists"
+        )
+        return {
+            "activity_status": execution_stats.activity_status,
+            "correctness_score": execution_stats.correctness_score,
+        }
 
     # Check if we have OpenAI API key
     try:
@@ -136,7 +253,12 @@ async def generate_activity_status_for_execution(
 
         # Get graph metadata and full graph structure for name, description, and links
         graph_metadata = await db_client.get_graph_metadata(graph_id, graph_version)
-        graph = await db_client.get_graph(graph_id, graph_version)
+        graph = await db_client.get_graph(
+            graph_id=graph_id,
+            version=graph_version,
+            user_id=user_id,
+            skip_access_check=True,
+        )
 
         graph_name = graph_metadata.name if graph_metadata else f"Graph {graph_id}"
         graph_description = graph_metadata.description if graph_metadata else ""
@@ -152,94 +274,23 @@ async def generate_activity_status_for_execution(
             execution_status,
         )
 
+        # Prepare execution data as JSON for template substitution
+        execution_data_json = json.dumps(execution_data, indent=2)
+
+        # Perform template substitution for user prompt
+        user_prompt_content = user_prompt.replace("{{GRAPH_NAME}}", graph_name).replace(
+            "{{EXECUTION_DATA}}", execution_data_json
+        )
+
         # Prepare prompt for AI with structured output requirements
         prompt = [
             {
                 "role": "system",
-                "content": (
-                    "You are an AI assistant analyzing what an agent execution accomplished and whether it worked correctly. "
-                    "You need to provide both a user-friendly summary AND a correctness assessment.\n\n"
-                    "FOR THE ACTIVITY STATUS:\n"
-                    "- Write from the user's perspective about what they accomplished, NOT about technical execution details\n"
-                    "- Focus on the ACTUAL TASK the user wanted done, not the internal workflow steps\n"
-                    "- Avoid technical terms like 'workflow', 'execution', 'components', 'nodes', 'processing', etc.\n"
-                    "- Keep it to 3 sentences maximum. Be conversational and human-friendly\n\n"
-                    "FOR THE CORRECTNESS SCORE:\n"
-                    "- Provide a score from 0.0 to 1.0 indicating how well the execution achieved its intended purpose\n"
-                    "- Use this scoring guide:\n"
-                    "  0.0-0.2: Failure - The result clearly did not meet the task requirements\n"
-                    "  0.2-0.4: Poor - Major issues; only small parts of the goal were achieved\n"
-                    "  0.4-0.6: Partial Success - Some objectives met, but with noticeable gaps or inaccuracies\n"
-                    "  0.6-0.8: Mostly Successful - Largely achieved the intended outcome, with minor flaws\n"
-                    "  0.8-1.0: Success - Fully met or exceeded the task requirements\n"
-                    "- Base the score on actual outputs produced, not just technical completion\n\n"
-                    "UNDERSTAND THE INTENDED PURPOSE:\n"
-                    "- FIRST: Read the graph description carefully to understand what the user wanted to accomplish\n"
-                    "- The graph name and description tell you the main goal/intention of this automation\n"
-                    "- Use this intended purpose as your PRIMARY criteria for success/failure evaluation\n"
-                    "- Ask yourself: 'Did this execution actually accomplish what the graph was designed to do?'\n\n"
-                    "CRITICAL OUTPUT ANALYSIS:\n"
-                    "- Check if blocks that should produce user-facing results actually produced outputs\n"
-                    "- Blocks with names containing 'Output', 'Post', 'Create', 'Send', 'Publish', 'Generate' are usually meant to produce final results\n"
-                    "- If these critical blocks have NO outputs (empty recent_outputs), the task likely FAILED even if status shows 'completed'\n"
-                    "- Sub-agents (AgentExecutorBlock) that produce no outputs usually indicate failed sub-tasks\n"
-                    "- Most importantly: Does the execution result match what the graph description promised to deliver?\n\n"
-                    "SUCCESS EVALUATION BASED ON INTENTION:\n"
-                    "- If the graph is meant to 'create blog posts' → check if blog content was actually created\n"
-                    "- If the graph is meant to 'send emails' → check if emails were actually sent\n"
-                    "- If the graph is meant to 'analyze data' → check if analysis results were produced\n"
-                    "- If the graph is meant to 'generate reports' → check if reports were generated\n"
-                    "- Technical completion ≠ goal achievement. Focus on whether the USER'S INTENDED OUTCOME was delivered\n\n"
-                    "IMPORTANT: Be HONEST about what actually happened:\n"
-                    "- If the input was invalid/nonsensical, say so directly\n"
-                    "- If the task failed, explain what went wrong in simple terms\n"
-                    "- If errors occurred, focus on what the user needs to know\n"
-                    "- Only claim success if the INTENDED PURPOSE was genuinely accomplished AND produced expected outputs\n"
-                    "- Don't sugar-coat failures or present them as helpful feedback\n"
-                    "- ESPECIALLY: If the graph's main purpose wasn't achieved, this is a failure regardless of 'completed' status\n\n"
-                    "Understanding Errors:\n"
-                    "- Node errors: Individual steps may fail but the overall task might still complete (e.g., one data source fails but others work)\n"
-                    "- Graph error (in overall_status.graph_error): This means the entire execution failed and nothing was accomplished\n"
-                    "- Missing outputs from critical blocks: Even if no errors, this means the task failed to produce expected results\n"
-                    "- Focus on whether the graph's intended purpose was fulfilled, not whether technical steps completed"
-                ),
+                "content": system_prompt,
             },
             {
                 "role": "user",
-                "content": (
-                    f"A user ran '{graph_name}' to accomplish something. Based on this execution data, "
-                    f"provide both an activity summary and correctness assessment:\n\n"
-                    f"{json.dumps(execution_data, indent=2)}\n\n"
-                    "ANALYSIS CHECKLIST:\n"
-                    "1. READ graph_info.description FIRST - this tells you what the user intended to accomplish\n"
-                    "2. Check overall_status.graph_error - if present, the entire execution failed\n"
-                    "3. Look for nodes with 'Output', 'Post', 'Create', 'Send', 'Publish', 'Generate' in their block_name\n"
-                    "4. Check if these critical blocks have empty recent_outputs arrays - this indicates failure\n"
-                    "5. Look for AgentExecutorBlock (sub-agents) with no outputs - this suggests sub-task failures\n"
-                    "6. Count how many nodes produced outputs vs total nodes - low ratio suggests problems\n"
-                    "7. MOST IMPORTANT: Does the execution outcome match what graph_info.description promised?\n\n"
-                    "INTENTION-BASED EVALUATION:\n"
-                    "- If description mentions 'blog writing' → did it create blog content?\n"
-                    "- If description mentions 'email automation' → were emails actually sent?\n"
-                    "- If description mentions 'data analysis' → were analysis results produced?\n"
-                    "- If description mentions 'content generation' → was content actually generated?\n"
-                    "- If description mentions 'social media posting' → were posts actually made?\n"
-                    "- Match the outputs to the stated intention, not just technical completion\n\n"
-                    "PROVIDE:\n"
-                    "activity_status: 1-3 sentences about what the user accomplished, such as:\n"
-                    "- 'I analyzed your resume and provided detailed feedback for the IT industry.'\n"
-                    "- 'I couldn't complete the task because critical steps failed to produce any results.'\n"
-                    "- 'I failed to generate the content you requested due to missing API access.'\n"
-                    "- 'I extracted key information from your documents and organized it into a summary.'\n"
-                    "- 'The task failed because the blog post creation step didn't produce any output.'\n\n"
-                    "correctness_score: A float score from 0.0 to 1.0 based on how well the intended purpose was achieved:\n"
-                    "- 0.0-0.2: Failure (didn't meet requirements)\n"
-                    "- 0.2-0.4: Poor (major issues, minimal achievement)\n"
-                    "- 0.4-0.6: Partial Success (some objectives met with gaps)\n"
-                    "- 0.6-0.8: Mostly Successful (largely achieved with minor flaws)\n"
-                    "- 0.8-1.0: Success (fully met or exceeded requirements)\n\n"
-                    "BE CRITICAL: If the graph's intended purpose (from description) wasn't achieved, use a low score (0.0-0.4) even if status is 'completed'."
-                ),
+                "content": user_prompt_content,
             },
         ]
 

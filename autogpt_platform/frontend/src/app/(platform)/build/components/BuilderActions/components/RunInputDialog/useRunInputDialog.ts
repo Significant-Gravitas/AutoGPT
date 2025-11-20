@@ -43,7 +43,6 @@ export const useRunInputDialog = ({
           setQueryStates({
             flowExecutionID: id,
           });
-          setIsGraphRunning(false);
         },
         onError: (error) => {
           setIsGraphRunning(false);
@@ -81,7 +80,6 @@ export const useRunInputDialog = ({
 
   const handleManualRun = () => {
     setIsOpen(false);
-    setIsGraphRunning(true);
     executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
