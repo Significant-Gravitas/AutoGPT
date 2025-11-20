@@ -186,7 +186,7 @@ export const useFlow = () => {
   }, []);
 
   useEffect(() => {
-    fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+    fitView({ padding: 0.2, duration: 800, maxZoom: 2 });
   }, [fitView]);
 
   // Drag and drop block from block menu

@@ -77,15 +77,18 @@ export const SelectCredential: React.FC<SelectCredentialProps> = ({
         size="small"
         hideLabel
       />
-      <Link href={`/profile/integrations`}>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 border-zinc-300 p-0"
-        >
-          <ArrowSquareOutIcon className="h-4 w-4 text-zinc-600" />
-        </Button>
-      </Link>
+
+      <Button
+        as="NextLink"
+        href="/profile/integrations"
+        target="_blank"
+        rel="noopener noreferrer"
+        variant="outline"
+        size="icon"
+        className="h-8 w-8 border-zinc-300 p-0"
+      >
+        <ArrowSquareOutIcon className="h-4 w-4 text-zinc-600" />
+      </Button>
     </div>
   );
 };
