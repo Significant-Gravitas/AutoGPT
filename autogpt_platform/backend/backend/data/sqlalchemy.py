@@ -9,6 +9,7 @@ This module provides:
 
 import logging
 import re
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -17,7 +18,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import QueuePool
 
 from backend.util.settings import Config
 
@@ -32,21 +32,19 @@ def get_database_url() -> str:
     """
     Extract database URL from environment and convert to async format.
 
-    Prisma URL: postgresql://user:pass@host:port/db?schema=platform
+    Prisma URL: postgresql://user:pass@host:port/db?schema=platform&connect_timeout=60
     Async URL:  postgresql+asyncpg://user:pass@host:port/db
 
-    Returns the async-compatible URL without schema parameter (handled separately).
+    Returns the async-compatible URL without query parameters (handled via connect_args).
     """
     prisma_url = Config().database_url
 
     # Replace postgresql:// with postgresql+asyncpg://
     async_url = prisma_url.replace("postgresql://", "postgresql+asyncpg://")
 
-    # Remove schema parameter (we'll handle via MetaData)
-    async_url = re.sub(r"\?schema=\w+", "", async_url)
-
-    # Remove any remaining query parameters that might conflict
-    async_url = re.sub(r"&schema=\w+", "", async_url)
+    # Remove ALL query parameters (schema, connect_timeout, etc.)
+    # We'll handle these through connect_args instead
+    async_url = re.sub(r"\?.*$", "", async_url)
 
     return async_url
 
@@ -88,7 +86,6 @@ def create_engine() -> AsyncEngine:
     engine = create_async_engine(
         url,
         # Connection pool configuration
-        poolclass=QueuePool,  # Standard connection pool
         pool_size=config.sqlalchemy_pool_size,  # Persistent connections
         max_overflow=config.sqlalchemy_max_overflow,  # Burst capacity
         pool_timeout=config.sqlalchemy_pool_timeout,  # Wait time for connection
@@ -165,6 +162,7 @@ def initialize(engine: AsyncEngine) -> None:
     logger.info("SQLAlchemy session factory initialized")
 
 
+@asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency that provides database session.
