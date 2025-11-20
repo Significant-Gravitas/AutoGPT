@@ -69,6 +69,7 @@ This system allows blocks to define their input requirements declaratively, and 
 ```
 
 **Becomes:**
+
 ```
 SchemaField (detects "string" type)
    ↓
@@ -96,7 +97,7 @@ export const FormRenderer = ({
   formContext,       // Extra context (nodeId, uiType, etc.)
 }: FormRendererProps) => {
   const preprocessedSchema = preprocessInputSchema(jsonSchema);
-  
+
   return (
     <Form
       schema={preprocessedSchema}      // Modified schema
@@ -114,6 +115,7 @@ export const FormRenderer = ({
 ```
 
 **Key Props:**
+
 - **`fields`** - Custom components for complex types (anyOf, credentials, objects)
 - **`templates`** - Layout wrappers (FieldTemplate, ArrayFieldTemplate)
 - **`widgets`** - Actual input components (TextInput, Select, FileWidget)
@@ -126,11 +128,13 @@ export const FormRenderer = ({
 Before rendering, schemas are transformed to ensure RJSF compatibility.
 
 **Purpose:**
+
 - Add missing `type` fields (prevents RJSF errors)
 - Recursively process nested objects and arrays
 - Normalize inconsistent schemas from backend
 
 **Example:**
+
 ```typescript
 // Backend schema (missing type)
 {
@@ -165,11 +169,12 @@ Before rendering, schemas are transformed to ensure RJSF compatibility.
 Fields handle **complex type logic** that goes beyond simple inputs.
 
 **Registered Fields:**
+
 ```typescript
 export const fields: RegistryFieldsType = {
-  AnyOfField: AnyOfField,          // Handles anyOf/oneOf
-  credentials: CredentialsField,   // OAuth/API key handling
-  ObjectField: ObjectField,        // Free-form objects
+  AnyOfField: AnyOfField, // Handles anyOf/oneOf
+  credentials: CredentialsField, // OAuth/API key handling
+  ObjectField: ObjectField, // Free-form objects
 };
 ```
 
@@ -178,17 +183,15 @@ export const fields: RegistryFieldsType = {
 Handles schemas with multiple possible types (union types).
 
 **When Used:**
+
 ```json
 {
-  "anyOf": [
-    { "type": "string" },
-    { "type": "number" },
-    { "type": "boolean" }
-  ]
+  "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }]
 }
 ```
 
 **Rendering:**
+
 ```
 ┌─────────────────────────────────────┐
 │ Parameter Name (string) ▼           │ ← Type selector dropdown
@@ -198,21 +201,22 @@ Handles schemas with multiple possible types (union types).
 ```
 
 **Features:**
+
 - Type selector dropdown
 - Nullable types (with toggle switch)
 - Recursive rendering (can contain arrays, objects)
 - Connection-aware (hides input when connected)
 
 **Special Case: Nullable Types**
+
 ```json
 {
-  "anyOf": [
-    { "type": "string" },
-    { "type": "null" }
-  ]
+  "anyOf": [{ "type": "string" }, { "type": "null" }]
 }
 ```
+
 **Renders as:**
+
 ```
 ┌─────────────────────────────────────┐
 │ Parameter Name (string | null) [✓]  │ ← Toggle switch
@@ -228,6 +232,7 @@ Handles schemas with multiple possible types (union types).
 Handles authentication credentials (OAuth, API Keys, Passwords).
 
 **When Used:**
+
 ```json
 {
   "type": "object",
@@ -239,6 +244,7 @@ Handles authentication credentials (OAuth, API Keys, Passwords).
 ```
 
 **Flow:**
+
 ```
 1. Renders SelectCredential dropdown
    ↓
@@ -254,6 +260,7 @@ Handles authentication credentials (OAuth, API Keys, Passwords).
 ```
 
 **Credential Types:**
+
 - **OAuth** - 3rd party authorization (Google, GitHub, etc.)
 - **API Key** - Simple key-based auth
 - **Password** - Username/password pairs
@@ -265,23 +272,27 @@ Handles authentication credentials (OAuth, API Keys, Passwords).
 Handles free-form objects (key-value pairs).
 
 **When Used:**
+
 ```json
 {
   "type": "object",
-  "additionalProperties": true  // Free-form
+  "additionalProperties": true // Free-form
 }
 ```
+
 vs
+
 ```json
 {
   "type": "object",
   "properties": {
-    "name": { "type": "string" }  // Fixed schema
+    "name": { "type": "string" } // Fixed schema
   }
 }
 ```
 
 **Behavior:**
+
 - **Fixed schema** → Uses default RJSF rendering
 - **Free-form** → Uses ObjectEditorWidget (JSON editor)
 
@@ -296,6 +307,7 @@ Templates control **layout and wrapping** of fields.
 Wraps every field with label, type indicator, and connection handle.
 
 **Rendering Structure:**
+
 ```
 ┌────────────────────────────────────────┐
 │ ○ Label (type) ⓘ                      │ ← Handle + Label + Type + Info icon
@@ -305,6 +317,7 @@ Wraps every field with label, type indicator, and connection handle.
 ```
 
 **Responsibilities:**
+
 - Shows/hides input based on connection status
 - Renders connection handle (NodeHandle)
 - Displays type information
@@ -313,6 +326,7 @@ Wraps every field with label, type indicator, and connection handle.
 - Formats credential field labels
 
 **Key Logic:**
+
 ```typescript
 // Hide input if connected
 {(isAnyOf || !isConnected) && (
@@ -326,6 +340,7 @@ Wraps every field with label, type indicator, and connection handle.
 ```
 
 **Context-Aware Behavior:**
+
 - Inside `AnyOfField` → No handle (parent handles it)
 - Credential field → Special label formatting
 - Array item → Uses parent handle
@@ -338,10 +353,11 @@ Wraps every field with label, type indicator, and connection handle.
 Wraps array fields to use custom ArrayEditorWidget.
 
 **Simple Wrapper:**
+
 ```typescript
 function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
   const { items, canAdd, onAddClick, nodeId } = props;
-  
+
   return (
     <ArrayEditorWidget
       items={items}
@@ -360,14 +376,15 @@ function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
 Widgets are **actual input components** - the final rendered HTML elements.
 
 **Registered Widgets:**
+
 ```typescript
 export const widgets: RegistryWidgetsType = {
-  TextWidget: TextInputWidget,         // <input type="text" />
-  SelectWidget: SelectWidget,          // <select> dropdown
-  CheckboxWidget: SwitchWidget,        // <Switch> toggle
-  FileWidget: FileWidget,              // File upload
-  DateWidget: DateInputWidget,         // Date picker
-  TimeWidget: TimeInputWidget,         // Time picker
+  TextWidget: TextInputWidget, // <input type="text" />
+  SelectWidget: SelectWidget, // <select> dropdown
+  CheckboxWidget: SwitchWidget, // <Switch> toggle
+  FileWidget: FileWidget, // File upload
+  DateWidget: DateInputWidget, // Date picker
+  TimeWidget: TimeInputWidget, // Time picker
   DateTimeWidget: DateTimeInputWidget, // Combined date+time
 };
 ```
@@ -387,6 +404,7 @@ RJSF automatically picks the right widget based on schema:
 #### **Special Widgets:**
 
 **1. ArrayEditorWidget** (`widgets/ArrayEditorWidget/`)
+
 ```
 ┌─────────────────────────────────────┐
 │ ○ Item 1 [Text Input]  [X Remove]  │
@@ -396,12 +414,14 @@ RJSF automatically picks the right widget based on schema:
 ```
 
 **Features:**
+
 - Each array item gets its own connection handle
 - Remove button per item
 - Add button at bottom
 - Context provider for handle management
 
 **ArrayEditorContext:**
+
 ```typescript
 {
   isArrayItem: true,
@@ -411,6 +431,7 @@ RJSF automatically picks the right widget based on schema:
 ```
 
 **2. ObjectEditorWidget** (`widgets/ObjectEditorWidget/`)
+
 - JSON editor for free-form objects
 - Key-value pair management
 - Used by ObjectField for `additionalProperties: true`
@@ -469,10 +490,7 @@ RJSF automatically picks the right widget based on schema:
 ```json
 // Backend Schema
 {
-  "anyOf": [
-    { "type": "string" },
-    { "type": "number" }
-  ],
+  "anyOf": [{ "type": "string" }, { "type": "number" }],
   "title": "Value"
 }
 ```
@@ -573,6 +591,7 @@ This is the **order of execution** from schema to rendered input:
 ### **1. Why Custom Fields?**
 
 RJSF's default fields don't handle:
+
 - **AnyOf** - Type selection + dynamic widget switching
 - **Credentials** - OAuth flows, modal management
 - **Free-form Objects** - JSON editor instead of fixed fields
@@ -584,6 +603,7 @@ Custom fields fill these gaps.
 ### **2. Why Templates?**
 
 Templates add **FlowEditor-specific UI**:
+
 - Connection handles (left side dots)
 - Type indicators
 - Tooltips
@@ -597,6 +617,7 @@ Default RJSF templates don't support these features.
 ### **3. Why Custom Widgets?**
 
 Custom widgets provide:
+
 - Consistent styling with design system
 - Integration with Zustand stores
 - Custom behaviors (e.g., FileWidget uploads)
@@ -610,16 +631,17 @@ FormContext passes data down the RJSF tree:
 
 ```typescript
 type FormContextType = {
-  nodeId?: string;              // Which node this form belongs to
-  uiType?: BlockUIType;         // Block type (INPUT, OUTPUT, etc.)
-  showHandles?: boolean;        // Show connection handles?
-  size?: "small" | "large";     // Form size variant
+  nodeId?: string; // Which node this form belongs to
+  uiType?: BlockUIType; // Block type (INPUT, OUTPUT, etc.)
+  showHandles?: boolean; // Show connection handles?
+  size?: "small" | "large"; // Form size variant
 };
 ```
 
 **Why?** RJSF components don't have direct access to React props from parent. FormContext provides a channel.
 
 **Usage:**
+
 ```typescript
 // In FieldTemplate
 const { nodeId, showHandles, size } = formContext;
@@ -638,6 +660,7 @@ const isConnected = useEdgeStore().isInputConnected(nodeId, handleId);
 Connection handles are the **left-side dots** on nodes where edges connect.
 
 **Handle ID Format:**
+
 ```typescript
 // Regular field
 generateHandleId("root_message") → "input-message"
@@ -651,12 +674,13 @@ generateHandleId("root_config_api_key") → "input-config-api_key"
 ```
 
 **Context Provider Pattern (Arrays):**
+
 ```typescript
 // ArrayEditorWidget wraps each item
-<ArrayEditorContext.Provider 
-  value={{ 
-    isArrayItem: true, 
-    arrayFieldHandleId: "input-tags-0" 
+<ArrayEditorContext.Provider
+  value={{
+    isArrayItem: true,
+    arrayFieldHandleId: "input-tags-0"
   }}
 >
   {element.children}  // ← FieldTemplate renders here
@@ -676,6 +700,7 @@ const handleId = isArrayItem ? arrayFieldHandleId : generateHandleId(fieldId);
 One of the most important features: **hiding inputs when connected**.
 
 **Flow:**
+
 ```
 1. User connects edge to input handle
    ↓
@@ -704,11 +729,12 @@ One of the most important features: **hiding inputs when connected**.
 Some fields marked as `advanced: true` in schema are hidden by default.
 
 **Logic in FieldTemplate:**
+
 ```typescript
-const showAdvanced = useNodeStore(state => state.nodeAdvancedStates[nodeId]);
+const showAdvanced = useNodeStore((state) => state.nodeAdvancedStates[nodeId]);
 
 if (!showAdvanced && schema.advanced === true && !isConnected) {
-  return null;  // Hide field
+  return null; // Hide field
 }
 ```
 
@@ -720,14 +746,12 @@ if (!showAdvanced && schema.advanced === true && !isConnected) {
 
 ```json
 {
-  "anyOf": [
-    { "type": "string" },
-    { "type": "null" }
-  ]
+  "anyOf": [{ "type": "string" }, { "type": "null" }]
 }
 ```
 
 **AnyOfField detects this pattern and renders:**
+
 ```
 ┌─────────────────────────────────────┐
 │ Parameter (string | null)  [✓]      │ ← Switch to enable/disable
@@ -737,12 +761,13 @@ if (!showAdvanced && schema.advanced === true && !isConnected) {
 ```
 
 **State Management:**
+
 ```typescript
 const [isEnabled, setIsEnabled] = useState(formData !== null);
 
 const handleNullableToggle = (checked: boolean) => {
   setIsEnabled(checked);
-  onChange(checked ? "" : null);  // Send null when disabled
+  onChange(checked ? "" : null); // Send null when disabled
 };
 ```
 
@@ -772,6 +797,7 @@ This allows **infinite nesting**: arrays of objects, objects with anyOf fields, 
 ### **Adding a New Widget**
 
 1. Create widget component in `widgets/`:
+
 ```typescript
 export const MyWidget = ({ value, onChange, ...props }: WidgetProps) => {
   return <input value={value} onChange={(e) => onChange(e.target.value)} />;
@@ -779,6 +805,7 @@ export const MyWidget = ({ value, onChange, ...props }: WidgetProps) => {
 ```
 
 2. Register in `widgets/index.ts`:
+
 ```typescript
 export const widgets: RegistryWidgetsType = {
   // ...
@@ -787,10 +814,11 @@ export const widgets: RegistryWidgetsType = {
 ```
 
 3. Use in uiSchema or schema format:
+
 ```json
 {
   "type": "string",
-  "format": "my-custom-format"  // RJSF maps format → widget
+  "format": "my-custom-format" // RJSF maps format → widget
 }
 ```
 
@@ -799,6 +827,7 @@ export const widgets: RegistryWidgetsType = {
 ### **Adding a New Field**
 
 1. Create field component in `fields/`:
+
 ```typescript
 export const MyField = ({ schema, formData, onChange, ...props }: FieldProps) => {
   // Custom logic here
@@ -807,6 +836,7 @@ export const MyField = ({ schema, formData, onChange, ...props }: FieldProps) =>
 ```
 
 2. Register in `fields/index.ts`:
+
 ```typescript
 export const fields: RegistryFieldsType = {
   // ...
@@ -847,21 +877,25 @@ historyStore.pushState() (undo/redo)
 ## Debugging Tips
 
 ### **Field Not Rendering**
+
 - Check if `preprocessInputSchema()` is handling it correctly
 - Verify schema has `type` field
 - Check RJSF console for validation errors
 
 ### **Widget Wrong Type**
+
 - Check schema `type` and `format` fields
 - Verify widget is registered in `widgets/index.ts`
 - Check if custom field is overriding default behavior
 
 ### **Handle Not Appearing**
+
 - Check `showHandles` in formContext
 - Verify not inside `fromAnyOf` context
 - Check if field is credential or array item
 
 ### **Value Not Saving**
+
 - Verify `onChange` callback is firing
 - Check `handleChange` in FormCreator
 - Look for console errors in `updateNodeData`
@@ -879,6 +913,7 @@ The Input-Renderer is a sophisticated form system that:
 5. **Provides** connection-aware, type-safe input rendering
 
 **Key Hierarchy (What Comes First):**
+
 ```
 JSON Schema
   → Pre-processing
@@ -891,12 +926,13 @@ JSON Schema
 ```
 
 **Mental Model:**
+
 - **Fields** = Smart logic layers (type selection, OAuth flows)
 - **Templates** = Layout wrappers (handles, labels, tooltips)
 - **Widgets** = Actual inputs (text boxes, dropdowns)
 
 **Integration Point:**
+
 - FormRenderer receives schema from `node.data.inputSchema`
 - User edits form → `onChange` → `nodeStore.updateNodeData()`
 - Values saved as `node.data.hardcodedValues`
-
