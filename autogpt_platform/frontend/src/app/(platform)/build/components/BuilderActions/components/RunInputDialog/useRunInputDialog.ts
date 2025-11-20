@@ -78,13 +78,13 @@ export const useRunInputDialog = ({
     return dynamicUiSchema;
   }, [credentialsSchema]);
 
-  const handleManualRun = () => {
-    setIsOpen(false);
-    executeGraph({
+  const handleManualRun = async () => {
+    await executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
       data: { inputs: inputValues, credentials_inputs: credentialValues },
     });
+    setIsOpen(false);
   };
 
   const handleInputChange = (inputValues: Record<string, any>) => {

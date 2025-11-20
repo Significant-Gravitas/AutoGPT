@@ -105,7 +105,9 @@ export const RunInputDialog = ({
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
                 >
-                  <PlayIcon className="size-5 transition-transform group-hover:scale-110" />
+                  {!isExecutingGraph && (
+                    <PlayIcon className="size-5 transition-transform group-hover:scale-110" />
+                  )}
                   <span className="font-semibold">Manual Run</span>
                 </Button>
               )}
