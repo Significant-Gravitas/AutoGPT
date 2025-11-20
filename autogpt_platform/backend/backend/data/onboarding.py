@@ -175,7 +175,6 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
     """
     onboarding = await get_user_onboarding(user_id)
     if step not in onboarding.completedSteps:
-        onboarding = await get_user_onboarding(user_id)
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
             data={
