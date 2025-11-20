@@ -45,7 +45,7 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.execution import UserContext
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     FrontendOnboardingStep,
@@ -116,25 +116,6 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
-
-
-# Needed to avoid including User from UserOnboarding prisma model in router
-# that causes schema generation for prisma and our LibraryAgent in openapi.json
-class UserOnboarding(pydantic.BaseModel):
-    userId: str
-    completedSteps: list[OnboardingStep]
-    walletShown: bool
-    notified: list[OnboardingStep]
-    rewardedFor: list[OnboardingStep]
-    usageReason: Optional[str]
-    integrations: list[str]
-    otherIntegrations: Optional[str]
-    selectedStoreListingVersionId: Optional[str]
-    agentInput: dict[str, Any]
-    onboardingAgentExecutionId: Optional[str]
-    agentRuns: int
-    lastRunAt: Optional[datetime]
-    consecutiveRunDays: int
 
 
 async def hide_activity_summaries_if_disabled(
