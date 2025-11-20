@@ -105,6 +105,7 @@ export const useFlow = () => {
       setGraphSchemas(
         graph.input_schema as Record<string, any> | null,
         graph.credentials_input_schema as Record<string, any> | null,
+        graph.output_schema as Record<string, any> | null,
       );
     }
   }, [graph]);
