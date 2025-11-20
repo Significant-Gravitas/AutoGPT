@@ -7,7 +7,6 @@ import {
   KeyIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
-import Link from "next/link";
 import { providerIcons } from "./helpers";
 
 type SelectCredentialProps = {
