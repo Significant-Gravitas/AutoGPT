@@ -181,11 +181,5 @@ class SendEmailBlock(Block):
             )
         except smtplib.SMTPDataError as e:
             yield "error", f"Email data rejected by server: {str(e)}"
-        except smtplib.SMTPException as e:
-            yield "error", f"SMTP error: {str(e)}"
-        except OSError as e:
-            yield "error", (
-                f"Network error connecting to '{input_data.config.smtp_server}': {str(e)}"
-            )
         except Exception as e:
             raise e
