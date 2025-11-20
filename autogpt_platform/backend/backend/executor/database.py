@@ -90,12 +90,12 @@ class DatabaseManager(AppService):
 
             # Initialize SQLAlchemy if enabled (for gradual migration from Prisma)
             if config.enable_sqlalchemy:
+                from sqlalchemy.exc import DatabaseError, OperationalError
+                from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
+
+                from backend.data import sqlalchemy as sa
+
                 try:
-                    from sqlalchemy.exc import DatabaseError, OperationalError
-                    from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
-
-                    from backend.data import sqlalchemy as sa
-
                     engine = sa.create_engine()
                     sa.initialize(engine)
                     app.state.db_engine = engine
@@ -145,11 +145,11 @@ class DatabaseManager(AppService):
 
             # Dispose SQLAlchemy if it was enabled
             if config.enable_sqlalchemy:
+                from sqlalchemy.exc import DatabaseError, OperationalError
+
+                from backend.data import sqlalchemy as sa
+
                 try:
-                    from sqlalchemy.exc import DatabaseError, OperationalError
-
-                    from backend.data import sqlalchemy as sa
-
                     await sa.dispose()
                     logger.info(f"[{self.service_name}] ✓ SQLAlchemy disposed")
                 except (OperationalError, DatabaseError) as e:

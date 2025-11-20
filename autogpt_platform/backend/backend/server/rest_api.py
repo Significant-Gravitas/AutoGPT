@@ -81,12 +81,12 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Initialize SQLAlchemy if enabled (for gradual migration from Prisma)
     config = backend.util.settings.Config()
     if config.enable_sqlalchemy:
+        from sqlalchemy.exc import DatabaseError, OperationalError
+        from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
+
+        from backend.data import sqlalchemy as sa
+
         try:
-            from sqlalchemy.exc import DatabaseError, OperationalError
-            from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
-
-            from backend.data import sqlalchemy as sa
-
             engine = sa.create_engine()
             sa.initialize(engine)
             app.state.db_engine = engine
@@ -171,11 +171,11 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     # Dispose SQLAlchemy if it was enabled
     if config.enable_sqlalchemy:
+        from sqlalchemy.exc import DatabaseError, OperationalError
+
+        from backend.data import sqlalchemy as sa
+
         try:
-            from sqlalchemy.exc import DatabaseError, OperationalError
-
-            from backend.data import sqlalchemy as sa
-
             await sa.dispose()
             logger.info("✓ AgentServer: SQLAlchemy disposed")
         except (OperationalError, DatabaseError) as e:
