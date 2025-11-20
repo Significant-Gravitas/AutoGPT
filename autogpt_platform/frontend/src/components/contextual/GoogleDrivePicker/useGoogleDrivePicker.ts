@@ -2,6 +2,7 @@ import { getGetV1GetSpecificCredentialByIdQueryOptions } from "@/app/api/__gener
 import type { OAuth2Credentials } from "@/app/api/__generated__/models/oAuth2Credentials";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
+import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -58,6 +59,9 @@ export function useGoogleDrivePicker(options: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthInProgress, setIsAuthInProgress] = useState(false);
   const [hasInsufficientScopes, setHasInsufficientScopes] = useState(false);
+  const [selectedCredential, setSelectedCredential] = useState<
+    CredentialsMetaInput | undefined
+  >();
   const accessTokenRef = useRef<string | null>(null);
   const tokenClientRef = useRef<TokenClient | null>(null);
   const pickerReadyRef = useRef(false);
@@ -82,6 +86,22 @@ export function useGoogleDrivePicker(options: Props) {
     }
   }, [hasGoogleOAuth, credentials]);
 
+  useEffect(() => {
+    if (
+      credentials &&
+      !credentials.isLoading &&
+      credentials.savedCredentials?.length === 1 &&
+      !selectedCredential
+    ) {
+      setSelectedCredential({
+        id: credentials.savedCredentials[0].id,
+        type: credentials.savedCredentials[0].type,
+        provider: credentials.savedCredentials[0].provider,
+        title: credentials.savedCredentials[0].title,
+      });
+    }
+  }, [credentials, selectedCredential]);
+
   async function openPicker() {
     try {
       await ensureLoaded();
@@ -92,7 +112,8 @@ export function useGoogleDrivePicker(options: Props) {
         !credentials.isLoading &&
         credentials.savedCredentials?.length > 0
       ) {
-        const credentialId = credentials.savedCredentials[0].id;
+        const credentialId =
+          selectedCredential?.id || credentials.savedCredentials[0].id;
 
         try {
           const queryOptions = getGetV1GetSpecificCredentialByIdQueryOptions(
@@ -284,5 +305,7 @@ export function useGoogleDrivePicker(options: Props) {
     credentials,
     hasGoogleOAuth: hasInsufficientScopes ? false : hasGoogleOAuth,
     accessToken: accessTokenRef.current,
+    selectedCredential,
+    setSelectedCredential,
   };
 }
