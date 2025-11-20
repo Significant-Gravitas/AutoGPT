@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from backend.sdk import APIKeyCredentials, OAuth2Credentials, Requests
 
@@ -268,7 +268,7 @@ class LinearClient:
 
     async def try_get_issues(
         self, project: str, status: str, is_assigned: bool, include_comments: bool
-    ) -> List[Issue]:
+    ) -> list[Issue]:
         try:
             query = """    
                     query IssuesByProjectStatusAndAssignee(

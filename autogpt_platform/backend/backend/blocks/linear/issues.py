@@ -230,7 +230,6 @@ class LinearGetProjectIssuesBlock(Block):
         issues: list[Issue] = SchemaField(
             description="List of issues matching the criteria"
         )
-        issue: Issue = SchemaField(description="An issues matching the criteria")
 
     def __init__(self):
         super().__init__(
@@ -259,16 +258,6 @@ class LinearGetProjectIssuesBlock(Block):
                             priority=1,
                         )
                     ],
-                ),
-                (
-                    "issue",
-                    Issue(
-                        id="abc123",
-                        identifier="TST-123",
-                        title="Test issue",
-                        description="Test description",
-                        priority=1,
-                    ),
                 ),
             ],
             test_mock={
@@ -317,5 +306,3 @@ class LinearGetProjectIssuesBlock(Block):
             include_comments=input_data.include_comments,
         )
         yield "issues", issues
-        for i in issues:
-            yield "issue", i
