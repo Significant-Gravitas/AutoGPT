@@ -1,4 +1,6 @@
 import smtplib
+import socket
+import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Literal
@@ -48,9 +50,7 @@ def SMTPCredentialsField() -> SMTPCredentialsInput:
 
 
 class SMTPConfig(BaseModel):
-    smtp_server: str = SchemaField(
-        default="smtp.example.com", description="SMTP server address"
-    )
+    smtp_server: str = SchemaField(description="SMTP server address")
     smtp_port: int = SchemaField(default=25, description="SMTP port number")
 
     model_config = ConfigDict(title="SMTP Config")
@@ -67,10 +67,7 @@ class SendEmailBlock(Block):
         body: str = SchemaField(
             description="Body of the email", placeholder="Enter the email body"
         )
-        config: SMTPConfig = SchemaField(
-            description="SMTP Config",
-            default=SMTPConfig(),
-        )
+        config: SMTPConfig = SchemaField(description="SMTP Config")
         credentials: SMTPCredentialsInput = SMTPCredentialsField()
 
     class Output(BlockSchemaOutput):
@@ -120,20 +117,111 @@ class SendEmailBlock(Block):
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_username, smtp_password)
-            server.sendmail(smtp_username, to_email, msg.as_string())
+        try:
+            # Try to connect to the SMTP server
+            try:
+                server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
+            except socket.gaierror:
+                raise ConnectionError(
+                    f"Cannot connect to SMTP server '{smtp_server}'. "
+                    "Please verify the server address is correct."
+                )
+            except socket.timeout:
+                raise ConnectionError(
+                    f"Connection timeout to '{smtp_server}' on port {smtp_port}. "
+                    "The server may be down or unreachable."
+                )
+            except (ConnectionRefusedError, OSError) as e:
+                raise ConnectionError(
+                    f"Connection refused to '{smtp_server}' on port {smtp_port}. "
+                    f"Common SMTP ports are: 587 (TLS), 465 (SSL), 25 (plain). "
+                    f"Error: {str(e)}"
+                )
+
+            try:
+                # Start TLS encryption
+                try:
+                    server.starttls()
+                except smtplib.SMTPNotSupportedError:
+                    server.quit()
+                    raise ConnectionError(
+                        f"STARTTLS not supported by server '{smtp_server}'. "
+                        "Try using port 465 for SSL or port 25 for unencrypted connection."
+                    )
+                except ssl.SSLError as e:
+                    server.quit()
+                    raise ConnectionError(
+                        f"SSL/TLS error when connecting to '{smtp_server}': {str(e)}. "
+                        "The server may require a different security protocol."
+                    )
+
+                # Authenticate
+                try:
+                    server.login(smtp_username, smtp_password)
+                except smtplib.SMTPAuthenticationError:
+                    server.quit()
+                    raise ConnectionError(
+                        "Authentication failed. Please verify your username and password are correct."
+                    )
+                except smtplib.SMTPException as e:
+                    server.quit()
+                    raise ConnectionError(
+                        f"Authentication error: {str(e)}. "
+                        "Please check your credentials and server settings."
+                    )
+
+                # Send email
+                try:
+                    server.sendmail(smtp_username, to_email, msg.as_string())
+                except smtplib.SMTPRecipientsRefused:
+                    server.quit()
+                    raise ValueError(
+                        f"Recipient email address '{to_email}' was rejected by the server. "
+                        "Please verify the email address is valid."
+                    )
+                except smtplib.SMTPSenderRefused:
+                    server.quit()
+                    raise ValueError(
+                        f"Sender email address '{smtp_username}' was rejected by the server. "
+                        "Please verify your account is authorized to send emails."
+                    )
+                except smtplib.SMTPDataError as e:
+                    server.quit()
+                    raise ValueError(f"Email data rejected by server: {str(e)}")
+
+                server.quit()
+            except Exception:
+                # Ensure server connection is closed on any error
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+                raise
+
+        except (ConnectionError, ValueError):
+            # Re-raise our custom error messages
+            raise
+        except Exception as e:
+            # Catch any other unexpected errors
+            raise RuntimeError(
+                f"Unexpected error sending email: {type(e).__name__}: {str(e)}"
+            )
 
         return "Email sent successfully"
 
     async def run(
         self, input_data: Input, *, credentials: SMTPCredentials, **kwargs
     ) -> BlockOutput:
-        yield "status", self.send_email(
-            config=input_data.config,
-            to_email=input_data.to_email,
-            subject=input_data.subject,
-            body=input_data.body,
-            credentials=credentials,
-        )
+        try:
+            status = self.send_email(
+                config=input_data.config,
+                to_email=input_data.to_email,
+                subject=input_data.subject,
+                body=input_data.body,
+                credentials=credentials,
+            )
+            yield "status", status
+        except Exception as e:
+            # We need to catch the error and yield it as error 
+            # To trigger the BlockExecutionError wrapper
+            yield "error", str(e)
