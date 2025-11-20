@@ -6,8 +6,7 @@ import { consent } from "@/services/consent/cookies";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const isProdOrDev =
-  environment.isProductionBuild() || environment.isDevelopmentBuild();
+const isProdOrDev = environment.isProd() || environment.isDev();
 const isCloud = environment.isCloud();
 const isDisabled = process.env.DISABLE_SENTRY === "true";
 

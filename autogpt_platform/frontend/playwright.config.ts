@@ -8,10 +8,6 @@ import dotenv from "dotenv";
 import path from "path";
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
-const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: "./src/tests",
@@ -65,13 +61,11 @@ export default defineConfig({
   timeout: 25000,
 
   /* Configure web server to start automatically (local dev only) */
-  webServer: isCI
-    ? undefined
-    : {
-        command: "pnpm start",
-        url: "http://localhost:3000",
-        reuseExistingServer: true,
-      },
+  webServer: {
+    command: "pnpm start",
+    url: "http://localhost:3000",
+    reuseExistingServer: true,
+  },
 
   /* Configure projects for major browsers */
   projects: [
