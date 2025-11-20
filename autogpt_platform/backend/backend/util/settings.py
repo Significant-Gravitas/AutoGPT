@@ -285,8 +285,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=100,
         description="Number of persistent connections in the SQLAlchemy pool. "
-        "Guidelines: REST API (high traffic) 10-20, Background workers 3-5. "
-        "Total across all services should not exceed PostgreSQL max_connections (default: 100).",
+        "Environment-specific recommendations: "
+        "Development: 2-3 (lightweight, fast startup), "
+        "Test/CI: 2 (minimal resources, avoid connection exhaustion in parallel tests), "
+        "Production: 10-20 for REST API (high traffic), 3-5 for background workers. "
+        "IMPORTANT: Total connections across ALL services (pool_size + max_overflow per service) "
+        "must not exceed PostgreSQL max_connections (default: 100). "
+        "With 6 processes in production (rest-api, executor, database-manager, scheduler, websocket, comms), "
+        "calculate: 6 × (pool_size + max_overflow) ≤ 100.",
     )
 
     sqlalchemy_max_overflow: int = Field(
@@ -294,22 +300,42 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=0,
         le=50,
         description="Additional connections beyond pool_size when pool is exhausted. "
-        "Total max connections = pool_size + max_overflow.",
+        "Total max connections per service = pool_size + max_overflow. "
+        "Environment-specific recommendations: "
+        "Development: 1-2 (handles occasional bursts), "
+        "Test/CI: 1 (minimal extra connections), "
+        "Production: 5-10 (handles traffic spikes without exhausting pool). "
+        "Setting to 0 means strict pool limit (connections fail when pool is exhausted). "
+        "Higher values provide better burst handling but consume more database connections.",
     )
 
     sqlalchemy_pool_timeout: int = Field(
         default=30,
         ge=1,
         le=300,
-        description="Seconds to wait for available connection before raising error. "
-        "If all connections are busy and max_overflow is reached, requests wait this long before failing.",
+        description="Seconds to wait for available connection from pool before raising TimeoutError. "
+        "This timeout applies ONLY when all connections (pool_size + max_overflow) are busy. "
+        "Environment-specific recommendations: "
+        "Development: 10-30s (generous for debugging), "
+        "Test/CI: 5-10s (fail fast in tests), "
+        "Production: 30s (balance between user experience and resource holding). "
+        "If you see frequent TimeoutErrors, either increase pool_size/max_overflow or investigate slow queries. "
+        "NOTE: This is different from sqlalchemy_connect_timeout (which applies when establishing new connections).",
     )
 
     sqlalchemy_connect_timeout: int = Field(
         default=10,
         ge=1,
         le=60,
-        description="Seconds to wait when establishing new connection to PostgreSQL.",
+        description="Seconds to wait when establishing NEW connection to PostgreSQL database. "
+        "This timeout applies at the network/TCP level when creating connections (not when acquiring from pool). "
+        "Environment-specific recommendations: "
+        "Development: 5-10s (local database should connect quickly), "
+        "Test/CI: 5-10s (fail fast if database unavailable), "
+        "Production: 10-15s (account for network latency, especially with cloud databases). "
+        "If you see frequent connection timeout errors during startup, check database accessibility "
+        "and network connectivity. "
+        "NOTE: This is different from sqlalchemy_pool_timeout (which applies when waiting for available connections from pool).",
     )
 
     sqlalchemy_echo: bool = Field(
