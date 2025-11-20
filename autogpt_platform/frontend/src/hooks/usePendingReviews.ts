@@ -1,7 +1,7 @@
 import {
   useGetV2GetPendingReviews,
   useGetV2GetPendingReviewsForExecution,
-} from "@/app/api/__generated__/endpoints/execution-review/execution-review";
+} from "@/app/api/__generated__/endpoints/executions/executions";
 
 /**
  * Hook to fetch pending reviews for the current user

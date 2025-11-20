@@ -3,15 +3,16 @@ Data layer for Human In The Loop (HITL) review operations.
 Handles all database operations for pending human reviews.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Optional
 
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
+from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
-from backend.data.execution import NodeExecutionResult
 from backend.server.v2.executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
@@ -160,44 +161,6 @@ async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:
     return count > 0
 
 
-async def get_unprocessed_review_node_executions(
-    graph_exec_id: str,
-) -> list[NodeExecutionResult]:
-    """
-    Get node executions for nodes with unprocessed completed reviews.
-
-    Args:
-        graph_exec_id: The graph execution ID to check
-
-    Returns:
-        List of NodeExecutionResult for ready-to-execute nodes
-    """
-    # Get all unprocessed reviews with their node executions in a single query
-    reviews = await PendingHumanReview.prisma().find_many(
-        where={
-            "graphExecId": graph_exec_id,
-            "OR": [
-                {"status": ReviewStatus.APPROVED},
-                {"status": ReviewStatus.REJECTED},
-            ],
-            "processed": False,
-        },
-        include={"NodeExecution": True},
-    )
-
-    if not reviews:
-        return []
-
-    # Convert to NodeExecutionResult
-    node_executions = []
-    for review in reviews:
-        if review.NodeExecution:
-            node_exec = NodeExecutionResult.from_db(review.NodeExecution)
-            node_executions.append(node_exec)
-
-    return node_executions
-
-
 async def get_pending_reviews_for_user(
     user_id: str, page: int = 1, page_size: int = 25
 ) -> list["PendingHumanReviewModel"]:
@@ -250,113 +213,78 @@ async def get_pending_reviews_for_execution(
     return [PendingHumanReviewModel.from_db(review) for review in reviews]
 
 
-async def update_review_action(
-    node_exec_id: str,
+async def process_all_reviews_for_execution(
     user_id: str,
-    action: Literal["approve", "reject"],
-    reviewed_data: SafeJsonData | None = None,
-    message: str | None = None,
-) -> Optional["PendingHumanReviewModel"]:
-    """Update a review with approve/reject action."""
+    review_decisions: dict[str, tuple[ReviewStatus, SafeJsonData | None, str | None]],
+) -> dict[str, PendingHumanReviewModel]:
+    """Process all pending reviews for an execution with approve/reject decisions.
 
-    # Input validation
-    if not node_exec_id or not node_exec_id.strip():
-        raise ValueError("node_exec_id cannot be empty")
+    Args:
+        user_id: User ID for ownership validation
+        review_decisions: Map of node_exec_id -> (status, reviewed_data, message)
 
-    if not user_id or not user_id.strip():
-        raise ValueError("user_id cannot be empty")
+    Returns:
+        Dict of node_exec_id -> updated review model
+    """
+    if not review_decisions:
+        return {}
 
-    if action not in ["approve", "reject"]:
-        raise ValueError("action must be 'approve' or 'reject'")
+    node_exec_ids = list(review_decisions.keys())
 
-    # Validate message length
-    if message and len(message) > 10_000:
-        raise ValueError("Review message cannot exceed 10,000 characters")
+    # Get all reviews for validation
+    reviews = await PendingHumanReview.prisma().find_many(
+        where={
+            "nodeExecId": {"in": node_exec_ids},
+            "userId": user_id,
+            "status": ReviewStatus.WAITING,
+        },
+    )
 
-    # Validate reviewed_data size
-    if reviewed_data is not None:
-        try:
-            data_size = len(str(reviewed_data))
-            if data_size > 1_000_000:  # 1MB limit
-                raise ValueError("Reviewed data cannot exceed 1MB in size")
-        except Exception:
-            raise ValueError("Invalid reviewed data format")
-
-    # Determine status from action
-    new_status = ReviewStatus.APPROVED if action == "approve" else ReviewStatus.REJECTED
-
-    try:
-        logger.debug(f"Updating review for node {node_exec_id} with action {action}")
-
-        # First check if review exists and is valid for update
-        existing_review = await PendingHumanReview.prisma().find_unique(
-            where={"nodeExecId": node_exec_id}
+    # Validate all reviews can be processed
+    if len(reviews) != len(node_exec_ids):
+        missing_ids = set(node_exec_ids) - {review.nodeExecId for review in reviews}
+        raise ValueError(
+            f"Reviews not found, access denied, or not in WAITING status: {', '.join(missing_ids)}"
         )
-    except Exception as e:
-        logger.error(f"Database error while fetching review {node_exec_id}: {str(e)}")
-        raise
 
-    if not existing_review:
-        logger.warning(f"Review not found for node {node_exec_id}")
-        return None
+    # Create parallel update tasks
+    update_tasks = []
 
-    if existing_review.userId != user_id:
-        logger.warning(
-            f"Access denied: user {user_id} attempted to update review owned by {existing_review.userId}"
+    for review in reviews:
+        new_status, reviewed_data, message = review_decisions[review.nodeExecId]
+        has_data_changes = reviewed_data is not None and reviewed_data != review.payload
+
+        # Check edit permissions for actual data modifications
+        if has_data_changes and not review.editable:
+            raise ValueError(f"Review {review.nodeExecId} is not editable")
+
+        update_data: PendingHumanReviewUpdateInput = {
+            "status": new_status,
+            "reviewMessage": message,
+            "wasEdited": has_data_changes,
+            "reviewedAt": datetime.now(timezone.utc),
+        }
+
+        if has_data_changes:
+            update_data["payload"] = SafeJson(reviewed_data)
+
+        task = PendingHumanReview.prisma().update(
+            where={"nodeExecId": review.nodeExecId},
+            data=update_data,
         )
-        return None
+        update_tasks.append(task)
 
-    if existing_review.status != ReviewStatus.WAITING:
-        logger.warning(
-            f"Review {node_exec_id} is not in WAITING status (current: {existing_review.status})"
-        )
-        return None
+    # Execute all updates in parallel and get updated reviews
+    updated_reviews = await asyncio.gather(*update_tasks)
 
-    # Check if editing is allowed when reviewed_data is provided
-    if not existing_review.editable and reviewed_data is not None:
-        logger.warning(f"Edit denied: review {node_exec_id} is not editable")
-        return None
+    # Note: Execution resumption is now handled at the API layer after ALL reviews
+    # for an execution are processed (both approved and rejected)
 
-    try:
-        # Update the review
-        if reviewed_data is not None:
-            logger.info(
-                f"Updating review {node_exec_id} with edited data (action: {action})"
-            )
-            updated_review = await PendingHumanReview.prisma().update(
-                where={"nodeExecId": node_exec_id},
-                data={
-                    "status": new_status,
-                    "payload": SafeJson(reviewed_data),
-                    "reviewMessage": message,
-                    "wasEdited": True,
-                    "reviewedAt": datetime.now(timezone.utc),
-                },
-            )
-        else:
-            logger.info(
-                f"Updating review {node_exec_id} without data changes (action: {action})"
-            )
-            updated_review = await PendingHumanReview.prisma().update(
-                where={"nodeExecId": node_exec_id},
-                data={
-                    "status": new_status,
-                    "reviewMessage": message,
-                    "wasEdited": False,
-                    "reviewedAt": datetime.now(timezone.utc),
-                },
-            )
-
-        logger.info(
-            f"Successfully updated review {node_exec_id} to status {new_status}"
-        )
-        if updated_review is None:
-            raise ValueError(f"Failed to update review {node_exec_id}")
-        return PendingHumanReviewModel.from_db(updated_review)
-
-    except Exception as e:
-        logger.error(f"Database error while updating review {node_exec_id}: {str(e)}")
-        raise
+    # Return as dict for easy access
+    return {
+        review.nodeExecId: PendingHumanReviewModel.from_db(review)
+        for review in updated_reviews
+    }
 
 
 async def update_review_processed_status(node_exec_id: str, processed: bool) -> None:

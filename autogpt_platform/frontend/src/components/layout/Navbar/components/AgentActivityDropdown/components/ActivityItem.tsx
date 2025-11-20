@@ -4,12 +4,12 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { Text } from "@/components/atoms/Text/Text";
 import {
   CheckCircle,
-  CircleNotchIcon,
+  CircleNotch,
   Clock,
-  WarningOctagonIcon,
+  WarningOctagon,
   StopCircle,
   CircleDashed,
-  PauseCircleIcon,
+  Eye,
 } from "@phosphor-icons/react";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
@@ -27,7 +27,7 @@ export function ActivityItem({ execution }: Props) {
         return <Clock size={18} className="text-purple-500" />;
       case AgentExecutionStatus.RUNNING:
         return (
-          <CircleNotchIcon
+          <CircleNotch
             size={18}
             className="animate-spin text-purple-500"
             weight="bold"
@@ -38,7 +38,7 @@ export function ActivityItem({ execution }: Props) {
           <CheckCircle size={18} weight="fill" className="text-purple-500" />
         );
       case AgentExecutionStatus.FAILED:
-        return <WarningOctagonIcon size={18} className="text-purple-500" />;
+        return <WarningOctagon size={18} className="text-purple-500" />;
       case AgentExecutionStatus.TERMINATED:
         return (
           <StopCircle size={18} className="text-purple-500" weight="fill" />
@@ -46,13 +46,7 @@ export function ActivityItem({ execution }: Props) {
       case AgentExecutionStatus.INCOMPLETE:
         return <CircleDashed size={18} className="text-purple-500" />;
       case AgentExecutionStatus.REVIEW:
-        return (
-          <PauseCircleIcon
-            size={18}
-            className="text-purple-500"
-            weight="bold"
-          />
-        );
+        return <Eye size={18} className="text-purple-500" weight="bold" />;
       default:
         return null;
     }
@@ -94,7 +88,10 @@ export function ActivityItem({ execution }: Props) {
     return "Unknown";
   }
 
-  const linkUrl = `/library/agents/${execution.library_agent_id}?executionId=${execution.id}`;
+  // Determine the tab based on execution status
+  const tabParam =
+    execution.status === AgentExecutionStatus.REVIEW ? "&tab=reviews" : "";
+  const linkUrl = `/library/agents/${execution.library_agent_id}?executionId=${execution.id}${tabParam}`;
   const withExecutionLink = execution.library_agent_id && execution.id;
 
   const content = (

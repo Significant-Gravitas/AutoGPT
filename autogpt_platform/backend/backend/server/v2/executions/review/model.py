@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -94,60 +94,19 @@ class PendingHumanReviewModel(BaseModel):
         )
 
 
-class ReviewActionRequest(BaseModel):
-    """Request model for reviewing data in a Human-in-the-Loop workflow.
+class ReviewItem(BaseModel):
+    """Single review item for processing."""
 
-    Represents a user's decision and optional modifications for pending review data.
-    Supports both approval (with optional data modifications) and rejection actions.
-
-    Validation Features:
-    - Ensures reviewed_data is only provided for approve actions
-    - Validates JSON serializability of reviewed data
-    - Enforces size limits (1MB) to prevent DoS attacks
-    - Checks nesting depth to prevent infinite recursion
-    - Sanitizes empty review messages
-
-    Attributes:
-        action: The review decision - either "approve" or "reject"
-        reviewed_data: Optional modified data (only valid for approve action)
-        message: Optional message from the reviewer (max 2000 chars)
-    """
-
-    action: Literal["approve", "reject"] = Field(description="Action to take")
-    reviewed_data: SafeJsonData | None = Field(
-        description="Modified data (only for approve action, must be SafeJson compatible)",
-        default=None,
-    )
+    node_exec_id: str = Field(description="Node execution ID to review")
     message: str | None = Field(
-        description="Optional message from the reviewer", default=None, max_length=2000
+        None, description="Optional review message", max_length=2000
     )
+    reviewed_data: SafeJsonData | None = Field(None, description="Optional edited data")
 
     @field_validator("reviewed_data")
     @classmethod
     def validate_reviewed_data(cls, v):
-        """Validate that reviewed_data is safe and properly structured.
-
-        Performs comprehensive validation to prevent security issues and ensure
-        data integrity in the Human-in-the-Loop workflow.
-
-        Security Checks:
-        - Validates JSON serializability to prevent injection attacks
-        - Enforces 1MB size limit to prevent DoS attacks
-        - Limits nesting depth to 10 levels to prevent stack overflow
-        - Ensures data conforms to SafeJson compatible types
-
-        Args:
-            v: The reviewed_data value to validate
-
-        Returns:
-            The validated reviewed_data value
-
-        Raises:
-            ValueError: If validation fails for any security or format reason
-
-        Note:
-            The action consistency check is handled by model_validator
-        """
+        """Validate that reviewed_data is safe and properly structured."""
         if v is None:
             return v
 
@@ -195,64 +154,53 @@ class ReviewActionRequest(BaseModel):
         check_depth(v)
         return v
 
-    @model_validator(mode="before")
-    def validate_action_data_consistency(cls, values):
-        """Validate consistency between action and reviewed_data.
-
-        Ensures that reviewed_data is only provided when action is 'approve',
-        which makes the API more predictable and prevents confusion.
-
-        Args:
-            values: All field values from the model
-
-        Returns:
-            The validated field values
-
-        Raises:
-            ValueError: If reviewed_data is provided with reject action
-        """
-        action = values.get("action")
-        reviewed_data = values.get("reviewed_data")
-
-        if action == "reject" and reviewed_data is not None:
-            raise ValueError(
-                "reviewed_data should not be provided when action is 'reject'"
-            )
-
-        return values
-
     @field_validator("message")
     @classmethod
     def validate_message(cls, v):
-        """Validate and sanitize review message.
-
-        Ensures review messages are properly formatted and not just whitespace.
-        Empty or whitespace-only messages are converted to None for consistency.
-
-        Args:
-            v: The message value to validate
-
-        Returns:
-            Sanitized message string or None if empty/whitespace
-        """
+        """Validate and sanitize review message."""
         if v is not None and len(v.strip()) == 0:
             return None
         return v
 
 
-class ReviewActionResponse(BaseModel):
-    """Response model for review action completion.
+class ReviewRequest(BaseModel):
+    """Request model for processing ALL pending reviews for an execution.
 
-    Confirms that a review action (approve/reject) was successfully processed.
-
-    Attributes:
-        status: Always "success" to indicate successful processing
-        action: The action that was performed ("approve" or "reject")
+    This request must include ALL pending reviews for a graph execution.
+    Each review will be either approved (with optional data modifications)
+    or rejected. The execution will resume only after ALL reviews are processed.
     """
 
-    status: Literal["success"] = Field(
-        description="Operation status", default="success"
+    approved_reviews: List[ReviewItem] = Field(
+        default=[], description="Reviews to approve with their data and messages"
     )
-    action: Literal["approve", "reject"] = Field(
-        description="The action that was performed"
+    rejected_review_ids: List[str] = Field(
+        default=[], description="Node execution IDs of reviews to reject"
     )
+
+    @model_validator(mode="after")
+    def validate_review_completeness(self):
+        """Validate that we have at least one review to process and no overlaps."""
+        if not self.approved_reviews and not self.rejected_review_ids:
+            raise ValueError("At least one review must be provided")
+
+        # Ensure no duplicate node_exec_ids between approved and rejected
+        approved_ids = {review.node_exec_id for review in self.approved_reviews}
+        rejected_ids = set(self.rejected_review_ids)
+
+        overlap = approved_ids & rejected_ids
+        if overlap:
+            raise ValueError(
+                f"Review IDs cannot be both approved and rejected: {', '.join(overlap)}"
+            )
+
+        return self
+
+
+class ReviewResponse(BaseModel):
+    """Response from review endpoint."""
+
+    approved_count: int = Field(description="Number of reviews successfully approved")
+    rejected_count: int = Field(description="Number of reviews successfully rejected")
+    failed_count: int = Field(description="Number of reviews that failed processing")
+    error: str | None = Field(None, description="Error message if operation failed")

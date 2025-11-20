@@ -20,6 +20,7 @@ import { CustomControls } from "./components/CustomControl";
 export const Flow = () => {
   const searchParams = useSearchParams();
   const flowExecutionID = searchParams.get("flowExecutionID") || undefined;
+  const graphId = searchParams.get("flowID") || undefined;
 
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
@@ -30,11 +31,17 @@ export const Flow = () => {
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
-  const { onDragOver, onDrop, isFlowContentLoading, isLocked, setIsLocked } =
-    useFlow();
+  const {
+    onDragOver,
+    onDrop,
+    isFlowContentLoading,
+    isLocked,
+    setIsLocked,
+    executionStatus: initialExecutionStatus,
+  } = useFlow();
 
   // This hook is used for websocket realtime updates.
-  useFlowRealtime();
+  const { executionStatus: realtimeExecutionStatus } = useFlowRealtime();
 
   // Copy/paste functionality
   const handleCopyPaste = useCopyPaste();
@@ -77,7 +84,11 @@ export const Flow = () => {
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
-      <FloatingReviewsPanel executionId={flowExecutionID} />
+      <FloatingReviewsPanel
+        executionId={flowExecutionID}
+        graphId={graphId}
+        executionStatus={realtimeExecutionStatus ?? initialExecutionStatus}
+      />
     </div>
   );
 };

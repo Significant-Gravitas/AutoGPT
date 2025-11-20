@@ -708,19 +708,21 @@ class ExecutionProcessor:
                 raise status
             exec_meta.status = status
 
-            # Activity status handling
-            activity_response = asyncio.run_coroutine_threadsafe(
-                generate_activity_status_for_execution(
-                    graph_exec_id=graph_exec.graph_exec_id,
-                    graph_id=graph_exec.graph_id,
-                    graph_version=graph_exec.graph_version,
-                    execution_stats=exec_stats,
-                    db_client=get_db_async_client(),
-                    user_id=graph_exec.user_id,
-                    execution_status=status,
-                ),
-                self.node_execution_loop,
-            ).result(timeout=60.0)
+            if status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]:
+                activity_response = asyncio.run_coroutine_threadsafe(
+                    generate_activity_status_for_execution(
+                        graph_exec_id=graph_exec.graph_exec_id,
+                        graph_id=graph_exec.graph_id,
+                        graph_version=graph_exec.graph_version,
+                        execution_stats=exec_stats,
+                        db_client=get_db_async_client(),
+                        user_id=graph_exec.user_id,
+                        execution_status=status,
+                    ),
+                    self.node_execution_loop,
+                ).result(timeout=60.0)
+            else:
+                activity_response = None
             if activity_response is not None:
                 exec_stats.activity_status = activity_response["activity_status"]
                 exec_stats.correctness_score = activity_response["correctness_score"]
@@ -866,19 +868,7 @@ class ExecutionProcessor:
             # Main dispatch / polling loop -----------------------------
             # ------------------------------------------------------------
 
-            def add_unprocessed_reviews_to_queue():
-                """Add nodes with unprocessed reviews to execution queue."""
-                node_executions = db_client.get_unprocessed_review_node_executions(
-                    graph_exec.graph_exec_id
-                )
-                for node_exec in node_executions:
-                    node_entry = node_exec.to_node_execution_entry(
-                        graph_exec.user_context
-                    )
-                    execution_queue.add(node_entry)
-                return len(node_executions)
-
-            while not execution_queue.empty() or add_unprocessed_reviews_to_queue() > 0:
+            while not execution_queue.empty():
                 if cancel.is_set():
                     break
 

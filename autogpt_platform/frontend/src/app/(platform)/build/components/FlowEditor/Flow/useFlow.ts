@@ -208,5 +208,6 @@ export const useFlow = () => {
     onDrop,
     isLocked,
     setIsLocked,
+    executionStatus: executionDetails?.status,
   };
 };

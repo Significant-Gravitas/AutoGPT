@@ -276,6 +276,11 @@ app.include_router(
     prefix="/api/executions",
 )
 app.include_router(
+    backend.server.v2.executions.review.routes.router,
+    tags=["v2", "executions", "review"],
+    prefix="/api/review",
+)
+app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(

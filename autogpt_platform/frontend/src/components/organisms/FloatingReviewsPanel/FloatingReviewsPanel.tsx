@@ -1,18 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { Button } from "@/components/atoms/Button/Button";
 import { ClockIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
+  graphId?: string;
+  executionStatus?: AgentExecutionStatus;
   className?: string;
 }
 
 export function FloatingReviewsPanel({
   executionId,
+  executionStatus,
   className,
 }: FloatingReviewsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -21,8 +25,19 @@ export function FloatingReviewsPanel({
     executionId || "",
   );
 
-  // Don't show anything if there's no execution ID or no pending reviews
-  if (!executionId || (!isLoading && pendingReviews.length === 0)) {
+  // Refetch pending reviews when execution status changes to REVIEW
+  useEffect(() => {
+    if (executionStatus === AgentExecutionStatus.REVIEW && executionId) {
+      refetch();
+    }
+  }, [executionStatus, executionId, refetch]);
+
+  // Don't show anything if there's no execution ID, no pending reviews, or execution status is not REVIEW
+  if (
+    !executionId ||
+    (!isLoading && pendingReviews.length === 0) ||
+    executionStatus !== AgentExecutionStatus.REVIEW
+  ) {
     return null;
   }
 

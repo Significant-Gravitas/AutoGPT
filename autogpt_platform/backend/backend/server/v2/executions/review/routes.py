@@ -3,18 +3,20 @@ from typing import List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
+from prisma.enums import ReviewStatus
 
 from backend.data.execution import get_graph_execution_meta
 from backend.data.human_review import (
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
-    update_review_action,
+    has_pending_reviews_for_graph_exec,
+    process_all_reviews_for_execution,
 )
 from backend.executor.utils import add_graph_execution
 from backend.server.v2.executions.review.model import (
     PendingHumanReviewModel,
-    ReviewActionRequest,
-    ReviewActionResponse,
+    ReviewRequest,
+    ReviewResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,6 @@ def handle_database_error(
 
 
 router = APIRouter(
-    prefix="/review",
     tags=["executions", "review", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
@@ -130,90 +131,100 @@ async def list_pending_reviews_for_execution(
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
 
 
-@router.post(
-    "/{node_exec_id}/action",
-    summary="Process Review Action",
-    response_model=ReviewActionResponse,
-    responses={
-        200: {"description": "Review action processed successfully"},
-        400: {"description": "Invalid request or review already processed"},
-        403: {"description": "Access denied"},
-        404: {"description": "Review not found"},
-        422: {"description": "Validation error"},
-        500: {"description": "Server error", "content": {"application/json": {}}},
-    },
-)
-async def review_data(
-    node_exec_id: str,
-    request: ReviewActionRequest,
+@router.post("/action", response_model=ReviewResponse)
+async def process_review_action(
+    request: ReviewRequest,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> ReviewActionResponse:
-    """Approve or reject pending review data.
+) -> ReviewResponse:
+    """Process reviews with approve or reject actions."""
 
-    Processes a human review action (approve/reject) for a pending review.
-    Includes comprehensive security checks and atomic database operations.
-
-    Security Features:
-    - Verifies review ownership by authenticated user
-    - Validates graph execution access permissions
-    - Prevents modification of non-WAITING reviews
-    - Uses database transactions for atomic updates
-
-    Args:
-        node_exec_id: Node execution ID of the review to process
-        request: Review action details (approve/reject + optional data/message)
-        user_id: Authenticated user ID from security dependency
-
-    Returns:
-        Success response with action status
-
-    Raises:
-        HTTPException:
-            - 404: Review not found
-            - 403: Access denied to review or graph execution
-            - 400: Review already processed (not WAITING)
-            - 500: Database or internal server errors
-
-    Note:
-        On approval, optionally modified data is stored and graph execution
-        is resumed automatically. On rejection, execution remains paused.
-        All operations use database transactions for consistency.
-    """
-
-    try:
-        # Update the review using the data layer
-        updated_review = await update_review_action(
-            node_exec_id=node_exec_id,
-            user_id=user_id,
-            action=request.action,
-            reviewed_data=request.reviewed_data,
-            message=request.message,
+    # Collect all node exec IDs from the request
+    all_request_node_ids = set()
+    if request.approved_reviews:
+        all_request_node_ids.update(
+            review.node_exec_id for review in request.approved_reviews
         )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Validation error: {str(e)}",
-        )
-    except Exception as e:
-        logger.error(f"Error updating review {node_exec_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while processing review",
-        )
+    if request.rejected_review_ids:
+        all_request_node_ids.update(request.rejected_review_ids)
 
-    if updated_review is None:
-        # Could be not found, access denied, already processed, or editing not allowed
+    if not all_request_node_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Review not found, access denied, already processed, or editing not allowed",
+            detail="At least one review must be provided",
         )
 
-    # If approved, trigger graph execution resume
-    if request.action == "approve":
-        await add_graph_execution(
-            graph_id=updated_review.graph_id,
+    try:
+        # Build review decisions map
+        review_decisions = {}
+        for review in request.approved_reviews:
+            review_decisions[review.node_exec_id] = (
+                ReviewStatus.APPROVED,
+                review.reviewed_data,
+                review.message,
+            )
+        for node_id in request.rejected_review_ids:
+            review_decisions[node_id] = (
+                ReviewStatus.REJECTED,
+                None,
+                "Rejected by user",
+            )
+
+        # Process all reviews
+        updated_reviews = await process_all_reviews_for_execution(
             user_id=user_id,
-            graph_exec_id=updated_review.graph_exec_id,
+            review_decisions=review_decisions,
         )
 
-    return ReviewActionResponse(action=request.action)
+        # Count results
+        approved_count = sum(
+            1
+            for review in updated_reviews.values()
+            if review.status == ReviewStatus.APPROVED
+        )
+        rejected_count = sum(
+            1
+            for review in updated_reviews.values()
+            if review.status == ReviewStatus.REJECTED
+        )
+
+        # Resume execution if we processed some reviews
+        if updated_reviews:
+            # Get graph execution ID from any processed review
+            first_review = next(iter(updated_reviews.values()))
+            graph_exec_id = first_review.graph_exec_id
+
+            # Check if any pending reviews remain for this execution
+            still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
+
+            if not still_has_pending:
+                # Resume execution
+                try:
+                    await add_graph_execution(
+                        graph_id=first_review.graph_id,
+                        user_id=user_id,
+                        graph_exec_id=graph_exec_id,
+                    )
+                    logger.info(f"Resumed execution {graph_exec_id}")
+                except Exception as e:
+                    logger.error(
+                        f"Failed to resume execution {graph_exec_id}: {str(e)}"
+                    )
+
+        return ReviewResponse(
+            approved_count=approved_count,
+            rejected_count=rejected_count,
+            failed_count=0,
+            error=None,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Error processing reviews: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while processing reviews",
+        )

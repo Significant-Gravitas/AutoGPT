@@ -13,6 +13,7 @@ from backend.data.block import (
 from backend.data.execution import ExecutionStatus
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
+from backend.executor.manager import async_update_node_execution_status
 from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,8 @@ class HumanInTheLoopBlock(Block):
 
     class Input(BlockSchemaInput):
         data: Any = SchemaField(description="The data to be reviewed by a human user")
-        message: str = SchemaField(
-            description="Instructions or message for the human reviewer",
-            default="Please review and approve or modify the following data:",
+        name: str = SchemaField(
+            description="A descriptive name for what this data represents",
         )
         editable: bool = SchemaField(
             description="Whether the human reviewer can edit the data",
@@ -63,7 +63,7 @@ class HumanInTheLoopBlock(Block):
             output_schema=HumanInTheLoopBlock.Output,
             test_input={
                 "data": {"name": "John Doe", "age": 30},
-                "message": "Please verify this user data",
+                "name": "User profile data",
                 "editable": True,
             },
             test_output=[
@@ -72,14 +72,14 @@ class HumanInTheLoopBlock(Block):
                 ("review_message", ""),
             ],
             test_mock={
-                "get_or_create_human_review": lambda *args, **kwargs: ReviewResult(
+                "get_or_create_human_review": lambda *_args, **_kwargs: ReviewResult(
                     data={"name": "John Doe", "age": 30},
                     status=ReviewStatus.APPROVED,
                     message="",
                     processed=False,
                     node_exec_id="test-node-exec-id",
                 ),
-                "update_node_execution_status": lambda *args, **kwargs: None,
+                "update_node_execution_status": lambda *_args, **_kwargs: None,
             },
         )
 
@@ -112,7 +112,7 @@ class HumanInTheLoopBlock(Block):
                 graph_id=graph_id,
                 graph_version=graph_version,
                 input_data=input_data.data,
-                message=input_data.message,
+                message=input_data.name,
                 editable=input_data.editable,
             )
         except Exception as e:
@@ -127,8 +127,10 @@ class HumanInTheLoopBlock(Block):
             try:
                 # Set node status to REVIEW so execution manager can't mark it as COMPLETED
                 # The VALID_STATUS_TRANSITIONS will then prevent any unwanted status changes
-                await db_client.update_node_execution_status(
-                    node_exec_id=node_exec_id,
+                # Use the proper wrapper function to ensure websocket events are published
+                await async_update_node_execution_status(
+                    db_client=db_client,
+                    exec_id=node_exec_id,
                     status=ExecutionStatus.REVIEW,
                 )
                 # Execution pauses here until API routes process the review

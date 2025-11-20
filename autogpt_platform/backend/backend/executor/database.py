@@ -33,7 +33,6 @@ from backend.data.graph import (
 )
 from backend.data.human_review import (
     get_or_create_human_review,
-    get_unprocessed_review_node_executions,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
 )
@@ -169,7 +168,6 @@ class DatabaseManager(AppService):
 
     # Human In The Loop
     get_or_create_human_review = _(get_or_create_human_review)
-    get_unprocessed_review_node_executions = _(get_unprocessed_review_node_executions)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
 
@@ -228,7 +226,6 @@ class DatabaseManagerClient(AppServiceClient):
     get_block_error_stats = _(d.get_block_error_stats)
 
     # Human In The Loop
-    get_unprocessed_review_node_executions = _(d.get_unprocessed_review_node_executions)
     has_pending_reviews_for_graph_exec = _(d.has_pending_reviews_for_graph_exec)
 
     # User Emails
