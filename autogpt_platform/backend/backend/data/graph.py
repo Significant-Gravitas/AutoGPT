@@ -18,6 +18,7 @@ from prisma.types import (
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
+    StoreListingVersionWhereInput,
 )
 from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
@@ -884,9 +885,9 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
 async def get_graph(
     graph_id: str,
-    version: int | None = None,
+    version: int | None,
+    user_id: str | None,
     *,
-    user_id: str | None = None,
     for_export: bool = False,
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
@@ -897,25 +898,43 @@ async def get_graph(
 
     Returns `None` if the record is not found.
     """
-    where_clause: AgentGraphWhereInput = {
-        "id": graph_id,
-    }
+    graph = None
 
-    if version is not None:
-        where_clause["version"] = version
+    # Only search graph directly on owned graph (or access check is skipped)
+    if skip_access_check or user_id is not None:
+        graph_where_clause: AgentGraphWhereInput = {
+            "id": graph_id,
+        }
+        if version is not None:
+            graph_where_clause["version"] = version
+        if not skip_access_check and user_id is not None:
+            graph_where_clause["userId"] = user_id
 
-    graph = await AgentGraph.prisma().find_first(
-        where=where_clause,
-        include=AGENT_GRAPH_INCLUDE,
-        order={"version": "desc"},
-    )
+        graph = await AgentGraph.prisma().find_first(
+            where=graph_where_clause,
+            include=AGENT_GRAPH_INCLUDE,
+            order={"version": "desc"},
+        )
+
+    # Use store listed graph to find not owned graph
+    if graph is None:
+        store_where_clause: StoreListingVersionWhereInput = {
+            "agentGraphId": graph_id,
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        }
+        if version is not None:
+            store_where_clause["agentGraphVersion"] = version
+
+        if store_listing := await StoreListingVersion.prisma().find_first(
+            where=store_where_clause,
+            order={"agentGraphVersion": "desc"},
+            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+        ):
+            graph = store_listing.AgentGraph
+
     if graph is None:
         return None
-
-    if not skip_access_check and graph.userId != user_id:
-        # For access, the graph must be owned by the user or listed in the store
-        if not await is_graph_published_in_marketplace(graph_id, graph.version):
-            return None
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)

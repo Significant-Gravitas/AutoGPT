@@ -3885,6 +3885,30 @@
         }
       }
     },
+    "/api/executions/admin/execution_analytics/config": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Get Execution Analytics Configuration",
+        "description": "Get the configuration for execution analytics including:\n- Available AI models with metadata\n- Default system and user prompts\n- Recommended model selection",
+        "operationId": "getV2Get execution analytics configuration",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsConfig"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/executions/admin/execution_analytics": {
       "post": {
         "tags": ["v2", "admin", "admin", "execution_analytics"],
@@ -5760,6 +5784,35 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "ExecutionAnalyticsConfig": {
+        "properties": {
+          "available_models": {
+            "items": { "$ref": "#/components/schemas/ModelInfo" },
+            "type": "array",
+            "title": "Available Models"
+          },
+          "default_system_prompt": {
+            "type": "string",
+            "title": "Default System Prompt"
+          },
+          "default_user_prompt": {
+            "type": "string",
+            "title": "Default User Prompt"
+          },
+          "recommended_model": {
+            "type": "string",
+            "title": "Recommended Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available_models",
+          "default_system_prompt",
+          "default_user_prompt",
+          "recommended_model"
+        ],
+        "title": "ExecutionAnalyticsConfig"
+      },
       "ExecutionAnalyticsRequest": {
         "properties": {
           "graph_id": {
@@ -5786,7 +5839,7 @@
             "description": "Optional created date lower bound"
           },
           "model_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "type": "string",
             "title": "Model Name",
             "description": "Model to use for generation",
             "default": "gpt-4o-mini"
@@ -5798,6 +5851,22 @@
             "title": "Batch Size",
             "description": "Batch size for concurrent processing",
             "default": 10
+          },
+          "system_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "System Prompt",
+            "description": "Custom system prompt (default: built-in prompt)"
+          },
+          "user_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Prompt",
+            "description": "Custom user prompt with {{GRAPH_NAME}} and {{EXECUTION_DATA}} placeholders (default: built-in prompt)"
+          },
+          "skip_existing": {
+            "type": "boolean",
+            "title": "Skip Existing",
+            "description": "Whether to skip executions that already have activity status and correctness score",
+            "default": true
           }
         },
         "type": "object",
@@ -6901,6 +6970,16 @@
         "required": ["query", "response"],
         "title": "Message"
       },
+      "ModelInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "provider": { "type": "string", "title": "Provider" }
+        },
+        "type": "object",
+        "required": ["value", "label", "provider"],
+        "title": "ModelInfo"
+      },
       "MyAgent": {
         "properties": {
           "agent_id": { "type": "string", "title": "Agent Id" },
@@ -7277,114 +7356,6 @@
         "type": "object",
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
-      },
-      "PendingHumanReviewModel": {
-        "properties": {
-          "node_exec_id": {
-            "type": "string",
-            "title": "Node Exec Id",
-            "description": "Node execution ID (primary key)"
-          },
-          "user_id": {
-            "type": "string",
-            "title": "User Id",
-            "description": "User ID associated with the review"
-          },
-          "graph_exec_id": {
-            "type": "string",
-            "title": "Graph Exec Id",
-            "description": "Graph execution ID"
-          },
-          "graph_id": {
-            "type": "string",
-            "title": "Graph Id",
-            "description": "Graph ID"
-          },
-          "graph_version": {
-            "type": "integer",
-            "title": "Graph Version",
-            "description": "Graph version"
-          },
-          "payload": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "items": {}, "type": "array" },
-              { "type": "string" },
-              { "type": "integer" },
-              { "type": "number" },
-              { "type": "boolean" },
-              { "type": "null" }
-            ],
-            "title": "Payload",
-            "description": "The actual data payload awaiting review"
-          },
-          "instructions": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Instructions",
-            "description": "Instructions or message for the reviewer"
-          },
-          "editable": {
-            "type": "boolean",
-            "title": "Editable",
-            "description": "Whether the reviewer can edit the data"
-          },
-          "status": {
-            "$ref": "#/components/schemas/ReviewStatus",
-            "description": "Review status"
-          },
-          "review_message": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Review Message",
-            "description": "Optional message from the reviewer"
-          },
-          "was_edited": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Was Edited",
-            "description": "Whether the data was modified during review"
-          },
-          "processed": {
-            "type": "boolean",
-            "title": "Processed",
-            "description": "Whether the review result has been processed by the execution engine",
-            "default": false
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "When the review was created"
-          },
-          "updated_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Updated At",
-            "description": "When the review was last updated"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Reviewed At",
-            "description": "When the review was completed"
-          }
-        },
-        "type": "object",
-        "required": [
-          "node_exec_id",
-          "user_id",
-          "graph_exec_id",
-          "graph_id",
-          "graph_version",
-          "payload",
-          "editable",
-          "status",
-          "created_at"
-        ],
-        "title": "PendingHumanReviewModel",
-        "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
       "PostmarkBounceEnum": {
         "type": "integer",
@@ -7854,67 +7825,6 @@
         "type": "object",
         "required": ["credit_amount"],
         "title": "RequestTopUp"
-      },
-      "ReviewActionRequest": {
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": ["approve", "reject"],
-            "title": "Action",
-            "description": "Action to take"
-          },
-          "reviewed_data": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "items": {}, "type": "array" },
-              { "type": "string" },
-              { "type": "integer" },
-              { "type": "number" },
-              { "type": "boolean" },
-              { "type": "null" }
-            ],
-            "title": "Reviewed Data",
-            "description": "Modified data (only for approve action, must be SafeJson compatible)"
-          },
-          "message": {
-            "anyOf": [
-              { "type": "string", "maxLength": 2000 },
-              { "type": "null" }
-            ],
-            "title": "Message",
-            "description": "Optional message from the reviewer"
-          }
-        },
-        "type": "object",
-        "required": ["action"],
-        "title": "ReviewActionRequest",
-        "description": "Request model for reviewing data in a Human-in-the-Loop workflow.\n\nRepresents a user's decision and optional modifications for pending review data.\nSupports both approval (with optional data modifications) and rejection actions.\n\nValidation Features:\n- Ensures reviewed_data is only provided for approve actions\n- Validates JSON serializability of reviewed data\n- Enforces size limits (1MB) to prevent DoS attacks\n- Checks nesting depth to prevent infinite recursion\n- Sanitizes empty review messages\n\nAttributes:\n    action: The review decision - either \"approve\" or \"reject\"\n    reviewed_data: Optional modified data (only valid for approve action)\n    message: Optional message from the reviewer (max 2000 chars)"
-      },
-      "ReviewActionResponse": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "success",
-            "title": "Status",
-            "description": "Operation status",
-            "default": "success"
-          },
-          "action": {
-            "type": "string",
-            "enum": ["approve", "reject"],
-            "title": "Action",
-            "description": "The action that was performed"
-          }
-        },
-        "type": "object",
-        "required": ["action"],
-        "title": "ReviewActionResponse",
-        "description": "Response model for review action completion.\n\nConfirms that a review action (approve/reject) was successfully processed.\n\nAttributes:\n    status: Always \"success\" to indicate successful processing\n    action: The action that was performed (\"approve\" or \"reject\")"
-      },
-      "ReviewStatus": {
-        "type": "string",
-        "enum": ["WAITING", "APPROVED", "REJECTED"],
-        "title": "ReviewStatus"
       },
       "ReviewSubmissionRequest": {
         "properties": {

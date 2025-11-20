@@ -1,26 +1,22 @@
-import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { LogOutIcon } from "lucide-react";
+import { BuilderActionButton } from "../BuilderActionButton";
+import { BookOpenIcon } from "@phosphor-icons/react";
 
-export const AgentOutputs = () => {
+export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   return (
     <>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             {/* Todo: Implement Agent Outputs */}
-            <Button
-              variant="primary"
-              size="large"
-              className={"relative min-w-0 border-none text-lg"}
-            >
-              <LogOutIcon className="size-6" />
-            </Button>
+            <BuilderActionButton disabled={!flowID}>
+              <BookOpenIcon className="size-6" />
+            </BuilderActionButton>
           </TooltipTrigger>
           <TooltipContent>
             <p>Agent Outputs</p>

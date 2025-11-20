@@ -5,7 +5,6 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useIntegrationBlocks } from "./useIntegrationBlocks";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { useNodeStore } from "../../../../stores/nodeStore";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 
 export const IntegrationBlocks = () => {
@@ -21,7 +20,6 @@ export const IntegrationBlocks = () => {
     error,
     refetch,
   } = useIntegrationBlocks();
-  const addBlock = useNodeStore((state) => state.addBlock);
 
   if (blocksLoading) {
     return (
@@ -93,8 +91,8 @@ export const IntegrationBlocks = () => {
               key={block.id}
               title={block.name}
               description={block.description}
+              blockData={block}
               icon_url={`/integrations/${integration}.png`}
-              onClick={() => addBlock(block)}
             />
           ))}
         </div>
