@@ -129,6 +129,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
@@ -241,6 +242,7 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
+    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
