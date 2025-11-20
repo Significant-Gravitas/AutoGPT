@@ -151,7 +151,9 @@ export const useSaveGraph = ({
           links: graphLinks,
         };
 
-        const response = await createNewGraph({ data: { graph: data, source: "builder" } });
+        const response = await createNewGraph({
+          data: { graph: data, source: "builder" },
+        });
         const graphData = response.data as GraphModel;
         setGraphSchemas(
           graphData.input_schema,
