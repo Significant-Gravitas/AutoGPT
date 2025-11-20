@@ -7,7 +7,8 @@ const SEARCH_DEBOUNCE_MS = 300;
 export const useBlockMenuSearchBar = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localQuery, setLocalQuery] = useState("");
-  const { setSearchQuery, setSearchId, searchId } = useBlockMenuStore();
+  const { setSearchQuery, setSearchId, searchId, searchQuery } =
+    useBlockMenuStore();
 
   const searchIdRef = useRef(searchId);
   useEffect(() => {
@@ -38,6 +39,10 @@ export const useBlockMenuSearchBar = () => {
     setSearchId(undefined);
     debouncedSetSearchQuery.cancel();
   };
+
+  useEffect(() => {
+    setLocalQuery(searchQuery);
+  }, []);
 
   return {
     handleClear,
