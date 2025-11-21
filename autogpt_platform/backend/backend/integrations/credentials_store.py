@@ -107,6 +107,13 @@ open_router_credentials = APIKeyCredentials(
     title="Use Credits for Open Router",
     expires_at=None,
 )
+cometapi_credentials = APIKeyCredentials(
+    id="a8c3f9e2-4b7d-4f1a-9c5e-8d2b6a3f1e0c",
+    provider="cometapi",
+    api_key=SecretStr(settings.secrets.cometapi_api_key),
+    title="Use Credits for CometAPI",
+    expires_at=None,
+)
 fal_credentials = APIKeyCredentials(
     id="6c0f5bd0-9008-4638-9d79-4b40b631803e",
     provider="fal",
@@ -220,6 +227,7 @@ DEFAULT_CREDENTIALS = [
     jina_credentials,
     unreal_credentials,
     open_router_credentials,
+    cometapi_credentials,
     enrichlayer_credentials,
     fal_credentials,
     exa_credentials,
@@ -299,6 +307,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(unreal_credentials)
         if settings.secrets.open_router_api_key:
             all_credentials.append(open_router_credentials)
+        if settings.secrets.cometapi_api_key:
+            all_credentials.append(cometapi_credentials)
         if settings.secrets.enrichlayer_api_key:
             all_credentials.append(enrichlayer_credentials)
         if settings.secrets.fal_api_key:
