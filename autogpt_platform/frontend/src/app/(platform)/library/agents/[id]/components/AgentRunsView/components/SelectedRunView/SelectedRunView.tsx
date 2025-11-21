@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import {
   TabsLine,
   TabsLineContent,
@@ -49,6 +49,12 @@ export function SelectedRunView({
     "tab",
     parseAsString.withDefault("output"),
   );
+
+  useEffect(() => {
+    if (run?.status === AgentExecutionStatus.REVIEW && runId) {
+      refetchReviews();
+    }
+  }, [run?.status, runId, refetchReviews]);
 
   if (responseError || httpError) {
     return (
@@ -114,22 +120,25 @@ export function SelectedRunView({
           </RunDetailCard>
         </TabsLineContent>
 
-        {pendingReviews.length > 0 &&
-          run?.status === AgentExecutionStatus.REVIEW && (
-            <TabsLineContent value="reviews">
-              <RunDetailCard>
-                {reviewsLoading ? (
-                  <div className="text-neutral-500">Loading reviews…</div>
-                ) : (
-                  <PendingReviewsList
-                    reviews={pendingReviews}
-                    onReviewComplete={refetchReviews}
-                    emptyMessage="No pending reviews for this execution"
-                  />
-                )}
-              </RunDetailCard>
-            </TabsLineContent>
-          )}
+        {run?.status === AgentExecutionStatus.REVIEW && (
+          <TabsLineContent value="reviews">
+            <RunDetailCard>
+              {reviewsLoading ? (
+                <div className="text-neutral-500">Loading reviews…</div>
+              ) : pendingReviews.length > 0 ? (
+                <PendingReviewsList
+                  reviews={pendingReviews}
+                  onReviewComplete={refetchReviews}
+                  emptyMessage="No pending reviews for this execution"
+                />
+              ) : (
+                <div className="text-neutral-600">
+                  No pending reviews for this execution
+                </div>
+              )}
+            </RunDetailCard>
+          </TabsLineContent>
+        )}
       </TabsLine>
     </div>
   );

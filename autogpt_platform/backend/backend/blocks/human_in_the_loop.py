@@ -148,11 +148,13 @@ class HumanInTheLoopBlock(Block):
                 node_exec_id=node_exec_id, processed=True
             )
 
-            # Yield the results
             if result.status == ReviewStatus.APPROVED:
-                yield "reviewed_data", result.data
                 yield "status", "approved"
-                yield "review_message", result.message
+                yield "reviewed_data", result.data
+                if result.message:
+                    yield "review_message", result.message
+
             elif result.status == ReviewStatus.REJECTED:
                 yield "status", "rejected"
-                yield "review_message", result.message
+                if result.message:
+                    yield "review_message", result.message

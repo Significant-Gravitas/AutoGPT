@@ -4,7 +4,7 @@ import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/Pend
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { ClockIcon, PlayIcon } from "@phosphor-icons/react";
+import { ClockIcon, PlayIcon, XIcon, CheckIcon } from "@phosphor-icons/react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
 
 interface PendingReviewsListProps {
@@ -44,7 +44,7 @@ export function PendingReviewsList({
 
   const reviewActionMutation = usePostV2ProcessReviewAction({
     mutation: {
-      onSuccess: (data) => {
+      onSuccess: (data: any) => {
         // Check if the response is successful
         if (data.status !== 200) {
           toast({
@@ -105,16 +105,19 @@ export function PendingReviewsList({
     });
   }
 
-  function handleContinue() {
-    // Process ALL reviews - enabled as approved, disabled as rejected
-    const enabledReviews = reviews.filter(
-      (review) => !disabledReviews.has(review.node_exec_id),
-    );
-    const disabledReviewIds = reviews
-      .filter((review) => disabledReviews.has(review.node_exec_id))
-      .map((review) => review.node_exec_id);
+  function handleApproveAll() {
+    // Clear all disabled reviews (approve all)
+    setDisabledReviews(new Set());
+  }
 
-    if (enabledReviews.length === 0 && disabledReviewIds.length === 0) {
+  function handleRejectAll() {
+    // Mark all reviews as disabled (reject all)
+    const allReviewIds = reviews.map((review) => review.node_exec_id);
+    setDisabledReviews(new Set(allReviewIds));
+  }
+
+  function handleContinue() {
+    if (reviews.length === 0) {
       toast({
         title: "No reviews to process",
         description: "No reviews found to process.",
@@ -123,19 +126,16 @@ export function PendingReviewsList({
       return;
     }
 
-    // Validate JSON for enabled (approved) reviews
-    const approvedReviewItems: Array<{
-      node_exec_id: string;
-      reviewed_data?: any;
-      message?: string;
-    }> = [];
+    // Build unified reviews array with approval status
+    const reviewItems = [];
 
-    for (const review of enabledReviews) {
+    for (const review of reviews) {
+      const isApproved = !disabledReviews.has(review.node_exec_id);
       const reviewData = reviewDataMap[review.node_exec_id];
       const reviewMessage = reviewMessageMap[review.node_exec_id];
 
       let parsedData;
-      if (review.editable && reviewData) {
+      if (isApproved && review.editable && reviewData) {
         try {
           parsedData = JSON.parse(reviewData);
           // Check if data actually changed
@@ -152,18 +152,17 @@ export function PendingReviewsList({
         }
       }
 
-      approvedReviewItems.push({
+      reviewItems.push({
         node_exec_id: review.node_exec_id,
-        reviewed_data: parsedData,
+        approved: isApproved,
+        reviewed_data: isApproved ? parsedData : undefined,
         message: reviewMessage || undefined,
       });
     }
 
-    // Process ALL reviews - enabled as approved, disabled as rejected
     reviewActionMutation.mutate({
       data: {
-        approved_reviews: approvedReviewItems,
-        rejected_review_ids: disabledReviewIds,
+        reviews: reviewItems,
       },
     });
   }
@@ -200,9 +199,37 @@ export function PendingReviewsList({
         ))}
       </div>
 
-      {/* Continue Action */}
-      <div className="flex justify-center border-t pt-6">
-        <div className="space-y-3 text-center">
+      {/* Actions */}
+      <div className="border-t pt-6">
+        {/* Quick Actions - small, subtle buttons at the top */}
+        <div className="mb-6 flex justify-center gap-3">
+          <Button
+            onClick={handleApproveAll}
+            disabled={
+              reviewActionMutation.isPending || disabledReviews.size === 0 // Already all approved
+            }
+            variant="ghost"
+            size="small"
+            leftIcon={<CheckIcon size={14} />}
+          >
+            Approve All
+          </Button>
+          <Button
+            onClick={handleRejectAll}
+            disabled={
+              reviewActionMutation.isPending ||
+              disabledReviews.size === reviews.length // Already all rejected
+            }
+            variant="ghost"
+            size="small"
+            leftIcon={<XIcon size={14} />}
+          >
+            Reject All
+          </Button>
+        </div>
+
+        {/* Summary and Continue Action */}
+        <div className="space-y-4 text-center">
           <div>
             <Text variant="small" className="text-muted-foreground">
               {disabledReviews.size > 0 ? (
@@ -222,7 +249,9 @@ export function PendingReviewsList({
             size="large"
             leftIcon={<PlayIcon size={16} />}
           >
-            Continue Execution
+            {disabledReviews.size === reviews.length
+              ? "Continue with Rejections"
+              : "Continue Execution"}
           </Button>
         </div>
       </div>

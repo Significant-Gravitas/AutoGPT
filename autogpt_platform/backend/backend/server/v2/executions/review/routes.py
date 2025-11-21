@@ -139,13 +139,7 @@ async def process_review_action(
     """Process reviews with approve or reject actions."""
 
     # Collect all node exec IDs from the request
-    all_request_node_ids = set()
-    if request.approved_reviews:
-        all_request_node_ids.update(
-            review.node_exec_id for review in request.approved_reviews
-        )
-    if request.rejected_review_ids:
-        all_request_node_ids.update(request.rejected_review_ids)
+    all_request_node_ids = {review.node_exec_id for review in request.reviews}
 
     if not all_request_node_ids:
         raise HTTPException(
@@ -156,18 +150,19 @@ async def process_review_action(
     try:
         # Build review decisions map
         review_decisions = {}
-        for review in request.approved_reviews:
-            review_decisions[review.node_exec_id] = (
-                ReviewStatus.APPROVED,
-                review.reviewed_data,
-                review.message,
-            )
-        for node_id in request.rejected_review_ids:
-            review_decisions[node_id] = (
-                ReviewStatus.REJECTED,
-                None,
-                "Rejected by user",
-            )
+        for review in request.reviews:
+            if review.approved:
+                review_decisions[review.node_exec_id] = (
+                    ReviewStatus.APPROVED,
+                    review.reviewed_data,
+                    review.message,
+                )
+            else:
+                review_decisions[review.node_exec_id] = (
+                    ReviewStatus.REJECTED,
+                    None,
+                    review.message,
+                )
 
         # Process all reviews
         updated_reviews = await process_all_reviews_for_execution(

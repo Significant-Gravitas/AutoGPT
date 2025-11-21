@@ -98,10 +98,15 @@ class ReviewItem(BaseModel):
     """Single review item for processing."""
 
     node_exec_id: str = Field(description="Node execution ID to review")
+    approved: bool = Field(
+        description="Whether this review is approved (True) or rejected (False)"
+    )
     message: str | None = Field(
         None, description="Optional review message", max_length=2000
     )
-    reviewed_data: SafeJsonData | None = Field(None, description="Optional edited data")
+    reviewed_data: SafeJsonData | None = Field(
+        None, description="Optional edited data (ignored if approved=False)"
+    )
 
     @field_validator("reviewed_data")
     @classmethod
@@ -168,31 +173,24 @@ class ReviewRequest(BaseModel):
 
     This request must include ALL pending reviews for a graph execution.
     Each review will be either approved (with optional data modifications)
-    or rejected. The execution will resume only after ALL reviews are processed.
+    or rejected (data ignored). The execution will resume only after ALL reviews are processed.
     """
 
-    approved_reviews: List[ReviewItem] = Field(
-        default=[], description="Reviews to approve with their data and messages"
-    )
-    rejected_review_ids: List[str] = Field(
-        default=[], description="Node execution IDs of reviews to reject"
+    reviews: List[ReviewItem] = Field(
+        description="All reviews with their approval status, data, and messages"
     )
 
     @model_validator(mode="after")
     def validate_review_completeness(self):
-        """Validate that we have at least one review to process and no overlaps."""
-        if not self.approved_reviews and not self.rejected_review_ids:
+        """Validate that we have at least one review to process and no duplicates."""
+        if not self.reviews:
             raise ValueError("At least one review must be provided")
 
-        # Ensure no duplicate node_exec_ids between approved and rejected
-        approved_ids = {review.node_exec_id for review in self.approved_reviews}
-        rejected_ids = set(self.rejected_review_ids)
-
-        overlap = approved_ids & rejected_ids
-        if overlap:
-            raise ValueError(
-                f"Review IDs cannot be both approved and rejected: {', '.join(overlap)}"
-            )
+        # Ensure no duplicate node_exec_ids
+        node_ids = [review.node_exec_id for review in self.reviews]
+        if len(node_ids) != len(set(node_ids)):
+            duplicates = [nid for nid in set(node_ids) if node_ids.count(nid) > 1]
+            raise ValueError(f"Duplicate review IDs found: {', '.join(duplicates)}")
 
         return self
 

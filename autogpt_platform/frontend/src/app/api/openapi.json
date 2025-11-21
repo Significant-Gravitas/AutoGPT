@@ -2988,7 +2988,7 @@
       "delete": {
         "tags": ["v2", "store", "private"],
         "summary": "Delete store submission",
-        "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    StoreSubmission: The deleted submission object",
+        "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    bool: True if the submission was successfully deleted, False otherwise",
         "operationId": "deleteV2Delete store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3001,15 +3001,16 @@
         ],
         "responses": {
           "200": {
-            "description": "Submission deleted successfully",
+            "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+                "schema": {
+                  "type": "boolean",
+                  "title": "Response Deletev2Delete Store Submission"
+                }
               }
             }
           },
-          "404": { "description": "Submission not found" },
-          "500": { "description": "Server error" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8119,6 +8120,11 @@
             "title": "Node Exec Id",
             "description": "Node execution ID to review"
           },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved",
+            "description": "Whether this review is approved (True) or rejected (False)"
+          },
           "message": {
             "anyOf": [
               { "type": "string", "maxLength": 2000 },
@@ -8138,34 +8144,27 @@
               { "type": "null" }
             ],
             "title": "Reviewed Data",
-            "description": "Optional edited data"
+            "description": "Optional edited data (ignored if approved=False)"
           }
         },
         "type": "object",
-        "required": ["node_exec_id"],
+        "required": ["node_exec_id", "approved"],
         "title": "ReviewItem",
         "description": "Single review item for processing."
       },
       "ReviewRequest": {
         "properties": {
-          "approved_reviews": {
+          "reviews": {
             "items": { "$ref": "#/components/schemas/ReviewItem" },
             "type": "array",
-            "title": "Approved Reviews",
-            "description": "Reviews to approve with their data and messages",
-            "default": []
-          },
-          "rejected_review_ids": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Rejected Review Ids",
-            "description": "Node execution IDs of reviews to reject",
-            "default": []
+            "title": "Reviews",
+            "description": "All reviews with their approval status, data, and messages"
           }
         },
         "type": "object",
+        "required": ["reviews"],
         "title": "ReviewRequest",
-        "description": "Request model for processing ALL pending reviews for an execution.\n\nThis request must include ALL pending reviews for a graph execution.\nEach review will be either approved (with optional data modifications)\nor rejected. The execution will resume only after ALL reviews are processed."
+        "description": "Request model for processing ALL pending reviews for an execution.\n\nThis request must include ALL pending reviews for a graph execution.\nEach review will be either approved (with optional data modifications)\nor rejected (data ignored). The execution will resume only after ALL reviews are processed."
       },
       "ReviewResponse": {
         "properties": {
