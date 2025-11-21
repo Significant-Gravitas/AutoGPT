@@ -1,6 +1,8 @@
 import logging
 from typing import TYPE_CHECKING
 
+from autogpt_platform.backend.backend.util.process import AppProcess
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,30 +10,30 @@ load_dotenv()
 if TYPE_CHECKING:
     from backend.util.process import AppProcess
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
-def run_processes(*processes: "AppProcess", **kwargs):
+def run_processes(*processes: "AppProcess", **kwargs) -> None:
     """
     Execute all processes in the app. The last process is run in the foreground.
     Includes enhanced error handling and process lifecycle management.
     """
     try:
         # Run all processes except the last one in the background.
-        for process in processes[:-1]:
+        for process: AppProcess in processes[:-1]:
             process.start(background=True, **kwargs)
 
         # Run the last process in the foreground.
         processes[-1].start(background=False, **kwargs)
     finally:
-        for process in processes:
+        for process: AppProcess in processes:
             try:
                 process.stop()
-            except Exception as e:
+            except Exception as e: Exception:
                 logger.exception(f"[{process.service_name}] unable to stop: {e}")
 
 
-def main(**kwargs):
+def main(**kwargs) -> None:
     """
     Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
     """
