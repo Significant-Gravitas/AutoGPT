@@ -189,7 +189,6 @@ export function PendingReviewsList({
           <PendingReviewCard
             key={review.node_exec_id}
             review={review}
-            reviewData={reviewDataMap[review.node_exec_id] || ""}
             onReviewDataChange={handleReviewDataChange}
             reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
             onReviewMessageChange={handleReviewMessageChange}

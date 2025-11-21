@@ -35,13 +35,11 @@ function extractReviewData(payload: unknown): {
     };
   }
 
-  // Fallback: treat entire payload as data
   return { data: payload };
 }
 
 interface PendingReviewCardProps {
   review: PendingHumanReviewModel;
-  reviewData: string;
   onReviewDataChange: (nodeExecId: string, data: string) => void;
   reviewMessage: string;
   onReviewMessageChange: (nodeExecId: string, message: string) => void;
@@ -51,27 +49,19 @@ interface PendingReviewCardProps {
 
 export function PendingReviewCard({
   review,
-  reviewData: _reviewData, // Keep prop for compatibility but don't use since we extract from payload
   onReviewDataChange,
   reviewMessage,
   onReviewMessageChange,
   isDisabled,
   onToggleDisabled,
 }: PendingReviewCardProps) {
-  // Extract structured data and instructions from payload
   const extractedData = extractReviewData(review.payload);
   const isDataEditable = review.editable;
-
-  // Use instructions from payload or from API field
   const instructions = extractedData.instructions || review.instructions;
-
-  // Local state to track the current value
   const [currentData, setCurrentData] = useState(extractedData.data);
 
   const handleDataChange = (newValue: unknown) => {
-    // Update local state
     setCurrentData(newValue);
-    // Convert back to JSON string for the parent component
     onReviewDataChange(review.node_exec_id, JSON.stringify(newValue, null, 2));
   };
 
@@ -123,7 +113,6 @@ export function PendingReviewCard({
         </div>
       );
     } else {
-      // For objects, arrays, null, etc. - show JSON editor
       return (
         <Input
           id="data-json"
@@ -137,9 +126,7 @@ export function PendingReviewCard({
             try {
               const parsed = JSON.parse(e.target.value);
               handleDataChange(parsed);
-            } catch {
-              // Invalid JSON, let user continue editing
-            }
+            } catch {}
           }}
           placeholder="Edit JSON data"
           className="font-mono text-sm"
@@ -152,7 +139,6 @@ export function PendingReviewCard({
     <div
       className={`space-y-4 rounded-lg border p-4 ${isDisabled ? "bg-muted/50 opacity-60" : ""}`}
     >
-      {/* Header with title and disable toggle */}
       <div className="flex items-start justify-between">
         <div className="flex-1">
           {isDisabled && (
@@ -173,7 +159,6 @@ export function PendingReviewCard({
         </Button>
       </div>
 
-      {/* Review Instructions */}
       {instructions && (
         <div>
           <Text variant="body" className="mb-2 font-semibold">
@@ -183,7 +168,6 @@ export function PendingReviewCard({
         </div>
       )}
 
-      {/* Data Editor */}
       <div>
         <Text variant="body" className="mb-2 font-semibold">
           Data to Review:
