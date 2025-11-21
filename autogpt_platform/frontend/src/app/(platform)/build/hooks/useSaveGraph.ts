@@ -2,10 +2,8 @@
 
 import { useCallback } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import {
-  getGetV1GetSpecificGraphQueryKey,
   useGetV1GetSpecificGraph,
   usePostV1CreateNewGraph,
   usePutV1UpdateGraphVersion,
@@ -15,6 +13,8 @@ import { Graph } from "@/app/api/__generated__/models/graph";
 import { useNodeStore } from "../stores/nodeStore";
 import { useEdgeStore } from "../stores/edgeStore";
 import { graphsEquivalent } from "../components/NewControlPanel/NewSaveControl/helpers";
+import { useGraphStore } from "../stores/graphStore";
+import { useShallow } from "zustand/react/shallow";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -28,12 +28,15 @@ export const useSaveGraph = ({
   onError,
 }: SaveGraphOptions) => {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
   });
+
+  const setGraphSchemas = useGraphStore(
+    useShallow((state) => state.setGraphSchemas),
+  );
 
   const { data: graph } = useGetV1GetSpecificGraph(
     flowID ?? "",
@@ -54,9 +57,6 @@ export const useSaveGraph = ({
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
-          });
-          queryClient.refetchQueries({
-            queryKey: getGetV1GetSpecificGraphQueryKey(data.id),
           });
           onSuccess?.(data);
           if (showToast) {
@@ -87,9 +87,6 @@ export const useSaveGraph = ({
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
-          });
-          queryClient.refetchQueries({
-            queryKey: getGetV1GetSpecificGraphQueryKey(data.id),
           });
           onSuccess?.(data);
           if (showToast) {
@@ -140,7 +137,13 @@ export const useSaveGraph = ({
           return;
         }
 
-        await updateGraph({ graphId: graph.id, data: data });
+        const response = await updateGraph({ graphId: graph.id, data: data });
+        const graphData = response.data as GraphModel;
+        setGraphSchemas(
+          graphData.input_schema,
+          graphData.credentials_input_schema,
+          graphData.output_schema,
+        );
       } else {
         const data: Graph = {
           name: values?.name || `New Agent ${new Date().toISOString()}`,
@@ -149,7 +152,13 @@ export const useSaveGraph = ({
           links: graphLinks,
         };
 
-        await createNewGraph({ data: { graph: data } });
+        const response = await createNewGraph({ data: { graph: data } });
+        const graphData = response.data as GraphModel;
+        setGraphSchemas(
+          graphData.input_schema,
+          graphData.credentials_input_schema,
+          graphData.output_schema,
+        );
       }
     },
     [graph, toast, createNewGraph, updateGraph],

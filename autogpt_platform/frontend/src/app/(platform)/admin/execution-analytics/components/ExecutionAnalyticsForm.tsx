@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
@@ -11,35 +11,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
+import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Collapsible } from "@/components/molecules/Collapsible/Collapsible";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { usePostV2GenerateExecutionAnalytics } from "@/app/api/__generated__/endpoints/admin/admin";
+import {
+  usePostV2GenerateExecutionAnalytics,
+  useGetV2GetExecutionAnalyticsConfiguration,
+} from "@/app/api/__generated__/endpoints/admin/admin";
 import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 
-// Local interface for form state to simplify handling
-interface FormData {
-  graph_id: string;
-  graph_version?: number;
-  user_id?: string;
-  created_after?: string;
-  model_name: string;
-  batch_size: number;
+// Use the generated type with minimal adjustment for form handling
+interface FormData extends Omit<ExecutionAnalyticsRequest, "created_after"> {
+  created_after?: string; // Keep as string for datetime-local input
+  // All other fields use the generated types as-is
 }
 import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
-
-const MODEL_OPTIONS = [
-  { value: "gpt-4o-mini", label: "GPT-4o Mini (Recommended)" },
-  { value: "gpt-4o", label: "GPT-4o" },
-  { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
-  { value: "gpt-4.1", label: "GPT-4.1" },
-  { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
-];
 
 export function ExecutionAnalyticsForm() {
   const [results, setResults] = useState<ExecutionAnalyticsResponse | null>(
     null,
   );
   const { toast } = useToast();
+
+  // Fetch configuration from API
+  const {
+    data: config,
+    isLoading: configLoading,
+    error: configError,
+  } = useGetV2GetExecutionAnalyticsConfiguration();
 
   const generateAnalytics = usePostV2GenerateExecutionAnalytics({
     mutation: {
@@ -69,9 +70,22 @@ export function ExecutionAnalyticsForm() {
 
   const [formData, setFormData] = useState<FormData>({
     graph_id: "",
-    model_name: "gpt-4o-mini",
+    model_name: "", // Will be set from config
     batch_size: 10, // Fixed internal value
+    skip_existing: true, // Default to skip existing
+    system_prompt: "", // Will use config default when empty
+    user_prompt: "", // Will use config default when empty
   });
+
+  // Update form defaults when config loads
+  useEffect(() => {
+    if (config?.data && config.status === 200 && !formData.model_name) {
+      setFormData((prev) => ({
+        ...prev,
+        model_name: config.data.recommended_model,
+      }));
+    }
+  }, [config, formData.model_name]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +106,7 @@ export function ExecutionAnalyticsForm() {
       graph_id: formData.graph_id.trim(),
       model_name: formData.model_name,
       batch_size: formData.batch_size,
+      skip_existing: formData.skip_existing,
     };
 
     if (formData.graph_version) {
@@ -110,12 +125,40 @@ export function ExecutionAnalyticsForm() {
       payload.created_after = new Date(formData.created_after.trim());
     }
 
+    if (formData.system_prompt?.trim()) {
+      payload.system_prompt = formData.system_prompt.trim();
+    }
+
+    if (formData.user_prompt?.trim()) {
+      payload.user_prompt = formData.user_prompt.trim();
+    }
+
     generateAnalytics.mutate({ data: payload });
   };
 
   const handleInputChange = (field: keyof FormData, value: any) => {
     setFormData((prev: FormData) => ({ ...prev, [field]: value }));
   };
+
+  // Show loading state while config loads
+  if (configLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="text-gray-500">Loading configuration...</div>
+      </div>
+    );
+  }
+
+  // Show error state if config fails to load
+  if (configError || !config?.data || config.status !== 200) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="text-red-500">Failed to load configuration</div>
+      </div>
+    );
+  }
+
+  const configData = config.data;
 
   return (
     <div className="space-y-6">
@@ -182,14 +225,135 @@ export function ExecutionAnalyticsForm() {
                 <SelectValue placeholder="Select AI model" />
               </SelectTrigger>
               <SelectContent>
-                {MODEL_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                {configData.available_models.map((model) => (
+                  <SelectItem key={model.value} value={model.value}>
+                    {model.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* Advanced Options Section - Collapsible */}
+        <div className="border-t pt-6">
+          <Collapsible
+            trigger={
+              <h3 className="text-lg font-semibold text-gray-700">
+                Advanced Options
+              </h3>
+            }
+            defaultOpen={false}
+            className="space-y-4"
+          >
+            <div className="space-y-4 pt-4">
+              {/* Skip Existing Checkbox */}
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="skip_existing"
+                  checked={formData.skip_existing}
+                  onCheckedChange={(checked) =>
+                    handleInputChange("skip_existing", checked)
+                  }
+                />
+                <Label htmlFor="skip_existing" className="text-sm">
+                  Skip executions that already have activity status and
+                  correctness score
+                </Label>
+              </div>
+
+              {/* Custom System Prompt */}
+              <div className="space-y-2">
+                <Label htmlFor="system_prompt">
+                  Custom System Prompt (Optional)
+                </Label>
+                <Textarea
+                  id="system_prompt"
+                  value={formData.system_prompt || ""}
+                  onChange={(e) =>
+                    handleInputChange("system_prompt", e.target.value)
+                  }
+                  placeholder={configData.default_system_prompt}
+                  rows={6}
+                  className="resize-y"
+                />
+                <p className="text-sm text-gray-600">
+                  Customize how the AI evaluates execution success and failure.
+                  Leave empty to use the default prompt shown above.
+                </p>
+              </div>
+
+              {/* Custom User Prompt */}
+              <div className="space-y-2">
+                <Label htmlFor="user_prompt">
+                  Custom User Prompt Template (Optional)
+                </Label>
+                <Textarea
+                  id="user_prompt"
+                  value={formData.user_prompt || ""}
+                  onChange={(e) =>
+                    handleInputChange("user_prompt", e.target.value)
+                  }
+                  placeholder={configData.default_user_prompt}
+                  rows={8}
+                  className="resize-y"
+                />
+                <p className="text-sm text-gray-600">
+                  Customize the analysis instructions. Use{" "}
+                  <code className="rounded bg-gray-100 px-1">
+                    {"{{GRAPH_NAME}}"}
+                  </code>{" "}
+                  and{" "}
+                  <code className="rounded bg-gray-100 px-1">
+                    {"{{EXECUTION_DATA}}"}
+                  </code>{" "}
+                  as placeholders. Leave empty to use the default template shown
+                  above.
+                </p>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex flex-wrap gap-2 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  onClick={() => {
+                    handleInputChange(
+                      "system_prompt",
+                      configData.default_system_prompt,
+                    );
+                  }}
+                >
+                  Reset System Prompt
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  onClick={() => {
+                    handleInputChange(
+                      "user_prompt",
+                      configData.default_user_prompt,
+                    );
+                  }}
+                >
+                  Reset User Prompt
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  onClick={() => {
+                    handleInputChange("system_prompt", "");
+                    handleInputChange("user_prompt", "");
+                  }}
+                >
+                  Clear All Prompts
+                </Button>
+              </div>
+            </div>
+          </Collapsible>
         </div>
 
         <div className="flex justify-end">

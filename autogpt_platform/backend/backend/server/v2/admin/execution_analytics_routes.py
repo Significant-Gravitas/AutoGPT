@@ -7,6 +7,7 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
+from backend.blocks.llm import LlmModel
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionMeta,
@@ -15,6 +16,8 @@ from backend.data.execution import (
 )
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
+    DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_USER_PROMPT,
     generate_activity_status_for_execution,
 )
 from backend.executor.manager import get_db_async_client
@@ -30,11 +33,20 @@ class ExecutionAnalyticsRequest(BaseModel):
     created_after: Optional[datetime] = Field(
         None, description="Optional created date lower bound"
     )
-    model_name: Optional[str] = Field(
-        "gpt-4o-mini", description="Model to use for generation"
-    )
+    model_name: str = Field("gpt-4o-mini", description="Model to use for generation")
     batch_size: int = Field(
         10, description="Batch size for concurrent processing", le=25, ge=1
+    )
+    system_prompt: Optional[str] = Field(
+        None, description="Custom system prompt (default: built-in prompt)"
+    )
+    user_prompt: Optional[str] = Field(
+        None,
+        description="Custom user prompt with {{GRAPH_NAME}} and {{EXECUTION_DATA}} placeholders (default: built-in prompt)",
+    )
+    skip_existing: bool = Field(
+        True,
+        description="Whether to skip executions that already have activity status and correctness score",
     )
 
 
@@ -58,11 +70,118 @@ class ExecutionAnalyticsResponse(BaseModel):
     results: list[ExecutionAnalyticsResult]
 
 
+class ModelInfo(BaseModel):
+    value: str
+    label: str
+    provider: str
+
+
+class ExecutionAnalyticsConfig(BaseModel):
+    available_models: list[ModelInfo]
+    default_system_prompt: str
+    default_user_prompt: str
+    recommended_model: str
+
+
 router = APIRouter(
     prefix="/admin",
     tags=["admin", "execution_analytics"],
     dependencies=[Security(requires_admin_user)],
 )
+
+
+@router.get(
+    "/execution_analytics/config",
+    response_model=ExecutionAnalyticsConfig,
+    summary="Get Execution Analytics Configuration",
+)
+async def get_execution_analytics_config(
+    admin_user_id: str = Security(get_user_id),
+):
+    """
+    Get the configuration for execution analytics including:
+    - Available AI models with metadata
+    - Default system and user prompts
+    - Recommended model selection
+    """
+    logger.info(f"Admin user {admin_user_id} requesting execution analytics config")
+
+    # Generate model list from LlmModel enum with provider information
+    available_models = []
+
+    # Function to generate friendly display names from model values
+    def generate_model_label(model: LlmModel) -> str:
+        """Generate a user-friendly label from the model enum value."""
+        value = model.value
+
+        # For all models, convert underscores/hyphens to spaces and title case
+        # e.g., "gpt-4-turbo" -> "GPT 4 Turbo", "claude-3-haiku-20240307" -> "Claude 3 Haiku"
+        parts = value.replace("_", "-").split("-")
+
+        # Handle provider prefixes (e.g., "google/", "x-ai/")
+        if "/" in value:
+            _, model_name = value.split("/", 1)
+            parts = model_name.replace("_", "-").split("-")
+
+        # Capitalize and format parts
+        formatted_parts = []
+        for part in parts:
+            # Skip date-like patterns - check for various date formats:
+            # - Long dates like "20240307" (8 digits)
+            # - Year components like "2024", "2025" (4 digit years >= 2020)
+            # - Month/day components like "04", "16" when they appear to be dates
+            if part.isdigit():
+                if len(part) >= 8:  # Long date format like "20240307"
+                    continue
+                elif len(part) == 4 and int(part) >= 2020:  # Year like "2024", "2025"
+                    continue
+                elif len(part) <= 2 and int(part) <= 31:  # Month/day like "04", "16"
+                    # Skip if this looks like a date component (basic heuristic)
+                    continue
+            # Keep version numbers as-is
+            if part.replace(".", "").isdigit():
+                formatted_parts.append(part)
+            # Capitalize normal words
+            else:
+                formatted_parts.append(
+                    part.upper()
+                    if part.upper() in ["GPT", "LLM", "API", "V0"]
+                    else part.capitalize()
+                )
+
+        model_name = " ".join(formatted_parts)
+
+        # Format provider name for better display
+        provider_name = model.provider.replace("_", " ").title()
+
+        # Return with provider prefix for clarity
+        return f"{provider_name}: {model_name}"
+
+    # Include all LlmModel values (no more filtering by hardcoded list)
+    recommended_model = LlmModel.GPT4O_MINI.value
+    for model in LlmModel:
+        label = generate_model_label(model)
+        # Add "(Recommended)" suffix to the recommended model
+        if model.value == recommended_model:
+            label += " (Recommended)"
+
+        available_models.append(
+            ModelInfo(
+                value=model.value,
+                label=label,
+                provider=model.provider,
+            )
+        )
+
+    # Sort models by provider and name for better UX
+    available_models.sort(key=lambda x: (x.provider, x.label))
+
+    return ExecutionAnalyticsConfig(
+        available_models=available_models,
+        default_system_prompt=DEFAULT_SYSTEM_PROMPT,
+        default_user_prompt=DEFAULT_USER_PROMPT,
+        recommended_model=recommended_model,
+    )
 
 
 @router.post(
@@ -100,6 +219,7 @@ async def generate_execution_analytics(
         # Fetch executions to process
         executions = await get_graph_executions(
             graph_id=request.graph_id,
+            graph_version=request.graph_version,
             user_id=request.user_id,
             created_time_gte=request.created_after,
             statuses=[
@@ -113,21 +233,20 @@ async def generate_execution_analytics(
             f"Found {len(executions)} total executions for graph {request.graph_id}"
         )
 
-        # Filter executions that need analytics generation (missing activity_status or correctness_score)
+        # Filter executions that need analytics generation
         executions_to_process = []
         for execution in executions:
+            # Skip if we should skip existing analytics and both activity_status and correctness_score exist
             if (
-                not execution.stats
-                or not execution.stats.activity_status
-                or execution.stats.correctness_score is None
+                request.skip_existing
+                and execution.stats
+                and execution.stats.activity_status
+                and execution.stats.correctness_score is not None
             ):
+                continue
 
-                # If version is specified, filter by it
-                if (
-                    request.graph_version is None
-                    or execution.graph_version == request.graph_version
-                ):
-                    executions_to_process.append(execution)
+            # Add execution to processing list
+            executions_to_process.append(execution)
 
         logger.info(
             f"Found {len(executions_to_process)} executions needing analytics generation"
@@ -152,9 +271,7 @@ async def generate_execution_analytics(
                     f"Processing batch {batch_idx + 1}/{total_batches} with {len(batch)} executions"
                 )
 
-                batch_results = await _process_batch(
-                    batch, request.model_name or "gpt-4o-mini", db_client
-                )
+                batch_results = await _process_batch(batch, request, db_client)
 
                 for result in batch_results:
                     results.append(result)
@@ -212,7 +329,7 @@ async def generate_execution_analytics(
 
 
 async def _process_batch(
-    executions, model_name: str, db_client
+    executions, request: ExecutionAnalyticsRequest, db_client
 ) -> list[ExecutionAnalyticsResult]:
     """Process a batch of executions concurrently."""
 
@@ -237,8 +354,11 @@ async def _process_batch(
                 db_client=db_client,
                 user_id=execution.user_id,
                 execution_status=execution.status,
-                model_name=model_name,  # Pass model name parameter
+                model_name=request.model_name,
                 skip_feature_flag=True,  # Admin endpoint bypasses feature flags
+                system_prompt=request.system_prompt or DEFAULT_SYSTEM_PROMPT,
+                user_prompt=request.user_prompt or DEFAULT_USER_PROMPT,
+                skip_existing=request.skip_existing,
             )
 
             if not activity_response:

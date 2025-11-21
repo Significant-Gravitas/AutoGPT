@@ -42,9 +42,10 @@ export const graphsEquivalent = (
     name: current.name,
     description: current.description,
     nodes: sortNodes(current.nodes ?? []).map(({ id: _, ...rest }) => rest),
-    links: sortLinks(current.links ?? []).map(
-      ({ source_id: _, sink_id: __, ...rest }) => rest,
-    ),
+    links: sortLinks(current.links ?? []).map((v) => ({
+      sink_name: v.sink_name,
+      source_name: v.source_name,
+    })),
   };
 
   return deepEquals(_saved, _current);
