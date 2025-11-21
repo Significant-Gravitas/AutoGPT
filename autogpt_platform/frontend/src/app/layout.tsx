@@ -6,12 +6,10 @@ import "./globals.css";
 
 import { Providers } from "@/app/providers";
 import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
-import { PreviewBanner } from "@/components/molecules/PreviewBanner/PreviewBanner";
 import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
-import { environment } from "@/services/environment";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 
@@ -27,7 +25,6 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
-  const previewStealingDev = environment.getPreviewStealingDev();
 
   return (
     <html
@@ -52,9 +49,6 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
-            {previewStealingDev ? (
-              <PreviewBanner branchName={previewStealingDev} />
-            ) : null}
             {children}
             <TallyPopupSimple />
             <VercelAnalyticsWrapper />
