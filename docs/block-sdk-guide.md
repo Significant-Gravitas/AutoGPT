@@ -221,7 +221,7 @@ backend/blocks/my_provider/
 └── my_block.py         # Block implementations
 ```
 
-### Best Practices[¶](https://docs.agpt.co/platform/block-sdk-guide/#best-practices) <a href="#best-practices" id="best-practices"></a>
+### Best Practices <a href="#best-practices" id="best-practices"></a>
 
 1. **Error Handling**: Error output pin is already defined on BlockSchemaOutput
 2. **Credentials**: Use the provider's `credentials_field()` method
