@@ -19,8 +19,8 @@ export const NodeContainer = ({
   return (
     <div
       className={cn(
-        "z-12 max-w-[370px] rounded-xlarge shadow-lg shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-sm",
-        selected && "shadow-2xl ring-2 ring-slate-200",
+        "z-12 max-w-[370px] rounded-xlarge ring-1 ring-slate-200/60",
+        selected && "shadow-lg ring-2 ring-slate-200",
         status && nodeStyleBasedOnStatus[status],
       )}
     >
