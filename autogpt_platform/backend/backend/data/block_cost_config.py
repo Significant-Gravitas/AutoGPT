@@ -1,13 +1,7 @@
 from typing import Type
 
-from backend.blocks.ai_image_customizer import (
-    AIImageCustomizerBlock,
-    GeminiImageModel,
-)
-from backend.blocks.ai_image_generator_block import (
-    AIImageGeneratorBlock,
-    ImageGenModel,
-)
+from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
+from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import (
     AIAdMakerVideoCreatorBlock,
