@@ -1,5 +1,7 @@
 from typing import Type
 
+from backend.blocks.ai_image_customizer import AIImageCustomizerBlock
+from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import (
     AIAdMakerVideoCreatorBlock,
@@ -532,6 +534,30 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": apollo_credentials.id,
                     "provider": apollo_credentials.provider,
                     "type": apollo_credentials.type,
+                }
+            },
+        )
+    ],
+    AIImageGeneratorBlock: [
+        BlockCost(
+            cost_amount=14,
+            cost_filter={
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                }
+            },
+        )
+    ],
+    AIImageCustomizerBlock: [
+        BlockCost(
+            cost_amount=14,
+            cost_filter={
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
                 }
             },
         )
