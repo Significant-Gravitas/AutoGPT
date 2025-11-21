@@ -134,7 +134,7 @@
     "axe-playwright": "2.2.2",
     "chromatic": "13.3.3",
     "concurrently": "9.2.1",
-    "cross-env": "7.0.3",
+    "cross-env": "10.1.0",
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.2",
     "eslint-plugin-storybook": "9.1.5",
