@@ -265,3 +265,68 @@ class LinearClient:
             return [Issue(**issue) for issue in issues["searchIssues"]["nodes"]]
         except LinearAPIException as e:
             raise e
+
+    async def try_get_issues(
+        self, project: str, status: str, is_assigned: bool, include_comments: bool
+    ) -> list[Issue]:
+        try:
+            query = """    
+                    query IssuesByProjectStatusAndAssignee(
+                      $projectName: String!
+                      $statusName: String!
+                      $isAssigned: Boolean!
+                      $includeComments: Boolean! = false
+                    ) {
+                      issues(
+                        filter: {
+                          project: { name: { eq: $projectName } }
+                          state: { name: { eq: $statusName } }
+                          assignee: { null: $isAssigned }
+                        }
+                      ) {
+                        nodes {
+                          id
+                          title
+                          identifier
+                          description
+                          createdAt
+                          priority
+                          assignee {
+                            id
+                            name
+                          }
+                          project {
+                            id
+                            name
+                          }
+                          state {
+                            id
+                            name
+                          }
+                          comments @include(if: $includeComments) {
+                            nodes {
+                              id
+                              body
+                              createdAt
+                              user {
+                                id
+                                name
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+            """
+
+            variables: dict[str, Any] = {
+                "projectName": project,
+                "statusName": status,
+                "isAssigned": not is_assigned,
+                "includeComments": include_comments,
+            }
+
+            issues = await self.query(query, variables)
+            return [Issue(**issue) for issue in issues["issues"]["nodes"]]
+        except LinearAPIException as e:
+            raise e
