@@ -1,0 +1,107 @@
+# GCP Project Configuration
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+zone       = "us-central1-a"
+
+# Network Configuration
+network_name           = "autogpt-network"
+subnet_name            = "autogpt-subnet"
+subnet_cidr            = "10.0.0.0/24"
+pods_ip_cidr_range     = "10.1.0.0/16"
+services_ip_cidr_range = "10.2.0.0/20"
+
+# GKE Cluster Configuration
+cluster_name   = "autogpt-cluster"
+node_pool_name = "main-pool"
+machine_type   = "e2-highmem-4"  # 4 vCPU, 32GB RAM
+min_node_count = 2
+max_node_count = 20
+disk_size_gb   = 100
+
+# Stateful Node Pool (for databases)
+enable_stateful_pool   = true
+stateful_node_count    = 1
+stateful_machine_type  = "e2-standard-4"  # 4 vCPU, 16GB RAM
+stateful_disk_size_gb  = 100
+
+# Database Configuration
+database_instance_name = "autogpt-postgres"
+database_name          = "autogpt"
+database_user          = "autogpt"
+database_password      = "CHANGE-THIS-TO-A-SECURE-PASSWORD"
+instance_tier          = "db-custom-4-16384"  # 4 vCPU, 16GB RAM
+
+# Static IP addresses (for load balancers)
+static_ip_names = ["server-ip", "builder-ip", "websocket-ip"]
+
+# Service Accounts
+service_accounts = {
+  "autogpt-server-sa" = {
+    display_name = "AutoGPT Server Service Account"
+    description  = "Service account for AutoGPT server"
+  },
+  "autogpt-builder-sa" = {
+    display_name = "AutoGPT Builder Service Account"  
+    description  = "Service account for AutoGPT builder"
+  },
+  "autogpt-websocket-sa" = {
+    display_name = "AutoGPT WebSocket Service Account"
+    description  = "Service account for AutoGPT WebSocket server"
+  },
+  "autogpt-scheduler-sa" = {
+    display_name = "AutoGPT Scheduler Service Account"
+    description  = "Service account for AutoGPT scheduler"
+  },
+  "autogpt-notification-sa" = {
+    display_name = "AutoGPT Notification Service Account"
+    description  = "Service account for AutoGPT notification server"
+  },
+  "autogpt-database-manager-sa" = {
+    display_name = "AutoGPT Database Manager Service Account"
+    description  = "Service account for AutoGPT database manager"
+  }
+}
+
+# Workload Identity Bindings
+workload_identity_bindings = {
+  "autogpt-server-workload-identity" = {
+    service_account_name = "autogpt-server-sa"
+    namespace            = "autogpt"
+    ksa_name             = "autogpt-server-sa"
+  },
+  "autogpt-builder-workload-identity" = {
+    service_account_name = "autogpt-builder-sa"
+    namespace            = "autogpt"
+    ksa_name             = "autogpt-builder-sa"
+  },
+  "autogpt-websocket-workload-identity" = {
+    service_account_name = "autogpt-websocket-sa"
+    namespace            = "autogpt"
+    ksa_name             = "autogpt-websocket-sa"
+  }
+}
+
+# IAM Role Bindings
+# Note: ${var.project_id} will be automatically substituted
+role_bindings = {
+  "roles/container.developer" = [
+    "serviceAccount:autogpt-server-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-scheduler-sa@${var.project_id}.iam.gserviceaccount.com", 
+    "serviceAccount:autogpt-notification-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-builder-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-websocket-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-database-manager-sa@${var.project_id}.iam.gserviceaccount.com"
+  ],
+  "roles/logging.logWriter" = [
+    "serviceAccount:autogpt-server-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-scheduler-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-notification-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-builder-sa@${var.project_id}.iam.gserviceaccount.com",
+    "serviceAccount:autogpt-websocket-sa@${var.project_id}.iam.gserviceaccount.com"
+  ]
+}
+
+# Storage buckets (optional)
+public_bucket_names   = []  # Add bucket names if you need public storage
+standard_bucket_names = []  # Add bucket names if you need private storage
+bucket_admins         = []  # Add email addresses for bucket admin access
