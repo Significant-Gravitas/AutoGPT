@@ -1,5 +1,6 @@
 // In this hook, I am only keeping websocket related code.
 
+import { useState } from "react";
 import { GraphExecutionID } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { parseAsString, useQueryStates } from "nuqs";
@@ -13,6 +14,9 @@ import { useEdgeStore } from "../../../stores/edgeStore";
 
 export const useFlowRealtime = () => {
   const api = useBackendAPI();
+  const [executionStatus, setExecutionStatus] = useState<
+    AgentExecutionStatus | undefined
+  >(undefined);
   const updateNodeExecutionResult = useNodeStore(
     useShallow((state) => state.updateNodeExecutionResult),
   );
@@ -62,6 +66,7 @@ export const useFlowRealtime = () => {
           graphExecution.status === AgentExecutionStatus.QUEUED;
 
         setIsGraphRunning(isRunning);
+        setExecutionStatus(graphExecution.status as AgentExecutionStatus);
       },
     );
 
@@ -93,5 +98,5 @@ export const useFlowRealtime = () => {
     };
   }, [api, flowExecutionID, resetEdgeBeads]);
 
-  return {};
+  return { executionStatus };
 };

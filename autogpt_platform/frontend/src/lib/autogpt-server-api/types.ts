@@ -277,7 +277,8 @@ export type GraphExecutionMeta = {
     | "COMPLETED"
     | "TERMINATED"
     | "FAILED"
-    | "INCOMPLETE";
+    | "INCOMPLETE"
+    | "REVIEW";
   started_at: Date;
   ended_at: Date;
   stats: {
@@ -414,7 +415,8 @@ export type NodeExecutionResult = {
     | "RUNNING"
     | "COMPLETED"
     | "TERMINATED"
-    | "FAILED";
+    | "FAILED"
+    | "REVIEW";
   input_data: Record<string, any>;
   output_data: Record<string, Array<any>>;
   add_time: Date;
