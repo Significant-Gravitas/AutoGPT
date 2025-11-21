@@ -16,7 +16,10 @@ export function TaskGroups({ groups }: Props) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
     groups.forEach((group) => {
-      initialState[group.name] = true;
+      const completed = group.tasks.every((task) =>
+        state?.completedSteps?.includes(task.id),
+      );
+      initialState[group.name] = !completed;
     });
     return initialState;
   });
@@ -62,7 +65,7 @@ export function TaskGroups({ groups }: Props) {
         {} as Record<string, boolean>,
       ),
     );
-  }, [state?.completedSteps, isGroupCompleted]);
+  }, [state?.completedSteps, isGroupCompleted, groups]);
 
   const setRef = (name: string) => (el: HTMLDivElement | null) => {
     if (el) {
@@ -101,9 +104,10 @@ export function TaskGroups({ groups }: Props) {
   useEffect(() => {
     groups.forEach((group) => {
       const groupCompleted = isGroupCompleted(group);
-      // Check if the last task in the group is completed
-      const alreadyCelebrated = state?.notified.includes(
-        group.tasks[group.tasks.length - 1].id,
+      // Check if all tasks in the group were already celebrated
+      // last task completed triggers group completion
+      const alreadyCelebrated = group.tasks.every((task) =>
+        state?.notified.includes(task.id),
       );
 
       if (groupCompleted) {

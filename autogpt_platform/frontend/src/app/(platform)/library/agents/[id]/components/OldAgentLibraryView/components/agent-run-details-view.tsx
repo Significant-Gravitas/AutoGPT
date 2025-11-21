@@ -38,7 +38,6 @@ import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 import { AgentRunOutputView } from "./agent-run-output-view";
 import { analytics } from "@/services/analytics";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function AgentRunDetailsView({
   agent,
@@ -64,8 +63,6 @@ export function AgentRunDetailsView({
     () => agentRunStatusMap[run.status],
     [run],
   );
-
-  const { completeStep } = useOnboarding();
 
   const toastOnFail = useToastOnFail();
 
@@ -151,13 +148,13 @@ export function AgentRunDetailsView({
         graph.version,
         run.inputs!,
         run.credential_inputs!,
+        "library",
       )
       .then(({ id }) => {
         analytics.sendDatafastEvent("run_agent", {
           name: graph.name,
           id: graph.id,
         });
-        completeStep("RE_RUN_AGENT");
         onRun(id);
       })
       .catch(toastOnFail("execute agent"));

@@ -105,6 +105,7 @@ export function useRunDetailHeader(
         data: {
           inputs: (run as any).inputs || {},
           credentials_inputs: (run as any).credential_inputs || {},
+          source: "library",
         },
       });
 

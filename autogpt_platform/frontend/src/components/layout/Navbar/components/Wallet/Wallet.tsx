@@ -250,31 +250,41 @@ export function Wallet() {
     [],
   );
 
-  // Confetti effect on the wallet button
+  // React to onboarding notifications emitted by the provider
   const handleNotification = useCallback(
     (notification: WebSocketNotification) => {
-      if (notification.type !== "onboarding") {
+      if (
+        notification.type !== "onboarding" ||
+        notification.event !== "step_completed" ||
+        !walletRef.current
+      ) {
         return;
       }
 
-      if (walletRef.current) {
-        // Fix confetti appearing in the top left corner
-        const rect = walletRef.current.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
-          return;
-        }
-        fetchCredits();
-        party.confetti(walletRef.current!, {
-          count: 30,
-          spread: 120,
-          shapes: ["square", "circle"],
-          size: party.variation.range(1, 2),
-          speed: party.variation.range(200, 300),
-          modules: [fadeOut],
-        });
+      // Only trigger confetti for tasks that are in groups
+      const taskIds = groups
+        .flatMap((group) => group.tasks)
+        .map((task) => task.id);
+      if (!taskIds.includes(notification.step as OnboardingStep)) {
+        return;
       }
+
+      const rect = walletRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return;
+      }
+
+      fetchCredits();
+      party.confetti(walletRef.current, {
+        count: 30,
+        spread: 120,
+        shapes: ["square", "circle"],
+        size: party.variation.range(1, 2),
+        speed: party.variation.range(200, 300),
+        modules: [fadeOut],
+      });
     },
-    [],
+    [fetchCredits, fadeOut],
   );
 
   // WebSocket setup for onboarding notifications
