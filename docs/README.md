@@ -43,8 +43,6 @@ layout:
 
 ***
 
-<figure><img src=".gitbook/assets/replicate-prediction-yt6p2d3gjhrma0ctdsv8vp1t70.jpeg" alt=""><figcaption></figcaption></figure>
-
 
 
 <h2 align="center">Join a community of 65,000+ developers</h2>
