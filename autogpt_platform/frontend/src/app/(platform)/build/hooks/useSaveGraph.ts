@@ -142,6 +142,7 @@ export const useSaveGraph = ({
         setGraphSchemas(
           graphData.input_schema,
           graphData.credentials_input_schema,
+          graphData.output_schema,
         );
       } else {
         const data: Graph = {
@@ -156,6 +157,7 @@ export const useSaveGraph = ({
         setGraphSchemas(
           graphData.input_schema,
           graphData.credentials_input_schema,
+          graphData.output_schema,
         );
       }
     },

@@ -39,7 +39,7 @@ export const OAuthCredentialModal = ({
 
       <Button
         type="button"
-        className="w-fit"
+        className="w-fit px-2"
         size="small"
         onClick={() => {
           handleOAuthLogin();
