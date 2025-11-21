@@ -1,10 +1,15 @@
-import React from "react";
 import { format } from "date-fns";
+import React from "react";
 
 import { Input as DSInput } from "@/components/atoms/Input/Input";
 import { Select as DSSelect } from "@/components/atoms/Select/Select";
 import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 // Removed shadcn Select usage in favor of DS Select for time picker
+import { Button } from "@/components/atoms/Button/Button";
+import { FileInput } from "@/components/atoms/FileInput/FileInput";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePickerInput";
+import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import {
   BlockIOObjectSubSchema,
   BlockIOSubSchema,
@@ -13,12 +18,8 @@ import {
   determineDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
-import { FileInput } from "@/components/atoms/FileInput/FileInput";
-import { useRunAgentInputs } from "./useRunAgentInputs";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
-import { Button } from "@/components/atoms/Button/Button";
+import { useRunAgentInputs } from "./useRunAgentInputs";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -89,6 +90,23 @@ export function RunAgentInputs({
         />
       );
       break;
+
+    case DataType.GOOGLE_DRIVE_PICKER: {
+      const pickerSchema = schema as any;
+      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
+        pickerSchema.google_drive_picker_config || {};
+
+      innerInputElement = (
+        <GoogleDrivePickerInput
+          config={config}
+          value={value}
+          onChange={onChange}
+          className="w-full"
+          showRemoveButton={false}
+        />
+      );
+      break;
+    }
 
     case DataType.BOOLEAN:
       innerInputElement = (

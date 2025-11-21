@@ -5,6 +5,7 @@ from typing import Any
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from backend.blocks.google._drive import GoogleDriveFile, GoogleDrivePickerField
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -160,6 +161,7 @@ def _convert_dicts_to_rows(
 
 
 def _build_sheets_service(credentials: GoogleCredentials):
+    """Build Sheets service from platform credentials (with refresh token)."""
     settings = Settings()
     creds = Credentials(
         token=(
@@ -178,6 +180,41 @@ def _build_sheets_service(credentials: GoogleCredentials):
         scopes=credentials.scopes,
     )
     return build("sheets", "v4", credentials=creds)
+
+
+def _validate_spreadsheet_file(spreadsheet_file: "GoogleDriveFile") -> str | None:
+    """Validate that the selected file is a Google Sheets spreadsheet.
+
+    Returns None if valid, error message string if invalid.
+    """
+    if spreadsheet_file.mime_type != "application/vnd.google-apps.spreadsheet":
+        file_type = spreadsheet_file.mime_type
+        file_name = spreadsheet_file.name
+        if file_type == "text/csv":
+            return f"Cannot use CSV file '{file_name}' with Google Sheets block. Please use a CSV reader block instead, or convert the CSV to a Google Sheets spreadsheet first."
+        elif file_type in [
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ]:
+            return f"Cannot use Excel file '{file_name}' with Google Sheets block. Please use an Excel reader block instead, or convert to Google Sheets first."
+        else:
+            return f"Cannot use file '{file_name}' (type: {file_type}) with Google Sheets block. This block only works with Google Sheets spreadsheets."
+    return None
+
+
+def _handle_sheets_api_error(error_msg: str, operation: str = "access") -> str:
+    """Convert common Google Sheets API errors to user-friendly messages."""
+    if "Request contains an invalid argument" in error_msg:
+        return f"Invalid request to Google Sheets API. This usually means the file is not a Google Sheets spreadsheet, the range is invalid, or you don't have permission to {operation} this file."
+    elif "The caller does not have permission" in error_msg or "Forbidden" in error_msg:
+        if operation in ["write", "modify", "update", "append", "clear"]:
+            return "Permission denied. You don't have edit access to this spreadsheet. Make sure it's shared with edit permissions."
+        else:
+            return "Permission denied. You don't have access to this spreadsheet. Make sure it's shared with you and try re-selecting the file."
+    elif "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+        return "Spreadsheet not found. The file may have been deleted or the link is invalid."
+    else:
+        return f"Failed to {operation} Google Sheet: {error_msg}"
 
 
 class SheetOperation(str, Enum):
@@ -216,12 +253,15 @@ class GoogleSheetsReadBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="The ID or URL of the spreadsheet to read from",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         range: str = SchemaField(
             description="The A1 notation of the range to read",
+            placeholder="Sheet1!A1:Z1000",
         )
 
     class Output(BlockSchemaOutput):
@@ -241,9 +281,13 @@ class GoogleSheetsReadBlock(Block):
             output_schema=GoogleSheetsReadBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-                "range": "Sheet1!A1:B2",
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
+                "range": "Sheet1!A1:B2",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -266,16 +310,44 @@ class GoogleSheetsReadBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        data = await asyncio.to_thread(
-            self._read_sheet, service, spreadsheet_id, input_data.range
-        )
-        yield "result", data
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            spreadsheet_id = input_data.spreadsheet.id
+            data = await asyncio.to_thread(
+                self._read_sheet, service, spreadsheet_id, input_data.range
+            )
+            yield "result", data
+        except Exception as e:
+            yield "error", _handle_sheets_api_error(str(e), "read")
 
     def _read_sheet(self, service, spreadsheet_id: str, range: str) -> list[list[str]]:
         sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=spreadsheet_id, range=range).execute()
+        range_to_use = range or "A:Z"
+        sheet_name, cell_range = parse_a1_notation(range_to_use)
+        if sheet_name:
+            cleaned_sheet = sheet_name.strip().strip("'\"")
+            formatted_sheet = format_sheet_name(cleaned_sheet)
+            cell_part = cell_range.strip() if cell_range else ""
+            if cell_part:
+                range_to_use = f"{formatted_sheet}!{cell_part}"
+            else:
+                range_to_use = f"{formatted_sheet}!A:Z"
+        # If no sheet name, keep the original range (e.g., "A1:B2" or "B:B")
+        result = (
+            sheet.values()
+            .get(spreadsheetId=spreadsheet_id, range=range_to_use)
+            .execute()
+        )
         return result.get("values", [])
 
 
@@ -284,12 +356,15 @@ class GoogleSheetsWriteBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="The ID or URL of the spreadsheet to write to",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         range: str = SchemaField(
             description="The A1 notation of the range to write",
+            placeholder="Sheet1!A1:B2",
         )
         values: list[list[str]] = SchemaField(
             description="The data to write to the spreadsheet",
@@ -312,13 +387,17 @@ class GoogleSheetsWriteBlock(Block):
             output_schema=GoogleSheetsWriteBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
                 "range": "Sheet1!A1:B2",
                 "values": [
                     ["Name", "Score"],
                     ["Bob", "90"],
                 ],
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -339,16 +418,35 @@ class GoogleSheetsWriteBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._write_sheet,
-            service,
-            spreadsheet_id,
-            input_data.range,
-            input_data.values,
-        )
-        yield "result", result
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                # Customize message for write operations on CSV files
+                if "CSV file" in validation_error:
+                    yield "error", validation_error.replace(
+                        "Please use a CSV reader block instead, or",
+                        "CSV files are read-only through Google Drive. Please",
+                    )
+                else:
+                    yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._write_sheet,
+                service,
+                input_data.spreadsheet.id,
+                input_data.range,
+                input_data.values,
+            )
+            yield "result", result
+        except Exception as e:
+            yield "error", _handle_sheets_api_error(str(e), "write")
 
     def _write_sheet(
         self, service, spreadsheet_id: str, range: str, values: list[list[str]]
@@ -373,9 +471,11 @@ class GoogleSheetsAppendBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="Spreadsheet ID or URL",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         sheet_name: str = SchemaField(
             description="Optional sheet to append to (defaults to first sheet)",
@@ -421,9 +521,13 @@ class GoogleSheetsAppendBlock(Block):
             output_schema=GoogleSheetsAppendBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-                "values": [["Charlie", "95"]],
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
+                "values": [["Charlie", "95"]],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -441,37 +545,50 @@ class GoogleSheetsAppendBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        # Determine which values to use and convert if needed
-        processed_values: list[list[str]]
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
 
-        # Validate that only one format is provided
-        if input_data.values and input_data.dict_values:
-            raise ValueError("Provide either 'values' or 'dict_values', not both")
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
 
-        if input_data.dict_values:
-            if not input_data.headers:
-                raise ValueError("Headers are required when using dict_values")
-            processed_values = _convert_dicts_to_rows(
-                input_data.dict_values, input_data.headers
+            service = _build_sheets_service(credentials)
+
+            # Determine which values to use and convert if needed
+            processed_values: list[list[str]]
+
+            # Validate that only one format is provided
+            if input_data.values and input_data.dict_values:
+                raise ValueError("Provide either 'values' or 'dict_values', not both")
+
+            if input_data.dict_values:
+                if not input_data.headers:
+                    raise ValueError("Headers are required when using dict_values")
+                processed_values = _convert_dicts_to_rows(
+                    input_data.dict_values, input_data.headers
+                )
+            elif input_data.values:
+                processed_values = input_data.values
+            else:
+                raise ValueError("Either 'values' or 'dict_values' must be provided")
+
+            result = await asyncio.to_thread(
+                self._append_sheet,
+                service,
+                input_data.spreadsheet.id,
+                input_data.sheet_name,
+                processed_values,
+                input_data.range,
+                input_data.value_input_option,
+                input_data.insert_data_option,
             )
-        elif input_data.values:
-            processed_values = input_data.values
-        else:
-            raise ValueError("Either 'values' or 'dict_values' must be provided")
-
-        result = await asyncio.to_thread(
-            self._append_sheet,
-            service,
-            spreadsheet_id,
-            input_data.sheet_name,
-            processed_values,
-            input_data.range,
-            input_data.value_input_option,
-            input_data.insert_data_option,
-        )
-        yield "result", result
+            yield "result", result
+        except Exception as e:
+            yield "error", f"Failed to append to Google Sheet: {str(e)}"
 
     def _append_sheet(
         self,
@@ -512,12 +629,15 @@ class GoogleSheetsClearBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="The ID or URL of the spreadsheet to clear",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         range: str = SchemaField(
             description="The A1 notation of the range to clear",
+            placeholder="Sheet1!A1:B2",
         )
 
     class Output(BlockSchemaOutput):
@@ -537,9 +657,13 @@ class GoogleSheetsClearBlock(Block):
             output_schema=GoogleSheetsClearBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-                "range": "Sheet1!A1:B2",
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
+                "range": "Sheet1!A1:B2",
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -555,15 +679,27 @@ class GoogleSheetsClearBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._clear_range,
-            service,
-            spreadsheet_id,
-            input_data.range,
-        )
-        yield "result", result
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._clear_range,
+                service,
+                input_data.spreadsheet.id,
+                input_data.range,
+            )
+            yield "result", result
+        except Exception as e:
+            yield "error", f"Failed to clear Google Sheet range: {str(e)}"
 
     def _clear_range(self, service, spreadsheet_id: str, range: str) -> dict:
         result = (
@@ -580,9 +716,11 @@ class GoogleSheetsMetadataBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="The ID or URL of the spreadsheet to get metadata for",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
 
     class Output(BlockSchemaOutput):
@@ -602,8 +740,12 @@ class GoogleSheetsMetadataBlock(Block):
             output_schema=GoogleSheetsMetadataBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -626,14 +768,26 @@ class GoogleSheetsMetadataBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._get_metadata,
-            service,
-            spreadsheet_id,
-        )
-        yield "result", result
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._get_metadata,
+                service,
+                input_data.spreadsheet.id,
+            )
+            yield "result", result
+        except Exception as e:
+            yield "error", f"Failed to get spreadsheet metadata: {str(e)}"
 
     def _get_metadata(self, service, spreadsheet_id: str) -> dict:
         result = (
@@ -661,9 +815,11 @@ class GoogleSheetsManageSheetBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="Spreadsheet ID or URL",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         operation: SheetOperation = SchemaField(description="Operation to perform")
         sheet_name: str = SchemaField(
@@ -689,10 +845,14 @@ class GoogleSheetsManageSheetBlock(Block):
             output_schema=GoogleSheetsManageSheetBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
                 "operation": SheetOperation.CREATE,
                 "sheet_name": "NewSheet",
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("result", {"success": True, "sheetId": 123})],
@@ -707,18 +867,30 @@ class GoogleSheetsManageSheetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._manage_sheet,
-            service,
-            spreadsheet_id,
-            input_data.operation,
-            input_data.sheet_name,
-            input_data.source_sheet_id,
-            input_data.destination_sheet_name,
-        )
-        yield "result", result
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._manage_sheet,
+                service,
+                input_data.spreadsheet.id,
+                input_data.operation,
+                input_data.sheet_name,
+                input_data.source_sheet_id,
+                input_data.destination_sheet_name,
+            )
+            yield "result", result
+        except Exception as e:
+            yield "error", f"Failed to manage sheet: {str(e)}"
 
     def _manage_sheet(
         self,
@@ -731,17 +903,21 @@ class GoogleSheetsManageSheetBlock(Block):
     ) -> dict:
         requests = []
 
-        # Ensure a target sheet name when needed
-        target_name = resolve_sheet_name(service, spreadsheet_id, sheet_name)
-
         if operation == SheetOperation.CREATE:
+            # For CREATE, use sheet_name directly or default to "New Sheet"
+            target_name = sheet_name or "New Sheet"
             requests.append({"addSheet": {"properties": {"title": target_name}}})
         elif operation == SheetOperation.DELETE:
+            # For DELETE, resolve sheet name (fall back to first sheet if empty)
+            target_name = resolve_sheet_name(
+                service, spreadsheet_id, sheet_name or None
+            )
             sid = sheet_id_by_name(service, spreadsheet_id, target_name)
             if sid is None:
                 return {"error": f"Sheet '{target_name}' not found"}
             requests.append({"deleteSheet": {"sheetId": sid}})
         elif operation == SheetOperation.COPY:
+            # For COPY, use source_sheet_id and destination_sheet_name directly
             requests.append(
                 {
                     "duplicateSheet": {
@@ -768,9 +944,11 @@ class GoogleSheetsBatchOperationsBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="The ID or URL of the spreadsheet to perform batch operations on",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         operations: list[BatchOperation] = SchemaField(
             description="List of operations to perform",
@@ -793,7 +971,12 @@ class GoogleSheetsBatchOperationsBlock(Block):
             output_schema=GoogleSheetsBatchOperationsBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
                 "operations": [
                     {
                         "type": BatchOperationType.UPDATE,
@@ -806,7 +989,6 @@ class GoogleSheetsBatchOperationsBlock(Block):
                         "values": [["Data1", "Data2"]],
                     },
                 ],
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -823,15 +1005,27 @@ class GoogleSheetsBatchOperationsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._batch_operations,
-            service,
-            spreadsheet_id,
-            input_data.operations,
-        )
-        yield "result", result
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._batch_operations,
+                service,
+                input_data.spreadsheet.id,
+                input_data.operations,
+            )
+            yield "result", result
+        except Exception as e:
+            yield "error", f"Failed to perform batch operations: {str(e)}"
 
     def _batch_operations(
         self, service, spreadsheet_id: str, operations: list[BatchOperation]
@@ -885,9 +1079,11 @@ class GoogleSheetsFindReplaceBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="The ID or URL of the spreadsheet to perform find/replace on",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         find_text: str = SchemaField(
             description="The text to find",
@@ -925,12 +1121,16 @@ class GoogleSheetsFindReplaceBlock(Block):
             output_schema=GoogleSheetsFindReplaceBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
                 "find_text": "old_value",
                 "replace_text": "new_value",
                 "match_case": False,
                 "match_entire_cell": False,
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -944,19 +1144,31 @@ class GoogleSheetsFindReplaceBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._find_replace,
-            service,
-            spreadsheet_id,
-            input_data.find_text,
-            input_data.replace_text,
-            input_data.sheet_id,
-            input_data.match_case,
-            input_data.match_entire_cell,
-        )
-        yield "result", result
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._find_replace,
+                service,
+                input_data.spreadsheet.id,
+                input_data.find_text,
+                input_data.replace_text,
+                input_data.sheet_id,
+                input_data.match_case,
+                input_data.match_entire_cell,
+            )
+            yield "result", result
+        except Exception as e:
+            yield "error", f"Failed to find/replace in Google Sheet: {str(e)}"
 
     def _find_replace(
         self,
@@ -995,9 +1207,11 @@ class GoogleSheetsFindBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="The ID or URL of the spreadsheet to search in",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         find_text: str = SchemaField(
             description="The text to find",
@@ -1047,13 +1261,17 @@ class GoogleSheetsFindBlock(Block):
             output_schema=GoogleSheetsFindBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
                 "find_text": "search_value",
                 "match_case": False,
                 "match_entire_cell": False,
                 "find_all": True,
                 "range": "Sheet1!A1:C10",
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -1083,22 +1301,34 @@ class GoogleSheetsFindBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._find_text,
-            service,
-            spreadsheet_id,
-            input_data.find_text,
-            input_data.sheet_id,
-            input_data.match_case,
-            input_data.match_entire_cell,
-            input_data.find_all,
-            input_data.range,
-        )
-        yield "count", result["count"]
-        yield "locations", result["locations"]
-        yield "result", {"success": True}
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._find_text,
+                service,
+                input_data.spreadsheet.id,
+                input_data.find_text,
+                input_data.sheet_id,
+                input_data.match_case,
+                input_data.match_entire_cell,
+                input_data.find_all,
+                input_data.range,
+            )
+            yield "count", result["count"]
+            yield "locations", result["locations"]
+            yield "result", {"success": True}
+        except Exception as e:
+            yield "error", f"Failed to find text in Google Sheet: {str(e)}"
 
     def _find_text(
         self,
@@ -1263,11 +1493,16 @@ class GoogleSheetsFormatBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(
-            description="Spreadsheet ID or URL",
-            title="Spreadsheet ID or URL",
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
-        range: str = SchemaField(description="A1 notation – sheet optional")
+        range: str = SchemaField(
+            description="A1 notation – sheet optional",
+            placeholder="Sheet1!A1:B2",
+        )
         background_color: dict = SchemaField(default={})
         text_color: dict = SchemaField(default={})
         bold: bool = SchemaField(default=False)
@@ -1286,11 +1521,15 @@ class GoogleSheetsFormatBlock(Block):
             output_schema=GoogleSheetsFormatBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
                 "range": "A1:B2",
                 "background_color": {"red": 1.0, "green": 0.9, "blue": 0.9},
                 "bold": True,
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[("result", {"success": True})],
@@ -1300,23 +1539,35 @@ class GoogleSheetsFormatBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
-        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
-        result = await asyncio.to_thread(
-            self._format_cells,
-            service,
-            spreadsheet_id,
-            input_data.range,
-            input_data.background_color,
-            input_data.text_color,
-            input_data.bold,
-            input_data.italic,
-            input_data.font_size,
-        )
-        if "error" in result:
-            yield "error", result["error"]
-        else:
-            yield "result", result
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._format_cells,
+                service,
+                input_data.spreadsheet.id,
+                input_data.range,
+                input_data.background_color,
+                input_data.text_color,
+                input_data.bold,
+                input_data.italic,
+                input_data.font_size,
+            )
+            if "error" in result:
+                yield "error", result["error"]
+            else:
+                yield "result", result
+        except Exception as e:
+            yield "error", f"Failed to format Google Sheet cells: {str(e)}"
 
     def _format_cells(
         self,
