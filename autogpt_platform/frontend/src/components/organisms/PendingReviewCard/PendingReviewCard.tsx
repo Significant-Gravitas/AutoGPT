@@ -6,7 +6,6 @@ import { Switch } from "@/components/atoms/Switch/Switch";
 import { TrashIcon, EyeSlashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
-// Type guard for structured review payload
 interface StructuredReviewPayload {
   data: unknown;
   instructions?: string;
@@ -188,7 +187,6 @@ export function PendingReviewCard({
         )}
       </div>
 
-      {/* Review Message - Only show when excluded/rejected */}
       {isDisabled && (
         <div>
           <Text variant="body" className="mb-2 font-semibold">

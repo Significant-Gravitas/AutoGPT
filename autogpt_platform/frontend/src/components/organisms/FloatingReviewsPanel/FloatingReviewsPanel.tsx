@@ -25,14 +25,12 @@ export function FloatingReviewsPanel({
     executionId || "",
   );
 
-  // Refetch pending reviews when execution status changes to REVIEW
   useEffect(() => {
     if (executionStatus === AgentExecutionStatus.REVIEW && executionId) {
       refetch();
     }
   }, [executionStatus, executionId, refetch]);
 
-  // Don't show anything if there's no execution ID, no pending reviews, or execution status is not REVIEW
   if (
     !executionId ||
     (!isLoading && pendingReviews.length === 0) ||
@@ -43,13 +41,11 @@ export function FloatingReviewsPanel({
 
   function handleReviewComplete() {
     refetch();
-    // Close panel and let render logic handle visibility
     setIsOpen(false);
   }
 
   return (
     <div className={cn("fixed bottom-20 right-4 z-50", className)}>
-      {/* Trigger Button */}
       {!isOpen && pendingReviews.length > 0 && (
         <Button
           onClick={() => setIsOpen(true)}
@@ -62,10 +58,8 @@ export function FloatingReviewsPanel({
         </Button>
       )}
 
-      {/* Reviews Panel */}
       {isOpen && (
         <div className="flex max-h-[80vh] max-w-2xl flex-col overflow-hidden rounded-lg border bg-white shadow-2xl">
-          {/* Header */}
           <div className="flex items-center justify-between border-b bg-gray-50 p-4">
             <div className="flex items-center gap-2">
               <ClockIcon size={20} className="text-orange-600" />
@@ -76,7 +70,6 @@ export function FloatingReviewsPanel({
             </Button>
           </div>
 
-          {/* Content */}
           <div className="flex-1 overflow-y-auto p-4">
             {isLoading ? (
               <div className="py-8 text-center">

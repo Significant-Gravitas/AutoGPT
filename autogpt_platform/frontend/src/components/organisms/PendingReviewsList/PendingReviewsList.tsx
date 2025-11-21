@@ -18,7 +18,6 @@ export function PendingReviewsList({
   onReviewComplete,
   emptyMessage = "No pending reviews",
 }: PendingReviewsListProps) {
-  // State to track data changes for each review
   const [reviewDataMap, setReviewDataMap] = useState<Record<string, string>>(
     () => {
       const initialData: Record<string, string> = {};
@@ -45,7 +44,6 @@ export function PendingReviewsList({
   const reviewActionMutation = usePostV2ProcessReviewAction({
     mutation: {
       onSuccess: (data: any) => {
-        // Check if the response is successful
         if (data.status !== 200) {
           toast({
             title: "Failed to process reviews",
@@ -58,14 +56,12 @@ export function PendingReviewsList({
         const response = data.data;
 
         if (response.failed_count > 0) {
-          // Partial failure
           toast({
             title: "Reviews partially processed",
             description: `${response.approved_count + response.rejected_count} succeeded, ${response.failed_count} failed. ${response.error || "Some reviews could not be processed."}`,
             variant: "destructive",
           });
         } else {
-          // Complete success
           toast({
             title: "Reviews processed successfully",
             description: `${response.approved_count} approved, ${response.rejected_count} rejected`,
@@ -106,12 +102,10 @@ export function PendingReviewsList({
   }
 
   function handleApproveAll() {
-    // Clear all disabled reviews (approve all)
     setDisabledReviews(new Set());
   }
 
   function handleRejectAll() {
-    // Mark all reviews as disabled (reject all)
     const allReviewIds = reviews.map((review) => review.node_exec_id);
     setDisabledReviews(new Set(allReviewIds));
   }
@@ -126,7 +120,6 @@ export function PendingReviewsList({
       return;
     }
 
-    // Build unified reviews array with approval status
     const reviewItems = [];
 
     for (const review of reviews) {
@@ -138,9 +131,8 @@ export function PendingReviewsList({
       if (isApproved && review.editable && reviewData) {
         try {
           parsedData = JSON.parse(reviewData);
-          // Check if data actually changed
           if (JSON.stringify(parsedData) === JSON.stringify(review.payload)) {
-            parsedData = undefined; // No change, don't send reviewed_data
+            parsedData = undefined;
           }
         } catch (error) {
           toast({
@@ -148,7 +140,7 @@ export function PendingReviewsList({
             description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
             variant: "destructive",
           });
-          return; // Exit early on validation failure
+          return;
         }
       }
 
@@ -198,14 +190,12 @@ export function PendingReviewsList({
         ))}
       </div>
 
-      {/* Actions */}
       <div className="border-t pt-6">
-        {/* Quick Actions - small, subtle buttons at the top */}
         <div className="mb-6 flex justify-center gap-3">
           <Button
             onClick={handleApproveAll}
             disabled={
-              reviewActionMutation.isPending || disabledReviews.size === 0 // Already all approved
+              reviewActionMutation.isPending || disabledReviews.size === 0
             }
             variant="ghost"
             size="small"
@@ -217,7 +207,7 @@ export function PendingReviewsList({
             onClick={handleRejectAll}
             disabled={
               reviewActionMutation.isPending ||
-              disabledReviews.size === reviews.length // Already all rejected
+              disabledReviews.size === reviews.length
             }
             variant="ghost"
             size="small"
@@ -227,7 +217,6 @@ export function PendingReviewsList({
           </Button>
         </div>
 
-        {/* Summary and Continue Action */}
         <div className="space-y-4 text-center">
           <div>
             <Text variant="small" className="text-muted-foreground">

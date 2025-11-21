@@ -3,9 +3,6 @@ import {
   useGetV2GetPendingReviewsForExecution,
 } from "@/app/api/__generated__/endpoints/executions/executions";
 
-/**
- * Hook to fetch pending reviews for the current user
- */
 export function usePendingReviews() {
   const query = useGetV2GetPendingReviews();
 
@@ -17,9 +14,6 @@ export function usePendingReviews() {
   };
 }
 
-/**
- * Hook to fetch pending reviews for a specific graph execution
- */
 export function usePendingReviewsForExecution(graphExecId: string) {
   const query = useGetV2GetPendingReviewsForExecution(graphExecId);
 
