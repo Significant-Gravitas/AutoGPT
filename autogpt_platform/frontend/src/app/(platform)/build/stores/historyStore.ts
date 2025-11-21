@@ -16,6 +16,7 @@ type HistoryStore = {
   future: HistoryState[];
   undo: () => void;
   redo: () => void;
+  initializeHistory: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   pushState: (state: HistoryState) => void;
@@ -40,6 +41,16 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
       past: [...prev.past.slice(-MAX_HISTORY + 1), state],
       future: [],
     }));
+  },
+
+  initializeHistory: () => {
+    const currentNodes = useNodeStore.getState().nodes;
+    const currentEdges = useEdgeStore.getState().edges;
+
+    set({
+      past: [{ nodes: currentNodes, edges: currentEdges }],
+      future: [],
+    });
   },
 
   undo: () => {
