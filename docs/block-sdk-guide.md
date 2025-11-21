@@ -124,27 +124,27 @@ class MyBlock(Block):
 
 ### Key Components Explained <a href="#key-components-explained" id="key-components-explained"></a>
 
-#### Provider Configuration[¶](https://docs.agpt.co/platform/block-sdk-guide/#provider-configuration) <a href="#provider-configuration" id="provider-configuration"></a>
+#### Provider Configuration <a href="#provider-configuration" id="provider-configuration"></a>
 
 The `ProviderBuilder` allows you to: - **`.with_api_key()`**: Add API key authentication - **`.with_oauth()`**: Add OAuth authentication\
 \- **`.with_base_cost()`**: Set resource costs for the block - **`.with_webhook_manager()`**: Add webhook support - **`.with_user_password()`**: Add username/password auth
 
-#### Block Schema[¶](https://docs.agpt.co/platform/block-sdk-guide/#block-schema) <a href="#block-schema" id="block-schema"></a>
+#### Block Schema <a href="#block-schema" id="block-schema"></a>
 
 * **Input/Output classes**: Define the data structure using `BlockSchema`
 * **SchemaField**: Define individual fields with validation
 * **CredentialsMetaInput**: Special field for handling credentials
 
-#### Block Implementation[¶](https://docs.agpt.co/platform/block-sdk-guide/#block-implementation) <a href="#block-implementation" id="block-implementation"></a>
+#### Block Implementation <a href="#block-implementation" id="block-implementation"></a>
 
 1. **Unique ID**: Generate using `uuid.uuid4()`
 2. **Categories**: Choose from `BlockCategory` enum (e.g., SEARCH, AI, PRODUCTIVITY)
 3. **async run()**: Main execution method that yields outputs
 4. **Error handling**: Always include error output field
 
-### Advanced Features[¶](https://docs.agpt.co/platform/block-sdk-guide/#advanced-features) <a href="#advanced-features" id="advanced-features"></a>
+### Advanced Features <a href="#advanced-features" id="advanced-features"></a>
 
-#### Testing[¶](https://docs.agpt.co/platform/block-sdk-guide/#testing) <a href="#testing" id="testing"></a>
+#### Testing <a href="#testing" id="testing"></a>
 
 Add test configuration to your block:
 
