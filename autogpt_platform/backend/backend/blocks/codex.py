@@ -3,10 +3,13 @@ from enum import Enum
 from typing import Any, Literal, Mapping
 
 from openai import AsyncOpenAI
-from openai.types.responses import Response as OpenAIResponse
-from openai.types.responses import ResponseOutputMessage, ResponseReasoningItem
+from openai.types.responses import (
+    Response as OpenAIResponse,
+    ResponseOutputMessage,
+    ResponseReasoningItem,
+)
 from openai.types.responses.response_output_text import ResponseOutputText
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from backend.data.block import (
     Block,
@@ -239,12 +242,13 @@ class CodexBlock(Block):
         if not response:
             return ""
 
-        if isinstance(response, OpenAIResponse):
-            if response.output_text:
-                return response.output_text
+        typed_response = CodexBlock._as_openai_response(response)
+        if typed_response:
+            if typed_response.output_text:
+                return typed_response.output_text
 
             aggregated_parts: list[str] = []
-            for item in response.output:
+            for item in typed_response.output:
                 if isinstance(item, ResponseOutputMessage):
                     for content in item.content:
                         if isinstance(content, ResponseOutputText):
@@ -272,21 +276,14 @@ class CodexBlock(Block):
         if aggregated_parts:
             return "\n".join(aggregated_parts)
 
-        raw_response = getattr(response, "_raw_response", None)
-        if isinstance(raw_response, dict):
-            try:
-                first_text = raw_response["output"][0]["content"][0]["text"]
-                return str(first_text)
-            except (KeyError, IndexError, TypeError):
-                return ""
-
         return ""
 
     @staticmethod
     def _extract_reasoning_summary(response: Any) -> str:
-        if isinstance(response, OpenAIResponse):
+        typed_response = CodexBlock._as_openai_response(response)
+        if typed_response:
             summaries: list[str] = []
-            for item in response.output:
+            for item in typed_response.output:
                 if isinstance(item, ResponseReasoningItem):
                     summaries.extend(summary.text for summary in item.summary)
             if summaries:
@@ -304,3 +301,14 @@ class CodexBlock(Block):
             return "\n".join(str(part) for part in summary)
 
         return str(summary or "")
+
+    @staticmethod
+    def _as_openai_response(candidate: Any) -> OpenAIResponse | None:
+        if isinstance(candidate, OpenAIResponse):
+            return candidate
+        if isinstance(candidate, Mapping):
+            try:
+                return OpenAIResponse.model_validate(candidate)
+            except ValidationError:
+                return None
+        return None
