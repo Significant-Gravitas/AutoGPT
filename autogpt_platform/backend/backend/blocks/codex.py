@@ -1,8 +1,11 @@
-import logging
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 from openai import AsyncOpenAI
+from openai.types.responses import Response as OpenAIResponse
+from openai.types.responses import ResponseOutputMessage, ResponseReasoningItem
+from openai.types.responses.response_output_text import ResponseOutputText
 from pydantic import SecretStr
 
 from backend.data.block import (
@@ -20,9 +23,15 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.logging import TruncatedLogger
 
-logger = TruncatedLogger(logging.getLogger(__name__), "[Codex-Block]")
+
+@dataclass
+class CodexCallResult:
+    """Structured response returned by Codex invocations."""
+
+    response: str
+    reasoning: str
+    response_id: str
 
 
 class CodexModel(str, Enum):
@@ -134,11 +143,11 @@ class CodexBlock(Block):
                 ("response_id", str),
             ],
             test_mock={
-                "call_codex": lambda *args, **kwargs: {
-                    "response": "function dedupe<T>(items: T[]): T[] { return [...new Set(items)]; }",
-                    "reasoning": "Used Set to remove duplicates in O(n).",
-                    "response_id": "resp_test",
-                }
+                "call_codex": lambda *args, **kwargs: CodexCallResult(
+                    response="function dedupe<T>(items: T[]): T[] { return [...new Set(items)]; }",
+                    reasoning="Used Set to remove duplicates in O(n).",
+                    response_id="resp_test",
+                )
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -153,7 +162,7 @@ class CodexBlock(Block):
         system_prompt: str,
         max_output_tokens: int | None,
         reasoning_effort: CodexReasoningEffort,
-    ) -> dict[str, Any]:
+    ) -> CodexCallResult:
         """Invoke the OpenAI Responses API."""
         client = AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
 
@@ -175,32 +184,34 @@ class CodexBlock(Block):
         response_id = getattr(response, "id", "")
 
         usage = getattr(response, "usage", None)
+        if isinstance(response, OpenAIResponse) and response.usage:
+            usage = response.usage
+
         if usage:
 
             def _usage_value(key: str) -> Any:
-                if isinstance(usage, dict):
+                if hasattr(usage, key):
+                    return getattr(usage, key)
+                if isinstance(usage, Mapping):
                     return usage.get(key)
-                return getattr(usage, key, None)
+                return None
 
             input_value = _usage_value("input_tokens")
             output_value = _usage_value("output_tokens")
 
-            if isinstance(input_value, (int, float)):
-                self.execution_stats.input_token_count = int(input_value)
-            else:
-                self.execution_stats.input_token_count = 0
-
-            if isinstance(output_value, (int, float)):
-                self.execution_stats.output_token_count = int(output_value)
-            else:
-                self.execution_stats.output_token_count = 0
+            self.execution_stats.input_token_count = (
+                int(input_value) if isinstance(input_value, (int, float)) else 0
+            )
+            self.execution_stats.output_token_count = (
+                int(output_value) if isinstance(output_value, (int, float)) else 0
+            )
         self.execution_stats.llm_call_count += 1
 
-        return {
-            "response": text_output,
-            "reasoning": reasoning_summary,
-            "response_id": response_id,
-        }
+        return CodexCallResult(
+            response=text_output,
+            reasoning=reasoning_summary,
+            response_id=response_id,
+        )
 
     async def run(
         self,
@@ -209,30 +220,37 @@ class CodexBlock(Block):
         credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            result = await self.call_codex(
-                credentials=credentials,
-                model=input_data.model,
-                prompt=input_data.prompt,
-                system_prompt=input_data.system_prompt,
-                max_output_tokens=input_data.max_output_tokens,
-                reasoning_effort=input_data.reasoning_effort,
-            )
-        except Exception as exc:  # pragma: no cover - defensive logging
-            error_msg = f"Codex request failed: {exc}"
-            logger.error(error_msg)
-            yield "error", error_msg
-            return
+        result = await self.call_codex(
+            credentials=credentials,
+            model=input_data.model,
+            prompt=input_data.prompt,
+            system_prompt=input_data.system_prompt,
+            max_output_tokens=input_data.max_output_tokens,
+            reasoning_effort=input_data.reasoning_effort,
+        )
 
-        yield "response", result["response"]
-        yield "reasoning", result.get("reasoning", "")
-        yield "response_id", result.get("response_id", "")
+        yield "response", result.response
+        yield "reasoning", result.reasoning
+        yield "response_id", result.response_id
 
     @staticmethod
     def _extract_output_text(response: Any) -> str:
         """Best-effort extraction of the aggregated text output."""
         if not response:
             return ""
+
+        if isinstance(response, OpenAIResponse):
+            if response.output_text:
+                return response.output_text
+
+            aggregated_parts: list[str] = []
+            for item in response.output:
+                if isinstance(item, ResponseOutputMessage):
+                    for content in item.content:
+                        if isinstance(content, ResponseOutputText):
+                            aggregated_parts.append(content.text)
+            if aggregated_parts:
+                return "\n".join(aggregated_parts)
 
         output_text = getattr(response, "output_text", None)
         if output_text:
@@ -266,6 +284,14 @@ class CodexBlock(Block):
 
     @staticmethod
     def _extract_reasoning_summary(response: Any) -> str:
+        if isinstance(response, OpenAIResponse):
+            summaries: list[str] = []
+            for item in response.output:
+                if isinstance(item, ResponseReasoningItem):
+                    summaries.extend(summary.text for summary in item.summary)
+            if summaries:
+                return "\n".join(summaries)
+
         reasoning_block = getattr(response, "reasoning", None)
         if not reasoning_block:
             return ""
