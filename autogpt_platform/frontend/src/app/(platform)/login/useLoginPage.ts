@@ -4,20 +4,29 @@ import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
+  const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
+
+  useEffect(() => {
+    if (isLoggedIn && !isLoggingIn) {
+      router.push("/marketplace");
+    }
+  }, [isLoggedIn, isLoggingIn]);
+
+  console.log({ isLoggingIn, isLoading });
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -29,6 +38,7 @@ export function useLoginPage() {
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
+    setIsLoggingIn(true);
 
     try {
       const response = await fetch("/api/auth/provider", {
@@ -46,6 +56,7 @@ export function useLoginPage() {
       if (url) window.location.href = url as string;
     } catch (error) {
       setIsGoogleLoading(false);
+      setIsLoggingIn(false);
       setFeedback(
         error instanceof Error ? error.message : "Failed to start OAuth flow",
       );
@@ -53,8 +64,6 @@ export function useLoginPage() {
   }
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
-    setIsLoading(true);
-
     if (data.email.includes("@agpt.co")) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
@@ -62,8 +71,11 @@ export function useLoginPage() {
       });
 
       setIsLoading(false);
+      setIsLoggingIn(false);
       return;
     }
+
+    setIsLoggingIn(true);
 
     try {
       const result = await loginAction(data.email, data.password);
@@ -86,6 +98,7 @@ export function useLoginPage() {
         variant: "destructive",
       });
       setIsLoading(false);
+      setIsLoggingIn(false);
     }
   }
 
