@@ -1,13 +1,7 @@
 "use client";
-import { Button } from "@/components/atoms/Button/Button";
-import { useRouter } from "next/navigation";
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
-import { Trash2Icon } from "lucide-react";
-import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Table,
   TableBody,
@@ -16,16 +10,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-import { CredentialsProviderName } from "@/lib/autogpt-server-api";
+import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import LoadingBox from "@/components/__legacy__/ui/loading";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
+import { Trash2Icon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export default function UserIntegrationsPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
+
+  useEffect(() => {
+    document.title = "Integrations – AutoGPT Platform";
+  }, []);
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
     | {
