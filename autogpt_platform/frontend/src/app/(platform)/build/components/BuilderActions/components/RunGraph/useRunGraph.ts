@@ -31,25 +31,26 @@ export const useRunGraph = () => {
       flowExecutionID: parseAsString,
     });
 
-  const { mutateAsync: executeGraph } = usePostV1ExecuteGraphAgent({
-    mutation: {
-      onSuccess: (response) => {
-        const { id } = response.data as GraphExecutionMeta;
-        setQueryStates({
-          flowExecutionID: id,
-        });
-      },
-      onError: (error) => {
-        setIsGraphRunning(false);
+  const { mutateAsync: executeGraph, isPending: isExecutingGraph } =
+    usePostV1ExecuteGraphAgent({
+      mutation: {
+        onSuccess: (response) => {
+          const { id } = response.data as GraphExecutionMeta;
+          setQueryStates({
+            flowExecutionID: id,
+          });
+        },
+        onError: (error) => {
+          setIsGraphRunning(false);
 
-        toast({
-          title: (error.detail as string) ?? "An unexpected error occurred.",
-          description: "An unexpected error occurred.",
-          variant: "destructive",
-        });
+          toast({
+            title: (error.detail as string) ?? "An unexpected error occurred.",
+            description: "An unexpected error occurred.",
+            variant: "destructive",
+          });
+        },
       },
-    },
-  });
+    });
 
   const { mutateAsync: stopGraph } = usePostV1StopGraphExecution({
     mutation: {
@@ -72,7 +73,6 @@ export const useRunGraph = () => {
     if (hasInputs() || hasCredentials()) {
       setOpenRunInputDialog(true);
     } else {
-      setIsGraphRunning(true);
       await executeGraph({
         graphId: flowID ?? "",
         graphVersion: flowVersion || null,
@@ -95,6 +95,7 @@ export const useRunGraph = () => {
     handleRunGraph,
     handleStopGraph,
     isSaving,
+    isExecutingGraph,
     openRunInputDialog,
     setOpenRunInputDialog,
   };

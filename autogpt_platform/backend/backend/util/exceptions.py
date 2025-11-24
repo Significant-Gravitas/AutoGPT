@@ -5,13 +5,9 @@ class BlockError(Exception):
     """An error occurred during the running of a block"""
 
     def __init__(self, message: str, block_name: str, block_id: str) -> None:
-        super().__init__(message)
-        self.message = message
-        self.block_name = block_name
-        self.block_id = block_id
-
-    def __str__(self):
-        return f"raised by {self.block_name} with message: {self.message}. block_id: {self.block_id}"
+        super().__init__(
+            f"raised by {block_name} with message: {message}. block_id: {block_id}"
+        )
 
 
 class BlockInputError(BlockError, ValueError):
@@ -36,6 +32,10 @@ class MissingConfigError(Exception):
 
 class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
+
+
+class GraphNotFoundError(ValueError):
+    """The requested Agent Graph was not found, resulting in an error condition"""
 
 
 class NeedConfirmation(Exception):

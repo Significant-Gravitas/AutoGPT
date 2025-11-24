@@ -1,7 +1,7 @@
+import { environment } from "@/services/environment";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getCookieSettings, isAdminPage, isProtectedPage } from "./helpers";
-import { environment } from "@/services/environment";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({

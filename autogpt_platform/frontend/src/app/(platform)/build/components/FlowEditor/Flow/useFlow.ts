@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
 import {
   useGetV1GetExecutionDetails,
@@ -16,8 +16,10 @@ import { useGraphStore } from "../../../stores/graphStore";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
+import { useHistoryStore } from "../../../stores/historyStore";
 
 export const useFlow = () => {
+  const [isLocked, setIsLocked] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
@@ -35,7 +37,7 @@ export const useFlow = () => {
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
   );
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
   const setBlockMenuOpen = useControlPanelStore(
     useShallow((state) => state.setBlockMenuOpen),
@@ -69,7 +71,9 @@ export const useFlow = () => {
   );
 
   const nodes = graph?.nodes;
-  const blockIds = nodes?.map((node) => node.block_id);
+  const blockIds = nodes
+    ? Array.from(new Set(nodes.map((node) => node.block_id)))
+    : undefined;
 
   const { data: blocks, isLoading: isBlocksLoading } =
     useGetV2GetSpecificBlocks(
@@ -95,34 +99,44 @@ export const useFlow = () => {
     });
   }, [nodes, blocks]);
 
+  // load graph schemas
   useEffect(() => {
-    // load graph schemas
     if (graph) {
       setGraphSchemas(
         graph.input_schema as Record<string, any> | null,
         graph.credentials_input_schema as Record<string, any> | null,
+        graph.output_schema as Record<string, any> | null,
       );
     }
+  }, [graph]);
 
-    // adding nodes
+  // adding nodes
+  useEffect(() => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
       addNodes(customNodes);
     }
+  }, [customNodes, addNodes]);
 
-    // adding links
+  // adding links
+  useEffect(() => {
     if (graph?.links) {
       useEdgeStore.getState().setEdges([]);
       addLinks(graph.links);
     }
+  }, [graph?.links, addLinks]);
 
-    // update graph running status
+  // update graph running status
+  useEffect(() => {
     const isRunning =
       executionDetails?.status === AgentExecutionStatus.RUNNING ||
       executionDetails?.status === AgentExecutionStatus.QUEUED;
-    setIsGraphRunning(isRunning);
 
-    // update node execution status in nodes
+    setIsGraphRunning(isRunning);
+  }, [executionDetails?.status, customNodes]);
+
+  // update node execution status in nodes
+  useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -132,8 +146,10 @@ export const useFlow = () => {
         updateNodeStatus(nodeExecution.node_id, nodeExecution.status);
       });
     }
+  }, [executionDetails, updateNodeStatus, customNodes]);
 
-    // update node execution results in nodes, also update edge beads
+  // update node execution results in nodes, also update edge beads
+  useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
@@ -144,7 +160,21 @@ export const useFlow = () => {
         updateEdgeBeads(nodeExecution.node_id, nodeExecution);
       });
     }
-  }, [customNodes, addNodes, graph?.links, executionDetails, updateNodeStatus]);
+  }, [
+    executionDetails,
+    updateNodeExecutionResult,
+    updateEdgeBeads,
+    customNodes,
+  ]);
+
+  useEffect(() => {
+    if (customNodes.length > 0 && graph?.links) {
+      const timer = setTimeout(() => {
+        useHistoryStore.getState().initializeHistory();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [customNodes, graph?.links]);
 
   useEffect(() => {
     return () => {
@@ -156,36 +186,47 @@ export const useFlow = () => {
     };
   }, []);
 
+  useEffect(() => {
+    fitView({ padding: 0.2, duration: 800, maxZoom: 2 });
+  }, [fitView]);
+
   // Drag and drop block from block menu
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
   }, []);
 
-  const onDrop = async (event: React.DragEvent) => {
-    event.preventDefault();
-    const blockDataString = event.dataTransfer.getData("application/reactflow");
-    if (!blockDataString) return;
+  const onDrop = useCallback(
+    async (event: React.DragEvent) => {
+      event.preventDefault();
+      const blockDataString = event.dataTransfer.getData(
+        "application/reactflow",
+      );
+      if (!blockDataString) return;
 
-    try {
-      const blockData = JSON.parse(blockDataString) as BlockInfo;
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      addBlock(blockData, position);
+      try {
+        const blockData = JSON.parse(blockDataString) as BlockInfo;
+        const position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        addBlock(blockData, {}, position);
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      setBlockMenuOpen(true);
-    } catch (error) {
-      console.error("Failed to drop block:", error);
-      setBlockMenuOpen(true);
-    }
-  };
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        setBlockMenuOpen(true);
+      } catch (error) {
+        console.error("Failed to drop block:", error);
+        setBlockMenuOpen(true);
+      }
+    },
+    [screenToFlowPosition, addBlock, setBlockMenuOpen],
+  );
 
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
     onDragOver,
     onDrop,
+    isLocked,
+    setIsLocked,
   };
 };

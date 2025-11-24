@@ -7,6 +7,8 @@ import { PlusIcon } from "@phosphor-icons/react";
 import { BlockInfo } from "@/app/api/__generated__/models/blockInfo";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { blockDragPreviewStyle } from "./style";
+import { useReactFlow } from "@xyflow/react";
+import { useNodeStore } from "../../../stores/nodeStore";
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   description?: string;
@@ -29,6 +31,23 @@ export const Block: BlockComponent = ({
   const setBlockMenuOpen = useControlPanelStore(
     (state) => state.setBlockMenuOpen,
   );
+  const { setViewport } = useReactFlow();
+  const { addBlock } = useNodeStore();
+
+  const handleClick = () => {
+    const customNode = addBlock(blockData);
+    setTimeout(() => {
+      setViewport(
+        {
+          x: -customNode.position.x * 0.8 + window.innerWidth / 2,
+          y: -customNode.position.y * 0.8 + (window.innerHeight - 400) / 2,
+          zoom: 0.8,
+        },
+        { duration: 500 },
+      );
+    }, 50);
+  };
+
   const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
     e.dataTransfer.effectAllowed = "copy";
     e.dataTransfer.setData("application/reactflow", JSON.stringify(blockData));
@@ -55,6 +74,7 @@ export const Block: BlockComponent = ({
         className,
       )}
       onDragStart={handleDragStart}
+      onClick={handleClick}
       {...rest}
     >
       <div className="flex flex-1 flex-col items-start gap-0.5">
