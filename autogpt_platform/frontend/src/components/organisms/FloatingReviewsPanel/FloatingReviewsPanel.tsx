@@ -6,20 +6,20 @@ import { ClockIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
-  graphId?: string;
-  executionStatus?: AgentExecutionStatus;
   className?: string;
 }
 
 export function FloatingReviewsPanel({
   executionId,
-  executionStatus,
   className,
 }: FloatingReviewsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
+
+  const executionStatus = useGraphStore((state) => state.graphExecutionStatus);
 
   const { pendingReviews, isLoading, refetch } = usePendingReviewsForExecution(
     executionId || "",

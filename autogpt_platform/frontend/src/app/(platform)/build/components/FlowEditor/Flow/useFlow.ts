@@ -28,9 +28,6 @@ export const useFlow = () => {
   const updateNodeExecutionResult = useNodeStore(
     useShallow((state) => state.updateNodeExecutionResult),
   );
-  const setIsGraphRunning = useGraphStore(
-    useShallow((state) => state.setIsGraphRunning),
-  );
   const setGraphSchemas = useGraphStore(
     useShallow((state) => state.setGraphSchemas),
   );
@@ -126,15 +123,6 @@ export const useFlow = () => {
     }
   }, [graph?.links, addLinks]);
 
-  // update graph running status
-  useEffect(() => {
-    const isRunning =
-      executionDetails?.status === AgentExecutionStatus.RUNNING ||
-      executionDetails?.status === AgentExecutionStatus.QUEUED;
-
-    setIsGraphRunning(isRunning);
-  }, [executionDetails?.status, customNodes]);
-
   // update node execution status in nodes
   useEffect(() => {
     if (
@@ -182,7 +170,6 @@ export const useFlow = () => {
       useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
       useEdgeStore.getState().resetEdgeBeads();
-      setIsGraphRunning(false);
     };
   }, []);
 
@@ -228,6 +215,5 @@ export const useFlow = () => {
     onDrop,
     isLocked,
     setIsLocked,
-    executionStatus: executionDetails?.status,
   };
 };

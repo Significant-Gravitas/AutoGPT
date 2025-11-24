@@ -1029,8 +1029,6 @@ const FlowEditor: React.FC<{
       )}
       <FloatingReviewsPanel
         executionId={flowExecutionID || undefined}
-        graphId={flowID || undefined}
-        executionStatus={graphExecutionStatus as AgentExecutionStatus}
         className="fixed bottom-24 right-4"
       />
       <Suspense fallback={null}>

@@ -14,13 +14,14 @@ import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useCopyPaste } from "./useCopyPaste";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
-import { useSearchParams } from "next/navigation";
+import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
 
 export const Flow = () => {
-  const searchParams = useSearchParams();
-  const flowExecutionID = searchParams.get("flowExecutionID") || undefined;
-  const graphId = searchParams.get("flowID") || undefined;
+  const [{ flowID, flowExecutionID }] = useQueryStates({
+    flowID: parseAsString,
+    flowExecutionID: parseAsString,
+  });
 
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
@@ -31,17 +32,11 @@ export const Flow = () => {
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
-  const {
-    onDragOver,
-    onDrop,
-    isFlowContentLoading,
-    isLocked,
-    setIsLocked,
-    executionStatus: initialExecutionStatus,
-  } = useFlow();
+  const { onDragOver, onDrop, isFlowContentLoading, isLocked, setIsLocked } =
+    useFlow();
 
   // This hook is used for websocket realtime updates.
-  const { executionStatus: realtimeExecutionStatus } = useFlowRealtime();
+  useFlowRealtime();
 
   // Copy/paste functionality
   const handleCopyPaste = useCopyPaste();
@@ -56,7 +51,9 @@ export const Flow = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleCopyPaste]);
-  const { isGraphRunning } = useGraphStore();
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
@@ -84,11 +81,7 @@ export const Flow = () => {
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
-      <FloatingReviewsPanel
-        executionId={flowExecutionID}
-        graphId={graphId}
-        executionStatus={realtimeExecutionStatus ?? initialExecutionStatus}
-      />
+      <FloatingReviewsPanel executionId={flowExecutionID || undefined} />
     </div>
   );
 };
