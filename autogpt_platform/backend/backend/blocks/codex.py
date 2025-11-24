@@ -97,7 +97,7 @@ class CodexBlock(Block):
         max_output_tokens: int | None = SchemaField(
             title="Max Output Tokens",
             default=2048,
-            description="Upper bound for generated tokens. Leave blank to let OpenAI decide.",
+            description="Upper bound for generated tokens (hard limit 128,000). Leave blank to let OpenAI decide.",
             advanced=True,
         )
         credentials: CodexCredentials = CodexCredentialsField()
@@ -176,18 +176,24 @@ class CodexBlock(Block):
 
         usage = getattr(response, "usage", None)
         if usage:
-            input_tokens = getattr(usage, "input_tokens", None)
-            output_tokens = getattr(usage, "output_tokens", None)
-            self.execution_stats.input_token_count = (
-                input_tokens
-                if isinstance(input_tokens, int)
-                else (usage.get("input_tokens") if isinstance(usage, dict) else 0)
-            )
-            self.execution_stats.output_token_count = (
-                output_tokens
-                if isinstance(output_tokens, int)
-                else (usage.get("output_tokens") if isinstance(usage, dict) else 0)
-            )
+
+            def _usage_value(key: str) -> Any:
+                if isinstance(usage, dict):
+                    return usage.get(key)
+                return getattr(usage, key, None)
+
+            input_value = _usage_value("input_tokens")
+            output_value = _usage_value("output_tokens")
+
+            if isinstance(input_value, (int, float)):
+                self.execution_stats.input_token_count = int(input_value)
+            else:
+                self.execution_stats.input_token_count = 0
+
+            if isinstance(output_value, (int, float)):
+                self.execution_stats.output_token_count = int(output_value)
+            else:
+                self.execution_stats.output_token_count = 0
         self.execution_stats.llm_call_count += 1
 
         return {
