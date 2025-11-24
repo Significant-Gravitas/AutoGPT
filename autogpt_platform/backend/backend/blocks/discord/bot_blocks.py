@@ -1183,7 +1183,7 @@ class DiscordChannelInfoBlock(Block):
 
 
 class CreateDiscordThreadBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: DiscordCredentials = DiscordCredentialsField()
         channel_name: str = SchemaField(
             description="Channel ID or channel name to create the thread in"
@@ -1209,7 +1209,7 @@ class CreateDiscordThreadBlock(Block):
             default="",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Operation status")
         thread_id: str = SchemaField(description="ID of the created thread")
         thread_name: str = SchemaField(description="Name of the created thread")
