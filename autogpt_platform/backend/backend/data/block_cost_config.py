@@ -1,5 +1,7 @@
 from typing import Type
 
+from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
+from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import (
     AIAdMakerVideoCreatorBlock,
@@ -92,6 +94,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.OPENAI_GPT_OSS_120B: 1,
     LlmModel.OPENAI_GPT_OSS_20B: 1,
     LlmModel.GEMINI_2_5_PRO: 4,
+    LlmModel.GEMINI_3_PRO_PREVIEW: 5,
     LlmModel.MISTRAL_NEMO: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
@@ -113,6 +116,9 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
     LlmModel.GROK_4: 9,
+    LlmModel.GROK_4_FAST: 1,
+    LlmModel.GROK_4_1_FAST: 1,
+    LlmModel.GROK_CODE_FAST_1: 1,
     LlmModel.KIMI_K2: 1,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
@@ -534,5 +540,86 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 }
             },
         )
+    ],
+    AIImageGeneratorBlock: [
+        BlockCost(
+            cost_amount=5,  # SD3.5 Medium: ~$0.035 per image
+            cost_filter={
+                "model": ImageGenModel.SD3_5,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=6,  # Flux 1.1 Pro: ~$0.04 per image
+            cost_filter={
+                "model": ImageGenModel.FLUX,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=10,  # Flux 1.1 Pro Ultra: ~$0.08 per image
+            cost_filter={
+                "model": ImageGenModel.FLUX_ULTRA,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=7,  # Recraft v3: ~$0.05 per image
+            cost_filter={
+                "model": ImageGenModel.RECRAFT,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana Pro: $0.14 per image at 2K
+            cost_filter={
+                "model": ImageGenModel.NANO_BANANA_PRO,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+    ],
+    AIImageCustomizerBlock: [
+        BlockCost(
+            cost_amount=10,  # Nano Banana (original)
+            cost_filter={
+                "model": GeminiImageModel.NANO_BANANA,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana Pro: $0.14 per image at 2K
+            cost_filter={
+                "model": GeminiImageModel.NANO_BANANA_PRO,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
     ],
 }
