@@ -3,11 +3,8 @@ from enum import Enum
 from typing import Any, Literal, Mapping
 
 from openai import AsyncOpenAI
-from openai.types.responses import (
-    Response as OpenAIResponse,
-    ResponseOutputMessage,
-    ResponseReasoningItem,
-)
+from openai.types.responses import Response as OpenAIResponse
+from openai.types.responses import ResponseOutputMessage, ResponseReasoningItem
 from openai.types.responses.response_output_text import ResponseOutputText
 from pydantic import SecretStr, ValidationError
 
