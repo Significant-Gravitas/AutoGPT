@@ -179,10 +179,14 @@ class CodexBlock(Block):
             input_tokens = getattr(usage, "input_tokens", None)
             output_tokens = getattr(usage, "output_tokens", None)
             self.execution_stats.input_token_count = (
-                input_tokens if isinstance(input_tokens, int) else (usage.get("input_tokens") if isinstance(usage, dict) else 0)
+                input_tokens
+                if isinstance(input_tokens, int)
+                else (usage.get("input_tokens") if isinstance(usage, dict) else 0)
             )
             self.execution_stats.output_token_count = (
-                output_tokens if isinstance(output_tokens, int) else (usage.get("output_tokens") if isinstance(usage, dict) else 0)
+                output_tokens
+                if isinstance(output_tokens, int)
+                else (usage.get("output_tokens") if isinstance(usage, dict) else 0)
             )
         self.execution_stats.llm_call_count += 1
 
@@ -268,4 +272,3 @@ class CodexBlock(Block):
             return "\n".join(str(part) for part in summary)
 
         return str(summary or "")
-
