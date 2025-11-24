@@ -152,6 +152,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     GROK_4 = "x-ai/grok-4"
+    GROK_4_FAST = "x-ai/grok-4-fast"
+    GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
@@ -277,6 +280,9 @@ MODEL_METADATA = {
     LlmModel.META_LLAMA_4_SCOUT: ModelMetadata("open_router", 131072, 131072),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata("open_router", 1048576, 1000000),
     LlmModel.GROK_4: ModelMetadata("open_router", 256000, 256000),
+    LlmModel.GROK_4_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_4_1_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_CODE_FAST_1: ModelMetadata("open_router", 256000, 10000),
     LlmModel.KIMI_K2: ModelMetadata("open_router", 131000, 131000),
     LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata("open_router", 262144, 262144),
     LlmModel.QWEN3_CODER: ModelMetadata("open_router", 262144, 262144),
