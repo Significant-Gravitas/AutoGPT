@@ -19,7 +19,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import MediaFileType
+from backend.util.file import MediaFileType, store_media_file
 
 
 class GeminiImageModel(str, Enum):
@@ -115,11 +115,22 @@ class AIImageCustomizerBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
+            # Convert local file paths to Data URIs (base64) so Replicate can access them
+            processed_images = []
+            for img in input_data.images:
+                processed_img = await store_media_file(
+                    graph_exec_id=graph_exec_id,
+                    file=img,
+                    user_id=user_id,
+                    return_content=True,
+                )
+                processed_images.append(processed_img)
+
             result = await self.run_model(
                 api_key=credentials.api_key,
                 model_name=input_data.model.value,
                 prompt=input_data.prompt,
-                images=input_data.images,
+                images=processed_images,
                 output_format=input_data.output_format.value,
             )
             yield "image_url", result
