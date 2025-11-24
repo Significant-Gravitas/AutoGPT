@@ -26,8 +26,6 @@ export function useLoginPage() {
     }
   }, [isLoggedIn, isLoggingIn]);
 
-  console.log({ isLoggingIn, isLoading });
-
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
