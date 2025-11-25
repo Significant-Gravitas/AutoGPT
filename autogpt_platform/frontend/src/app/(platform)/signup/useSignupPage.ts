@@ -4,20 +4,27 @@ import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
 
 export function useSignupPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
+  const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isSigningUp, setIsSigningUp] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
+
+  useEffect(() => {
+    if (isLoggedIn && !isSigningUp) {
+      router.push("/marketplace");
+    }
+  }, [isLoggedIn, isSigningUp]);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -31,6 +38,7 @@ export function useSignupPage() {
 
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
+    setIsSigningUp(true);
 
     try {
       const response = await fetch("/api/auth/provider", {
@@ -44,6 +52,7 @@ export function useSignupPage() {
 
         if (error === "not_allowed") {
           setShowNotAllowedModal(true);
+          setIsSigningUp(false);
           return;
         }
 
@@ -54,6 +63,7 @@ export function useSignupPage() {
       if (url) window.location.href = url as string;
     } catch (error) {
       setIsGoogleLoading(false);
+      setIsSigningUp(false);
       toast({
         title:
           error instanceof Error ? error.message : "Failed to start OAuth flow",
@@ -76,6 +86,8 @@ export function useSignupPage() {
       return;
     }
 
+    setIsSigningUp(true);
+
     try {
       const result = await signupAction(
         data.email,
@@ -89,10 +101,12 @@ export function useSignupPage() {
       if (!result.success) {
         if (result.error === "user_already_exists") {
           setFeedback("User with this email already exists");
+          setIsSigningUp(false);
           return;
         }
         if (result.error === "not_allowed") {
           setShowNotAllowedModal(true);
+          setIsSigningUp(false);
           return;
         }
 
@@ -100,6 +114,7 @@ export function useSignupPage() {
           title: result.error || "Signup failed",
           variant: "destructive",
         });
+        setIsSigningUp(false);
         return;
       }
 
@@ -107,6 +122,7 @@ export function useSignupPage() {
       if (next) router.replace(next);
     } catch (error) {
       setIsLoading(false);
+      setIsSigningUp(false);
       toast({
         title:
           error instanceof Error
