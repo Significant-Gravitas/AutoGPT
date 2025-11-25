@@ -13,8 +13,8 @@ export function AccountLogoutOption() {
   const { toast } = useToast();
 
   async function handleLogout() {
+    setIsLoggingOut(true);
     try {
-      setIsLoggingOut(true);
       await supabase.logOut();
     } catch (e) {
       Sentry.captureException(e);
@@ -24,6 +24,8 @@ export function AccountLogoutOption() {
           "Something went wrong when logging out. Please try again. If the problem persists, please contact support.",
         variant: "destructive",
       });
+    } finally {
+      setIsLoggingOut(false);
     }
   }
 
