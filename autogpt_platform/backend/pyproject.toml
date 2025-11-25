@@ -86,7 +86,7 @@ stagehand = "^0.5.1"
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
-faker = "^37.8.0"
+faker = "^38.2.0"
 httpx = "^0.28.1"
 isort = "^5.13.2"
 poethepoet = "^0.37.0"
