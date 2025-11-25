@@ -93,6 +93,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1_MINI = "o1-mini"
     # GPT-5 models
     GPT5 = "gpt-5-2025-08-07"
+    GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
@@ -106,6 +107,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
+    CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
@@ -193,6 +195,7 @@ MODEL_METADATA = {
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
@@ -216,6 +219,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-4-sonnet-20250514
+    LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-opus-4-5-20251101
     LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-sonnet-4-5-20250929

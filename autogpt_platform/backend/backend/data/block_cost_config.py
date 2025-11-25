@@ -11,6 +11,7 @@ from backend.blocks.ai_shortform_video_block import (
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
+from backend.blocks.codex import CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
     GetLinkedinProfilePictureBlock,
@@ -63,9 +64,10 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O1_MINI: 4,
     # GPT-5 models
     LlmModel.GPT5: 2,
+    LlmModel.GPT5_1: 5,
     LlmModel.GPT5_MINI: 1,
     LlmModel.GPT5_NANO: 1,
-    LlmModel.GPT5_CHAT: 2,
+    LlmModel.GPT5_CHAT: 5,
     LlmModel.GPT41: 2,
     LlmModel.GPT41_MINI: 1,
     LlmModel.GPT4O_MINI: 1,
@@ -76,6 +78,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
     LlmModel.CLAUDE_4_5_HAIKU: 4,
+    LlmModel.CLAUDE_4_5_OPUS: 14,
     LlmModel.CLAUDE_4_5_SONNET: 9,
     LlmModel.CLAUDE_3_7_SONNET: 5,
     LlmModel.CLAUDE_3_HAIKU: 1,
@@ -264,6 +267,20 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIStructuredResponseGeneratorBlock: LLM_COST,
     AITextSummarizerBlock: LLM_COST,
     AIListGeneratorBlock: LLM_COST,
+    CodeGenerationBlock: [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": CodexModel.GPT5_1_CODEX,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=5,
+        )
+    ],
     CreateTalkingAvatarVideoBlock: [
         BlockCost(
             cost_amount=15,
