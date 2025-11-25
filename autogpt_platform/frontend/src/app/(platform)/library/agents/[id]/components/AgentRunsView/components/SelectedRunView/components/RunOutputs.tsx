@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useMemo } from "react";
-import {
-  globalRegistry,
-  OutputItem,
-  OutputActions,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
 import type {
   OutputMetadata,
   OutputRenderer,
 } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
+import {
+  globalRegistry,
+  OutputActions,
+  OutputItem,
+} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
+import React, { useMemo } from "react";
 
 type OutputsRecord = Record<string, Array<unknown>>;
 
@@ -84,7 +84,7 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
 
   return (
     <div className="relative flex flex-col gap-4">
-      <div className="absolute -top-3 right-0">
+      <div className="absolute -top-3 right-0 z-10">
         <OutputActions
           items={items.map((item) => ({
             value: item.value,
