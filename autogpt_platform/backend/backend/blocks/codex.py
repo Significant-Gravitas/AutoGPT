@@ -72,7 +72,7 @@ def CodexCredentialsField() -> CodexCredentials:
     )
 
 
-class CodexBlock(Block):
+class CodeGenerationBlock(Block):
     """Block that talks to Codex models via the OpenAI Responses API."""
 
     class Input(BlockSchemaInput):
@@ -127,8 +127,8 @@ class CodexBlock(Block):
             id="86a2a099-30df-47b4-b7e4-34ae5f83e0d5",
             description="Generate or refactor code using OpenAI's Codex (Responses API).",
             categories={BlockCategory.AI, BlockCategory.DEVELOPER_TOOLS},
-            input_schema=CodexBlock.Input,
-            output_schema=CodexBlock.Output,
+            input_schema=CodeGenerationBlock.Input,
+            output_schema=CodeGenerationBlock.Output,
             test_input=[
                 {
                     "prompt": "Write a TypeScript function that deduplicates an array.",

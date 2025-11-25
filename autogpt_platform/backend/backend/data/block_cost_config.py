@@ -9,7 +9,7 @@ from backend.blocks.ai_shortform_video_block import (
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
-from backend.blocks.codex import CodexBlock, CodexModel
+from backend.blocks.codex import CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
     GetLinkedinProfilePictureBlock,
@@ -260,7 +260,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIStructuredResponseGeneratorBlock: LLM_COST,
     AITextSummarizerBlock: LLM_COST,
     AIListGeneratorBlock: LLM_COST,
-    CodexBlock: [
+    CodeGenerationBlock: [
         BlockCost(
             cost_type=BlockCostType.RUN,
             cost_filter={
