@@ -1,3 +1,4 @@
+import asyncio
 from enum import Enum
 from typing import Literal
 
@@ -137,15 +138,17 @@ class AIImageCustomizerBlock(Block):
     ) -> BlockOutput:
         try:
             # Convert local file paths to Data URIs (base64) so Replicate can access them
-            processed_images = []
-            for img in input_data.images:
-                processed_img = await store_media_file(
-                    graph_exec_id=graph_exec_id,
-                    file=img,
-                    user_id=user_id,
-                    return_content=True,
+            processed_images = await asyncio.gather(
+                *(
+                    store_media_file(
+                        graph_exec_id=graph_exec_id,
+                        file=img,
+                        user_id=user_id,
+                        return_content=True,
+                    )
+                    for img in input_data.images
                 )
-                processed_images.append(processed_img)
+            )
 
             result = await self.run_model(
                 api_key=credentials.api_key,
