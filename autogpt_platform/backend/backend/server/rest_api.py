@@ -78,6 +78,57 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     await backend.data.db.connect()
 
+    # Initialize SQLAlchemy if enabled (for gradual migration from Prisma)
+    config = backend.util.settings.Config()
+    if config.enable_sqlalchemy:
+        from sqlalchemy.exc import DatabaseError, OperationalError
+        from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
+
+        from backend.data import sqlalchemy as sa
+
+        try:
+            engine = sa.create_engine()
+            sa.initialize(engine)
+            app.state.db_engine = engine
+            logger.info(
+                f"✓ AgentServer: SQLAlchemy initialized "
+                f"(pool_size={config.sqlalchemy_pool_size}, "
+                f"max_overflow={config.sqlalchemy_max_overflow})"
+            )
+        except OperationalError as e:
+            logger.error(
+                f"Failed to connect to database during SQLAlchemy initialization. "
+                f"Check database connection settings (host, port, credentials). "
+                f"Database URL: {config.database_url.split('@')[-1] if '@' in config.database_url else 'N/A'}. "
+                f"Error: {e}"
+            )
+            raise
+        except SQLAlchemyTimeoutError as e:
+            logger.error(
+                f"Database connection timeout during SQLAlchemy initialization. "
+                f"Timeout setting: {config.sqlalchemy_connect_timeout}s. "
+                f"Check if database is accessible and increase timeout if needed. "
+                f"Error: {e}"
+            )
+            raise
+        except DatabaseError as e:
+            logger.error(
+                f"Database error during SQLAlchemy initialization. "
+                f"Check database permissions and configuration. "
+                f"Error: {e}"
+            )
+            raise
+        except Exception as e:
+            logger.error(
+                f"Unexpected error during SQLAlchemy initialization. "
+                f"Configuration: pool_size={config.sqlalchemy_pool_size}, "
+                f"max_overflow={config.sqlalchemy_max_overflow}, "
+                f"pool_timeout={config.sqlalchemy_pool_timeout}s. "
+                f"Error: {e}",
+                exc_info=True,
+            )
+            raise
+
     # Configure thread pool for FastAPI sync operation performance
     # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
     # - Any endpoint defined with 'def' (not async def)
@@ -117,6 +168,30 @@ async def lifespan_context(app: fastapi.FastAPI):
         await shutdown_cloud_storage_handler()
     except Exception as e:
         logger.warning(f"Error shutting down cloud storage handler: {e}")
+
+    # Dispose SQLAlchemy if it was enabled
+    if config.enable_sqlalchemy:
+        from sqlalchemy.exc import DatabaseError, OperationalError
+
+        from backend.data import sqlalchemy as sa
+
+        try:
+            await sa.dispose()
+            logger.info("✓ AgentServer: SQLAlchemy disposed")
+        except (OperationalError, DatabaseError) as e:
+            # Log as warning since disposal failures during shutdown are non-critical
+            logger.warning(
+                f"Database error while disposing SQLAlchemy connections. "
+                f"This may leave connections open but won't affect shutdown. "
+                f"Error: {e}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error while disposing SQLAlchemy. "
+                f"Connection pool may not be cleanly released. "
+                f"Error: {e}",
+                exc_info=True,
+            )
 
     await backend.data.db.disconnect()
 
