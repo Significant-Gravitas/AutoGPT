@@ -14,6 +14,7 @@ import {
 import { LockIcon, LockOpenIcon } from "lucide-react";
 import { memo } from "react";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
+import { startTutorial } from "../../tutorial";
 
 export const CustomControls = memo(
   ({
@@ -41,7 +42,10 @@ export const CustomControls = memo(
       {
         icon: <ChalkboardIcon className="size-4" />,
         label: "Start Tutorial",
-        onClick: () => setIsTutorialRunning(!isTutorialRunning),
+        onClick: () => {
+          startTutorial();
+          setIsTutorialRunning(true);
+        },
         className: `h-10 w-10 border-none ${isTutorialRunning ? "bg-zinc-100" : "bg-white"}`,
       },
       {
