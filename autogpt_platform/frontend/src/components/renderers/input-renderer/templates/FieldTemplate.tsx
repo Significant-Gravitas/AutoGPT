@@ -44,7 +44,8 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 
   const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
-  const isAnyOf = Array.isArray((schema as any)?.anyOf);
+  const isAnyOf =
+    Array.isArray((schema as any)?.anyOf) && !(schema as any)?.enum;
   const isOneOf = Array.isArray((schema as any)?.oneOf);
   const isCredential = isCredentialFieldSchema(schema);
   const suppressHandle = isAnyOf || isOneOf;
@@ -96,7 +97,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
         size === "small" ? "w-[350px]" : "w-full",
       )}
     >
-      {label && schema.type && (
+      {!isAnyOf && !fromAnyOf && label && (
         <label htmlFor={fieldId} className="flex items-center gap-1">
           {shouldShowHandle && (
             <NodeHandle
@@ -105,31 +106,27 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               side="left"
             />
           )}
-          {!fromAnyOf && (
-            <Text
-              variant="body"
-              className={cn(
-                "line-clamp-1",
-                isCredential && !shouldShowHandle && "ml-3",
-                size == "large" && "ml-0",
-                uiType === BlockUIType.OUTPUT &&
-                  fieldId === "root_name" &&
-                  "ml-3",
-                uiType === BlockUIType.INPUT && "ml-3",
-                uiType === BlockUIType.WEBHOOK && "ml-3",
-                uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
-              )}
-            >
-              {isCredential && credentialProvider
-                ? toDisplayName(credentialProvider) + " credentials"
-                : label}
-            </Text>
-          )}
-          {!fromAnyOf && (
-            <Text variant="small" className={colorClass}>
-              ({displayType})
-            </Text>
-          )}
+          <Text
+            variant={formContext.size === "small" ? "body" : "body-medium"}
+            className={cn(
+              "line-clamp-1",
+              isCredential && !shouldShowHandle && "ml-3",
+              size == "large" && "ml-0",
+              uiType === BlockUIType.OUTPUT &&
+                fieldId === "root_name" &&
+                "ml-3",
+              uiType === BlockUIType.INPUT && "ml-3",
+              uiType === BlockUIType.WEBHOOK && "ml-3",
+              uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
+            )}
+          >
+            {isCredential && credentialProvider
+              ? toDisplayName(credentialProvider) + " credentials"
+              : schema.title || label}
+          </Text>
+          <Text variant="small" className={colorClass}>
+            ({displayType})
+          </Text>
           {required && <span style={{ color: "red" }}>*</span>}
           {description?.props?.description && (
             <TooltipProvider>
@@ -150,7 +147,9 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
         </label>
       )}
       {(isAnyOf || !isConnected) && (
-        <div className={cn(size === "small" ? "pl-2" : "")}>{children}</div>
+        <div className={cn(size === "small" ? "max-w-[340px] pl-2" : "")}>
+          {children}
+        </div>
       )}{" "}
     </div>
   );

@@ -125,7 +125,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                   (string)
                 </Text>
               </div>
-              {!isDynamicPropertyConnected && propertyValue !== null && (
+              {!isDynamicPropertyConnected && (
                 <div className="flex items-center gap-2">
                   <Input
                     hideLabel={true}
@@ -143,7 +143,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                     label=""
                     id={`value-${idx}`}
                     size="small"
-                    value={propertyValue as string}
+                    value={propertyValue ?? ""}
                     onChange={(e) => setProperty(key, e.target.value)}
                     placeholder={placeholder}
                     wrapperClassName="mb-0"

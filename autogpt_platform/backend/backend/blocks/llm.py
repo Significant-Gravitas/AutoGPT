@@ -93,6 +93,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1_MINI = "o1-mini"
     # GPT-5 models
     GPT5 = "gpt-5-2025-08-07"
+    GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
@@ -106,6 +107,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
+    CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
@@ -129,6 +131,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
@@ -151,6 +154,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     GROK_4 = "x-ai/grok-4"
+    GROK_4_FAST = "x-ai/grok-4-fast"
+    GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
@@ -189,6 +195,7 @@ MODEL_METADATA = {
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
@@ -212,6 +219,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-4-sonnet-20250514
+    LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-opus-4-5-20251101
     LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-sonnet-4-5-20250929
@@ -241,6 +251,7 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
+    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
@@ -275,6 +286,9 @@ MODEL_METADATA = {
     LlmModel.META_LLAMA_4_SCOUT: ModelMetadata("open_router", 131072, 131072),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata("open_router", 1048576, 1000000),
     LlmModel.GROK_4: ModelMetadata("open_router", 256000, 256000),
+    LlmModel.GROK_4_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_4_1_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_CODE_FAST_1: ModelMetadata("open_router", 256000, 10000),
     LlmModel.KIMI_K2: ModelMetadata("open_router", 131000, 131000),
     LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata("open_router", 262144, 262144),
     LlmModel.QWEN3_CODER: ModelMetadata("open_router", 262144, 262144),

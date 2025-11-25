@@ -8,10 +8,11 @@ import { Providers } from "@/app/providers";
 import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
 import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { headers } from "next/headers";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
+import { environment } from "@/services/environment";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
@@ -25,6 +26,8 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
+  const isDev = environment.isDev();
+  const isLocal = environment.isLocal();
 
   return (
     <html
@@ -33,6 +36,16 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <link
+          rel="icon"
+          href={
+            isLocal
+              ? "/favicon-local.ico"
+              : isDev
+                ? "/favicon-dev.ico"
+                : "/favicon.ico"
+          }
+        />
         <SetupAnalytics
           host={host}
           ga={{
