@@ -28,18 +28,21 @@ export const CustomControls = memo(
     const { isTutorialRunning, setIsTutorialRunning } = useTutorialStore();
     const controls = [
       {
+        id: "zoom-in-button",
         icon: <PlusIcon className="size-4" />,
         label: "Zoom In",
         onClick: () => zoomIn(),
         className: "h-10 w-10 border-none",
       },
       {
+        id: "zoom-out-button",
         icon: <MinusIcon className="size-4" />,
         label: "Zoom Out",
         onClick: () => zoomOut(),
         className: "h-10 w-10 border-none",
       },
       {
+        id: "tutorial-button",
         icon: <ChalkboardIcon className="size-4" />,
         label: "Start Tutorial",
         onClick: () => {
@@ -49,12 +52,14 @@ export const CustomControls = memo(
         className: `h-10 w-10 border-none ${isTutorialRunning ? "bg-zinc-100" : "bg-white"}`,
       },
       {
+        id: "fit-view-button",
         icon: <FrameCornersIcon className="size-4" />,
         label: "Fit View",
         onClick: () => fitView({ padding: 0.2, duration: 800, maxZoom: 1 }),
         className: "h-10 w-10 border-none",
       },
       {
+        id: "lock-button",
         icon: !isLocked ? (
           <LockOpenIcon className="size-4" />
         ) : (
@@ -67,15 +72,19 @@ export const CustomControls = memo(
     ];
 
     return (
-      <div className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full bg-white px-1 py-2 shadow-lg">
-        {controls.map((control, index) => (
-          <Tooltip key={index} delayDuration={0}>
+      <div
+        data-id="custom-controls"
+        className="absolute bottom-4 left-4 z-10 flex flex-col items-center gap-2 rounded-full bg-white px-1 py-2 shadow-lg"
+      >
+        {controls.map((control) => (
+          <Tooltip key={control.id} delayDuration={0}>
             <TooltipTrigger asChild>
               <Button
                 variant="icon"
                 size={"small"}
                 onClick={control.onClick}
                 className={control.className}
+                data-id={control.id}
               >
                 {control.icon}
                 <span className="sr-only">{control.label}</span>

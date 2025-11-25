@@ -1,20 +1,89 @@
 export const TUTORIAL_SELECTORS = {
+  // Block Menu
   BLOCKS_TRIGGER: '[data-id="blocks-control-popover-trigger"]',
   BLOCKS_CONTENT: '[data-id="blocks-control-popover-content"]',
   BLOCKS_SEARCH_INPUT:
-    '[data-id="blocks-control-popover-content"] input[type="text"]',
-  FIT_VIEW_BUTTON: ".react-flow__controls-fitview",
+    '[data-id="blocks-control-search-bar"] input[type="text"]',
+  BLOCKS_SEARCH_INPUT_BOX: '[data-id="blocks-control-search-bar"]',
+
+  // Add a new selector that checks within search results
+
+  // Block Menu Sidebar
+  MENU_ITEM_INPUT_BLOCKS: '[data-id="menu-item-input_blocks"]',
+  MENU_ITEM_ALL_BLOCKS: '[data-id="menu-item-all_blocks"]',
+  MENU_ITEM_ACTION_BLOCKS: '[data-id="menu-item-action_blocks"]',
+  MENU_ITEM_OUTPUT_BLOCKS: '[data-id="menu-item-output_blocks"]',
+  MENU_ITEM_INTEGRATIONS: '[data-id="menu-item-integrations"]',
+  MENU_ITEM_MY_AGENTS: '[data-id="menu-item-my_agents"]',
+  MENU_ITEM_MARKETPLACE: '[data-id="menu-item-marketplace_agents"]',
+  MENU_ITEM_SUGGESTION: '[data-id="menu-item-suggestion"]',
+
+  // Block Cards
   BLOCK_CARD_PREFIX: '[data-id^="block-card-"]',
+  BLOCK_CARD_AGENT_INPUT: '[data-id="block-card-AgentInputBlock"]',
+  // Calculator block - legacy ID used in old tutorial
+  BLOCK_CARD_CALCULATOR:
+    '[data-id="block-card-b1ab9b1967a6406dabf52dba76d00c79"]',
+  BLOCK_CARD_CALCULATOR_IN_SEARCH:
+    '[data-id="blocks-control-search-results"] [data-id="block-card-b1ab9b1967a6406dabf52dba76d00c79"]',
+
+  // Save Control
+  SAVE_TRIGGER: '[data-id="save-control-popover-trigger"]',
+  SAVE_CONTENT: '[data-id="save-control-popover-content"]',
+  SAVE_AGENT_BUTTON: '[data-id="save-control-save-agent"]',
+  SAVE_NAME_INPUT: '[data-id="save-control-name-input"]',
+  SAVE_DESCRIPTION_INPUT: '[data-id="save-control-description-input"]',
+
+  // Builder Actions (Run, Schedule, Outputs)
+  BUILDER_ACTIONS: '[data-id="builder-actions"]',
+  RUN_BUTTON: '[data-id="run-graph-button"]',
+  STOP_BUTTON: '[data-id="stop-graph-button"]',
+  SCHEDULE_BUTTON: '[data-id="schedule-graph-button"]',
+  AGENT_OUTPUTS_BUTTON: '[data-id="agent-outputs-button"]',
+
+  // Custom Controls (bottom left)
+  CUSTOM_CONTROLS: '[data-id="custom-controls"]',
+  ZOOM_IN_BUTTON: '[data-id="zoom-in-button"]',
+  ZOOM_OUT_BUTTON: '[data-id="zoom-out-button"]',
+  FIT_VIEW_BUTTON: '[data-id="fit-view-button"]',
+  LOCK_BUTTON: '[data-id="lock-button"]',
+  TUTORIAL_BUTTON: '[data-id="tutorial-button"]',
+
+  // Canvas
+  REACT_FLOW_CANVAS: ".react-flow__pane",
+  REACT_FLOW_NODE: ".react-flow__node",
+  REACT_FLOW_NODE_FIRST: '[data-testid^="rf__node-"]:first-child',
+  REACT_FLOW_EDGE: '[data-testid^="rf__edge-"]',
+
+  // Node elements
+  NODE_CONTAINER: '[data-id^="custom-node-"]',
+  NODE_HEADER: '[data-id^="node-header-"]',
+  NODE_INPUT_HANDLES: '[data-id="input-handles"]',
+  NODE_OUTPUT_HANDLE: '[data-handlepos="right"]',
+  NODE_INPUT_HANDLE: "[data-nodeid]",
+  NODE_LATEST_OUTPUT: '[data-id="latest-output"]',
+  NODE_FORM_CONTAINER: '[data-id^="form-creator-container-"]', // <-- Add this line
+
+  // Execution badges
+  BADGE_QUEUED: '[data-id^="badge-"][data-id$="-QUEUED"]',
+  BADGE_COMPLETED: '[data-id^="badge-"][data-id$="-COMPLETED"]',
+
+  // Undo/Redo
+  UNDO_BUTTON: '[data-id="undo-button"]',
+  REDO_BUTTON: '[data-id="redo-button"]',
 } as const;
 
 export const CSS_CLASSES = {
-  DISABLE: "disable-blocks",
-  HIGHLIGHT: "highlight-block",
+  DISABLE: "new-builder-tutorial-disable",
+  HIGHLIGHT: "new-builder-tutorial-highlight",
+  PULSE: "new-builder-tutorial-pulse",
 } as const;
 
 export const TUTORIAL_CONFIG = {
-  ELEMENT_CHECK_INTERVAL: 10, // ms
+  ELEMENT_CHECK_INTERVAL: 50, // ms
+  INPUT_CHECK_INTERVAL: 100, // ms
   USE_MODAL_OVERLAY: true,
   SCROLL_BEHAVIOR: "smooth" as const,
   SCROLL_BLOCK: "center" as const,
+  SEARCH_TERM_CALCULATOR: "Calculator",
 } as const;

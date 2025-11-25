@@ -1,6 +1,6 @@
 // index.ts (or tutorial.ts)
 import Shepherd from "shepherd.js";
-import "shepherd.js/dist/css/shepherd.css";
+// import "shepherd.js/dist/css/shepherd.css";
 import { analytics } from "@/services/analytics";
 import { TUTORIAL_CONFIG } from "./constants";
 import { createTutorialSteps } from "./steps";
@@ -19,6 +19,8 @@ export const startTutorial = () => {
         behavior: TUTORIAL_CONFIG.SCROLL_BEHAVIOR,
         block: TUTORIAL_CONFIG.SCROLL_BLOCK,
       },
+      classes: "new-builder-tour",
+      modalOverlayOpeningRadius: 4,
     },
   });
 
