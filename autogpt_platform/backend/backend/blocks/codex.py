@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 from openai import AsyncOpenAI
 from openai.types.responses import Response as OpenAIResponse
-from openai.types.responses import ResponseOutputMessage, ResponseReasoningItem
-from openai.types.responses.response_output_text import ResponseOutputText
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
 
 from backend.data.block import (
     Block,
@@ -143,7 +141,7 @@ class CodexBlock(Block):
                 ("response_id", str),
             ],
             test_mock={
-                "call_codex": lambda *args, **kwargs: CodexCallResult(
+                "call_codex": lambda *_args, **_kwargs: CodexCallResult(
                     response="function dedupe<T>(items: T[]): T[] { return [...new Set(items)]; }",
                     reasoning="Used Set to remove duplicates in O(n).",
                     response_id="resp_test",
@@ -178,33 +176,25 @@ class CodexBlock(Block):
             request_payload["reasoning"] = {"effort": reasoning_effort.value}
 
         response = await client.responses.create(**request_payload)
+        if not isinstance(response, OpenAIResponse):
+            raise TypeError(f"Expected OpenAIResponse, got {type(response).__name__}")
 
-        text_output = self._extract_output_text(response)
-        reasoning_summary = self._extract_reasoning_summary(response)
-        response_id = getattr(response, "id", "")
+        # Extract data directly from typed response
+        text_output = response.output_text or ""
+        reasoning_summary = (
+            str(response.reasoning.summary)
+            if response.reasoning and response.reasoning.summary
+            else ""
+        )
+        response_id = response.id or ""
 
-        usage = getattr(response, "usage", None)
-        if isinstance(response, OpenAIResponse) and response.usage:
-            usage = response.usage
-
-        if usage:
-
-            def _usage_value(key: str) -> Any:
-                if hasattr(usage, key):
-                    return getattr(usage, key)
-                if isinstance(usage, Mapping):
-                    return usage.get(key)
-                return None
-
-            input_value = _usage_value("input_tokens")
-            output_value = _usage_value("output_tokens")
-
-            self.execution_stats.input_token_count = (
-                int(input_value) if isinstance(input_value, (int, float)) else 0
-            )
-            self.execution_stats.output_token_count = (
-                int(output_value) if isinstance(output_value, (int, float)) else 0
-            )
+        # Update usage stats
+        self.execution_stats.input_token_count = (
+            response.usage.input_tokens if response.usage else 0
+        )
+        self.execution_stats.output_token_count = (
+            response.usage.output_tokens if response.usage else 0
+        )
         self.execution_stats.llm_call_count += 1
 
         return CodexCallResult(
@@ -218,7 +208,7 @@ class CodexBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
-        **kwargs,
+        **_kwargs,
     ) -> BlockOutput:
         result = await self.call_codex(
             credentials=credentials,
@@ -232,80 +222,3 @@ class CodexBlock(Block):
         yield "response", result.response
         yield "reasoning", result.reasoning
         yield "response_id", result.response_id
-
-    @staticmethod
-    def _extract_output_text(response: Any) -> str:
-        """Best-effort extraction of the aggregated text output."""
-        if not response:
-            return ""
-
-        typed_response = CodexBlock._as_openai_response(response)
-        if typed_response:
-            if typed_response.output_text:
-                return typed_response.output_text
-
-            aggregated_parts: list[str] = []
-            for item in typed_response.output:
-                if isinstance(item, ResponseOutputMessage):
-                    for content in item.content:
-                        if isinstance(content, ResponseOutputText):
-                            aggregated_parts.append(content.text)
-            if aggregated_parts:
-                return "\n".join(aggregated_parts)
-
-        output_text = getattr(response, "output_text", None)
-        if output_text:
-            if isinstance(output_text, list):
-                return "".join(str(part) for part in output_text)
-            return str(output_text)
-
-        aggregated_parts: list[str] = []
-        output_items = getattr(response, "output", None) or []
-        for item in output_items:
-            content_list = getattr(item, "content", None) or []
-            for content in content_list:
-                text_value = getattr(content, "text", None)
-                if text_value:
-                    aggregated_parts.append(text_value)
-                elif isinstance(content, dict) and content.get("text"):
-                    aggregated_parts.append(str(content["text"]))
-
-        if aggregated_parts:
-            return "\n".join(aggregated_parts)
-
-        return ""
-
-    @staticmethod
-    def _extract_reasoning_summary(response: Any) -> str:
-        typed_response = CodexBlock._as_openai_response(response)
-        if typed_response:
-            summaries: list[str] = []
-            for item in typed_response.output:
-                if isinstance(item, ResponseReasoningItem):
-                    summaries.extend(summary.text for summary in item.summary)
-            if summaries:
-                return "\n".join(summaries)
-
-        reasoning_block = getattr(response, "reasoning", None)
-        if not reasoning_block:
-            return ""
-
-        if isinstance(reasoning_block, dict):
-            return str(reasoning_block.get("summary") or "")
-
-        summary = getattr(reasoning_block, "summary", None)
-        if isinstance(summary, list):
-            return "\n".join(str(part) for part in summary)
-
-        return str(summary or "")
-
-    @staticmethod
-    def _as_openai_response(candidate: Any) -> OpenAIResponse | None:
-        if isinstance(candidate, OpenAIResponse):
-            return candidate
-        if isinstance(candidate, Mapping):
-            try:
-                return OpenAIResponse.model_validate(candidate)
-            except ValidationError:
-                return None
-        return None
