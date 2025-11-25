@@ -62,6 +62,9 @@ export function useLoginPage() {
   }
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
+    setIsLoading(true);
+    setIsLoggingIn(true);
+
     if (data.email.includes("@agpt.co")) {
       toast({
         title: "Please use Google SSO to login using an AutoGPT email.",
@@ -72,8 +75,6 @@ export function useLoginPage() {
       setIsLoggingIn(false);
       return;
     }
-
-    setIsLoggingIn(true);
 
     try {
       const result = await loginAction(data.email, data.password);

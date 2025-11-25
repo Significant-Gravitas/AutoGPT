@@ -1,43 +1,43 @@
 "use client";
 import { IconLogOut } from "@/components/__legacy__/ui/icons";
 import { LoadingSpinner } from "@/components/__legacy__/ui/loading";
-import { toast } from "@/components/molecules/Toast/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
-import { useTransition } from "react";
+import { useState } from "react";
 
 export function AccountLogoutOption() {
-  const [isPending, startTransition] = useTransition();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const supabase = useSupabase();
+  const { toast } = useToast();
 
-  function handleLogout() {
-    startTransition(async () => {
-      try {
-        await supabase.logOut();
-      } catch (e) {
-        Sentry.captureException(e);
-        toast({
-          title: "Error logging out",
-          description:
-            "Something went wrong when logging out. Please try again. If the problem persists, please contact support.",
-          variant: "destructive",
-        });
-      }
-    });
+  async function handleLogout() {
+    try {
+      setIsLoggingOut(true);
+      await supabase.logOut();
+    } catch (e) {
+      Sentry.captureException(e);
+      toast({
+        title: "Error logging out",
+        description:
+          "Something went wrong when logging out. Please try again. If the problem persists, please contact support.",
+        variant: "destructive",
+      });
+    }
   }
 
   return (
     <div
       className={cn(
         "inline-flex w-full items-center justify-start gap-2.5",
-        isPending && "justify-center",
+        isLoggingOut && "justify-center opacity-50",
       )}
       onClick={handleLogout}
       role="button"
       tabIndex={0}
     >
-      {isPending ? (
+      {isLoggingOut ? (
         <LoadingSpinner className="size-5" />
       ) : (
         <>
