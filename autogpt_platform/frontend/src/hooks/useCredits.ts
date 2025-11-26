@@ -3,8 +3,9 @@ import {
   RefundRequest,
   TransactionHistory,
 } from "@/lib/autogpt-server-api/types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export default function useCredits({
   fetchInitialCredits = false,
@@ -30,6 +31,7 @@ export default function useCredits({
   fetchRefundRequests: () => void;
   formatCredits: (credit: number | null) => string;
 } {
+  const { isLoggedIn } = useSupabase();
   const [credits, setCredits] = useState<number | null>(null);
   const [autoTopUpConfig, setAutoTopUpConfig] = useState<{
     amount: number;
@@ -40,49 +42,90 @@ export default function useCredits({
   const router = useRouter();
 
   const fetchCredits = useCallback(async () => {
-    const response = await api.getUserCredit();
-    setCredits(response.credits);
-  }, [api]);
+    if (!isLoggedIn) return;
+    try {
+      const response = await api.getUserCredit();
+      if (response) {
+        setCredits(response.credits);
+      } else {
+        setCredits(null);
+      }
+    } catch (error) {
+      console.error("Error fetching credits:", error);
+      setCredits(null);
+    }
+  }, [api, isLoggedIn]);
 
   useEffect(() => {
-    if (!fetchInitialCredits) return;
+    if (!fetchInitialCredits || !isLoggedIn) return;
     fetchCredits();
-  }, [fetchCredits, fetchInitialCredits]);
+  }, [fetchCredits, fetchInitialCredits, isLoggedIn]);
+
+  // Clear credits when user logs out
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setCredits(null);
+    }
+  }, [isLoggedIn]);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
-    const response = await api.getAutoTopUpConfig();
-    setAutoTopUpConfig(response);
-  }, [api]);
+    if (!isLoggedIn) return;
+    try {
+      const response = await api.getAutoTopUpConfig();
+      setAutoTopUpConfig(response || null);
+    } catch (error) {
+      console.error("Error fetching auto top-up config:", error);
+      setAutoTopUpConfig(null);
+    }
+  }, [api, isLoggedIn]);
 
   useEffect(() => {
-    if (!fetchInitialAutoTopUpConfig) return;
+    if (!fetchInitialAutoTopUpConfig || !isLoggedIn) return;
     fetchAutoTopUpConfig();
-  }, [fetchAutoTopUpConfig, fetchInitialAutoTopUpConfig]);
+  }, [fetchAutoTopUpConfig, fetchInitialAutoTopUpConfig, isLoggedIn]);
+
+  // Clear auto top-up config when user logs out
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setAutoTopUpConfig(null);
+    }
+  }, [isLoggedIn]);
 
   const updateAutoTopUpConfig = useCallback(
     async (amount: number, threshold: number) => {
+      if (!isLoggedIn) return;
       await api.setAutoTopUpConfig({ amount, threshold });
       fetchAutoTopUpConfig();
     },
-    [api, fetchAutoTopUpConfig],
+    [api, fetchAutoTopUpConfig, isLoggedIn],
   );
 
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
+      if (!isLoggedIn) return;
       const response = await api.requestTopUp(credit_amount);
       router.push(response.checkout_url);
     },
-    [api, router],
+    [api, router, isLoggedIn],
   );
 
   const refundTopUp = useCallback(
     async (transaction_key: string, reason: string) => {
-      const refunded_amount = await api.refundTopUp(transaction_key, reason);
-      await fetchCredits();
-      setTransactionHistory(await api.getTransactionHistory());
-      return refunded_amount;
+      if (!isLoggedIn) return 0;
+      try {
+        const refunded_amount = await api.refundTopUp(transaction_key, reason);
+        await fetchCredits();
+        const history = await api.getTransactionHistory();
+        if (history) {
+          setTransactionHistory(history);
+        }
+        return refunded_amount;
+      } catch (error) {
+        console.error("Error refunding top-up:", error);
+        throw error;
+      }
     },
-    [api, fetchCredits],
+    [api, fetchCredits, isLoggedIn],
   );
 
   const [transactionHistory, setTransactionHistory] =
@@ -92,38 +135,68 @@ export default function useCredits({
     });
 
   const fetchTransactionHistory = useCallback(async () => {
-    const response = await api.getTransactionHistory(
-      transactionHistory.next_transaction_time,
-      20,
-    );
-    setTransactionHistory({
-      transactions: [
-        ...transactionHistory.transactions,
-        ...response.transactions,
-      ],
-      next_transaction_time: response.next_transaction_time,
-    });
-  }, [api, transactionHistory]);
+    if (!isLoggedIn) return;
+    try {
+      const response = await api.getTransactionHistory(
+        transactionHistory.next_transaction_time,
+        20,
+      );
+      if (response) {
+        setTransactionHistory({
+          transactions: [
+            ...transactionHistory.transactions,
+            ...response.transactions,
+          ],
+          next_transaction_time: response.next_transaction_time,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching transaction history:", error);
+    }
+  }, [api, transactionHistory, isLoggedIn]);
 
   useEffect(() => {
-    if (!fetchInitialTransactionHistory) return;
+    if (!fetchInitialTransactionHistory || !isLoggedIn) return;
     fetchTransactionHistory();
     // Note: We only need to fetch transaction history once.
     // Hence, we should avoid `fetchTransactionHistory` to the dependency array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchInitialTransactionHistory]);
+  }, [fetchInitialTransactionHistory, isLoggedIn]);
+
+  // Clear transaction history when user logs out
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setTransactionHistory({
+        transactions: [],
+        next_transaction_time: null,
+      });
+    }
+  }, [isLoggedIn]);
 
   const [refundRequests, setRefundRequests] = useState<RefundRequest[]>([]);
 
   const fetchRefundRequests = useCallback(async () => {
-    const response = await api.getRefundRequests();
-    setRefundRequests(response);
-  }, [api]);
+    if (!isLoggedIn) return;
+    try {
+      const response = await api.getRefundRequests();
+      setRefundRequests(response || []);
+    } catch (error) {
+      console.error("Error fetching refund requests:", error);
+      setRefundRequests([]);
+    }
+  }, [api, isLoggedIn]);
 
   useEffect(() => {
-    if (!fetchInitialRefundRequests) return;
+    if (!fetchInitialRefundRequests || !isLoggedIn) return;
     fetchRefundRequests();
-  }, [fetchRefundRequests, fetchInitialRefundRequests]);
+  }, [fetchRefundRequests, fetchInitialRefundRequests, isLoggedIn]);
+
+  // Clear refund requests when user logs out
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setRefundRequests([]);
+    }
+  }, [isLoggedIn]);
 
   const formatCredits = useCallback((credit: number | null) => {
     if (credit === null) {

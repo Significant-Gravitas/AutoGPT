@@ -28,7 +28,9 @@ export function AccountLogoutOption() {
         variant: "destructive",
       });
     } finally {
-      setIsLoggingOut(false);
+      setTimeout(() => {
+        setIsLoggingOut(false);
+      }, 3000);
     }
   }
 

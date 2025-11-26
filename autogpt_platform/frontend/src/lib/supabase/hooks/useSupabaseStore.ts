@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { serverLogout, type ServerLogoutOptions } from "../actions";
 import {
   broadcastLogout,
+  isProtectedPage,
   setWebSocketDisconnectIntent,
   setupSessionEventListeners,
 } from "../helpers";
@@ -77,11 +78,14 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
         if (!get().hasLoadedUser || !get().user) {
           set({ isUserLoading: true });
           const result = await fetchUser();
+
+          // Always update state with fetch result
           set(result);
 
           // If fetchUser didn't return a user, validate the session to ensure we have the latest state
           // This handles race conditions after login where cookies might not be immediately available
-          if (!result.user) {
+          if (!result.user && !result.hasLoadedUser) {
+            // Cookies might not be ready yet, retry validation
             const validationResult = await validateSessionHelper({
               pathname: params.pathname,
               currentUser: null,
@@ -93,10 +97,69 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
                 hasLoadedUser: true,
                 isUserLoading: false,
               });
+            } else if (!validationResult.isValid) {
+              // Session is invalid, mark as loaded so we don't keep retrying
+              set({
+                hasLoadedUser: true,
+                isUserLoading: false,
+              });
+            } else {
+              // Validation succeeded but no user - might be cookies not ready
+              // If we're on a protected page, schedule a retry since we should have a user
+              const isProtected = isProtectedPage(params.pathname);
+              if (isProtected && params.router) {
+                // Retry after a short delay to allow cookies to propagate
+                // Use router.refresh() to trigger a re-initialization
+                setTimeout(() => {
+                  const currentState = get();
+                  if (
+                    !currentState.user &&
+                    isProtectedPage(currentState.currentPathname)
+                  ) {
+                    // Trigger router refresh to cause re-initialization
+                    params.router.refresh();
+                  }
+                }, 500);
+              }
+              // Don't mark as loaded yet, allow retry on next initialization
+              set({
+                isUserLoading: false,
+              });
             }
+          } else if (!result.user && result.hasLoadedUser) {
+            // Explicit error or already marked as loaded - don't retry
+            set({
+              isUserLoading: false,
+            });
           }
         } else {
-          set({ isUserLoading: false });
+          // Even if we have a user, validate session to catch account switches
+          // This ensures that if user logged out and logged in with different account,
+          // we detect the change immediately
+          const currentUser = get().user;
+          if (currentUser) {
+            const validationResult = await validateSessionHelper({
+              pathname: params.pathname,
+              currentUser,
+            });
+
+            // Update user if IDs differ (account switch detected)
+            if (
+              validationResult.user &&
+              validationResult.isValid &&
+              validationResult.user.id !== currentUser.id
+            ) {
+              set({
+                user: validationResult.user,
+                hasLoadedUser: true,
+                isUserLoading: false,
+              });
+            } else {
+              set({ isUserLoading: false });
+            }
+          } else {
+            set({ isUserLoading: false });
+          }
         }
 
         const existingCleanup = get().listenersCleanup;
@@ -140,10 +203,20 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     broadcastLogout();
 
+    // Clear React Query cache to prevent stale data from old user
+    if (typeof window !== "undefined") {
+      const { getQueryClient } = await import("@/lib/react-query/queryClient");
+      const queryClient = getQueryClient();
+      queryClient.clear();
+    }
+
+    // Reset all state to ensure fresh initialization on next login
     set({
       user: null,
       hasLoadedUser: false,
       isUserLoading: false,
+      initializationPromise: null, // Force fresh initialization
+      lastValidation: 0, // Reset validation timestamp
     });
 
     await serverLogout(options);
@@ -186,15 +259,47 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
         return false;
       }
 
-      if (result.user && result.shouldUpdateUser) {
-        set({ user: result.user });
-      }
-
+      // Always update user if:
+      // 1. We got a user and current user is null (login scenario)
+      // 2. We got a user and IDs differ (account switch scenario)
+      // 3. shouldUpdateUser is true (session validation detected change)
       if (result.user) {
-        set({
-          hasLoadedUser: true,
-          isUserLoading: false,
-        });
+        const currentUser = get().user;
+        const shouldUpdate =
+          !currentUser ||
+          currentUser.id !== result.user.id ||
+          result.shouldUpdateUser;
+
+        if (shouldUpdate) {
+          // Invalidate profile query when user changes to ensure fresh data
+          if (
+            typeof window !== "undefined" &&
+            currentUser?.id !== result.user.id
+          ) {
+            const { getQueryClient } = await import(
+              "@/lib/react-query/queryClient"
+            );
+            const { getGetV2GetUserProfileQueryKey } = await import(
+              "@/app/api/__generated__/endpoints/store/store"
+            );
+            const queryClient = getQueryClient();
+            queryClient.invalidateQueries({
+              queryKey: getGetV2GetUserProfileQueryKey(),
+            });
+          }
+
+          set({
+            user: result.user,
+            hasLoadedUser: true,
+            isUserLoading: false,
+          });
+        } else {
+          // Even if user didn't change, ensure loading state is cleared
+          set({
+            hasLoadedUser: true,
+            isUserLoading: false,
+          });
+        }
       }
 
       return true;
