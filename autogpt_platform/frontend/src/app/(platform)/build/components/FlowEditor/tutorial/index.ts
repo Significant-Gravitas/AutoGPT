@@ -5,12 +5,20 @@ import { analytics } from "@/services/analytics";
 import { TUTORIAL_CONFIG } from "./constants";
 import { createTutorialSteps } from "./steps";
 import { injectTutorialStyles, removeTutorialStyles } from "./styles";
-import { handleTutorialComplete, handleTutorialCancel } from "./helpers";
+import {
+  handleTutorialComplete,
+  handleTutorialCancel,
+  prefetchTutorialBlocks,
+  clearPrefetchedBlocks,
+} from "./helpers";
 
 /**
  * Starts the interactive tutorial
  */
-export const startTutorial = () => {
+export const startTutorial = async () => {
+  // Prefetch Agent Input and Agent Output blocks at the start
+  await prefetchTutorialBlocks();
+
   const tour = new Shepherd.Tour({
     useModalOverlay: TUTORIAL_CONFIG.USE_MODAL_OVERLAY,
     defaultStepOptions: {
@@ -35,11 +43,13 @@ export const startTutorial = () => {
   tour.on("complete", () => {
     handleTutorialComplete();
     removeTutorialStyles();
+    clearPrefetchedBlocks(); // Clean up prefetched blocks
   });
 
   tour.on("cancel", () => {
     handleTutorialCancel(tour);
     removeTutorialStyles();
+    clearPrefetchedBlocks(); // Clean up prefetched blocks
   });
 
   // Track tutorial steps with google analytics

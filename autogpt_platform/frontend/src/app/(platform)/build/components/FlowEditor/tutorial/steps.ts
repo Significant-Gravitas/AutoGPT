@@ -1,5 +1,5 @@
 import { StepOptions } from "shepherd.js";
-import { TUTORIAL_CONFIG, TUTORIAL_SELECTORS } from "./constants";
+import { TUTORIAL_CONFIG, TUTORIAL_SELECTORS, BLOCK_IDS } from "./constants";
 import {
   waitForElement,
   waitForNodeOnCanvas,
@@ -17,10 +17,17 @@ import {
   pulseElement,
   getFirstNode,
   nodeHasValues,
+  addAgentIOBlocks,
+  getNodeByBlockId,
+  isConnectionMade,
+  waitForNodesCount,
+  getFormContainerSelector,
+  getFormContainerElement,
 } from "./helpers";
 import { ICONS } from "./icons";
 import { banner } from "./styles";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { useEdgeStore } from "../../../stores/edgeStore";
 
 /**
  * Creates the tutorial steps with the tour instance
@@ -227,7 +234,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
         }
 
         // Calculator block_id from constants
-        const CALCULATOR_BLOCK_ID = "b1ab9b19-67a6-406d-abf5-2dba76d00c79";
+        const CALCULATOR_BLOCK_ID = BLOCK_IDS.CALCULATOR;
 
         // Store initial node count to detect additions
         const initialNodeCount = useNodeStore.getState().nodes.length;
@@ -258,6 +265,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
       },
     },
   },
+
   // ==========================================
   // STEP 6: Focus on New Block
   // ==========================================
@@ -272,7 +280,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
     `,
     attachTo: {
       element: TUTORIAL_SELECTORS.REACT_FLOW_NODE,
-      on: "right", // or "left", "top", "bottom" depending on preferred position
+      on: "right",
     },
     beforeShowPromise: async () => {
       closeBlockMenu();
@@ -282,7 +290,6 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
     },
     when: {
       show: () => {
-        // Highlight the node
         const node = document.querySelector(TUTORIAL_SELECTORS.REACT_FLOW_NODE);
         if (node) {
           highlightElement(TUTORIAL_SELECTORS.REACT_FLOW_NODE);
@@ -508,7 +515,495 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 10: Save - Open Popover
+  // STEP 10: Ask Permission to Add Agent IO Blocks
+  // ==========================================
+  {
+    id: "ask-add-agent-io-blocks",
+    title: "Add Agent Input & Output",
+    text: `
+      <div class="text-sm leading-[1.375rem] text-zinc-800">
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Great job configuring the Calculator!</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Now we need to add <strong>Agent Input</strong> and <strong>Agent Output</strong> blocks to complete your agent.</p>
+        
+        <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p class="text-sm font-medium text-blue-800 m-0 mb-1">These blocks are essential:</p>
+          <ul class="text-[0.8125rem] text-blue-700 m-0 pl-4">
+            <li>• <strong>Agent Input</strong> — Receives data when the agent runs</li>
+            <li>• <strong>Agent Output</strong> — Returns the result to the user</li>
+          </ul>
+        </div>
+        
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Can I add these blocks for you?</p>
+      </div>
+    `,
+    buttons: [
+      {
+        text: "Back",
+        action: () => tour.back(),
+        classes: "shepherd-button-secondary",
+      },
+      {
+        text: "Yes, Add Blocks",
+        action: () => tour.next(),
+      },
+    ],
+  },
+
+  // ==========================================
+  // STEP 11: Blocks Added Confirmation
+  // ==========================================
+  {
+    id: "blocks-added",
+    title: "Blocks Added! ✅",
+    text: `
+      <div class="text-sm leading-[1.375rem] text-zinc-800">
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">I've added <strong>Agent Input</strong> and <strong>Agent Output</strong> blocks to your canvas.</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's configure them and connect everything together.</p>
+        <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <p class="text-sm font-medium text-green-800 m-0">You now have 3 blocks:</p>
+          <ul class="text-[0.8125rem] text-green-700 m-0 pl-4 mt-1">
+            <li>• Agent Input (for receiving data)</li>
+            <li>• Calculator (processes data)</li>
+            <li>• Agent Output (for sending results)</li>
+          </ul>
+        </div>
+      </div>
+    `,
+    beforeShowPromise: async () => {
+      // Add the blocks programmatically when this step shows
+      addAgentIOBlocks();
+      await waitForNodesCount(3, 5000); // Wait for 3 nodes (Calculator + Input + Output)
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      fitViewToScreen();
+    },
+    buttons: [
+      {
+        text: "Let's configure them",
+        action: () => tour.next(),
+      },
+    ],
+  },
+
+  // ==========================================
+  // STEP 12: Configure Agent Input Name
+  // ==========================================
+  {
+    id: "configure-input-name",
+    title: "Configure Agent Input",
+    text: `
+      <div class="text-sm leading-[1.375rem] text-zinc-800">
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">First, let's set up the <strong>Agent Input</strong> block.</p>
+        
+        <div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p class="text-sm font-medium text-amber-800 m-0 mb-2">⚠️ Required:</p>
+          <ul class="text-[0.8125rem] text-amber-700 m-0 pl-4">
+            <li id="req-input-name" class="flex items-center gap-2">
+              <span class="req-icon">○</span> Enter a <strong>Name</strong> for the input (e.g., "number_a")
+            </li>
+          </ul>
+        </div>
+        ${banner(ICONS.ClickIcon, "Fill in the Name field in this block")}
+      </div>
+    `,
+    // NO attachTo here - we'll set it dynamically
+    beforeShowPromise: async () => {
+      fitViewToScreen();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const inputNode = getNodeByBlockId(BLOCK_IDS.AGENT_INPUT);
+      if (inputNode) {
+        const formSelector = `[data-id="form-creator-container-${inputNode.id}"]`;
+        await waitForElement(formSelector, 3000).catch(() => {});
+      }
+      return Promise.resolve();
+    },
+    when: {
+      show: () => {
+        const inputNode = getNodeByBlockId(BLOCK_IDS.AGENT_INPUT);
+        if (inputNode) {
+          highlightElement(`[data-id="custom-node-${inputNode.id}"]`);
+
+          // Get the form container and manually position the popover
+          const formContainer = document.querySelector(
+            `[data-id="form-creator-container-${inputNode.id}"]`,
+          );
+
+          // Get the Shepherd popover element and position it
+          const popover = document.querySelector(".shepherd-element");
+          if (formContainer && popover) {
+            const rect = formContainer.getBoundingClientRect();
+            (popover as HTMLElement).style.position = "fixed";
+            (popover as HTMLElement).style.left = `${rect.left - 320}px`; // Position to the left
+            (popover as HTMLElement).style.top = `${rect.top}px`;
+          }
+        }
+
+        // Poll for name being set
+        const checkInterval = setInterval(() => {
+          const node = getNodeByBlockId(BLOCK_IDS.AGENT_INPUT);
+          if (!node) return;
+
+          const hardcodedValues = node.data?.hardcodedValues || {};
+          const hasName =
+            hardcodedValues.name && hardcodedValues.name.trim() !== "";
+
+          const reqName = document.querySelector("#req-input-name .req-icon");
+          if (reqName) reqName.textContent = hasName ? "✓" : "○";
+          document
+            .querySelector("#req-input-name")
+            ?.classList.toggle("text-green-700", hasName);
+
+          const nextBtn = document.querySelector(
+            ".shepherd-button-primary",
+          ) as HTMLButtonElement;
+          if (nextBtn) {
+            nextBtn.style.opacity = hasName ? "1" : "0.5";
+            nextBtn.style.pointerEvents = hasName ? "auto" : "none";
+          }
+        }, 300);
+
+        (window as any).__tutorialInputNameInterval = checkInterval;
+      },
+      hide: () => {
+        removeAllHighlights();
+        if ((window as any).__tutorialInputNameInterval) {
+          clearInterval((window as any).__tutorialInputNameInterval);
+          delete (window as any).__tutorialInputNameInterval;
+        }
+      },
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: () => tour.back(),
+        classes: "shepherd-button-secondary",
+      },
+      {
+        text: "Continue",
+        action: () => {
+          const node = getNodeByBlockId(BLOCK_IDS.AGENT_INPUT);
+          if (!node) return;
+          const hasName = node.data?.hardcodedValues?.name?.trim();
+          if (hasName) tour.next();
+        },
+        classes: "shepherd-button-primary",
+      },
+    ],
+  },
+
+  // ==========================================
+  // STEP 13: Configure Agent Output Name
+  // ==========================================
+  {
+    id: "configure-output-name",
+    title: "Configure Agent Output",
+    text: `
+      <div class="text-sm leading-[1.375rem] text-zinc-800">
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now, let's set up the <strong>Agent Output</strong> block.</p>
+        
+        <div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p class="text-sm font-medium text-amber-800 m-0 mb-2">⚠️ Required:</p>
+          <ul class="text-[0.8125rem] text-amber-700 m-0 pl-4">
+            <li id="req-output-name" class="flex items-center gap-2">
+              <span class="req-icon">○</span> Enter a <strong>Name</strong> for the output (e.g., "result")
+            </li>
+          </ul>
+        </div>
+        ${banner(ICONS.ClickIcon, "Fill in the Name field in this block")}
+      </div>
+    `,
+    attachTo: {
+      element: TUTORIAL_SELECTORS.REACT_FLOW_NODE,
+      on: "left",
+    },
+    beforeShowPromise: async () => {
+      fitViewToScreen();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // Get the Agent Output node and update the step's attachTo element
+      const outputNode = getNodeByBlockId(BLOCK_IDS.AGENT_OUTPUT);
+      if (outputNode) {
+        const formSelector = `[data-id="form-creator-container-${outputNode.id}"]`;
+        await waitForElement(formSelector, 3000).catch(() => {});
+
+        // Update the step's target element before it shows
+        const step = tour.getCurrentStep();
+        if (step && step.options) {
+          step.options.attachTo = {
+            element: formSelector,
+            on: "left",
+          };
+        }
+      }
+      return Promise.resolve();
+    },
+    when: {
+      show: () => {
+        const outputNode = getNodeByBlockId(BLOCK_IDS.AGENT_OUTPUT);
+        if (outputNode) {
+          highlightElement(`[data-id="custom-node-${outputNode.id}"]`);
+        }
+
+        // Poll for name being set
+        const checkInterval = setInterval(() => {
+          const node = getNodeByBlockId(BLOCK_IDS.AGENT_OUTPUT);
+          if (!node) return;
+
+          const hardcodedValues = node.data?.hardcodedValues || {};
+          const hasName =
+            hardcodedValues.name && hardcodedValues.name.trim() !== "";
+
+          // Update requirement icon
+          const reqName = document.querySelector("#req-output-name .req-icon");
+          if (reqName) reqName.textContent = hasName ? "✓" : "○";
+          document
+            .querySelector("#req-output-name")
+            ?.classList.toggle("text-green-700", hasName);
+
+          // Show/hide next button
+          const nextBtn = document.querySelector(
+            ".shepherd-button-primary",
+          ) as HTMLButtonElement;
+          if (nextBtn) {
+            nextBtn.style.opacity = hasName ? "1" : "0.5";
+            nextBtn.style.pointerEvents = hasName ? "auto" : "none";
+          }
+        }, 300);
+
+        (window as any).__tutorialOutputNameInterval = checkInterval;
+      },
+      hide: () => {
+        removeAllHighlights();
+        if ((window as any).__tutorialOutputNameInterval) {
+          clearInterval((window as any).__tutorialOutputNameInterval);
+          delete (window as any).__tutorialOutputNameInterval;
+        }
+      },
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: () => tour.back(),
+        classes: "shepherd-button-secondary",
+      },
+      {
+        text: "Continue",
+        action: () => {
+          const node = getNodeByBlockId(BLOCK_IDS.AGENT_OUTPUT);
+          if (!node) return;
+          const hasName = node.data?.hardcodedValues?.name?.trim();
+          if (hasName) tour.next();
+        },
+        classes: "shepherd-button-primary",
+      },
+    ],
+  },
+
+  // ==========================================
+  // STEP 14: Connect Agent Input to Calculator
+  // ==========================================
+  {
+    id: "connect-input-to-calculator",
+    title: "Connect Agent Input → Calculator",
+    text: `
+      <div class="text-sm leading-[1.375rem] text-zinc-800">
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now let's connect the blocks together!</p>
+        
+        <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p class="text-sm font-medium text-blue-800 m-0 mb-2">Connect Agent Input to Calculator:</p>
+          <ol class="text-[0.8125rem] text-blue-700 m-0 pl-4 space-y-1">
+            <li>1. Find the <strong>output handle</strong> (right side) of Agent Input</li>
+            <li>2. Drag from it to the <strong>A</strong> or <strong>B</strong> input handle (left side) of Calculator</li>
+          </ol>
+        </div>
+        ${banner(ICONS.Drag, "Drag from Agent Input's output to Calculator's input")}
+        
+        <div id="connection-status-1" class="mt-3 p-2 bg-zinc-100 rounded text-center text-sm text-zinc-600">
+          Waiting for connection...
+        </div>
+      </div>
+    `,
+    beforeShowPromise: async () => {
+      fitViewToScreen();
+      return Promise.resolve();
+    },
+    when: {
+      show: () => {
+        // Highlight both nodes
+        const inputNode = getNodeByBlockId(BLOCK_IDS.AGENT_INPUT);
+        const calcNode = getNodeByBlockId(BLOCK_IDS.CALCULATOR);
+
+        if (inputNode)
+          highlightElement(`[data-id="custom-node-${inputNode.id}"]`);
+        if (calcNode) pulseElement(`[data-id="custom-node-${calcNode.id}"]`);
+
+        // Subscribe to edge store changes
+        const unsubscribe = useEdgeStore.subscribe(() => {
+          const connected = isConnectionMade(
+            BLOCK_IDS.AGENT_INPUT,
+            BLOCK_IDS.CALCULATOR,
+          );
+          const statusEl = document.querySelector("#connection-status-1");
+
+          if (connected && statusEl) {
+            statusEl.innerHTML = "✅ Connected!";
+            statusEl.classList.remove("bg-zinc-100", "text-zinc-600");
+            statusEl.classList.add("bg-green-100", "text-green-700");
+
+            // Auto-advance after brief delay
+            setTimeout(() => {
+              unsubscribe();
+              tour.next();
+            }, 500);
+          }
+        });
+
+        (tour.getCurrentStep() as any)._edgeUnsubscribe = unsubscribe;
+      },
+      hide: () => {
+        removeAllHighlights();
+        const step = tour.getCurrentStep() as any;
+        if (step?._edgeUnsubscribe) {
+          step._edgeUnsubscribe();
+        }
+      },
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: () => tour.back(),
+        classes: "shepherd-button-secondary",
+      },
+      {
+        text: "Skip (already connected)",
+        action: () => tour.next(),
+        classes: "shepherd-button-secondary",
+      },
+    ],
+  },
+
+  // ==========================================
+  // STEP 15: Connect Calculator to Agent Output
+  // ==========================================
+  {
+    id: "connect-calculator-to-output",
+    title: "Connect Calculator → Agent Output",
+    text: `
+      <div class="text-sm leading-[1.375rem] text-zinc-800">
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Almost there! Now connect the Calculator to Agent Output.</p>
+        
+        <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p class="text-sm font-medium text-blue-800 m-0 mb-2">Connect Calculator to Agent Output:</p>
+          <ol class="text-[0.8125rem] text-blue-700 m-0 pl-4 space-y-1">
+            <li>1. Find the <strong>output handle</strong> (right side) of Calculator</li>
+            <li>2. Drag from it to the <strong>Value</strong> input handle (left side) of Agent Output</li>
+          </ol>
+        </div>
+        ${banner(ICONS.Drag, "Drag from Calculator's output to Agent Output's input")}
+        
+        <div id="connection-status-2" class="mt-3 p-2 bg-zinc-100 rounded text-center text-sm text-zinc-600">
+          Waiting for connection...
+        </div>
+      </div>
+    `,
+    beforeShowPromise: async () => {
+      fitViewToScreen();
+      return Promise.resolve();
+    },
+    when: {
+      show: () => {
+        // Highlight both nodes
+        const calcNode = getNodeByBlockId(BLOCK_IDS.CALCULATOR);
+        const outputNode = getNodeByBlockId(BLOCK_IDS.AGENT_OUTPUT);
+
+        if (calcNode)
+          highlightElement(`[data-id="custom-node-${calcNode.id}"]`);
+        if (outputNode)
+          pulseElement(`[data-id="custom-node-${outputNode.id}"]`);
+
+        // Subscribe to edge store changes
+        const unsubscribe = useEdgeStore.subscribe(() => {
+          const connected = isConnectionMade(
+            BLOCK_IDS.CALCULATOR,
+            BLOCK_IDS.AGENT_OUTPUT,
+          );
+          const statusEl = document.querySelector("#connection-status-2");
+
+          if (connected && statusEl) {
+            statusEl.innerHTML = "✅ Connected!";
+            statusEl.classList.remove("bg-zinc-100", "text-zinc-600");
+            statusEl.classList.add("bg-green-100", "text-green-700");
+
+            // Auto-advance after brief delay
+            setTimeout(() => {
+              unsubscribe();
+              tour.next();
+            }, 500);
+          }
+        });
+
+        (tour.getCurrentStep() as any)._edgeUnsubscribe = unsubscribe;
+      },
+      hide: () => {
+        removeAllHighlights();
+        const step = tour.getCurrentStep() as any;
+        if (step?._edgeUnsubscribe) {
+          step._edgeUnsubscribe();
+        }
+      },
+    },
+    buttons: [
+      {
+        text: "Back",
+        action: () => tour.back(),
+        classes: "shepherd-button-secondary",
+      },
+      {
+        text: "Skip (already connected)",
+        action: () => tour.next(),
+        classes: "shepherd-button-secondary",
+      },
+    ],
+  },
+
+  // ==========================================
+  // STEP 16: Connections Complete
+  // ==========================================
+  {
+    id: "connections-complete",
+    title: "Connections Complete! 🎉",
+    text: `
+      <div class="text-sm leading-[1.375rem] text-zinc-800">
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Excellent! Your agent workflow is now connected:</p>
+        
+        <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div class="flex items-center justify-center gap-2 text-sm font-medium text-green-800">
+            <span>Agent Input</span>
+            <span>→</span>
+            <span>Calculator</span>
+            <span>→</span>
+            <span>Agent Output</span>
+          </div>
+        </div>
+        
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Data will flow from input, through the calculator, and out as the result.</p>
+        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">Now let's save your agent!</p>
+      </div>
+    `,
+    beforeShowPromise: async () => {
+      fitViewToScreen();
+      return Promise.resolve();
+    },
+    buttons: [
+      {
+        text: "Save My Agent",
+        action: () => tour.next(),
+      },
+    ],
+  },
+
+  // ==========================================
+  // STEP 17: Save - Open Popover
   // ==========================================
   {
     id: "open-save",
@@ -541,7 +1036,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 11: Save - Fill Details
+  // STEP 18: Save - Fill Details
   // ==========================================
   {
     id: "save-details",
@@ -574,7 +1069,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 12: Run Button
+  // STEP 19: Run Button
   // ==========================================
   {
     id: "run-agent",
@@ -609,7 +1104,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 13: Wait for Execution
+  // STEP 20: Wait for Execution
   // ==========================================
   {
     id: "wait-execution",
@@ -653,7 +1148,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 14: Check Output
+  // STEP 21: Check Output
   // ==========================================
   {
     id: "check-output",
@@ -687,7 +1182,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 15: Canvas Controls
+  // STEP 22: Canvas Controls
   // ==========================================
   {
     id: "canvas-controls",
@@ -718,7 +1213,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 16: Keyboard Shortcuts
+  // STEP 23: Keyboard Shortcuts
   // ==========================================
   {
     id: "keyboard-shortcuts",
@@ -750,7 +1245,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 18: Next Steps
+  // STEP 24: Next Steps
   // ==========================================
   {
     id: "next-steps",
@@ -776,7 +1271,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   },
 
   // ==========================================
-  // STEP 19: Congratulations
+  // STEP 25: Congratulations
   // ==========================================
   {
     id: "congratulations",
@@ -788,6 +1283,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
         <ul>
           <li>${ICONS.ClickIcon} Add blocks to the canvas</li>
           <li>${ICONS.ClickIcon} Configure block inputs and form fields</li>
+          <li>${ICONS.ClickIcon} Connect blocks together</li>
           <li>${ICONS.ClickIcon} Save and run agents</li>
           <li>${ICONS.ClickIcon} View execution outputs</li>
         </ul>
