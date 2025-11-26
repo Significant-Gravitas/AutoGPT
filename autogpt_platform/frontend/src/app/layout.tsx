@@ -27,8 +27,22 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
-  const isDev = environment.isDev();
-  const isLocal = environment.isLocal();
+  const appEnv = environment.getAppEnv();
+
+  // Determine favicon based on app environment
+  const getFaviconHref = () => {
+    switch (appEnv) {
+      case "local":
+        return "/favicon-local.ico";
+      case "dev":
+        return "/favicon-dev.ico";
+      case "prod":
+      default:
+        return "/favicon.ico";
+    }
+  };
+
+  const faviconHref = getFaviconHref();
 
   return (
     <html
@@ -37,16 +51,9 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <link
-          rel="icon"
-          href={
-            isLocal
-              ? "/favicon-local.ico"
-              : isDev
-                ? "/favicon-dev.ico"
-                : "/favicon.ico"
-          }
-        />
+        <link rel="icon" href={faviconHref} />
+        <link rel="shortcut icon" href={faviconHref} />
+        <link rel="apple-touch-icon" href={faviconHref} />
         <SetupAnalytics
           host={host}
           ga={{
