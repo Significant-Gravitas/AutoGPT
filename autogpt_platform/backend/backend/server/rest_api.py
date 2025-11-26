@@ -284,9 +284,6 @@ app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
-    backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
-)
-app.include_router(
     backend.server.v2.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 
