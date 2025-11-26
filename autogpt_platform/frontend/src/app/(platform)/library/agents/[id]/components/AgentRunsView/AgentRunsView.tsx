@@ -1,16 +1,17 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { useAgentRunsView } from "./useAgentRunsView";
+import { PlusIcon } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
+import { EmptyAgentRuns } from "./components/EmptyAgentRuns/EmptyAgentRuns";
+import { RunAgentModal } from "./components/RunAgentModal/RunAgentModal";
 import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
 import { SelectedRunView } from "./components/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/SelectedScheduleView/SelectedScheduleView";
-import { EmptyAgentRuns } from "./components/EmptyAgentRuns/EmptyAgentRuns";
-import { Button } from "@/components/atoms/Button/Button";
-import { RunAgentModal } from "./components/RunAgentModal/RunAgentModal";
-import { PlusIcon } from "@phosphor-icons/react";
+import { useAgentRunsView } from "./useAgentRunsView";
 
 export function AgentRunsView() {
   const {
@@ -25,6 +26,12 @@ export function AgentRunsView() {
     handleCountsChange,
     handleClearSelectedRun,
   } = useAgentRunsView();
+
+  useEffect(() => {
+    if (agent) {
+      document.title = `${agent.name} - Library - AutoGPT Platform`;
+    }
+  }, [agent]);
 
   if (error) {
     return (
