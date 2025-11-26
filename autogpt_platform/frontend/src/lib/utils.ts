@@ -2,12 +2,12 @@ import { type ClassValue, clsx } from "clsx";
 import { isEmpty as _isEmpty } from "lodash";
 import { twMerge } from "tailwind-merge";
 
+import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
   Category,
 } from "@/lib/autogpt-server-api/types";
-import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -153,24 +153,29 @@ export function setNestedProperty(obj: any, path: string, value: any) {
     throw new Error("Path must be a non-empty string");
   }
 
-  const keys = path.split(/[\/.]/);
+  // Split by both / and . to handle mixed separators, then filter empty strings
+  const keys = path.split(/[\/.]/).filter((key) => key.length > 0);
 
+  if (keys.length === 0) {
+    throw new Error("Path must be a non-empty string");
+  }
+
+  // Validate keys for prototype pollution protection
   for (const key of keys) {
-    if (
-      !key ||
-      key === "__proto__" ||
-      key === "constructor" ||
-      key === "prototype"
-    ) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
       throw new Error(`Invalid property name: ${key}`);
     }
   }
 
+  // Securely traverse and set nested properties
+  // Use Object.prototype.hasOwnProperty.call() to safely check properties
   let current = obj;
 
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
-    if (!current.hasOwnProperty(key)) {
+
+    // Use hasOwnProperty check to avoid prototype chain access
+    if (!Object.prototype.hasOwnProperty.call(current, key)) {
       current[key] = {};
     } else if (typeof current[key] !== "object" || current[key] === null) {
       current[key] = {};
@@ -178,7 +183,10 @@ export function setNestedProperty(obj: any, path: string, value: any) {
     current = current[key];
   }
 
-  current[keys[keys.length - 1]] = value;
+  // Set the final value using bracket notation with validated key
+  // Since we've validated all keys, this is safe from prototype pollution
+  const finalKey = keys[keys.length - 1];
+  current[finalKey] = value;
 }
 
 export function pruneEmptyValues(
