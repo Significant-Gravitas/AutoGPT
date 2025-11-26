@@ -24,6 +24,7 @@ from backend.util.file import MediaFileType
 
 class GeminiImageModel(str, Enum):
     NANO_BANANA = "google/nano-banana"
+    NANO_BANANA_PRO = "google/nano-banana-pro"
 
 
 class OutputFormat(str, Enum):
