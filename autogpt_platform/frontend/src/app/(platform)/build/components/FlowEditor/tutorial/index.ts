@@ -1,6 +1,4 @@
-// index.ts (or tutorial.ts)
 import Shepherd from "shepherd.js";
-// import "shepherd.js/dist/css/shepherd.css";
 import { analytics } from "@/services/analytics";
 import { TUTORIAL_CONFIG } from "./constants";
 import { createTutorialSteps } from "./steps";

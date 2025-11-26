@@ -6,6 +6,11 @@ export const BLOCK_IDS = {
 } as const;
 
 export const TUTORIAL_SELECTORS = {
+  // Custom nodes - These are all before saving
+  INPUT_NODE: '[data-id="custom-node-2"]',
+  OUTPUT_NODE: '[data-id="custom-node-3 "]',
+  CALCULATOR_NODE: '[data-id="custom-node-1"]',
+
   // Block Menu
   BLOCKS_TRIGGER: '[data-id="blocks-control-popover-trigger"]',
   BLOCKS_CONTENT: '[data-id="blocks-control-popover-content"]',
@@ -69,7 +74,11 @@ export const TUTORIAL_SELECTORS = {
   NODE_OUTPUT_HANDLE: '[data-handlepos="right"]',
   NODE_INPUT_HANDLE: "[data-nodeid]",
   NODE_LATEST_OUTPUT: '[data-id="latest-output"]',
-  NODE_FORM_CONTAINER: '[data-id^="form-creator-container-"]', // <-- Add this line
+  // These are the Id's of the nodes before saving
+  CALCULATOR_NODE_FORM_CONTAINER: '[data-id^="form-creator-container-1-node"]', // <-- Add this line
+  AGENT_INPUT_NODE_FORM_CONTAINER: '[data-id^="form-creator-container-2-node"]', // <-- Add this line
+  AGENT_OUTPUT_NODE_FORM_CONTAINER:
+    '[data-id^="form-creator-container-3-node"]', // <-- Add this line
 
   // Execution badges
   BADGE_QUEUED: '[data-id^="badge-"][data-id$="-QUEUED"]',
