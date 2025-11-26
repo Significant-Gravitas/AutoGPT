@@ -72,10 +72,29 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     if (!initializationPromise) {
       initializationPromise = (async () => {
-        if (!get().hasLoadedUser) {
+        // Always fetch user if we haven't loaded it yet, or if user is null but hasLoadedUser is true
+        // This handles the case where hasLoadedUser might be stale after logout/login
+        if (!get().hasLoadedUser || !get().user) {
           set({ isUserLoading: true });
           const result = await fetchUser();
           set(result);
+
+          // If fetchUser didn't return a user, validate the session to ensure we have the latest state
+          // This handles race conditions after login where cookies might not be immediately available
+          if (!result.user) {
+            const validationResult = await validateSessionHelper({
+              pathname: params.pathname,
+              currentUser: null,
+            });
+
+            if (validationResult.user && validationResult.isValid) {
+              set({
+                user: validationResult.user,
+                hasLoadedUser: true,
+                isUserLoading: false,
+              });
+            }
+          }
         } else {
           set({ isUserLoading: false });
         }
@@ -104,7 +123,6 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
   }
 
   async function logOut(params?: LogOutParams): Promise<void> {
-    const router = params?.router ?? get().routerRef;
     const api = params?.api ?? get().apiRef;
     const options = params?.options ?? {};
 
@@ -128,11 +146,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
       isUserLoading: false,
     });
 
-    const result = await serverLogout(options);
-
-    if (result.success && router) {
-      router.push("/login");
-    }
+    await serverLogout(options);
   }
 
   async function validateSessionInternal(

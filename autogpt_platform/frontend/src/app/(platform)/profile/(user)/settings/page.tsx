@@ -1,4 +1,5 @@
 "use client";
+
 import { SettingsForm } from "@/app/(platform)/profile/(user)/settings/components/SettingsForm/SettingsForm";
 import { useTimezoneDetection } from "@/app/(platform)/profile/(user)/settings/useTimezoneDetection";
 import {
@@ -6,47 +7,65 @@ import {
   useGetV1GetUserTimezone,
 } from "@/app/api/__generated__/endpoints/auth/auth";
 import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { redirect } from "next/navigation";
 import { useEffect } from "react";
 import SettingsLoading from "./loading";
 
 export default function SettingsPage() {
+  const { user } = useSupabase();
+
   const {
     data: preferences,
     isError: preferencesError,
     isLoading: preferencesLoading,
+    error: preferencesErrorData,
+    refetch: refetchPreferences,
   } = useGetV1GetNotificationPreferences({
-    query: { select: (res) => (res.status === 200 ? res.data : null) },
+    query: {
+      enabled: !!user,
+      select: (res) => (res.status === 200 ? res.data : null),
+    },
   });
 
   const { data: timezone, isLoading: timezoneLoading } =
     useGetV1GetUserTimezone({
       query: {
+        enabled: !!user,
         select: (res) => {
           return res.status === 200 ? String(res.data.timezone) : "not-set";
         },
       },
     });
 
-  useTimezoneDetection(timezone);
-
-  const { user, isUserLoading } = useSupabase();
+  useTimezoneDetection(!!user ? timezone : undefined);
 
   useEffect(() => {
     document.title = "Settings – AutoGPT Platform";
   }, []);
 
-  if (preferencesLoading || isUserLoading || timezoneLoading) {
+  if (preferencesError) {
+    return (
+      <div className="container max-w-2xl py-10">
+        <ErrorCard
+          responseError={
+            preferencesErrorData
+              ? {
+                  detail: preferencesErrorData.detail,
+                }
+              : undefined
+          }
+          context="settings"
+          onRetry={() => {
+            void refetchPreferences();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (preferencesLoading || timezoneLoading || !user || !preferences) {
     return <SettingsLoading />;
-  }
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  if (preferencesError || !preferences || !preferences.preferences) {
-    return "Error..."; // TODO: Will use a Error reusable components from Block Menu redesign
   }
 
   return (
