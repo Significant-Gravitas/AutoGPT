@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
@@ -69,6 +70,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description="Maximum number of workers to use for graph execution.",
+    )
+
+    requeue_by_republishing: bool = Field(
+        default=True,
+        description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
     )
 
     # FastAPI Thread Pool Configuration
@@ -412,6 +418,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Name of the event bus",
     )
 
+    notification_event_bus_name: str = Field(
+        default="notification_event",
+        description="Name of the websocket notification event bus",
+    )
+
     trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
@@ -422,34 +433,62 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: List[str] = Field(default=["http://localhost:3000"])
+    backend_cors_allow_origins: List[str] = Field(
+        default=["http://localhost:3000"],
+        description="Allowed Origins for CORS. Supports exact URLs (http/https) or entries prefixed with "
+        '"regex:" to match via regular expression.',
+    )
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
-        out = []
-        port = None
-        has_localhost = False
-        has_127_0_0_1 = False
-        for url in v:
-            url = url.strip()
-            if url.startswith(("http://", "https://")):
-                if "localhost" in url:
-                    port = url.split(":")[2]
-                    has_localhost = True
-                if "127.0.0.1" in url:
-                    port = url.split(":")[2]
-                    has_127_0_0_1 = True
-                out.append(url)
-            else:
-                raise ValueError(f"Invalid URL: {url}")
+        validated: List[str] = []
+        localhost_ports: set[str] = set()
+        ip127_ports: set[str] = set()
 
-        if has_127_0_0_1 and not has_localhost:
-            out.append(f"http://localhost:{port}")
-        if has_localhost and not has_127_0_0_1:
-            out.append(f"http://127.0.0.1:{port}")
+        for raw_origin in v:
+            origin = raw_origin.strip()
+            if origin.startswith("regex:"):
+                pattern = origin[len("regex:") :]
+                if not pattern:
+                    raise ValueError("Invalid regex pattern: pattern cannot be empty")
+                try:
+                    re.compile(pattern)
+                except re.error as exc:
+                    raise ValueError(
+                        f"Invalid regex pattern '{pattern}': {exc}"
+                    ) from exc
+                validated.append(origin)
+                continue
 
-        return out
+            if origin.startswith(("http://", "https://")):
+                if "localhost" in origin:
+                    try:
+                        port = origin.split(":")[2]
+                        localhost_ports.add(port)
+                    except IndexError as exc:
+                        raise ValueError(
+                            "localhost origins must include an explicit port, e.g. http://localhost:3000"
+                        ) from exc
+                if "127.0.0.1" in origin:
+                    try:
+                        port = origin.split(":")[2]
+                        ip127_ports.add(port)
+                    except IndexError as exc:
+                        raise ValueError(
+                            "127.0.0.1 origins must include an explicit port, e.g. http://127.0.0.1:3000"
+                        ) from exc
+                validated.append(origin)
+                continue
+
+            raise ValueError(f"Invalid URL or regex origin: {origin}")
+
+        for port in ip127_ports - localhost_ports:
+            validated.append(f"http://localhost:{port}")
+        for port in localhost_ports - ip127_ports:
+            validated.append(f"http://127.0.0.1:{port}")
+
+        return validated
 
     @classmethod
     def settings_customise_sources(
@@ -496,16 +535,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     unsubscribe_secret_key: str = Field(
         default="",
         description="The secret key to use for the unsubscribe user by token",
-    )
-
-    # Cloudflare Turnstile credentials
-    turnstile_secret_key: str = Field(
-        default="",
-        description="Cloudflare Turnstile backend secret key",
-    )
-    turnstile_verify_url: str = Field(
-        default="https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        description="Cloudflare Turnstile verify URL",
     )
 
     # OAuth server credentials for integrations

@@ -1,11 +1,11 @@
 // auth.spec.ts
 
 import test from "@playwright/test";
-import { getTestUser } from "./utils/auth";
+import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
 import { hasUrl, isHidden, isVisible } from "./utils/assertion";
+import { getTestUser } from "./utils/auth";
 import { getSelectors } from "./utils/selectors";
-import { BuildPage } from "./pages/build.page";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/login");
@@ -170,4 +170,30 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Clean up
   await page1.close();
   await page2.close();
+});
+
+test("logged in user is redirected from /login to /marketplace", async ({
+  page,
+}) => {
+  const testUser = await getTestUser();
+  const loginPage = new LoginPage(page);
+
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
+
+  await page.goto("/login");
+  await hasUrl(page, "/marketplace");
+});
+
+test("logged in user is redirected from /signup to /marketplace", async ({
+  page,
+}) => {
+  const testUser = await getTestUser();
+  const loginPage = new LoginPage(page);
+
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
+
+  await page.goto("/signup");
+  await hasUrl(page, "/marketplace");
 });

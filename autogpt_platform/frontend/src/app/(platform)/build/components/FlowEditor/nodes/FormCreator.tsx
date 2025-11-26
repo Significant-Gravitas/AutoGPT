@@ -10,10 +10,14 @@ export const FormCreator = React.memo(
     jsonSchema,
     nodeId,
     uiType,
+    showHandles = true,
+    className,
   }: {
     jsonSchema: RJSFSchema;
     nodeId: string;
     uiType: BlockUIType;
+    showHandles?: boolean;
+    className?: string;
   }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
     const getHardCodedValues = useNodeStore(
@@ -29,18 +33,20 @@ export const FormCreator = React.memo(
     const initialValues = getHardCodedValues(nodeId);
 
     return (
-      <FormRenderer
-        jsonSchema={jsonSchema}
-        handleChange={handleChange}
-        uiSchema={uiSchema}
-        initialValues={initialValues}
-        formContext={{
-          nodeId: nodeId,
-          uiType: uiType,
-          showHandles: true,
-          size: "small",
-        }}
-      />
+      <div className={className}>
+        <FormRenderer
+          jsonSchema={jsonSchema}
+          handleChange={handleChange}
+          uiSchema={uiSchema}
+          initialValues={initialValues}
+          formContext={{
+            nodeId: nodeId,
+            uiType: uiType,
+            showHandles: showHandles,
+            size: "small",
+          }}
+        />
+      </div>
     );
   },
 );

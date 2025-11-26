@@ -19,6 +19,8 @@ export const useRunInputDialog = ({
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
   );
+
+  const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [credentialValues, setCredentialValues] = useState<
     Record<string, CredentialsMetaInput>
@@ -41,7 +43,6 @@ export const useRunInputDialog = ({
           setQueryStates({
             flowExecutionID: id,
           });
-          setIsGraphRunning(false);
         },
         onError: (error) => {
           setIsGraphRunning(false);
@@ -77,14 +78,13 @@ export const useRunInputDialog = ({
     return dynamicUiSchema;
   }, [credentialsSchema]);
 
-  const handleManualRun = () => {
-    setIsOpen(false);
-    setIsGraphRunning(true);
-    executeGraph({
+  const handleManualRun = async () => {
+    await executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
       data: { inputs: inputValues, credentials_inputs: credentialValues },
     });
+    setIsOpen(false);
   };
 
   const handleInputChange = (inputValues: Record<string, any>) => {
@@ -104,5 +104,7 @@ export const useRunInputDialog = ({
     handleInputChange,
     handleCredentialChange,
     handleManualRun,
+    openCronSchedulerDialog,
+    setOpenCronSchedulerDialog,
   };
 };

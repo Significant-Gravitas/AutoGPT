@@ -10,7 +10,7 @@ from backend.data.execution import (
     NodeExecutionEvent,
 )
 from backend.server.conn_manager import ConnectionManager
-from backend.server.model import WSMessage, WSMethod
+from backend.server.model import NotificationPayload, WSMessage, WSMethod
 
 
 @pytest.fixture
@@ -29,8 +29,9 @@ def mock_websocket() -> AsyncMock:
 async def test_connect(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager.connect_socket(mock_websocket)
+    await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     assert mock_websocket in connection_manager.active_connections
+    assert mock_websocket in connection_manager.user_connections["user-1"]
     mock_websocket.accept.assert_called_once()
 
 
@@ -39,11 +40,13 @@ def test_disconnect(
 ) -> None:
     connection_manager.active_connections.add(mock_websocket)
     connection_manager.subscriptions["test_channel_42"] = {mock_websocket}
+    connection_manager.user_connections["user-1"] = {mock_websocket}
 
-    connection_manager.disconnect_socket(mock_websocket)
+    connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
 
     assert mock_websocket not in connection_manager.active_connections
     assert mock_websocket not in connection_manager.subscriptions["test_channel_42"]
+    assert "user-1" not in connection_manager.user_connections
 
 
 @pytest.mark.asyncio
@@ -207,3 +210,22 @@ async def test_send_execution_result_no_subscribers(
     await connection_manager.send_execution_update(result)
 
     mock_websocket.send_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_notification(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    connection_manager.user_connections["user-1"] = {mock_websocket}
+
+    await connection_manager.send_notification(
+        user_id="user-1", payload=NotificationPayload(type="info", event="hey")
+    )
+
+    mock_websocket.send_text.assert_called_once()
+    sent_message = mock_websocket.send_text.call_args[0][0]
+    expected_message = WSMessage(
+        method=WSMethod.NOTIFICATION,
+        data={"type": "info", "event": "hey"},
+    ).model_dump_json()
+    assert sent_message == expected_message

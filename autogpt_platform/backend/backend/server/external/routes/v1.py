@@ -106,10 +106,6 @@ async def get_graph_execution_results(
     graph_exec_id: str,
     api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> GraphExecutionResult:
-    graph = await graph_db.get_graph(graph_id, user_id=api_key.user_id)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
     graph_exec = await execution_db.get_graph_execution(
         user_id=api_key.user_id,
         execution_id=graph_exec_id,
@@ -119,6 +115,13 @@ async def get_graph_execution_results(
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
+
+    if not await graph_db.get_graph(
+        graph_id=graph_exec.graph_id,
+        version=graph_exec.graph_version,
+        user_id=api_key.user_id,
+    ):
+        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     return GraphExecutionResult(
         execution_id=graph_exec_id,

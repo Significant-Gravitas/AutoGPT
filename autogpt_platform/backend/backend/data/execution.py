@@ -175,6 +175,10 @@ class GraphExecutionMeta(BaseDbModel):
             default=None,
             description="AI-generated summary of what the agent did",
         )
+        correctness_score: float | None = Field(
+            default=None,
+            description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
+        )
 
         def to_db(self) -> GraphExecutionStats:
             return GraphExecutionStats(
@@ -187,6 +191,13 @@ class GraphExecutionMeta(BaseDbModel):
                 node_error_count=self.node_error_count,
                 error=self.error,
                 activity_status=self.activity_status,
+                correctness_score=self.correctness_score,
+            )
+
+        def without_activity_features(self) -> "GraphExecutionMeta.Stats":
+            """Return a copy of stats with activity features (activity_status, correctness_score) set to None."""
+            return self.model_copy(
+                update={"activity_status": None, "correctness_score": None}
             )
 
     stats: Stats | None
@@ -244,6 +255,7 @@ class GraphExecutionMeta(BaseDbModel):
                         else stats.error
                     ),
                     activity_status=stats.activity_status,
+                    correctness_score=stats.correctness_score,
                 )
                 if stats
                 else None
@@ -448,6 +460,7 @@ class NodeExecutionResult(BaseModel):
 async def get_graph_executions(
     graph_exec_id: Optional[str] = None,
     graph_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
     user_id: Optional[str] = None,
     statuses: Optional[list[ExecutionStatus]] = None,
     created_time_gte: Optional[datetime] = None,
@@ -464,6 +477,8 @@ async def get_graph_executions(
         where_filter["userId"] = user_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
+    if graph_version is not None:
+        where_filter["agentGraphVersion"] = graph_version
     if created_time_gte or created_time_lte:
         where_filter["createdAt"] = {
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),

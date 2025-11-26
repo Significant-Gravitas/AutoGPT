@@ -1,4 +1,11 @@
 "use client";
+import { StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { isEmptyOrWhitespace } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
+import OnboardingAgentCard from "../components/OnboardingAgentCard";
 import OnboardingButton from "../components/OnboardingButton";
 import {
   OnboardingFooter,
@@ -6,28 +13,22 @@ import {
   OnboardingStep,
 } from "../components/OnboardingStep";
 import { OnboardingText } from "../components/OnboardingText";
-import OnboardingAgentCard from "../components/OnboardingAgentCard";
-import { useEffect, useState } from "react";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { StoreAgentDetails } from "@/lib/autogpt-server-api";
-import { isEmptyOrWhitespace } from "@/lib/utils";
-import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
-import { finishOnboarding } from "../6-congrats/actions";
 
 export default function Page() {
-  const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
+  const { state, updateState, completeStep } = useOnboarding(4, "INTEGRATIONS");
   const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
   const api = useBackendAPI();
+  const router = useRouter();
 
   useEffect(() => {
     api.getOnboardingAgents().then((agents) => {
       if (agents.length < 2) {
-        finishOnboarding();
+        completeStep("CONGRATS");
+        router.replace("/");
       }
-
       setAgents(agents);
     });
-  }, [api, setAgents]);
+  }, []);
 
   useEffect(() => {
     // Deselect agent if it's not in the list of agents
