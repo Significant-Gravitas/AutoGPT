@@ -252,9 +252,9 @@ async def execute_node(
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
-    except Exception:
+    except Exception as ex:
         # Capture exception WITH context still set before restoring scope
-        sentry_sdk.capture_exception(scope=scope)
+        sentry_sdk.capture_exception(error=ex, scope=scope)
         sentry_sdk.flush()  # Ensure it's sent before we restore scope
         # Re-raise to maintain normal error flow
         raise
@@ -322,7 +322,9 @@ async def _enqueue_next_nodes(
         next_node_id = node_link.sink_id
 
         output_name, _ = output
-        next_data = parse_execution_output(output, next_output_name)
+        next_data = parse_execution_output(
+            output, next_output_name, next_node_id, next_input_name
+        )
         if next_data is None and output_name != next_output_name:
             return enqueued_executions
         next_node = await db_client.get_node(next_node_id)

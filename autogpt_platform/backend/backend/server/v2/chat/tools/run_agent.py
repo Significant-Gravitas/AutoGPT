@@ -248,7 +248,7 @@ class RunAgentTool(BaseTool):
         )
 
         return ExecutionStartedResponse(
-            message="Agent execution successfully started. Do not run this tool again unless specifically asked to run the agent again.",
+            message=f"Agent execution successfully started. You can add a link to the agent at: /library/agents/{library_agent.id}. Do not run this tool again unless specifically asked to run the agent again.",
             session_id=session_id,
             execution_id=execution.id,
             graph_id=library_agent.graph_id,

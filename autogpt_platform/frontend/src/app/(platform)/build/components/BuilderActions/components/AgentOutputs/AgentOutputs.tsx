@@ -1,32 +1,141 @@
-import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { LogOutIcon } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/__legacy__/ui/sheet";
+import { BuilderActionButton } from "../BuilderActionButton";
+import { BookOpenIcon } from "@phosphor-icons/react";
+import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
+import { useShallow } from "zustand/react/shallow";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { BlockUIType } from "@/app/(platform)/build/components/types";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
+import { Label } from "@/components/__legacy__/ui/label";
+import { useMemo } from "react";
+import {
+  globalRegistry,
+  OutputItem,
+  OutputActions,
+} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
 
-export const AgentOutputs = () => {
+export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
+  const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
+  const nodes = useNodeStore(useShallow((state) => state.nodes));
+
+  const outputs = useMemo(() => {
+    const outputNodes = nodes.filter(
+      (node) => node.data.uiType === BlockUIType.OUTPUT,
+    );
+
+    return outputNodes
+      .map((node) => {
+        const executionResult = node.data.nodeExecutionResult;
+        const outputData = executionResult?.output_data?.output;
+
+        const renderer = globalRegistry.getRenderer(outputData);
+
+        return {
+          metadata: {
+            name: node.data.hardcodedValues?.name || "Output",
+            description:
+              node.data.hardcodedValues?.description || "Output from the agent",
+          },
+          value: outputData ?? "No output yet",
+          renderer,
+        };
+      })
+      .filter(
+        (
+          output,
+        ): output is typeof output & {
+          renderer: NonNullable<typeof output.renderer>;
+        } => output.renderer !== null,
+      );
+  }, [nodes]);
+
+  const actionItems = useMemo(() => {
+    return outputs.map((output) => ({
+      value: output.value,
+      metadata: {},
+      renderer: output.renderer,
+    }));
+  }, [outputs]);
+
   return (
-    <>
+    <Sheet>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            {/* Todo: Implement Agent Outputs */}
-            <Button
-              variant="primary"
-              size="large"
-              className={"relative min-w-0 border-none text-lg"}
-            >
-              <LogOutIcon className="size-6" />
-            </Button>
+            <SheetTrigger asChild>
+              <BuilderActionButton disabled={!flowID || !hasOutputs()}>
+                <BookOpenIcon className="size-6" />
+              </BuilderActionButton>
+            </SheetTrigger>
           </TooltipTrigger>
           <TooltipContent>
             <p>Agent Outputs</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-    </>
+      <SheetContent className="flex h-full w-full flex-col overflow-hidden sm:max-w-[600px]">
+        <SheetHeader className="px-2 py-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <SheetTitle className="text-xl">Run Outputs</SheetTitle>
+              <SheetDescription className="mt-1 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="rounded-md bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
+                    Beta
+                  </span>
+                  <span>This feature is in beta and may contain bugs</span>
+                </span>
+              </SheetDescription>
+            </div>
+            {outputs.length > 0 && <OutputActions items={actionItems} />}
+          </div>
+        </SheetHeader>
+        <div className="flex-grow overflow-y-auto px-2 py-2">
+          <ScrollArea className="h-full overflow-auto pr-4">
+            <div className="space-y-6">
+              {outputs && outputs.length > 0 ? (
+                outputs.map((output, i) => (
+                  <div key={i} className="space-y-2">
+                    <div>
+                      <Label className="text-base font-semibold">
+                        {output.metadata.name || "Unnamed Output"}
+                      </Label>
+                      {output.metadata.description && (
+                        <Label className="mt-1 block text-sm text-gray-600">
+                          {output.metadata.description}
+                        </Label>
+                      )}
+                    </div>
+
+                    <OutputItem
+                      value={output.value}
+                      metadata={{}}
+                      renderer={output.renderer}
+                    />
+                  </div>
+                ))
+              ) : (
+                <div className="flex h-full items-center justify-center text-gray-500">
+                  <p>No output blocks available.</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 };

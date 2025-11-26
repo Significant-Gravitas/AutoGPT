@@ -3892,6 +3892,12 @@
         "summary": "Get Execution Diagnostics",
         "description": "Get comprehensive diagnostic information about execution status.\n\nReturns all execution metrics including:\n- Current state (running, queued)\n- Orphaned executions (>24h old, likely not in executor)\n- Failure metrics (1h, 24h, rate)\n- Long-running detection (stuck >1h, >24h)\n- Stuck queued detection\n- Throughput metrics (completions/hour)\n- RabbitMQ queue depths",
         "operationId": "getV2Get execution diagnostics",
+    "/api/executions/admin/execution_analytics/config": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Get Execution Analytics Configuration",
+        "description": "Get the configuration for execution analytics including:\n- Available AI models with metadata\n- Default system and user prompts\n- Recommended model selection",
+        "operationId": "getV2Get execution analytics configuration",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3899,6 +3905,7 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExecutionDiagnosticsResponse"
+                  "$ref": "#/components/schemas/ExecutionAnalyticsConfig"
                 }
               }
             }
@@ -4268,6 +4275,20 @@
               "schema": { "$ref": "#/components/schemas/StopExecutionsRequest" }
             }
           },
+    "/api/executions/admin/execution_analytics": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Generate Execution Analytics",
+        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
+        "operationId": "postV2Generate execution analytics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionAnalyticsRequest"
+              }
+            }
+          },
           "required": true
         },
         "responses": {
@@ -4277,6 +4298,7 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RequeueExecutionResponse"
+                  "$ref": "#/components/schemas/ExecutionAnalyticsResponse"
                 }
               }
             }
@@ -5431,44 +5453,6 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/turnstile/verify": {
-      "post": {
-        "tags": ["v2", "turnstile"],
-        "summary": "Verify Turnstile Token",
-        "description": "Verify a Cloudflare Turnstile token.\nThis endpoint verifies a token returned by the Cloudflare Turnstile challenge\non the client side. It returns whether the verification was successful.",
-        "operationId": "postV2Verify turnstile token",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TurnstileVerifyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TurnstileVerifyResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
       }
     },
     "/api/email/unsubscribe": {
@@ -6647,6 +6631,151 @@
             ],
             "title": "Failed At"
           },
+      "ExecutionAnalyticsConfig": {
+        "properties": {
+          "available_models": {
+            "items": { "$ref": "#/components/schemas/ModelInfo" },
+            "type": "array",
+            "title": "Available Models"
+          },
+          "default_system_prompt": {
+            "type": "string",
+            "title": "Default System Prompt"
+          },
+          "default_user_prompt": {
+            "type": "string",
+            "title": "Default User Prompt"
+          },
+          "recommended_model": {
+            "type": "string",
+            "title": "Recommended Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available_models",
+          "default_system_prompt",
+          "default_user_prompt",
+          "recommended_model"
+        ],
+        "title": "ExecutionAnalyticsConfig"
+      },
+      "ExecutionAnalyticsRequest": {
+        "properties": {
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Graph ID to analyze"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version",
+            "description": "Optional graph version"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id",
+            "description": "Optional user ID filter"
+          },
+          "created_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created After",
+            "description": "Optional created date lower bound"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Model to use for generation",
+            "default": "gpt-4o-mini"
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "description": "Batch size for concurrent processing",
+            "default": 10
+          },
+          "system_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "System Prompt",
+            "description": "Custom system prompt (default: built-in prompt)"
+          },
+          "user_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Prompt",
+            "description": "Custom user prompt with {{GRAPH_NAME}} and {{EXECUTION_DATA}} placeholders (default: built-in prompt)"
+          },
+          "skip_existing": {
+            "type": "boolean",
+            "title": "Skip Existing",
+            "description": "Whether to skip executions that already have activity status and correctness score",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["graph_id"],
+        "title": "ExecutionAnalyticsRequest"
+      },
+      "ExecutionAnalyticsResponse": {
+        "properties": {
+          "total_executions": {
+            "type": "integer",
+            "title": "Total Executions"
+          },
+          "processed_executions": {
+            "type": "integer",
+            "title": "Processed Executions"
+          },
+          "successful_analytics": {
+            "type": "integer",
+            "title": "Successful Analytics"
+          },
+          "failed_analytics": {
+            "type": "integer",
+            "title": "Failed Analytics"
+          },
+          "skipped_executions": {
+            "type": "integer",
+            "title": "Skipped Executions"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionAnalyticsResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_executions",
+          "processed_executions",
+          "successful_analytics",
+          "failed_analytics",
+          "skipped_executions",
+          "results"
+        ],
+        "title": "ExecutionAnalyticsResponse"
+      },
+      "ExecutionAnalyticsResult": {
+        "properties": {
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "version_id": { "type": "integer", "title": "Version Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "exec_id": { "type": "string", "title": "Exec Id" },
+          "summary_text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary Text"
+          },
+          "score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Score"
+          },
+          "status": { "type": "string", "title": "Status" },
           "error_message": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Message"
@@ -6682,6 +6811,15 @@
         "required": ["executions", "total"],
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
+          "agent_id",
+          "version_id",
+          "user_id",
+          "exec_id",
+          "summary_text",
+          "score",
+          "status"
+        ],
+        "title": "ExecutionAnalyticsResult"
       },
       "Graph": {
         "properties": {
@@ -6825,9 +6963,17 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "input_data": {
             "additionalProperties": true,
@@ -7698,6 +7844,16 @@
         "type": "object",
         "required": ["query", "response"],
         "title": "Message"
+      },
+      "ModelInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "provider": { "type": "string", "title": "Provider" }
+        },
+        "type": "object",
+        "required": ["value", "label", "provider"],
+        "title": "ModelInfo"
       },
       "MyAgent": {
         "properties": {
@@ -10132,57 +10288,6 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
-      },
-      "TurnstileVerifyRequest": {
-        "properties": {
-          "token": {
-            "type": "string",
-            "title": "Token",
-            "description": "The Turnstile token to verify"
-          },
-          "action": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Action",
-            "description": "The action that the user is attempting to perform"
-          }
-        },
-        "type": "object",
-        "required": ["token"],
-        "title": "TurnstileVerifyRequest",
-        "description": "Request model for verifying a Turnstile token."
-      },
-      "TurnstileVerifyResponse": {
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "title": "Success",
-            "description": "Whether the token verification was successful"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error",
-            "description": "Error message if verification failed"
-          },
-          "challenge_timestamp": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Challenge Timestamp",
-            "description": "Timestamp of the challenge (ISO format)"
-          },
-          "hostname": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Hostname",
-            "description": "Hostname of the site where the challenge was solved"
-          },
-          "action": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Action",
-            "description": "The action associated with this verification"
-          }
-        },
-        "type": "object",
-        "required": ["success"],
-        "title": "TurnstileVerifyResponse",
-        "description": "Response model for the Turnstile verification endpoint."
       },
       "UpdatePermissionsRequest": {
         "properties": {

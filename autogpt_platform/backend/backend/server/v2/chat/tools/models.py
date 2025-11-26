@@ -66,6 +66,7 @@ class AgentCarouselResponse(ToolResponseBase):
     title: str = "Available Agents"
     agents: list[AgentInfo]
     count: int
+    name: str = "agent_carousel"
 
 
 class NoResultsResponse(ToolResponseBase):
@@ -73,6 +74,7 @@ class NoResultsResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.NO_RESULTS
     suggestions: list[str] = []
+    name: str = "no_results"
 
 
 # Agent details models

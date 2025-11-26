@@ -2,12 +2,13 @@ import { create } from "zustand";
 import isEqual from "lodash/isEqual";
 
 import { CustomNode } from "../components/FlowEditor/nodes/CustomNode/CustomNode";
-import { Connection, useEdgeStore } from "./edgeStore";
+import { useEdgeStore } from "./edgeStore";
 import { useNodeStore } from "./nodeStore";
+import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 
 type HistoryState = {
   nodes: CustomNode[];
-  connections: Connection[];
+  edges: CustomEdge[];
 };
 
 type HistoryStore = {
@@ -15,6 +16,7 @@ type HistoryStore = {
   future: HistoryState[];
   undo: () => void;
   redo: () => void;
+  initializeHistory: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
   pushState: (state: HistoryState) => void;
@@ -24,7 +26,7 @@ type HistoryStore = {
 const MAX_HISTORY = 50;
 
 export const useHistoryStore = create<HistoryStore>((set, get) => ({
-  past: [{ nodes: [], connections: [] }],
+  past: [{ nodes: [], edges: [] }],
   future: [],
 
   pushState: (state: HistoryState) => {
@@ -41,6 +43,16 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     }));
   },
 
+  initializeHistory: () => {
+    const currentNodes = useNodeStore.getState().nodes;
+    const currentEdges = useEdgeStore.getState().edges;
+
+    set({
+      past: [{ nodes: currentNodes, edges: currentEdges }],
+      future: [],
+    });
+  },
+
   undo: () => {
     const { past, future } = get();
     if (past.length <= 1) return;
@@ -50,7 +62,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const previousState = past[past.length - 2];
 
     useNodeStore.getState().setNodes(previousState.nodes);
-    useEdgeStore.getState().setConnections(previousState.connections);
+    useEdgeStore.getState().setEdges(previousState.edges);
 
     set({
       past: past.slice(0, -1),
@@ -65,7 +77,7 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
     const nextState = future[0];
 
     useNodeStore.getState().setNodes(nextState.nodes);
-    useEdgeStore.getState().setConnections(nextState.connections);
+    useEdgeStore.getState().setEdges(nextState.edges);
 
     set({
       past: [...past, nextState],
@@ -76,5 +88,5 @@ export const useHistoryStore = create<HistoryStore>((set, get) => ({
   canUndo: () => get().past.length > 1,
   canRedo: () => get().future.length > 0,
 
-  clear: () => set({ past: [{ nodes: [], connections: [] }], future: [] }),
+  clear: () => set({ past: [{ nodes: [], edges: [] }], future: [] }),
 }));

@@ -25,6 +25,7 @@ export type ChatMessageData =
     }
   | {
       type: "login_needed";
+      toolName: string;
       message: string;
       sessionId: string;
       agentInfo?: {
@@ -36,6 +37,7 @@ export type ChatMessageData =
     }
   | {
       type: "credentials_needed";
+      toolName: string;
       credentials: Array<{
         provider: string;
         providerName: string;
@@ -49,6 +51,7 @@ export type ChatMessageData =
     }
   | {
       type: "no_results";
+      toolName: string;
       message: string;
       suggestions?: string[];
       sessionId?: string;
@@ -56,6 +59,7 @@ export type ChatMessageData =
     }
   | {
       type: "agent_carousel";
+      toolName: string;
       agents: Array<{
         id: string;
         name: string;
@@ -67,6 +71,7 @@ export type ChatMessageData =
     }
   | {
       type: "execution_started";
+      toolName: string;
       executionId: string;
       agentName?: string;
       message?: string;

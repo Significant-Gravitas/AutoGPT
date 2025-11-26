@@ -38,6 +38,7 @@ import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 import { AgentRunOutputView } from "./agent-run-output-view";
 import { analytics } from "@/services/analytics";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function AgentRunDetailsView({
   agent,
@@ -63,6 +64,8 @@ export function AgentRunDetailsView({
     () => agentRunStatusMap[run.status],
     [run],
   );
+
+  const { completeStep } = useOnboarding();
 
   const toastOnFail = useToastOnFail();
 
@@ -154,6 +157,7 @@ export function AgentRunDetailsView({
           name: graph.name,
           id: graph.id,
         });
+        completeStep("RE_RUN_AGENT");
         onRun(id);
       })
       .catch(toastOnFail("execute agent"));
@@ -305,10 +309,62 @@ export function AgentRunDetailsView({
                 </TooltipProvider>
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <p className="text-sm leading-relaxed text-neutral-700">
                 {run.stats.activity_status}
               </p>
+
+              {/* Correctness Score */}
+              {typeof run.stats.correctness_score === "number" && (
+                <div className="flex items-center gap-3 rounded-lg bg-neutral-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-neutral-600">
+                      Success Estimate:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="relative h-2 w-16 overflow-hidden rounded-full bg-neutral-200">
+                        <div
+                          className={`h-full transition-all ${
+                            run.stats.correctness_score >= 0.8
+                              ? "bg-green-500"
+                              : run.stats.correctness_score >= 0.6
+                                ? "bg-yellow-500"
+                                : run.stats.correctness_score >= 0.4
+                                  ? "bg-orange-500"
+                                  : "bg-red-500"
+                          }`}
+                          style={{
+                            width: `${Math.round(run.stats.correctness_score * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium">
+                        {Math.round(run.stats.correctness_score * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <IconCircleAlert className="size-4 cursor-help text-neutral-400 hover:text-neutral-600" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          AI-generated estimate of how well this execution
+                          achieved its intended purpose. This score indicates
+                          {run.stats.correctness_score >= 0.8
+                            ? " the agent was highly successful."
+                            : run.stats.correctness_score >= 0.6
+                              ? " the agent was mostly successful with minor issues."
+                              : run.stats.correctness_score >= 0.4
+                                ? " the agent was partially successful with some gaps."
+                                : " the agent had limited success with significant issues."}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

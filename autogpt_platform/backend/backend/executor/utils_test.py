@@ -111,6 +111,35 @@ def test_parse_execution_output():
         parse_execution_output(output, "result_@_attr_$_0_#_key") is None
     )  # Should fail at @_attr
 
+    # Test case 7: Tool pin routing with matching node ID and pin name
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "tools", "node123", "query") == "search term"
+
+    # Test case 8: Tool pin routing with node ID mismatch
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "tools", "node456", "query") is None
+
+    # Test case 9: Tool pin routing with pin name mismatch
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "tools", "node123", "different_pin") is None
+
+    # Test case 10: Tool pin routing with complex field names
+    output = ("tools_^_node789_~_nested_field", {"key": "value"})
+    result = parse_execution_output(output, "tools", "node789", "nested_field")
+    assert result == {"key": "value"}
+
+    # Test case 11: Tool pin routing missing required parameters should raise error
+    output = ("tools_^_node123_~_query", "search term")
+    try:
+        parse_execution_output(output, "tools", "node123")  # Missing sink_pin_name
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "must be provided for tool pin routing" in str(e)
+
+    # Test case 12: Non-tool pin with similar pattern should use normal logic
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "different_name", "node123", "query") is None
+
 
 def test_merge_execution_input():
     # Test case for basic list extraction

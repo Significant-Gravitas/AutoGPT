@@ -1,6 +1,5 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
-import ast
 import logging
 import re
 import secrets
@@ -94,6 +93,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1_MINI = "o1-mini"
     # GPT-5 models
     GPT5 = "gpt-5-2025-08-07"
+    GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
@@ -107,6 +107,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
+    CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
@@ -130,6 +131,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
     GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
@@ -152,6 +154,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     GROK_4 = "x-ai/grok-4"
+    GROK_4_FAST = "x-ai/grok-4-fast"
+    GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
@@ -190,6 +195,7 @@ MODEL_METADATA = {
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
@@ -213,6 +219,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-4-sonnet-20250514
+    LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-opus-4-5-20251101
     LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-sonnet-4-5-20250929
@@ -242,6 +251,7 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
     LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
+    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
@@ -253,12 +263,12 @@ MODEL_METADATA = {
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
     LlmModel.DEEPSEEK_R1_0528: ModelMetadata("open_router", 163840, 163840),
-    LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 127000),
+    LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 8000),
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 8000),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
         "open_router",
         128000,
-        128000,
+        16000,
     ),
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
         "open_router", 131000, 4096
@@ -276,6 +286,9 @@ MODEL_METADATA = {
     LlmModel.META_LLAMA_4_SCOUT: ModelMetadata("open_router", 131072, 131072),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata("open_router", 1048576, 1000000),
     LlmModel.GROK_4: ModelMetadata("open_router", 256000, 256000),
+    LlmModel.GROK_4_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_4_1_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_CODE_FAST_1: ModelMetadata("open_router", 256000, 10000),
     LlmModel.KIMI_K2: ModelMetadata("open_router", 131000, 131000),
     LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata("open_router", 262144, 262144),
     LlmModel.QWEN3_CODER: ModelMetadata("open_router", 262144, 262144),
@@ -798,7 +811,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default="",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[dict] = SchemaField(
+        conversation_history: list[dict] | None = SchemaField(
             default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
@@ -905,7 +918,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
-        prompt = [json.to_dict(p) for p in input_data.conversation_history]
+        prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
 
         values = input_data.prompt_values
         if values:
@@ -1633,6 +1646,17 @@ class AIListGeneratorBlock(AIBlockBase):
             ge=1,
             le=5,
         )
+        force_json_output: bool = SchemaField(
+            title="Restrict LLM to pure JSON output",
+            default=False,
+            description=(
+                "Whether to force the LLM to produce a JSON-only response. "
+                "This can increase the block's reliability, "
+                "but may also reduce the quality of the response "
+                "because it prohibits the LLM from reasoning "
+                "before providing its JSON response."
+            ),
+        )
         max_tokens: int | None = SchemaField(
             advanced=True,
             default=None,
@@ -1645,7 +1669,7 @@ class AIListGeneratorBlock(AIBlockBase):
         )
 
     class Output(BlockSchemaOutput):
-        generated_list: List[str] = SchemaField(description="The generated list.")
+        generated_list: list[str] = SchemaField(description="The generated list.")
         list_item: str = SchemaField(
             description="Each individual item in the list.",
         )
@@ -1654,7 +1678,7 @@ class AIListGeneratorBlock(AIBlockBase):
     def __init__(self):
         super().__init__(
             id="9c0b0450-d199-458b-a731-072189dd6593",
-            description="Generate a Python list based on the given prompt using a Large Language Model (LLM).",
+            description="Generate a list of values based on the given prompt using a Large Language Model (LLM).",
             categories={BlockCategory.AI, BlockCategory.TEXT},
             input_schema=AIListGeneratorBlock.Input,
             output_schema=AIListGeneratorBlock.Output,
@@ -1671,6 +1695,7 @@ class AIListGeneratorBlock(AIBlockBase):
                 "model": LlmModel.GPT4O,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
+                "force_json_output": False,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -1687,7 +1712,13 @@ class AIListGeneratorBlock(AIBlockBase):
             ],
             test_mock={
                 "llm_call": lambda input_data, credentials: {
-                    "response": "['Zylora Prime', 'Kharon-9', 'Vortexia', 'Oceara', 'Draknos']"
+                    "list": [
+                        "Zylora Prime",
+                        "Kharon-9",
+                        "Vortexia",
+                        "Oceara",
+                        "Draknos",
+                    ]
                 },
             },
         )
@@ -1696,7 +1727,7 @@ class AIListGeneratorBlock(AIBlockBase):
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
-    ) -> dict[str, str]:
+    ) -> dict[str, Any]:
         llm_block = AIStructuredResponseGeneratorBlock()
         response = await llm_block.run_once(
             input_data, "response", credentials=credentials
@@ -1704,72 +1735,23 @@ class AIListGeneratorBlock(AIBlockBase):
         self.merge_llm_stats(llm_block)
         return response
 
-    @staticmethod
-    def string_to_list(string):
-        """
-        Converts a string representation of a list into an actual Python list object.
-        """
-        logger.debug(f"Converting string to list. Input string: {string}")
-        try:
-            # Use ast.literal_eval to safely evaluate the string
-            python_list = ast.literal_eval(string)
-            if isinstance(python_list, list):
-                logger.debug(f"Successfully converted string to list: {python_list}")
-                return python_list
-            else:
-                logger.error(f"The provided string '{string}' is not a valid list")
-                raise ValueError(f"The provided string '{string}' is not a valid list.")
-        except (SyntaxError, ValueError) as e:
-            logger.error(f"Failed to convert string to list: {e}")
-            raise ValueError("Invalid list format. Could not convert to list.")
-
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
 
-        # Check for API key
-        api_key_check = credentials.api_key.get_secret_value()
-        if not api_key_check:
-            raise ValueError("No LLM API key provided.")
+        # Create a proper expected format for the structured response generator
+        expected_format = {
+            "list": "A JSON array containing the generated string values"
+        }
+        if input_data.force_json_output:
+            # Add reasoning field for better performance
+            expected_format = {
+                "reasoning": "... (optional)",
+                **expected_format,
+            }
 
-        # Prepare the system prompt
-        sys_prompt = """You are a Python list generator. Your task is to generate a Python list based on the user's prompt. 
-            |Respond ONLY with a valid python list. 
-            |The list can contain strings, numbers, or nested lists as appropriate. 
-            |Do not include any explanations or additional text.
-
-            |Valid Example string formats:
-
-            |Example 1:
-            |```
-            |['1', '2', '3', '4']
-            |```
-
-            |Example 2:
-            |```
-            |[['1', '2'], ['3', '4'], ['5', '6']]
-            |```
-
-            |Example 3:
-            |```
-            |['1', ['2', '3'], ['4', ['5', '6']]]
-            |```
-
-            |Example 4:
-            |```
-            |['a', 'b', 'c']
-            |```
-
-            |Example 5:
-            |```
-            |['1', '2.5', 'string', 'True', ['False', 'None']]
-            |```
-
-            |Do not include any explanations or additional text, just respond with the list in the format specified above.
-            |Do not include code fences or any other formatting, just the raw list.
-            """
-        # If a focus is provided, add it to the prompt
+        # Build the prompt
         if input_data.focus:
             prompt = f"Generate a list with the following focus:\n<focus>\n\n{input_data.focus}</focus>"
         else:
@@ -1777,7 +1759,7 @@ class AIListGeneratorBlock(AIBlockBase):
             if input_data.source_data:
                 prompt = "Extract the main focus of the source data to a list.\ni.e if the source data is a news website, the focus would be the news stories rather than the social links in the footer."
             else:
-                # No focus or source data provided, generat a random list
+                # No focus or source data provided, generate a random list
                 prompt = "Generate a random list."
 
         # If the source data is provided, add it to the prompt
@@ -1787,63 +1769,56 @@ class AIListGeneratorBlock(AIBlockBase):
         else:
             prompt += "\n\nInvent the data to generate the list from."
 
-        for attempt in range(input_data.max_retries):
-            try:
-                logger.debug("Calling LLM")
-                llm_response = await self.llm_call(
-                    AIStructuredResponseGeneratorBlock.Input(
-                        sys_prompt=sys_prompt,
-                        prompt=prompt,
-                        credentials=input_data.credentials,
-                        model=input_data.model,
-                        expected_format={},  # Do not use structured response
-                        ollama_host=input_data.ollama_host,
-                    ),
-                    credentials=credentials,
-                )
+        # Use the structured response generator to handle all the complexity
+        response_obj = await self.llm_call(
+            AIStructuredResponseGeneratorBlock.Input(
+                sys_prompt=self.SYSTEM_PROMPT,
+                prompt=prompt,
+                credentials=input_data.credentials,
+                model=input_data.model,
+                expected_format=expected_format,
+                force_json_output=input_data.force_json_output,
+                retry=input_data.max_retries,
+                max_tokens=input_data.max_tokens,
+                ollama_host=input_data.ollama_host,
+            ),
+            credentials=credentials,
+        )
+        logger.debug(f"Response object: {response_obj}")
 
-                logger.debug(f"LLM response: {llm_response}")
+        # Extract the list from the response object
+        if isinstance(response_obj, dict) and "list" in response_obj:
+            parsed_list = response_obj["list"]
+        else:
+            # Fallback - treat the whole response as the list
+            parsed_list = response_obj
 
-                # Extract Response string
-                response_string = llm_response["response"]
-                logger.debug(f"Response string: {response_string}")
+        # Validate that we got a list
+        if not isinstance(parsed_list, list):
+            raise ValueError(
+                f"Expected a list, but got {type(parsed_list).__name__}: {parsed_list}"
+            )
 
-                # Convert the string to a Python list
-                logger.debug("Converting string to Python list")
-                parsed_list = self.string_to_list(response_string)
-                logger.debug(f"Parsed list: {parsed_list}")
+        logger.debug(f"Parsed list: {parsed_list}")
 
-                # If we reach here, we have a valid Python list
-                logger.debug("Successfully generated a valid Python list")
-                yield "generated_list", parsed_list
-                yield "prompt", self.prompt
+        # Yield the results
+        yield "generated_list", parsed_list
+        yield "prompt", self.prompt
 
-                # Yield each item in the list
-                for item in parsed_list:
-                    yield "list_item", item
-                return
+        # Yield each item in the list
+        for item in parsed_list:
+            yield "list_item", item
 
-            except Exception as e:
-                logger.error(f"Error in attempt {attempt + 1}: {str(e)}")
-                if attempt == input_data.max_retries - 1:
-                    logger.error(
-                        f"Failed to generate a valid Python list after {input_data.max_retries} attempts"
-                    )
-                    raise RuntimeError(
-                        f"Failed to generate a valid Python list after {input_data.max_retries} attempts. Last error: {str(e)}"
-                    )
-                else:
-                    # Add a retry prompt
-                    logger.debug("Preparing retry prompt")
-                    prompt = f"""
-                    The previous attempt failed due to `{e}`
-                    Generate a valid Python list based on the original prompt.
-                    Remember to respond ONLY with a valid Python list as per the format specified earlier.
-                    Original prompt: 
-                    ```{prompt}```
-                    
-                    Respond only with the list in the format specified with no commentary or apologies.
-                    """
-                    logger.debug(f"Retry prompt: {prompt}")
-
-        logger.debug("AIListGeneratorBlock.run completed")
+    SYSTEM_PROMPT = trim_prompt(
+        """
+        |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
+        |
+        |The 'list' field should contain a JSON array with the generated string values.
+        |The array can contain ONLY strings.
+        |
+        |Valid JSON array formats include:
+        |• ["string1", "string2", "string3"]
+        |
+        |Ensure you provide a proper JSON array with only string values in the 'list' field.
+        """
+    )

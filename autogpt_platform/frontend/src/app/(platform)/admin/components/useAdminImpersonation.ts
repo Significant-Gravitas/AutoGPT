@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { environment } from "@/services/environment";
-import { IMPERSONATION_STORAGE_KEY } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface AdminImpersonationState {
@@ -18,22 +17,9 @@ interface AdminImpersonationActions {
 type AdminImpersonationHook = AdminImpersonationState &
   AdminImpersonationActions;
 
-function getInitialImpersonationState(): string | null {
-  if (!environment.isClientSide()) {
-    return null;
-  }
-
-  try {
-    return sessionStorage.getItem(IMPERSONATION_STORAGE_KEY);
-  } catch (error) {
-    console.error("Failed to read initial impersonation state:", error);
-    return null;
-  }
-}
-
 export function useAdminImpersonation(): AdminImpersonationHook {
   const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
-    getInitialImpersonationState,
+    ImpersonationState.get,
   );
   const { toast } = useToast();
 
@@ -49,39 +35,34 @@ export function useAdminImpersonation(): AdminImpersonationHook {
         return;
       }
 
-      if (environment.isClientSide()) {
-        try {
-          sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, userId);
-          setImpersonatedUserId(userId);
-          window.location.reload();
-        } catch (error) {
-          console.error("Failed to start impersonation:", error);
-          toast({
-            title: "Failed to start impersonation",
-            description:
-              error instanceof Error ? error.message : "Unknown error",
-            variant: "destructive",
-          });
-        }
+      try {
+        ImpersonationState.set(userId);
+        setImpersonatedUserId(userId);
+        window.location.reload();
+      } catch (error) {
+        console.error("Failed to start impersonation:", error);
+        toast({
+          title: "Failed to start impersonation",
+          description: error instanceof Error ? error.message : "Unknown error",
+          variant: "destructive",
+        });
       }
     },
     [toast],
   );
 
   const stopImpersonating = useCallback(() => {
-    if (environment.isClientSide()) {
-      try {
-        sessionStorage.removeItem(IMPERSONATION_STORAGE_KEY);
-        setImpersonatedUserId(null);
-        window.location.reload();
-      } catch (error) {
-        console.error("Failed to stop impersonation:", error);
-        toast({
-          title: "Failed to stop impersonation",
-          description: error instanceof Error ? error.message : "Unknown error",
-          variant: "destructive",
-        });
-      }
+    try {
+      ImpersonationState.clear();
+      setImpersonatedUserId(null);
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to stop impersonation:", error);
+      toast({
+        title: "Failed to stop impersonation",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
     }
   }, [toast]);
 
