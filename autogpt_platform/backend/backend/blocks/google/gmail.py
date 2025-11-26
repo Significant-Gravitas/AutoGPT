@@ -8,14 +8,12 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import Any, List, Literal, Optional
+from typing import List, Literal, Optional
 
-import aiofiles
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
-from backend.blocks.google._drive import GoogleDriveFile
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -35,81 +33,11 @@ from ._auth import (
     GoogleCredentialsField,
     GoogleCredentialsInput,
 )
-from ._drive import GoogleDriveAttachmentField, drive_file_to_media_file
 
 settings = Settings()
 
 # No-wrap policy for plain text emails to prevent 78-char hard-wrap
 NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
-
-
-async def _store_drive_attachment(
-    attachment: GoogleDriveFile,
-    *,
-    graph_exec_id: str,
-    credentials: GoogleCredentials,
-) -> str:
-    access_token = (
-        credentials.access_token.get_secret_value() if credentials.access_token else ""
-    )
-    return await drive_file_to_media_file(
-        attachment, graph_exec_id=graph_exec_id, access_token=access_token
-    )
-
-
-async def _resolve_attachment(
-    attachment: Any,
-    *,
-    graph_exec_id: str,
-    user_id: str,
-    credentials: GoogleCredentials,
-) -> str:
-    if attachment is None:
-        raise ValueError("Attachment is empty.")
-
-    if isinstance(attachment, GoogleDriveFile):
-        return await _store_drive_attachment(
-            attachment, graph_exec_id=graph_exec_id, credentials=credentials
-        )
-
-    if isinstance(attachment, dict):
-        try:
-            drive_file = GoogleDriveFile.model_validate(attachment)
-        except ValidationError as err:
-            raise ValueError("Invalid Google Drive attachment payload.") from err
-        return await _store_drive_attachment(
-            drive_file, graph_exec_id=graph_exec_id, credentials=credentials
-        )
-
-    return await store_media_file(
-        graph_exec_id=graph_exec_id,
-        file=MediaFileType(str(attachment)),
-        user_id=user_id,
-        return_content=False,
-    )
-
-
-async def _resolve_attachments(
-    attachments: Optional[List[Any]],
-    *,
-    graph_exec_id: str,
-    user_id: str,
-    credentials: GoogleCredentials,
-) -> list[str]:
-    if not attachments:
-        return []
-
-    return await asyncio.gather(
-        *[
-            _resolve_attachment(
-                attachment,
-                graph_exec_id=graph_exec_id,
-                user_id=user_id,
-                credentials=credentials,
-            )
-            for attachment in attachments
-        ]
-    )
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
@@ -169,7 +97,6 @@ async def create_mime_message(
     input_data,
     graph_exec_id: str,
     user_id: str,
-    credentials: GoogleCredentials,
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
 
@@ -187,30 +114,23 @@ async def create_mime_message(
     message.attach(_make_mime_text(input_data.body, content_type))
 
     # Handle attachments if any
-    local_paths = await _resolve_attachments(
-        input_data.attachments,
-        graph_exec_id=graph_exec_id,
-        user_id=user_id,
-        credentials=credentials,
-    )
-
-    async def _create_attachment_part(local_path: str) -> MIMEBase:
-        abs_path = get_exec_file_path(graph_exec_id, local_path)
-        part = MIMEBase("application", "octet-stream")
-        async with aiofiles.open(abs_path, "rb") as f:
-            part.set_payload(await f.read())
-        encoders.encode_base64(part)
-        part.add_header(
-            "Content-Disposition",
-            f"attachment; filename={Path(abs_path).name}",
-        )
-        return part
-
-    if local_paths:
-        parts = await asyncio.gather(
-            *[_create_attachment_part(path) for path in local_paths]
-        )
-        for part in parts:
+    if input_data.attachments:
+        for attach in input_data.attachments:
+            local_path = await store_media_file(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                file=attach,
+                return_content=False,
+            )
+            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            part = MIMEBase("application", "octet-stream")
+            with open(abs_path, "rb") as f:
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition",
+                f"attachment; filename={Path(abs_path).name}",
+            )
             message.attach(part)
 
     return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
@@ -622,10 +542,8 @@ class GmailSendBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
-            title="Attachments",
-            description="Files to attach",
-            advanced=True,
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
         )
 
     class Output(BlockSchemaOutput):
@@ -674,25 +592,17 @@ class GmailSendBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
-            credentials,
         )
         yield "result", result
 
     async def _send_email(
-        self,
-        service,
-        input_data: Input,
-        graph_exec_id: str,
-        user_id: str,
-        credentials: GoogleCredentials,
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
         if not input_data.to or not input_data.subject or not input_data.body:
             raise ValueError(
                 "At least one recipient, subject, and body are required for sending an email"
             )
-        raw_message = await create_mime_message(
-            input_data, graph_exec_id, user_id, credentials
-        )
+        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
         sent_message = await asyncio.to_thread(
             lambda: service.users()
             .messages()
@@ -734,10 +644,8 @@ class GmailCreateDraftBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
-            title="Attachments",
-            description="Files to attach",
-            advanced=True,
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
         )
 
     class Output(BlockSchemaOutput):
@@ -794,28 +702,20 @@ class GmailCreateDraftBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
-            credentials,
         )
         yield "result", GmailDraftResult(
             id=result["id"], message_id=result["message"]["id"], status="draft_created"
         )
 
     async def _create_draft(
-        self,
-        service,
-        input_data: Input,
-        graph_exec_id: str,
-        user_id: str,
-        credentials: GoogleCredentials,
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
         if not input_data.to or not input_data.subject:
             raise ValueError(
                 "At least one recipient and subject are required for creating a draft"
             )
 
-        raw_message = await create_mime_message(
-            input_data, graph_exec_id, user_id, credentials
-        )
+        raw_message = await create_mime_message(input_data, graph_exec_id, user_id)
         draft = await asyncio.to_thread(
             lambda: service.users()
             .drafts()
@@ -1200,11 +1100,7 @@ class GmailGetThreadBlock(GmailBase):
 
 
 async def _build_reply_message(
-    service,
-    input_data,
-    graph_exec_id: str,
-    user_id: str,
-    credentials: GoogleCredentials,
+    service, input_data, graph_exec_id: str, user_id: str
 ) -> tuple[str, str]:
     """
     Builds a reply MIME message for Gmail threads.
@@ -1292,30 +1188,22 @@ async def _build_reply_message(
     msg.attach(_make_mime_text(input_data.body, input_data.content_type))
 
     # Handle attachments
-    async def _create_reply_attachment_part(local_path: str) -> MIMEBase:
+    for attach in input_data.attachments:
+        local_path = await store_media_file(
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            file=attach,
+            return_content=False,
+        )
         abs_path = get_exec_file_path(graph_exec_id, local_path)
         part = MIMEBase("application", "octet-stream")
-        async with aiofiles.open(abs_path, "rb") as f:
-            part.set_payload(await f.read())
+        with open(abs_path, "rb") as f:
+            part.set_payload(f.read())
         encoders.encode_base64(part)
         part.add_header(
             "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
         )
-        return part
-
-    local_paths = await _resolve_attachments(
-        input_data.attachments,
-        graph_exec_id=graph_exec_id,
-        user_id=user_id,
-        credentials=credentials,
-    )
-
-    if local_paths:
-        parts = await asyncio.gather(
-            *[_create_reply_attachment_part(path) for path in local_paths]
-        )
-        for part in parts:
-            msg.attach(part)
+        msg.attach(part)
 
     # Encode message
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
@@ -1359,10 +1247,8 @@ class GmailReplyBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
-            title="Attachments",
-            description="Files to attach",
-            advanced=True,
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
         )
 
     class Output(BlockSchemaOutput):
@@ -1435,7 +1321,6 @@ class GmailReplyBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
-            credentials,
         )
         yield "messageId", message["id"]
         yield "threadId", message.get("threadId", input_data.threadId)
@@ -1458,16 +1343,11 @@ class GmailReplyBlock(GmailBase):
         yield "email", email
 
     async def _reply(
-        self,
-        service,
-        input_data: Input,
-        graph_exec_id: str,
-        user_id: str,
-        credentials: GoogleCredentials,
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id, credentials
+            service, input_data, graph_exec_id, user_id
         )
 
         # Send the message
@@ -1516,10 +1396,8 @@ class GmailDraftReplyBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        attachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
-            title="Attachments",
-            description="Files to attach",
-            advanced=True,
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
         )
 
     class Output(BlockSchemaOutput):
@@ -1573,7 +1451,6 @@ class GmailDraftReplyBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
-            credentials,
         )
         yield "draftId", draft["id"]
         yield "messageId", draft["message"]["id"]
@@ -1581,16 +1458,11 @@ class GmailDraftReplyBlock(GmailBase):
         yield "status", "draft_created"
 
     async def _create_draft_reply(
-        self,
-        service,
-        input_data: Input,
-        graph_exec_id: str,
-        user_id: str,
-        credentials: GoogleCredentials,
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
         # Build the reply message using the shared helper
         raw, thread_id = await _build_reply_message(
-            service, input_data, graph_exec_id, user_id, credentials
+            service, input_data, graph_exec_id, user_id
         )
 
         # Create draft with proper thread association
@@ -1713,9 +1585,9 @@ class GmailForwardBlock(GmailBase):
             default=None,
             advanced=True,
         )
-        additionalAttachments: list[GoogleDriveFile] = GoogleDriveAttachmentField(
-            title="Additional attachments",
-            description="Extra files to include with the forwarded message",
+        additionalAttachments: list[MediaFileType] = SchemaField(
+            description="Additional files to attach",
+            default_factory=list,
             advanced=True,
         )
 
@@ -1767,19 +1639,13 @@ class GmailForwardBlock(GmailBase):
             input_data,
             graph_exec_id,
             user_id,
-            credentials,
         )
         yield "messageId", result["id"]
         yield "threadId", result.get("threadId", "")
         yield "status", "forwarded"
 
     async def _forward_message(
-        self,
-        service,
-        input_data: Input,
-        graph_exec_id: str,
-        user_id: str,
-        credentials: GoogleCredentials,
+        self, service, input_data: Input, graph_exec_id: str, user_id: str
     ) -> dict:
         if not input_data.to:
             raise ValueError("At least one recipient is required for forwarding")
@@ -1859,30 +1725,22 @@ To: {original_to}
                 msg.attach(part)
 
         # Add any additional attachments
-        async def _create_forward_attachment_part(local_path: str) -> MIMEBase:
+        for attach in input_data.additionalAttachments:
+            local_path = await store_media_file(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                file=attach,
+                return_content=False,
+            )
             abs_path = get_exec_file_path(graph_exec_id, local_path)
             part = MIMEBase("application", "octet-stream")
-            async with aiofiles.open(abs_path, "rb") as f:
-                part.set_payload(await f.read())
+            with open(abs_path, "rb") as f:
+                part.set_payload(f.read())
             encoders.encode_base64(part)
             part.add_header(
                 "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
             )
-            return part
-
-        local_paths = await _resolve_attachments(
-            input_data.additionalAttachments,
-            graph_exec_id=graph_exec_id,
-            user_id=user_id,
-            credentials=credentials,
-        )
-
-        if local_paths:
-            parts = await asyncio.gather(
-                *[_create_forward_attachment_part(path) for path in local_paths]
-            )
-            for part in parts:
-                msg.attach(part)
+            msg.attach(part)
 
         # Send the forwarded message
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
