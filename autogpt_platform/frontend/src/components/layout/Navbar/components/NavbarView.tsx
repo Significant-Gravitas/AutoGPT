@@ -2,6 +2,7 @@
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
+import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -15,9 +16,10 @@ import { NavbarLink } from "./NavbarLink";
 import { Wallet } from "./Wallet/Wallet";
 interface NavbarViewProps {
   isLoggedIn: boolean;
+  previewBranchName?: string | null;
 }
 
-export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
+export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
   const { user } = useSupabase();
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
@@ -36,56 +38,63 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
     return isChatEnabled ? [...loggedInLinks, chatLink] : loggedInLinks;
   }, [isChatEnabled]);
 
+  const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
+
   return (
     <>
-      <nav className="sticky top-0 z-40 inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
-        {/* Left section */}
-        {!isSmallScreen ? (
-          <div className="flex flex-1 items-center gap-5">
-            {isLoggedIn
-              ? linksWithChat.map((link) => (
-                  <NavbarLink
-                    key={link.name}
-                    name={link.name}
-                    href={link.href}
-                  />
-                ))
-              : loggedOutLinks.map((link) => (
-                  <NavbarLink
-                    key={link.name}
-                    name={link.name}
-                    href={link.href}
-                  />
-                ))}
-          </div>
+      <div className="sticky top-0 z-40 w-full">
+        {shouldShowPreviewBanner && previewBranchName ? (
+          <PreviewBanner branchName={previewBranchName} />
         ) : null}
-
-        {/* Centered logo */}
-        <div className="static h-auto w-[4.5rem] md:absolute md:left-1/2 md:top-1/2 md:w-[5.5rem] md:-translate-x-1/2 md:-translate-y-1/2">
-          <IconAutoGPTLogo className="h-full w-full" />
-        </div>
-
-        {/* Right section */}
-        {isLoggedIn && !isSmallScreen ? (
-          <div className="flex flex-1 items-center justify-end gap-4">
-            <div className="flex items-center gap-4">
-              <AgentActivityDropdown />
-              {profile && <Wallet key={profile.username} />}
-              <AccountMenu
-                userName={profile?.username}
-                userEmail={profile?.name}
-                avatarSrc={profile?.avatar_url ?? ""}
-                menuItemGroups={dynamicMenuItems}
-              />
+        <nav className="inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
+          {/* Left section */}
+          {!isSmallScreen ? (
+            <div className="flex flex-1 items-center gap-5">
+              {isLoggedIn
+                ? linksWithChat.map((link) => (
+                    <NavbarLink
+                      key={link.name}
+                      name={link.name}
+                      href={link.href}
+                    />
+                  ))
+                : loggedOutLinks.map((link) => (
+                    <NavbarLink
+                      key={link.name}
+                      name={link.name}
+                      href={link.href}
+                    />
+                  ))}
             </div>
+          ) : null}
+
+          {/* Centered logo */}
+          <div className="static h-auto w-[4.5rem] md:absolute md:left-1/2 md:top-1/2 md:w-[5.5rem] md:-translate-x-1/2 md:-translate-y-1/2">
+            <IconAutoGPTLogo className="h-full w-full" />
           </div>
-        ) : !isLoggedIn ? (
-          <div className="flex w-full items-center justify-end">
-            <LoginButton />
-          </div>
-        ) : null}
-        {/* <ThemeToggle /> */}
-      </nav>
+
+          {/* Right section */}
+          {isLoggedIn && !isSmallScreen ? (
+            <div className="flex flex-1 items-center justify-end gap-4">
+              <div className="flex items-center gap-4">
+                <AgentActivityDropdown />
+                {profile && <Wallet key={profile.username} />}
+                <AccountMenu
+                  userName={profile?.username}
+                  userEmail={profile?.name}
+                  avatarSrc={profile?.avatar_url ?? ""}
+                  menuItemGroups={dynamicMenuItems}
+                />
+              </div>
+            </div>
+          ) : !isLoggedIn ? (
+            <div className="flex w-full items-center justify-end">
+              <LoginButton />
+            </div>
+          ) : null}
+          {/* <ThemeToggle /> */}
+        </nav>
+      </div>
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn && isSmallScreen ? (
@@ -123,4 +132,4 @@ export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
       </>
     </>
   );
-};
+}

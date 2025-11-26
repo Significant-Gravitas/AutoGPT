@@ -1,15 +1,15 @@
 "use client";
+import { SettingsForm } from "@/app/(platform)/profile/(user)/settings/components/SettingsForm/SettingsForm";
+import { useTimezoneDetection } from "@/app/(platform)/profile/(user)/settings/useTimezoneDetection";
 import {
   useGetV1GetNotificationPreferences,
   useGetV1GetUserTimezone,
 } from "@/app/api/__generated__/endpoints/auth/auth";
-import { SettingsForm } from "@/app/(platform)/profile/(user)/settings/components/SettingsForm/SettingsForm";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useTimezoneDetection } from "@/app/(platform)/profile/(user)/settings/useTimezoneDetection";
-import * as React from "react";
-import SettingsLoading from "./loading";
-import { redirect } from "next/navigation";
 import { Text } from "@/components/atoms/Text/Text";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { redirect } from "next/navigation";
+import { useEffect } from "react";
+import SettingsLoading from "./loading";
 
 export default function SettingsPage() {
   const {
@@ -32,6 +32,10 @@ export default function SettingsPage() {
   useTimezoneDetection(timezone);
 
   const { user, isUserLoading } = useSupabase();
+
+  useEffect(() => {
+    document.title = "Settings – AutoGPT Platform";
+  }, []);
 
   if (preferencesLoading || isUserLoading || timezoneLoading) {
     return <SettingsLoading />;
