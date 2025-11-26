@@ -34,7 +34,8 @@ const nextConfig = {
       },
     ],
   },
-  output: "standalone",
+  // Vercel has its own deployment mechanism and doesn't need standalone mode
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
 };
 
