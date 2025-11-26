@@ -61,23 +61,40 @@ poetry run pytest path/to/test.py --snapshot-update
 
 ```bash
 # Install dependencies
-cd frontend && npm install
+cd frontend && pnpm i
+
+# Generate API client from OpenAPI spec
+pnpm generate:api
 
 # Start development server
-npm run dev
+pnpm dev
 
 # Run E2E tests
-npm run test
+pnpm test
 
 # Run Storybook for component development
-npm run storybook
+pnpm storybook
 
 # Build production
-npm run build
+pnpm build
+
+# Format and lint
+pnpm format
 
 # Type checking
-npm run types
+pnpm types
 ```
+
+**📖 Complete Guide**: See `/frontend/CONTRIBUTING.md` and `/frontend/.cursorrules` for comprehensive frontend patterns.
+
+**Key Frontend Conventions:**
+
+- Separate render logic from data/behavior in components
+- Use generated API hooks from `@/app/api/__generated__/endpoints/`
+- Use function declarations (not arrow functions) for components/handlers
+- Use design system components from `src/components/` (atoms, molecules, organisms)
+- Only use Phosphor Icons
+- Never use `src/components/__legacy__/*` or deprecated `BackendAPI`
 
 ## Architecture Overview
 
@@ -92,11 +109,16 @@ npm run types
 
 ### Frontend Architecture
 
-- **Framework**: Next.js App Router with React Server Components
-- **State Management**: React hooks + Supabase client for real-time updates
+- **Framework**: Next.js 15 App Router (client-first approach)
+- **Data Fetching**: Type-safe generated API hooks via Orval + React Query
+- **State Management**: React Query for server state, co-located UI state in components/hooks
+- **Component Structure**: Separate render logic (`.tsx`) from business logic (`use*.ts` hooks)
 - **Workflow Builder**: Visual graph editor using @xyflow/react
-- **UI Components**: Radix UI primitives with Tailwind CSS styling
+- **UI Components**: shadcn/ui (Radix UI primitives) with Tailwind CSS styling
+- **Icons**: Phosphor Icons only
 - **Feature Flags**: LaunchDarkly integration
+- **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
+- **Testing**: Playwright for E2E, Storybook for component development
 
 ### Key Concepts
 
@@ -149,15 +171,28 @@ Key models (defined in `/backend/schema.prisma`):
 
 **Adding a new block:**
 
+Follow the comprehensive [Block SDK Guide](../../../docs/content/platform/block-sdk-guide.md) which covers:
+
+- Provider configuration with `ProviderBuilder`
+- Block schema definition
+- Authentication (API keys, OAuth, webhooks)
+- Testing and validation
+- File organization
+
+Quick steps:
+
 1. Create new file in `/backend/backend/blocks/`
-2. Inherit from `Block` base class
-3. Define input/output schemas
-4. Implement `run` method
-5. Register in block registry
-6. Generate the block uuid using `uuid.uuid4()`
+2. Configure provider using `ProviderBuilder` in `_config.py`
+3. Inherit from `Block` base class
+4. Define input/output schemas using `BlockSchema`
+5. Implement async `run` method
+6. Generate unique block ID using `uuid.uuid4()`
+7. Test with `poetry run pytest backend/blocks/test/test_block.py`
 
 Note: when making many new blocks analyze the interfaces for each of these blocks and picture if they would go well together in a graph based editor or would they struggle to connect productively?
 ex: do the inputs and outputs tie well together?
+
+If you get any pushback or hit complex block conditions check the new_blocks guide in the docs.
 
 **Modifying the API:**
 
@@ -168,10 +203,20 @@ ex: do the inputs and outputs tie well together?
 
 **Frontend feature development:**
 
-1. Components go in `/frontend/src/components/`
-2. Use existing UI components from `/frontend/src/components/ui/`
-3. Add Storybook stories for new components
-4. Test with Playwright if user-facing
+See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
+
+1. **Pages**: Create in `src/app/(platform)/feature-name/page.tsx`
+   - Add `usePageName.ts` hook for logic
+   - Put sub-components in local `components/` folder
+2. **Components**: Structure as `ComponentName/ComponentName.tsx` + `useComponentName.ts` + `helpers.ts`
+   - Use design system components from `src/components/` (atoms, molecules, organisms)
+   - Never use `src/components/__legacy__/*`
+3. **Data fetching**: Use generated API hooks from `@/app/api/__generated__/endpoints/`
+   - Regenerate with `pnpm generate:api`
+   - Pattern: `use{Method}{Version}{OperationName}`
+4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
+5. **Testing**: Add Storybook stories for new components, Playwright for E2E
+6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
 
 ### Security Implementation
 

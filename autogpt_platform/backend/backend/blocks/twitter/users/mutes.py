@@ -23,7 +23,13 @@ from backend.blocks.twitter._types import (
     UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -33,7 +39,7 @@ class TwitterUnmuteUserBlock(Block):
     The request succeeds with no action when the user sends a request to a user they're not muting or have already unmuted.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["users.read", "users.write", "offline.access"]
         )
@@ -43,11 +49,10 @@ class TwitterUnmuteUserBlock(Block):
             placeholder="Enter target user ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the unmute action was successful"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -121,7 +126,7 @@ class TwitterGetMutedUsersBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         ids: list[str] = SchemaField(description="List of muted user IDs")
         usernames: list[str] = SchemaField(description="List of muted usernames")
         next_token: str = SchemaField(description="Next token for pagination")
@@ -131,8 +136,6 @@ class TwitterGetMutedUsersBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Metadata including pagination info")
-
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -269,7 +272,7 @@ class TwitterMuteUserBlock(Block):
     Allows a user to mute another user specified by target user ID
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["users.read", "users.write", "offline.access"]
         )
@@ -279,11 +282,10 @@ class TwitterMuteUserBlock(Block):
             placeholder="Enter target user ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the mute action was successful"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

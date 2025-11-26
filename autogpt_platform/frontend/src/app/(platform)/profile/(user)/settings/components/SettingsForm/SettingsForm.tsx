@@ -1,6 +1,6 @@
 "use client";
 
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import { User } from "@supabase/supabase-js";
 import { EmailForm } from "./components/EmailForm/EmailForm";

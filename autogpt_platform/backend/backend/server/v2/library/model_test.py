@@ -1,6 +1,5 @@
 import datetime
 
-import prisma.fields
 import prisma.models
 import pytest
 
@@ -8,7 +7,7 @@ import backend.server.v2.library.model as library_model
 
 
 @pytest.mark.asyncio
-async def test_agent_preset_from_db():
+async def test_agent_preset_from_db(test_user_id: str):
     # Create mock DB agent
     db_agent = prisma.models.AgentPreset(
         id="test-agent-123",
@@ -19,7 +18,7 @@ async def test_agent_preset_from_db():
         name="Test Agent",
         description="Test agent description",
         isActive=True,
-        userId="test-user-123",
+        userId=test_user_id,
         isDeleted=False,
         InputPresets=[
             prisma.models.AgentNodeExecutionInputOutput.model_validate(

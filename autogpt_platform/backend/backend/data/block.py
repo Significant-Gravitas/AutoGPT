@@ -1,4 +1,3 @@
-import functools
 import inspect
 import logging
 import os
@@ -8,11 +7,13 @@ from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     ClassVar,
     Generic,
     Optional,
     Sequence,
     Type,
+    TypeAlias,
     TypeVar,
     cast,
     get_origin,
@@ -27,6 +28,14 @@ from pydantic import BaseModel
 from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.cache import cached
+from backend.util.exceptions import (
+    BlockError,
+    BlockExecutionError,
+    BlockInputError,
+    BlockOutputError,
+    BlockUnknownError,
+)
 from backend.util.settings import Config
 
 from .model import (
@@ -34,6 +43,7 @@ from .model import (
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    SchemaField,
     is_credentials_field_name,
 )
 
@@ -44,9 +54,10 @@ if TYPE_CHECKING:
 
 app_config = Config()
 
-BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
-BlockOutput = AsyncGen[BlockData, None]  # Output: 1 output pin produces n data.
+BlockOutputEntry = tuple[str, Any]  # Output data should be a tuple of (name, value).
+BlockOutput = AsyncGen[BlockOutputEntry, None]  # Output: 1 output pin produces n data.
+BlockTestOutput = BlockOutputEntry | tuple[str, Callable[[Any], bool]]
 CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
 
 
@@ -87,6 +98,45 @@ class BlockCategory(Enum):
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
+
+
+class BlockCostType(str, Enum):
+    RUN = "run"  # cost X credits per run
+    BYTE = "byte"  # cost X credits per byte
+    SECOND = "second"  # cost X credits per second
+
+
+class BlockCost(BaseModel):
+    cost_amount: int
+    cost_filter: BlockInput
+    cost_type: BlockCostType
+
+    def __init__(
+        self,
+        cost_amount: int,
+        cost_type: BlockCostType = BlockCostType.RUN,
+        cost_filter: Optional[BlockInput] = None,
+        **data: Any,
+    ) -> None:
+        super().__init__(
+            cost_amount=cost_amount,
+            cost_filter=cost_filter or {},
+            cost_type=cost_type,
+            **data,
+        )
+
+
+class BlockInfo(BaseModel):
+    id: str
+    name: str
+    inputSchema: dict[str, Any]
+    outputSchema: dict[str, Any]
+    costs: list[BlockCost]
+    description: str
+    categories: list[dict[str, str]]
+    contributors: list[dict[str, Any]]
+    staticOutput: bool
+    uiType: str
 
 
 class BlockSchema(BaseModel):
@@ -238,12 +288,40 @@ class BlockSchema(BaseModel):
         return cls.get_required_fields() - set(data)
 
 
-BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
-BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
+class BlockSchemaInput(BlockSchema):
+    """
+    Base schema class for block inputs.
+    All block input schemas should extend this class for consistency.
+    """
 
-
-class EmptySchema(BlockSchema):
     pass
+
+
+class BlockSchemaOutput(BlockSchema):
+    """
+    Base schema class for block outputs that includes a standard error field.
+    All block output schemas should extend this class to ensure consistent error handling.
+    """
+
+    error: str = SchemaField(
+        description="Error message if the operation failed", default=""
+    )
+
+
+BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchemaInput)
+BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchemaOutput)
+
+
+class EmptyInputSchema(BlockSchemaInput):
+    pass
+
+
+class EmptyOutputSchema(BlockSchemaOutput):
+    pass
+
+
+# For backward compatibility - will be deprecated
+EmptySchema = EmptyOutputSchema
 
 
 # --8<-- [start:BlockWebhookConfig]
@@ -303,10 +381,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         description: str = "",
         contributors: list[ContributorDetails] = [],
         categories: set[BlockCategory] | None = None,
-        input_schema: Type[BlockSchemaInputType] = EmptySchema,
-        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+        input_schema: Type[BlockSchemaInputType] = EmptyInputSchema,
+        output_schema: Type[BlockSchemaOutputType] = EmptyOutputSchema,
         test_input: BlockInput | list[BlockInput] | None = None,
-        test_output: BlockData | list[BlockData] | None = None,
+        test_output: BlockTestOutput | list[BlockTestOutput] | None = None,
         test_mock: dict[str, Any] | None = None,
         test_credentials: Optional[Credentials | dict[str, Credentials]] = None,
         disabled: bool = False,
@@ -452,10 +530,44 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "uiType": self.block_type.value,
         }
 
+    def get_info(self) -> BlockInfo:
+        from backend.data.credit import get_block_cost
+
+        return BlockInfo(
+            id=self.id,
+            name=self.name,
+            inputSchema=self.input_schema.jsonschema(),
+            outputSchema=self.output_schema.jsonschema(),
+            costs=get_block_cost(self),
+            description=self.description,
+            categories=[category.dict() for category in self.categories],
+            contributors=[
+                contributor.model_dump() for contributor in self.contributors
+            ],
+            staticOutput=self.static_output,
+            uiType=self.block_type.value,
+        )
+
     async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        try:
+            async for output_name, output_data in self._execute(input_data, **kwargs):
+                yield output_name, output_data
+        except Exception as ex:
+            if not isinstance(ex, BlockError):
+                raise BlockUnknownError(
+                    message=str(ex),
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from ex
+            else:
+                raise ex
+
+    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
-            raise ValueError(
-                f"Unable to execute block with invalid input data: {error}"
+            raise BlockInputError(
+                message=f"Unable to execute block with invalid input data: {error}",
+                block_name=self.name,
+                block_id=self.id,
             )
 
         async for output_name, output_data in self.run(
@@ -463,11 +575,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             **kwargs,
         ):
             if output_name == "error":
-                raise RuntimeError(output_data)
+                raise BlockExecutionError(
+                    message=output_data, block_name=self.name, block_id=self.id
+                )
             if self.block_type == BlockType.STANDARD and (
                 error := self.output_schema.validate_field(output_name, output_data)
             ):
-                raise ValueError(f"Block produced an invalid output data: {error}")
+                raise BlockOutputError(
+                    message=f"Block produced an invalid output data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
             yield output_name, output_data
 
     def is_triggered_by_event_type(
@@ -487,6 +605,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         ]
 
 
+# Type alias for any block with standard input/output schemas
+AnyBlockSchema: TypeAlias = Block[BlockSchemaInput, BlockSchemaOutput]
+
+
 # ======================= Block Helper Functions ======================= #
 
 
@@ -497,7 +619,7 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 def is_block_auth_configured(
-    block_cls: type["Block[BlockSchema, BlockSchema]"],
+    block_cls: type[AnyBlockSchema],
 ) -> bool:
     """
     Check if a block has a valid authentication method configured at runtime.
@@ -533,11 +655,6 @@ def is_block_auth_configured(
         logger.debug(
             f"Block {block_cls.__name__} has only optional credential inputs"
             " - will work without credentials configured"
-        )
-    if len(credential_inputs) > 1:
-        logger.warning(
-            f"Block {block_cls.__name__} has multiple credential inputs: "
-            f"{', '.join(credential_inputs.keys())}"
         )
 
     # Check if the credential inputs for this block are correctly configured
@@ -658,12 +775,12 @@ async def initialize_blocks() -> None:
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
-def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
+def get_block(block_id: str) -> AnyBlockSchema | None:
     cls = get_blocks().get(block_id)
     return cls() if cls else None
 
 
-@functools.cache
+@cached(ttl_seconds=3600)
 def get_webhook_block_ids() -> Sequence[str]:
     return [
         id
@@ -672,7 +789,7 @@ def get_webhook_block_ids() -> Sequence[str]:
     ]
 
 
-@functools.cache
+@cached(ttl_seconds=3600)
 def get_io_block_ids() -> Sequence[str]:
     return [
         id

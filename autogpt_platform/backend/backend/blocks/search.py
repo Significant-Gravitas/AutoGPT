@@ -4,7 +4,13 @@ from urllib.parse import quote
 from pydantic import SecretStr
 
 from backend.blocks.helpers.http import GetRequest
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -15,10 +21,10 @@ from backend.integrations.providers import ProviderName
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         topic: str = SchemaField(description="The topic to fetch the summary for")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         summary: str = SchemaField(description="The summary of the given topic")
         error: str = SchemaField(
             description="Error message if the summary cannot be retrieved"
@@ -61,7 +67,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class GetWeatherInformationBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         location: str = SchemaField(
             description="Location to get weather information for"
         )
@@ -76,7 +82,7 @@ class GetWeatherInformationBlock(Block, GetRequest):
             description="Whether to use Celsius or Fahrenheit for temperature",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         temperature: str = SchemaField(
             description="Temperature in the specified location"
         )

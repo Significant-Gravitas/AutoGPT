@@ -10,8 +10,6 @@ import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.analytics as analytics_routes
-from backend.server.conftest import TEST_USER_ID
-from backend.server.utils import get_user_id
 
 app = fastapi.FastAPI()
 app.include_router(analytics_routes.router)
@@ -19,12 +17,14 @@ app.include_router(analytics_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_get_user_id() -> str:
-    """Override get_user_id for testing"""
-    return TEST_USER_ID
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-
-app.dependency_overrides[get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.parametrize(

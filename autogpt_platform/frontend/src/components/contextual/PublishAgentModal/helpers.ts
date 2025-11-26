@@ -7,4 +7,5 @@ export const emptyModalState = {
   youtubeLink: "",
   category: "",
   description: "",
+  recommendedScheduleCron: "",
 };

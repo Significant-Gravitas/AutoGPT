@@ -1,8 +1,8 @@
 "use client";
-import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import OnboardingButton from "@/components/onboarding/OnboardingButton";
+import { OnboardingText } from "../components/OnboardingText";
+import OnboardingButton from "../components/OnboardingButton";
 import Image from "next/image";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
 
 export default function Page() {
   useOnboarding(1);

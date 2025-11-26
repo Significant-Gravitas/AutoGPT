@@ -1,5 +1,4 @@
 "use client";
-import { isEmpty } from "lodash";
 import moment from "moment";
 import React, { useCallback, useMemo } from "react";
 
@@ -12,29 +11,34 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import {
   IconRefresh,
   IconSquare,
   IconCircleAlert,
-} from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import LoadingBox from "@/components/ui/loading";
+} from "@/components/__legacy__/ui/icons";
+import { Input } from "@/components/__legacy__/ui/input";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
-import {
-  AgentRunStatus,
-  agentRunStatusMap,
-} from "@/components/agents/agent-run-status-chip";
+import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
+import { AgentRunOutputView } from "./agent-run-output-view";
+import { analytics } from "@/services/analytics";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export function AgentRunDetailsView({
   agent,
@@ -42,14 +46,16 @@ export function AgentRunDetailsView({
   run,
   agentActions,
   onRun,
-  deleteRun,
+  doDeleteRun,
+  doCreatePresetFromRun,
 }: {
   agent: LibraryAgent;
   graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
   onRun: (runID: GraphExecutionID) => void;
-  deleteRun: () => void;
+  doDeleteRun: () => void;
+  doCreatePresetFromRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
   const { formatCredits } = useCredits();
@@ -58,6 +64,8 @@ export function AgentRunDetailsView({
     () => agentRunStatusMap[run.status],
     [run],
   );
+
+  const { completeStep } = useOnboarding();
 
   const toastOnFail = useToastOnFail();
 
@@ -95,7 +103,7 @@ export function AgentRunDetailsView({
         }
       >
     | undefined = useMemo(() => {
-    if (!("inputs" in run)) return undefined;
+    if (!run.inputs) return undefined;
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
 
     // Add type info from agent input schema
@@ -111,21 +119,49 @@ export function AgentRunDetailsView({
     );
   }, [graph, run]);
 
-  const runAgain = useCallback(
-    () =>
-      agentRunInputs &&
-      api
-        .executeGraph(
-          graph.id,
-          graph.version,
-          Object.fromEntries(
-            Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
-          ),
+  const runAgain = useCallback(() => {
+    if (
+      !run.inputs ||
+      !(graph.credentials_input_schema?.required ?? []).every(
+        (k) => k in (run.credential_inputs ?? {}),
+      )
+    )
+      return;
+
+    if (run.preset_id) {
+      return api
+        .executeLibraryAgentPreset(
+          run.preset_id,
+          run.inputs!,
+          run.credential_inputs!,
         )
-        .then(({ graph_exec_id }) => onRun(graph_exec_id))
-        .catch(toastOnFail("execute agent")),
-    [api, graph, agentRunInputs, onRun, toastOnFail],
-  );
+        .then(({ id }) => {
+          analytics.sendDatafastEvent("run_agent", {
+            name: graph.name,
+            id: graph.id,
+          });
+          onRun(id);
+        })
+        .catch(toastOnFail("execute agent preset"));
+    }
+
+    return api
+      .executeGraph(
+        graph.id,
+        graph.version,
+        run.inputs!,
+        run.credential_inputs!,
+      )
+      .then(({ id }) => {
+        analytics.sendDatafastEvent("run_agent", {
+          name: graph.name,
+          id: graph.id,
+        });
+        completeStep("RE_RUN_AGENT");
+        onRun(id);
+      })
+      .catch(toastOnFail("execute agent"));
+  }, [api, graph, run, onRun, toastOnFail]);
 
   const stopRun = useCallback(
     () => api.stopGraphExecution(graph.id, run.id),
@@ -180,7 +216,9 @@ export function AgentRunDetailsView({
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
       !graph.has_external_trigger &&
-      isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
+      (graph.credentials_input_schema?.required ?? []).every(
+        (k) => k in (run.credential_inputs ?? {}),
+      )
         ? [
             {
               label: (
@@ -202,15 +240,17 @@ export function AgentRunDetailsView({
             },
           ]
         : []),
-      { label: "Delete run", variant: "secondary", callback: deleteRun },
+      { label: "Create preset from run", callback: doCreatePresetFromRun },
+      { label: "Delete run", variant: "secondary", callback: doDeleteRun },
     ],
     [
       runStatus,
       runAgain,
       stopRun,
-      deleteRun,
+      doDeleteRun,
+      doCreatePresetFromRun,
       graph.has_external_trigger,
-      graph.credentials_input_schema.required,
+      graph.credentials_input_schema?.required,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
@@ -252,7 +292,7 @@ export function AgentRunDetailsView({
           <Card className="agpt-box">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-poppins text-lg">
-                Smart Agent Execution Summary
+                Task Summary
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -260,54 +300,77 @@ export function AgentRunDetailsView({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        This is an AI-generated summary and may not be
-                        completely accurate. It provides a conversational
-                        overview of what the agent accomplished during
-                        execution.
+                        This AI-generated summary describes how the agent
+                        handled your task. It’s an experimental feature and may
+                        occasionally be inaccurate.
                       </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <p className="text-sm leading-relaxed text-neutral-700">
                 {run.stats.activity_status}
               </p>
+
+              {/* Correctness Score */}
+              {typeof run.stats.correctness_score === "number" && (
+                <div className="flex items-center gap-3 rounded-lg bg-neutral-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-neutral-600">
+                      Success Estimate:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="relative h-2 w-16 overflow-hidden rounded-full bg-neutral-200">
+                        <div
+                          className={`h-full transition-all ${
+                            run.stats.correctness_score >= 0.8
+                              ? "bg-green-500"
+                              : run.stats.correctness_score >= 0.6
+                                ? "bg-yellow-500"
+                                : run.stats.correctness_score >= 0.4
+                                  ? "bg-orange-500"
+                                  : "bg-red-500"
+                          }`}
+                          style={{
+                            width: `${Math.round(run.stats.correctness_score * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium">
+                        {Math.round(run.stats.correctness_score * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <IconCircleAlert className="size-4 cursor-help text-neutral-400 hover:text-neutral-600" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          AI-generated estimate of how well this execution
+                          achieved its intended purpose. This score indicates
+                          {run.stats.correctness_score >= 0.8
+                            ? " the agent was highly successful."
+                            : run.stats.correctness_score >= 0.6
+                              ? " the agent was mostly successful with minor issues."
+                              : run.stats.correctness_score >= 0.4
+                                ? " the agent was partially successful with some gaps."
+                                : " the agent had limited success with significant issues."}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
 
         {agentRunOutputs !== null && (
-          <Card className="agpt-box">
-            <CardHeader>
-              <CardTitle className="font-poppins text-lg">Output</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {agentRunOutputs !== undefined ? (
-                Object.entries(agentRunOutputs).map(
-                  ([key, { title, values }]) => (
-                    <div key={key} className="flex flex-col gap-1.5">
-                      <label className="text-sm font-medium">
-                        {title || key}
-                      </label>
-                      {values.map((value, i) => (
-                        <p
-                          className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
-                          key={i}
-                        >
-                          {value}
-                        </p>
-                      ))}
-                      {/* TODO: pretty type-dependent rendering */}
-                    </div>
-                  ),
-                )
-              ) : (
-                <LoadingBox spinnerSize={12} className="h-24" />
-              )}
-            </CardContent>
-          </Card>
+          <AgentRunOutputView agentRunOutputs={agentRunOutputs} />
         )}
 
         <Card className="agpt-box">

@@ -2,35 +2,26 @@ import { Button } from "@/components/atoms/Button/Button";
 import { RunVariant } from "../../useAgentRunModal";
 
 interface Props {
-  hasExternalTrigger: boolean;
   defaultRunType: RunVariant;
-  onShowSchedule: () => void;
   onRun: () => void;
   isExecuting?: boolean;
   isSettingUpTrigger?: boolean;
-  allRequiredInputsAreSet?: boolean;
+  isRunReady?: boolean;
 }
 
 export function RunActions({
-  hasExternalTrigger,
   defaultRunType,
-  onShowSchedule,
   onRun,
   isExecuting = false,
   isSettingUpTrigger = false,
-  allRequiredInputsAreSet = true,
+  isRunReady = true,
 }: Props) {
   return (
     <div className="flex justify-end gap-3">
-      {!hasExternalTrigger && (
-        <Button variant="secondary" onClick={onShowSchedule}>
-          Schedule Run
-        </Button>
-      )}
       <Button
         variant="primary"
         onClick={onRun}
-        disabled={!allRequiredInputsAreSet || isExecuting || isSettingUpTrigger}
+        disabled={!isRunReady || isExecuting || isSettingUpTrigger}
         loading={isExecuting || isSettingUpTrigger}
       >
         {defaultRunType === "automatic-trigger"

@@ -1,18 +1,17 @@
 import logging
 from typing import Any, Optional
 
-from pydantic import JsonValue
-
 from backend.data.block import (
     Block,
     BlockCategory,
     BlockInput,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
     BlockType,
     get_block,
 )
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, NodesInputMasks
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
@@ -21,7 +20,7 @@ _logger = logging.getLogger(__name__)
 
 
 class AgentExecutorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         user_id: str = SchemaField(description="User ID")
         graph_id: str = SchemaField(description="Graph ID")
         graph_version: int = SchemaField(description="Graph Version")
@@ -33,7 +32,7 @@ class AgentExecutorBlock(Block):
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
 
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = SchemaField(
+        nodes_input_masks: Optional[NodesInputMasks] = SchemaField(
             default=None, hidden=True
         )
 
@@ -55,6 +54,7 @@ class AgentExecutorBlock(Block):
             return validate_with_jsonschema(cls.get_input_schema(data), data)
 
     class Output(BlockSchema):
+        # Use BlockSchema to avoid automatic error field that could clash with graph outputs
         pass
 
     def __init__(self):
@@ -67,7 +67,13 @@ class AgentExecutorBlock(Block):
             categories={BlockCategory.AGENT},
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        graph_exec_id: str,
+        **kwargs,
+    ) -> BlockOutput:
 
         from backend.executor import utils as execution_utils
 
@@ -77,6 +83,8 @@ class AgentExecutorBlock(Block):
             user_id=input_data.user_id,
             inputs=input_data.inputs,
             nodes_input_masks=input_data.nodes_input_masks,
+            parent_graph_exec_id=graph_exec_id,
+            is_sub_graph=True,  # AgentExecutorBlock executions are always sub-graphs
         )
 
         logger = execution_utils.LogMetadata(

@@ -18,6 +18,7 @@ nav:
     - Advanced Setup: platform/advanced_setup.md
     - Agent Blocks: platform/agent-blocks.md
     - Build your own Blocks: platform/new_blocks.md
+    - Block SDK Guide: platform/block-sdk-guide.md
     - Using Ollama: platform/ollama.md
     - Using AI/ML API: platform/aimlapi.md
     - Using D-ID: platform/d_id.md

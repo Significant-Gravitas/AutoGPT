@@ -4,12 +4,14 @@ interface Props {
   children: React.ReactNode;
   testId?: string;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export function BaseFooter({
   children,
   testId = "modal-footer",
   className = "",
+  style,
 }: Props) {
   const ctx = useDialogCtx();
 
@@ -17,6 +19,7 @@ export function BaseFooter({
     <div
       className={`flex justify-end gap-4 pt-6 ${className}`}
       data-testid={testId}
+      style={style}
     >
       {children}
     </div>

@@ -3,14 +3,14 @@ import React, { useState, useEffect, useMemo } from "react";
 
 import { motion, useAnimationControls } from "framer-motion";
 import { BellIcon, X } from "lucide-react";
-import { Button } from "@/components/agptui/Button";
+import { Button } from "@/components/__legacy__/Button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/__legacy__/ui/dropdown-menu";
 import NotificationCard, {
   NotificationCardData,
 } from "../LibraryNotificationCard/LibraryNotificationCard";

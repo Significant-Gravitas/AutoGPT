@@ -11,6 +11,7 @@
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 1",
       "description": "Test Description 1",
+      "instructions": null,
       "input_schema": {
         "type": "object",
         "properties": {}
@@ -27,7 +28,9 @@
       "trigger_setup_info": null,
       "new_output": false,
       "can_access_graph": true,
-      "is_latest_version": true
+      "is_latest_version": true,
+      "is_favorite": false,
+      "recommended_schedule_cron": null
     },
     {
       "id": "test-agent-2",
@@ -40,6 +43,7 @@
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 2",
       "description": "Test Description 2",
+      "instructions": null,
       "input_schema": {
         "type": "object",
         "properties": {}
@@ -56,7 +60,9 @@
       "trigger_setup_info": null,
       "new_output": false,
       "can_access_graph": false,
-      "is_latest_version": true
+      "is_latest_version": true,
+      "is_favorite": false,
+      "recommended_schedule_cron": null
     }
   ],
   "pagination": {

@@ -2,6 +2,9 @@
 
 This guide will walk you through the process of creating and testing a new block for the AutoGPT Agent Server, using the WikipediaSummaryBlock as an example.
 
+!!! tip "New SDK-Based Approach"
+For a more comprehensive guide using the new SDK pattern with ProviderBuilder and advanced features like OAuth and webhooks, see the [Block SDK Guide](block-sdk-guide.md).
+
 ## Understanding Blocks and Testing
 
 Blocks are reusable components that can be connected to form a graph representing an agent's behavior. Each block has inputs, outputs, and a specific function. Proper testing is crucial to ensure blocks work correctly and consistently.
@@ -14,74 +17,73 @@ Follow these steps to create and test a new block:
 
 2. **Import necessary modules and create a class that inherits from `Block`**. Make sure to include all necessary imports for your block.
 
-    Every block should contain the following:
+   Every block should contain the following:
 
-    ```python
-    from backend.data.block import Block, BlockSchema, BlockOutput
-    ```
+   ```python
+   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+   ```
 
-    Example for the Wikipedia summary block:
+   Example for the Wikipedia summary block:
 
-    ```python
-    from backend.data.block import Block, BlockSchema, BlockOutput
-    from backend.utils.get_request import GetRequest
-    import requests
+   ```python
+   from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+   from backend.utils.get_request import GetRequest
+   import requests
 
-    class WikipediaSummaryBlock(Block, GetRequest):
-        # Block implementation will go here
-    ```
+   class WikipediaSummaryBlock(Block, GetRequest):
+       # Block implementation will go here
+   ```
 
 3. **Define the input and output schemas** using `BlockSchema`. These schemas specify the data structure that the block expects to receive (input) and produce (output).
 
    - The input schema defines the structure of the data the block will process. Each field in the schema represents a required piece of input data.
    - The output schema defines the structure of the data the block will return after processing. Each field in the schema represents a piece of output data.
 
-    Example:
+   Example:
 
-    ```python
-    class Input(BlockSchema):
-        topic: str  # The topic to get the Wikipedia summary for
+   ```python
+   class Input(BlockSchemaInput):
+       topic: str  # The topic to get the Wikipedia summary for
 
-    class Output(BlockSchema):
-        summary: str  # The summary of the topic from Wikipedia
-        error: str  # Any error message if the request fails, error field needs to be named `error`.
-    ```
+   class Output(BlockSchemaOutput):
+       summary: str  # The summary of the topic from Wikipedia
+   ```
 
 4. **Implement the `__init__` method, including test data and mocks:**
 
-    !!! important
-         Use UUID generator (e.g. https://www.uuidgenerator.net/) for every new block `id` and *do not* make up your own. Alternatively, you can run this python code to generate an uuid: `print(__import__('uuid').uuid4())`
+   !!! important
+   Use UUID generator (e.g. https://www.uuidgenerator.net/) for every new block `id` and _do not_ make up your own. Alternatively, you can run this python code to generate an uuid: `print(__import__('uuid').uuid4())`
 
-    ```python
-    def __init__(self):
-        super().__init__(
-            # Unique ID for the block, used across users for templates
-            # If you are an AI leave it as is or change to "generate-proper-uuid"
-            id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-            input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
-            output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
+   ```python
+   def __init__(self):
+       super().__init__(
+           # Unique ID for the block, used across users for templates
+           # If you are an AI leave it as is or change to "generate-proper-uuid"
+           id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+           input_schema=WikipediaSummaryBlock.Input,  # Assign input schema
+           output_schema=WikipediaSummaryBlock.Output,  # Assign output schema
 
-                # Provide sample input, output and test mock for testing the block
+               # Provide sample input, output and test mock for testing the block
 
-            test_input={"topic": "Artificial Intelligence"},
-            test_output=("summary", "summary content"),
-            test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
-        )
-    ```
+           test_input={"topic": "Artificial Intelligence"},
+           test_output=("summary", "summary content"),
+           test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
+       )
+   ```
 
-    - `id`: A unique identifier for the block.
+   - `id`: A unique identifier for the block.
 
-    - `input_schema` and `output_schema`: Define the structure of the input and output data.
+   - `input_schema` and `output_schema`: Define the structure of the input and output data.
 
-    Let's break down the testing components:
+   Let's break down the testing components:
 
-    - `test_input`: This is a sample input that will be used to test the block. It should be a valid input according to your Input schema.
+   - `test_input`: This is a sample input that will be used to test the block. It should be a valid input according to your Input schema.
 
-    - `test_output`: This is the expected output when running the block with the `test_input`. It should match your Output schema. For non-deterministic outputs or when you only want to assert the type, you can use Python types instead of specific values. In this example, `("summary", str)` asserts that the output key is "summary" and its value is a string.
+   - `test_output`: This is the expected output when running the block with the `test_input`. It should match your Output schema. For non-deterministic outputs or when you only want to assert the type, you can use Python types instead of specific values. In this example, `("summary", str)` asserts that the output key is "summary" and its value is a string.
 
-    - `test_mock`: This is crucial for blocks that make network calls. It provides a mock function that replaces the actual network call during testing.
+   - `test_mock`: This is crucial for blocks that make network calls. It provides a mock function that replaces the actual network call during testing.
 
-     In this case, we're mocking the `get_request` method to always return a dictionary with an 'extract' key, simulating a successful API response. This allows us to test the block's logic without making actual network requests, which could be slow, unreliable, or rate-limited.
+   In this case, we're mocking the `get_request` method to always return a dictionary with an 'extract' key, simulating a successful API response. This allows us to test the block's logic without making actual network requests, which could be slow, unreliable, or rate-limited.
 
 5. **Implement the `run` method with error handling.** This should contain the main logic of the block:
 
@@ -103,19 +105,21 @@ Follow these steps to create and test a new block:
    - **Error handling**: Handle various exceptions that might occur during the API request and data processing. We don't need to catch all exceptions, only the ones we expect and can handle. The uncaught exceptions will be automatically yielded as `error` in the output. Any block that raises an exception (or yields an `error` output) will be marked as failed. Prefer raising exceptions over yielding `error`, as it will stop the execution immediately.
    - **Yield**: Use `yield` to output the results. Prefer to output one result object at a time. If you are calling a function that returns a list, you can yield each item in the list separately. You can also yield the whole list as well, but do both rather than yielding the list. For example: If you were writing a block that outputs emails, you'd yield each email as a separate result object, but you could also yield the whole list as an additional single result object. Yielding output named `error` will break the execution right away and mark the block execution as failed.
    - **kwargs**: The `kwargs` parameter is used to pass additional arguments to the block. It is not used in the example above, but it is available to the block. You can also have args as inline signatures in the run method ala `def run(self, input_data: Input, *, user_id: str, **kwargs) -> BlockOutput:`.
-       Available kwargs are:
-       - `user_id`: The ID of the user running the block.
-       - `graph_id`: The ID of the agent that is executing the block. This is the same for every version of the agent
-       - `graph_exec_id`: The ID of the execution of the agent. This changes every time the agent has a new "run"
-       - `node_exec_id`: The ID of the execution of the node. This changes every time the node is executed
-       - `node_id`: The ID of the node that is being executed. It changes every version of the graph, but not every time the node is executed.
+     Available kwargs are:
+     - `user_id`: The ID of the user running the block.
+     - `graph_id`: The ID of the agent that is executing the block. This is the same for every version of the agent
+     - `graph_exec_id`: The ID of the execution of the agent. This changes every time the agent has a new "run"
+     - `node_exec_id`: The ID of the execution of the node. This changes every time the node is executed
+     - `node_id`: The ID of the node that is being executed. It changes every version of the graph, but not every time the node is executed.
 
 ### Field Types
 
 #### oneOf fields
+
 `oneOf` allows you to specify that a field must be exactly one of several possible options. This is useful when you want your block to accept different types of inputs that are mutually exclusive.
 
 Example:
+
 ```python
 attachment: Union[Media, DeepLink, Poll, Place, Quote] = SchemaField(
     discriminator='discriminator',
@@ -126,6 +130,7 @@ attachment: Union[Media, DeepLink, Poll, Place, Quote] = SchemaField(
 The `discriminator` parameter tells AutoGPT which field to look at in the input to determine which type it is.
 
 In each model, you need to define the discriminator value:
+
 ```python
 class Media(BaseModel):
     discriminator: Literal['media']
@@ -137,9 +142,11 @@ class DeepLink(BaseModel):
 ```
 
 #### OptionalOneOf fields
+
 `OptionalOneOf` is similar to `oneOf` but allows the field to be optional (None). This means the field can be either one of the specified types or None.
 
 Example:
+
 ```python
 attachment: Union[Media, DeepLink, Poll, Place, Quote] | None = SchemaField(
     discriminator='discriminator',
@@ -165,14 +172,14 @@ from backend.data.model import (
     Credentials,
 )
 
-from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import CredentialsField
 from backend.integrations.providers import ProviderName
 
 
 # API Key auth:
 class BlockWithAPIKeyAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
@@ -195,7 +202,7 @@ class BlockWithAPIKeyAuth(Block):
 
 # OAuth:
 class BlockWithOAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
@@ -218,7 +225,7 @@ class BlockWithOAuth(Block):
 
 # API Key auth + OAuth:
 class BlockWithAPIKeyAndOAuth(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Note that the type hint below is require or you will get a type error.
         # The first argument is the provider name, the second is the credential type.
         credentials: CredentialsMetaInput[
@@ -276,23 +283,26 @@ response = requests.post(
 
 The `ProviderName` enum is the single source of truth for which providers exist in our system.
 Naturally, to add an authenticated block for a new provider, you'll have to add it here too.
+
 <details>
 <summary><code>ProviderName</code> definition</summary>
 
 ```python title="backend/integrations/providers.py"
 --8<-- "autogpt_platform/backend/backend/integrations/providers.py:ProviderName"
 ```
+
 </details>
 
 #### Multiple credentials inputs
+
 Multiple credentials inputs are supported, under the following conditions:
+
 - The name of each of the credentials input fields must end with `_credentials`.
 - The names of the credentials input fields must match the names of the corresponding
   parameters on the `run(..)` method of the block.
 - If more than one of the credentials parameters are required, `test_credentials`
   is a `dict[str, Credentials]`, with for each required credentials input the
   parameter name as the key and suitable test credentials as the value.
-
 
 #### Adding an OAuth2 service integration
 
@@ -331,22 +341,25 @@ Aside from implementing the `OAuthHandler` itself, adding a handler into the sys
 
 #### Adding to the frontend
 
-You will need to add the provider (api or oauth) to the `CredentialsInput` component in [`frontend/src/components/integrations/credentials-input.tsx`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/credentials-input.tsx).
+You will need to add the provider (api or oauth) to the `CredentialsInput` component in [`/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx`](<https://github.com/Significant-Gravitas/AutoGPT/blob/dev/autogpt_platform/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx>).
 
 ```ts title="frontend/src/components/integrations/credentials-input.tsx"
---8<-- "autogpt_platform/frontend/src/components/integrations/credentials-input.tsx:ProviderIconsEmbed"
+--8 <
+  --"autogpt_platform/frontend/src/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs.tsx:ProviderIconsEmbed";
 ```
 
 You will also need to add the provider to the credentials provider list in [`frontend/src/components/integrations/helper.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/components/integrations/helper.ts).
 
 ```ts title="frontend/src/components/integrations/helper.ts"
---8<-- "autogpt_platform/frontend/src/components/integrations/helper.ts:CredentialsProviderNames"
+--8 <
+  --"autogpt_platform/frontend/src/components/integrations/helper.ts:CredentialsProviderNames";
 ```
 
 Finally you will need to add the provider to the `CredentialsType` enum in [`frontend/src/lib/autogpt-server-api/types.ts`](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts).
 
 ```ts title="frontend/src/lib/autogpt-server-api/types.ts"
---8<-- "autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts:BlockIOCredentialsSubSchema"
+--8 <
+  --"autogpt_platform/frontend/src/lib/autogpt-server-api/types.ts:BlockIOCredentialsSubSchema";
 ```
 
 #### Example: GitHub integration
@@ -388,12 +401,12 @@ rather than being executed manually.
 Creating and running a webhook-triggered block involves three main components:
 
 - The block itself, which specifies:
-    - Inputs for the user to select a resource and events to subscribe to
-    - A `credentials` input with the scopes needed to manage webhooks
-    - Logic to turn the webhook payload into outputs for the webhook block
+  - Inputs for the user to select a resource and events to subscribe to
+  - A `credentials` input with the scopes needed to manage webhooks
+  - Logic to turn the webhook payload into outputs for the webhook block
 - The `WebhooksManager` for the corresponding webhook service provider, which handles:
-    - (De)registering webhooks with the provider
-    - Parsing and validating incoming webhook payloads
+  - (De)registering webhooks with the provider
+  - Parsing and validating incoming webhook payloads
 - The credentials system for the corresponding service provider, which may include an `OAuthHandler`
 
 There is more going on under the hood, e.g. to store and retrieve webhooks and their
@@ -406,67 +419,72 @@ To create a webhook-triggered block, follow these additional steps on top of the
 
 1. **Define `webhook_config`** in your block's `__init__` method.
 
-    <details>
-    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+   <details>
+   <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
 
-    ```python title="backend/blocks/github/triggers.py"
-    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-webhook_config"
-    ```
-    </details>
+   ```python title="backend/blocks/github/triggers.py"
+   --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-webhook_config"
+   ```
 
-    <details>
-    <summary><code>BlockWebhookConfig</code> definition</summary>
+   </details>
 
-    ```python title="backend/data/block.py"
-    --8<-- "autogpt_platform/backend/backend/data/block.py:BlockWebhookConfig"
-    ```
-    </details>
+   <details>
+   <summary><code>BlockWebhookConfig</code> definition</summary>
+
+   ```python title="backend/data/block.py"
+   --8<-- "autogpt_platform/backend/backend/data/block.py:BlockWebhookConfig"
+   ```
+
+   </details>
 
 2. **Define event filter input** in your block's Input schema.
-    This allows the user to select which specific types of events will trigger the block in their agent.
+   This allows the user to select which specific types of events will trigger the block in their agent.
 
-    <details>
-    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+   <details>
+   <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
 
-    ```python title="backend/blocks/github/triggers.py"
-    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-event-filter"
-    ```
-    </details>
+   ```python title="backend/blocks/github/triggers.py"
+   --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-event-filter"
+   ```
 
-    - The name of the input field (`events` in this case) must match `webhook_config.event_filter_input`.
-    - The event filter itself must be a Pydantic model with only boolean fields.
+   </details>
 
-4. **Include payload field** in your block's Input schema.
+   - The name of the input field (`events` in this case) must match `webhook_config.event_filter_input`.
+   - The event filter itself must be a Pydantic model with only boolean fields.
 
-    <details>
-    <summary>Example: <code>GitHubTriggerBase</code></summary>
+3. **Include payload field** in your block's Input schema.
 
-    ```python title="backend/blocks/github/triggers.py"
-    --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-payload-field"
-    ```
-    </details>
+   <details>
+   <summary>Example: <code>GitHubTriggerBase</code></summary>
 
-5. **Define `credentials` input** in your block's Input schema.
-    - Its scopes must be sufficient to manage a user's webhooks through the provider's API
-    - See [Blocks with authentication](#blocks-with-authentication) for further details
+   ```python title="backend/blocks/github/triggers.py"
+   --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:example-payload-field"
+   ```
 
-6. **Process webhook payload** and output relevant parts of it in your block's `run` method.
+   </details>
 
-    <details>
-    <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+4. **Define `credentials` input** in your block's Input schema.
 
-    ```python
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "payload", input_data.payload
-        yield "sender", input_data.payload["sender"]
-        yield "event", input_data.payload["action"]
-        yield "number", input_data.payload["number"]
-        yield "pull_request", input_data.payload["pull_request"]
-    ```
+   - Its scopes must be sufficient to manage a user's webhooks through the provider's API
+   - See [Blocks with authentication](#blocks-with-authentication) for further details
 
-    Note that the `credentials` parameter can be omitted if the credentials
-    aren't used at block runtime, like in the example.
-    </details>
+5. **Process webhook payload** and output relevant parts of it in your block's `run` method.
+
+   <details>
+   <summary>Example: <code>GitHubPullRequestTriggerBlock</code></summary>
+
+   ```python
+   def run(self, input_data: Input, **kwargs) -> BlockOutput:
+       yield "payload", input_data.payload
+       yield "sender", input_data.payload["sender"]
+       yield "event", input_data.payload["action"]
+       yield "number", input_data.payload["number"]
+       yield "pull_request", input_data.payload["pull_request"]
+   ```
+
+   Note that the `credentials` parameter can be omitted if the credentials
+   aren't used at block runtime, like in the example.
+   </details>
 
 #### Adding a Webhooks Manager
 
@@ -497,6 +515,7 @@ GitHub Webhook triggers: <a href="https://github.com/Significant-Gravitas/AutoGP
 ```python title="backend/blocks/github/triggers.py"
 --8<-- "autogpt_platform/backend/backend/blocks/github/triggers.py:GithubTriggerExample"
 ```
+
 </details>
 
 <details>
@@ -507,6 +526,7 @@ GitHub Webhooks Manager: <a href="https://github.com/Significant-Gravitas/AutoGP
 ```python title="backend/integrations/webhooks/github.py"
 --8<-- "autogpt_platform/backend/backend/integrations/webhooks/github.py:GithubWebhooksManager"
 ```
+
 </details>
 
 ## Key Points to Remember
@@ -560,22 +580,24 @@ class MyNetworkBlock(Block):
 The `Requests` wrapper provides these security features:
 
 1. **URL Validation**:
-    - Blocks requests to private IP ranges (RFC 1918)
-    - Validates URL format and protocol
-    - Resolves DNS and checks IP addresses
-    - Supports whitelisting trusted origins
+
+   - Blocks requests to private IP ranges (RFC 1918)
+   - Validates URL format and protocol
+   - Resolves DNS and checks IP addresses
+   - Supports whitelisting trusted origins
 
 2. **Secure Defaults**:
-    - Disables redirects by default
-    - Raises exceptions for non-200 status codes
-    - Supports custom headers and validators
+
+   - Disables redirects by default
+   - Raises exceptions for non-200 status codes
+   - Supports custom headers and validators
 
 3. **Protected IP Ranges**:
    The wrapper denies requests to these networks:
 
-    ```python title="backend/util/request.py"
-    --8<-- "autogpt_platform/backend/backend/util/request.py:BLOCKED_IP_NETWORKS"
-    ```
+   ```python title="backend/util/request.py"
+   --8<-- "autogpt_platform/backend/backend/util/request.py:BLOCKED_IP_NETWORKS"
+   ```
 
 ### Custom Request Configuration
 
@@ -592,15 +614,27 @@ custom_requests = Requests(
 )
 ```
 
+### Error Handling
+
+All blocks should have an error output that catches all reasonable errors that a user can handle, wrap them in a ValueError, and re-raise. Don't catch things the system admin would need to fix like being out of money or unreachable addresses.  
+
+### Data Models
+
+Use pydantic base models over dict and typeddict where possible. Avoid untyped models for block inputs and outputs as much as possible
+
+### File Input
+
+You can use MediaFileType to handle the importing and exporting of files out of the system. Explore how its used through the system before using it in a block schema.
+
 ## Tips for Effective Block Testing
 
 1. **Provide realistic test_input**: Ensure your test input covers typical use cases.
 
 2. **Define appropriate test_output**:
 
-    - For deterministic outputs, use specific expected values.
-    - For non-deterministic outputs or when only the type matters, use Python types (e.g., `str`, `int`, `dict`).
-    - You can mix specific values and types, e.g., `("key1", str), ("key2", 42)`.
+   - For deterministic outputs, use specific expected values.
+   - For non-deterministic outputs or when only the type matters, use Python types (e.g., `str`, `int`, `dict`).
+   - You can mix specific values and types, e.g., `("key1", str), ("key2", 42)`.
 
 3. **Use test_mock for network calls**: This prevents tests from failing due to network issues or API changes.
 
@@ -611,77 +645,3 @@ custom_requests = Requests(
 6. **Update tests when changing block behavior**: If you modify your block, ensure the tests are updated accordingly.
 
 By following these steps, you can create new blocks that extend the functionality of the AutoGPT Agent Server.
-
-## Blocks we want to see
-
-Below is a list of blocks that we would like to see implemented in the AutoGPT Agent Server. If you're interested in contributing, feel free to pick one of these blocks or chose your own.
-
-If you would like to implement one of these blocks, open a pull request and we will start the review process.
-
-### Consumer Services/Platforms
-
-- Google sheets - [~~Read/Append~~](https://github.com/Significant-Gravitas/AutoGPT/pull/8236)
-- Email - Read/Send with [~~Gmail~~](https://github.com/Significant-Gravitas/AutoGPT/pull/8236), Outlook, Yahoo, Proton, etc
-- Calendar - Read/Write with Google Calendar, Outlook Calendar, etc
-- Home Assistant - Call Service, Get Status
-- Dominos - Order Pizza, Track Order
-- Uber - Book Ride, Track Ride
-- Notion - Create/Read Page, Create/Append/Read DB
-- Google drive - read/write/overwrite file/folder
-
-### Social Media
-
-- Twitter - Post, Reply, Get Replies, Get Comments, Get Followers, Get Following, Get Tweets, Get Mentions
-- Instagram - Post, Reply, Get Comments, Get Followers, Get Following, Get Posts, Get Mentions, Get Trending Posts
-- TikTok - Post, Reply, Get Comments, Get Followers, Get Following, Get Videos, Get Mentions, Get Trending Videos
-- LinkedIn - Post, Reply, Get Comments, Get Followers, Get Following, Get Posts, Get Mentions, Get Trending Posts
-- YouTube - Transcribe Videos/Shorts, Post Videos/Shorts, Read/Reply/React to Comments, Update Thumbnails, Update Description, Update Tags, Update Titles, Get Views, Get Likes, Get Dislikes, Get Subscribers, Get Comments, Get Shares, Get Watch Time, Get Revenue, Get Trending Videos, Get Top Videos, Get Top Channels
-- Reddit - Post, Reply, Get Comments, Get Followers, Get Following, Get Posts, Get Mentions, Get Trending Posts
-- Treatwell (and related Platforms) - Book, Cancel, Review, Get Recommendations
-- Substack - Read/Subscribe/Unsubscribe, Post/Reply, Get Recommendations
-- Discord - Read/Post/Reply, Moderation actions
-- GoodReads - Read/Post/Reply, Get Recommendations
-
-### E-commerce
-
-- Airbnb - Book, Cancel, Review, Get Recommendations
-- Amazon - Order, Track Order, Return, Review, Get Recommendations
-- eBay - Order, Track Order, Return, Review, Get Recommendations
-- Upwork - Post Jobs, Hire Freelancer, Review Freelancer, Fire Freelancer
-
-### Business Tools
-
-- External Agents - Call other agents similar to AutoGPT
-- Trello - Create/Read/Update/Delete Cards, Lists, Boards
-- Jira - Create/Read/Update/Delete Issues, Projects, Boards
-- Linear - Create/Read/Update/Delete Issues, Projects, Boards
-- Excel - Read/Write/Update/Delete Rows, Columns, Sheets
-- Slack - Read/Post/Reply to Messages, Create Channels, Invite Users
-- ERPNext - Create/Read/Update/Delete Invoices, Orders, Customers, Products
-- Salesforce - Create/Read/Update/Delete Leads, Opportunities, Accounts
-- HubSpot - Create/Read/Update/Delete Contacts, Deals, Companies
-- Zendesk - Create/Read/Update/Delete Tickets, Users, Organizations
-- Odoo - Create/Read/Update/Delete Sales Orders, Invoices, Customers
-- Shopify - Create/Read/Update/Delete Products, Orders, Customers
-- WooCommerce - Create/Read/Update/Delete Products, Orders, Customers
-- Squarespace - Create/Read/Update/Delete Pages, Products, Orders
-
-## Agent Templates we want to see
-
-### Data/Information
-
-- Summarize top news of today, of this week, this month via Apple News or other large media outlets BBC, TechCrunch, hackernews, etc
-- Create, read, and summarize substack newsletters or any newsletters (blog writer vs blog reader)
-- Get/read/summarize the most viral Twitter, Instagram, TikTok (general social media accounts) of the day, week, month
-- Get/Read any LinkedIn posts or profile that mention AI Agents
-- Read/Summarize discord (might not be able to do this because you need access)
-- Read / Get most read books in a given month, year, etc from GoodReads or Amazon Books, etc
-- Get dates for specific shows across all streaming services
-  - Suggest/Recommend/Get most watched shows in a given month, year, etc across all streaming platforms
-- Data analysis from xlsx data set
-  - Gather via Excel or Google Sheets data > Sample the data randomly (sample block takes top X, bottom X, randomly, etc) > pass that to LLM Block to generate a script for analysis of the full data > Python block to run the script> making a loop back through LLM Fix Block on error > create chart/visualization (potentially in the code block?) > show the image as output (this may require frontend changes to show)
-- Tiktok video search and download
-
-### Marketing
-
-- Portfolio site design and enhancements

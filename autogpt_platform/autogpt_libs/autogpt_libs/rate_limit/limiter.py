@@ -11,7 +11,7 @@ class RateLimiter:
         self,
         redis_host: str = RATE_LIMIT_SETTINGS.redis_host,
         redis_port: str = RATE_LIMIT_SETTINGS.redis_port,
-        redis_password: str = RATE_LIMIT_SETTINGS.redis_password,
+        redis_password: str | None = RATE_LIMIT_SETTINGS.redis_password,
         requests_per_minute: int = RATE_LIMIT_SETTINGS.requests_per_minute,
     ):
         self.redis = Redis(

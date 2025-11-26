@@ -4,7 +4,8 @@ from backend.data.block import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
@@ -24,12 +25,12 @@ settings = Settings()
 class Slant3DTriggerBase:
     """Base class for Slant3D webhook triggers"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         # Webhook URL is handled by the webhook system
         payload: dict = SchemaField(hidden=True, default_factory=dict)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         payload: dict = SchemaField(
             description="The complete webhook payload received from Slant3D"
         )

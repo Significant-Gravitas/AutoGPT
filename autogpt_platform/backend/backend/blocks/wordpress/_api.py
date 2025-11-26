@@ -4,6 +4,8 @@ from logging import getLogger
 from typing import Any, Dict, List, Union
 from urllib.parse import urlencode
 
+from pydantic import field_serializer
+
 from backend.sdk import BaseModel, Credentials, Requests
 
 logger = getLogger(__name__)
@@ -382,8 +384,9 @@ class CreatePostRequest(BaseModel):
     # Advanced
     metadata: List[Dict[str, Any]] | None = None
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("date")
+    def serialize_date(self, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
 
 
 class PostAuthor(BaseModel):

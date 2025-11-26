@@ -146,7 +146,7 @@ export function ActivityDropdown({
               <Text variant="body-medium" className="!text-black">
                 {searchQuery
                   ? "No matching agents found"
-                  : "Nothing to show yet"}
+                  : "No recent runs to show yet"}
               </Text>
               <Text variant="body" className="!text-zinc-500">
                 {searchQuery

@@ -1,5 +1,6 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
+import scrollbar from "tailwind-scrollbar";
 import { colors } from "./src/components/styles/colors";
 
 const config = {
@@ -157,7 +158,7 @@ const config = {
       },
     },
   },
-  plugins: [tailwindcssAnimate],
+  plugins: [tailwindcssAnimate, scrollbar({ nocompatible: true })],
 } satisfies Config;
 
 export default config;

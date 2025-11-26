@@ -3,6 +3,7 @@ import logging
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
 from jinja2 import BaseLoader
+from jinja2.exceptions import TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 from markupsafe import Markup
 
@@ -16,8 +17,8 @@ def format_filter_for_jinja2(value, format_string=None):
 
 
 class TextFormatter:
-    def __init__(self):
-        self.env = SandboxedEnvironment(loader=BaseLoader(), autoescape=True)
+    def __init__(self, autoescape: bool = True):
+        self.env = SandboxedEnvironment(loader=BaseLoader(), autoescape=autoescape)
         self.env.globals.clear()
 
         # Instead of clearing all filters, just remove potentially unsafe ones
@@ -101,8 +102,11 @@ class TextFormatter:
 
     def format_string(self, template_str: str, values=None, **kwargs) -> str:
         """Regular template rendering with escaping"""
-        template = self.env.from_string(template_str)
-        return template.render(values or {}, **kwargs)
+        try:
+            template = self.env.from_string(template_str)
+            return template.render(values or {}, **kwargs)
+        except TemplateError as e:
+            raise ValueError(e) from e
 
     def format_email(
         self,

@@ -1,8 +1,8 @@
 import json
+from datetime import datetime
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
-import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
 import pytest
@@ -14,9 +14,7 @@ from pytest_snapshot.plugin import Snapshot
 import backend.server.routers.v1 as v1_routes
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
-from backend.server.conftest import TEST_USER_ID
 from backend.server.routers.v1 import upload_file
-from backend.server.utils import get_user_id
 
 app = fastapi.FastAPI()
 app.include_router(v1_routes.v1_router)
@@ -24,31 +22,29 @@ app.include_router(v1_routes.v1_router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_auth_middleware(request: fastapi.Request) -> dict[str, str]:
-    """Override auth middleware for testing"""
-    return {"sub": TEST_USER_ID, "role": "user", "email": "test@example.com"}
+@pytest.fixture(autouse=True)
+def setup_app_auth(mock_jwt_user, setup_test_user):
+    """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
+    # setup_test_user fixture already executed and user is created in database
+    # It returns the user_id which we don't need to await
 
-def override_get_user_id() -> str:
-    """Override get_user_id for testing"""
-    return TEST_USER_ID
-
-
-app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
-    override_auth_middleware
-)
-app.dependency_overrides[get_user_id] = override_get_user_id
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    yield
+    app.dependency_overrides.clear()
 
 
 # Auth endpoints tests
 def test_get_or_create_user_route(
     mocker: pytest_mock.MockFixture,
     configured_snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test get or create user endpoint"""
     mock_user = Mock()
     mock_user.model_dump.return_value = {
-        "id": TEST_USER_ID,
+        "id": test_user_id,
         "email": "test@example.com",
         "name": "Test User",
     }
@@ -117,8 +113,8 @@ def test_get_graph_blocks(
 
     # Mock block costs
     mocker.patch(
-        "backend.server.routers.v1.get_block_costs",
-        return_value={"test-block": [{"cost": 10, "type": "credit"}]},
+        "backend.data.credit.get_block_cost",
+        return_value=[{"cost": 10, "type": "credit"}],
     )
 
     response = client.get("/blocks")
@@ -152,6 +148,15 @@ def test_execute_graph_block(
     mocker.patch(
         "backend.server.routers.v1.get_block",
         return_value=mock_block,
+    )
+
+    # Mock user for user_context
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_by_id",
+        return_value=mock_user,
     )
 
     request_data = {
@@ -192,8 +197,12 @@ def test_get_user_credits(
     snapshot: Snapshot,
 ) -> None:
     """Test get user credits endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
 
     response = client.get("/credits")
 
@@ -213,9 +222,13 @@ def test_request_top_up(
     snapshot: Snapshot,
 ) -> None:
     """Test request top up endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.top_up_intent = AsyncMock(
         return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {"credit_amount": 500}
@@ -259,10 +272,79 @@ def test_get_auto_top_up(
     )
 
 
+def test_configure_auto_top_up(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
+    """Test configure auto top-up endpoint - this test would have caught the enum casting bug"""
+    # Mock the set_auto_top_up function to avoid database operations
+    mocker.patch(
+        "backend.server.routers.v1.set_auto_top_up",
+        return_value=None,
+    )
+
+    # Mock credit model to avoid Stripe API calls
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.get_credits.return_value = 50  # Current balance below threshold
+    mock_credit_model.top_up_credits.return_value = None
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    # Test data
+    request_data = {
+        "threshold": 100,
+        "amount": 500,
+    }
+
+    response = client.post("/credits/auto-top-up", json=request_data)
+
+    # This should succeed with our fix, but would have failed before with the enum casting error
+    assert response.status_code == 200
+    assert response.json() == "Auto top-up settings updated"
+
+
+def test_configure_auto_top_up_validation_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test configure auto top-up endpoint validation"""
+    # Mock set_auto_top_up to avoid database operations for successful case
+    mocker.patch("backend.server.routers.v1.set_auto_top_up")
+
+    # Mock credit model to avoid Stripe API calls for the successful case
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.get_credits.return_value = 50
+    mock_credit_model.top_up_credits.return_value = None
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    # Test negative threshold
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": -1, "amount": 500}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount too small (but not 0)
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 100, "amount": 100}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount = 0 (should be allowed)
+    response = client.post("/credits/auto-top-up", json={"threshold": 100, "amount": 0})
+    assert response.status_code == 200  # Should succeed
+
+
 # Graphs endpoints tests
 def test_get_graphs(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test get graphs endpoint"""
     mock_graph = GraphModel(
@@ -271,12 +353,13 @@ def test_get_graphs(
         is_active=True,
         name="Test Graph",
         description="A test graph",
-        user_id="test-user-id",
+        user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(
-        "backend.server.routers.v1.graph_db.list_graphs",
-        return_value=[mock_graph],
+        "backend.data.graph.list_graphs_paginated",
+        return_value=Mock(graphs=[mock_graph]),
     )
 
     response = client.get("/graphs")
@@ -296,6 +379,7 @@ def test_get_graphs(
 def test_get_graph(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test get single graph endpoint"""
     mock_graph = GraphModel(
@@ -304,7 +388,8 @@ def test_get_graph(
         is_active=True,
         name="Test Graph",
         description="A test graph",
-        user_id="test-user-id",
+        user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(
@@ -343,6 +428,7 @@ def test_get_graph_not_found(
 def test_delete_graph(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test delete graph endpoint"""
     # Mock active graph for deactivation
@@ -352,7 +438,8 @@ def test_delete_graph(
         is_active=True,
         name="Test Graph",
         description="A test graph",
-        user_id="test-user-id",
+        user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(
@@ -399,7 +486,7 @@ def test_missing_required_field() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_file_success():
+async def test_upload_file_success(test_user_id: str):
     """Test successful file upload."""
     # Create mock upload file
     file_content = b"test file content"
@@ -425,7 +512,7 @@ async def test_upload_file_success():
 
         result = await upload_file(
             file=upload_file_mock,
-            user_id="test-user-123",
+            user_id=test_user_id,
             provider="gcs",
             expiration_hours=24,
         )
@@ -446,12 +533,12 @@ async def test_upload_file_success():
             filename="test.txt",
             provider="gcs",
             expiration_hours=24,
-            user_id="test-user-123",
+            user_id=test_user_id,
         )
 
 
 @pytest.mark.asyncio
-async def test_upload_file_no_filename():
+async def test_upload_file_no_filename(test_user_id: str):
     """Test file upload without filename."""
     file_content = b"test content"
     file_obj = BytesIO(file_content)
@@ -476,7 +563,7 @@ async def test_upload_file_no_filename():
 
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
-        result = await upload_file(file=upload_file_mock, user_id="test-user-123")
+        result = await upload_file(file=upload_file_mock, user_id=test_user_id)
 
         assert result.file_name == "uploaded_file"
         assert result.content_type == "application/octet-stream"
@@ -486,7 +573,7 @@ async def test_upload_file_no_filename():
 
 
 @pytest.mark.asyncio
-async def test_upload_file_invalid_expiration():
+async def test_upload_file_invalid_expiration(test_user_id: str):
     """Test file upload with invalid expiration hours."""
     file_obj = BytesIO(b"content")
     upload_file_mock = UploadFile(
@@ -498,7 +585,7 @@ async def test_upload_file_invalid_expiration():
     # Test expiration too short
     with pytest.raises(HTTPException) as exc_info:
         await upload_file(
-            file=upload_file_mock, user_id="test-user-123", expiration_hours=0
+            file=upload_file_mock, user_id=test_user_id, expiration_hours=0
         )
     assert exc_info.value.status_code == 400
     assert "between 1 and 48" in exc_info.value.detail
@@ -506,14 +593,14 @@ async def test_upload_file_invalid_expiration():
     # Test expiration too long
     with pytest.raises(HTTPException) as exc_info:
         await upload_file(
-            file=upload_file_mock, user_id="test-user-123", expiration_hours=49
+            file=upload_file_mock, user_id=test_user_id, expiration_hours=49
         )
     assert exc_info.value.status_code == 400
     assert "between 1 and 48" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
-async def test_upload_file_virus_scan_failure():
+async def test_upload_file_virus_scan_failure(test_user_id: str):
     """Test file upload when virus scan fails."""
     file_content = b"malicious content"
     file_obj = BytesIO(file_content)
@@ -530,11 +617,11 @@ async def test_upload_file_virus_scan_failure():
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
         with pytest.raises(RuntimeError, match="Virus detected!"):
-            await upload_file(file=upload_file_mock, user_id="test-user-123")
+            await upload_file(file=upload_file_mock, user_id=test_user_id)
 
 
 @pytest.mark.asyncio
-async def test_upload_file_cloud_storage_failure():
+async def test_upload_file_cloud_storage_failure(test_user_id: str):
     """Test file upload when cloud storage fails."""
     file_content = b"test content"
     file_obj = BytesIO(file_content)
@@ -556,11 +643,11 @@ async def test_upload_file_cloud_storage_failure():
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
         with pytest.raises(RuntimeError, match="Storage error!"):
-            await upload_file(file=upload_file_mock, user_id="test-user-123")
+            await upload_file(file=upload_file_mock, user_id=test_user_id)
 
 
 @pytest.mark.asyncio
-async def test_upload_file_size_limit_exceeded():
+async def test_upload_file_size_limit_exceeded(test_user_id: str):
     """Test file upload when file size exceeds the limit."""
     # Create a file that exceeds the default 256MB limit
     large_file_content = b"x" * (257 * 1024 * 1024)  # 257MB
@@ -574,14 +661,14 @@ async def test_upload_file_size_limit_exceeded():
     upload_file_mock.read = AsyncMock(return_value=large_file_content)
 
     with pytest.raises(HTTPException) as exc_info:
-        await upload_file(file=upload_file_mock, user_id="test-user-123")
+        await upload_file(file=upload_file_mock, user_id=test_user_id)
 
     assert exc_info.value.status_code == 400
     assert "exceeds the maximum allowed size of 256MB" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
-async def test_upload_file_gcs_not_configured_fallback():
+async def test_upload_file_gcs_not_configured_fallback(test_user_id: str):
     """Test file upload fallback to base64 when GCS is not configured."""
     file_content = b"test file content"
     file_obj = BytesIO(file_content)
@@ -602,7 +689,7 @@ async def test_upload_file_gcs_not_configured_fallback():
 
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
-        result = await upload_file(file=upload_file_mock, user_id="test-user-123")
+        result = await upload_file(file=upload_file_mock, user_id=test_user_id)
 
         # Verify fallback behavior
         assert result.file_name == "test.txt"

@@ -2,8 +2,12 @@ import { type ClassValue, clsx } from "clsx";
 import { isEmpty as _isEmpty } from "lodash";
 import { twMerge } from "tailwind-merge";
 
-import { Category } from "@/lib/autogpt-server-api/types";
-import { NodeDimension } from "@/components/Flow";
+import {
+  BlockIOObjectSubSchema,
+  BlockIORootSchema,
+  Category,
+} from "@/lib/autogpt-server-api/types";
+import { NodeDimension } from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -177,32 +181,73 @@ export function setNestedProperty(obj: any, path: string, value: any) {
   current[keys[keys.length - 1]] = value;
 }
 
-export function removeEmptyStringsAndNulls(obj: any): any {
+export function pruneEmptyValues(
+  obj: any,
+  removeEmptyStrings: boolean = true,
+): any {
   if (Array.isArray(obj)) {
     // If obj is an array, recursively check each element,
     // but element removal is avoided to prevent index changes.
     return obj.map((item) =>
       item === undefined || item === null
         ? ""
-        : removeEmptyStringsAndNulls(item),
+        : pruneEmptyValues(item, removeEmptyStrings),
     );
   } else if (typeof obj === "object" && obj !== null) {
     // If obj is an object, recursively remove empty strings and nulls from its properties
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        const value = obj[key];
-        if (
-          value === null ||
-          value === undefined ||
-          (typeof value === "string" && value === "")
-        ) {
-          delete obj[key];
-        } else {
-          obj[key] = removeEmptyStringsAndNulls(value);
+      if (!obj.hasOwnProperty(key)) continue;
+
+      const value = obj[key];
+      if (
+        value === null ||
+        value === undefined ||
+        (typeof value === "string" && value === "" && removeEmptyStrings)
+      ) {
+        delete obj[key];
+      } else if (typeof value === "object") {
+        obj[key] = pruneEmptyValues(value, removeEmptyStrings);
+      }
+    }
+  }
+  return obj;
+}
+
+export function fillObjectDefaultsFromSchema(
+  obj: Record<any, any>,
+  schema: BlockIORootSchema | BlockIOObjectSubSchema,
+) {
+  for (const key in schema.properties) {
+    if (!schema.properties.hasOwnProperty(key)) continue;
+
+    const propertySchema = schema.properties[key];
+
+    if ("default" in propertySchema && propertySchema.default !== undefined) {
+      // Apply simple default values
+      obj[key] ??= propertySchema.default;
+    } else if (
+      propertySchema.type === "object" &&
+      "properties" in propertySchema
+    ) {
+      // Recursively fill defaults for nested objects
+      obj[key] = fillObjectDefaultsFromSchema(obj[key] ?? {}, propertySchema);
+    } else if (propertySchema.type === "array") {
+      obj[key] ??= [];
+      // If the array items are objects, fill their defaults as well
+      if (
+        Array.isArray(obj[key]) &&
+        propertySchema.items?.type === "object" &&
+        "properties" in propertySchema.items
+      ) {
+        for (const item of obj[key]) {
+          if (typeof item === "object" && item !== null) {
+            fillObjectDefaultsFromSchema(item, propertySchema.items);
+          }
         }
       }
     }
   }
+
   return obj;
 }
 
@@ -226,36 +271,6 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
   return (
     categoryColorMap[categories[0].category] || "bg-gray-300 dark:bg-slate-700"
   );
-}
-
-export enum BehaveAs {
-  CLOUD = "CLOUD",
-  LOCAL = "LOCAL",
-}
-
-export function getBehaveAs(): BehaveAs {
-  return process.env.NEXT_PUBLIC_BEHAVE_AS === "CLOUD"
-    ? BehaveAs.CLOUD
-    : BehaveAs.LOCAL;
-}
-
-export enum AppEnv {
-  LOCAL = "local",
-  DEV = "dev",
-  PROD = "prod",
-}
-
-export function getAppEnv(): AppEnv {
-  const env = process.env.NEXT_PUBLIC_APP_ENV;
-  if (env === "dev") return AppEnv.DEV;
-  if (env === "prod") return AppEnv.PROD;
-  // Some places use prod and others production
-  if (env === "production") return AppEnv.PROD;
-  return AppEnv.LOCAL;
-}
-
-export function getEnvironmentStr(): string {
-  return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
 }
 
 function rectanglesOverlap(
@@ -395,7 +410,9 @@ export function isEmpty(value: any): boolean {
   return (
     value === undefined ||
     value === "" ||
-    (typeof value === "object" && _isEmpty(value))
+    (typeof value === "object" &&
+      (value instanceof Date ? isNaN(value.getTime()) : _isEmpty(value))) ||
+    (typeof value === "number" && isNaN(value))
   );
 }
 

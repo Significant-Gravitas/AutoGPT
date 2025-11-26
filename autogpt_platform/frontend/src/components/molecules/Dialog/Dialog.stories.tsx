@@ -69,6 +69,10 @@ export const CustomStyling: Story = {
   render: renderCustomStyledDialog,
 };
 
+export const ModalOverModal: Story = {
+  render: renderModalOverModal,
+};
+
 function renderBasicDialog() {
   return (
     <Dialog title="Basic Dialog">
@@ -191,6 +195,36 @@ function renderCustomStyledDialog() {
       <Dialog.Content>
         <p>This dialog has custom styling applied.</p>
         <p>You can customize dimensions, colors, and other CSS properties.</p>
+      </Dialog.Content>
+    </Dialog>
+  );
+}
+
+function renderModalOverModal() {
+  return (
+    <Dialog title="Parent Dialog">
+      <Dialog.Trigger>
+        <Button variant="primary">Open Parent</Button>
+      </Dialog.Trigger>
+      <Dialog.Content>
+        <div className="space-y-4">
+          <p>
+            This is the parent dialog. You can open another modal on top of it
+            using a nested Dialog.
+          </p>
+
+          <Dialog title="Child Dialog">
+            <Dialog.Trigger>
+              <Button size="small">Open Child Modal</Button>
+            </Dialog.Trigger>
+            <Dialog.Content>
+              <p>
+                This child dialog is rendered above the parent. Close it first
+                to interact with the parent again.
+              </p>
+            </Dialog.Content>
+          </Dialog>
+        </div>
       </Dialog.Content>
     </Dialog>
   );

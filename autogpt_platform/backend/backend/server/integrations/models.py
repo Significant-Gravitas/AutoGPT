@@ -58,17 +58,13 @@ class ProviderConstants(BaseModel):
         default_factory=lambda: {
             name.upper().replace("-", "_"): name for name in get_all_provider_names()
         },
-    )
-
-    class Config:
-        schema_extra = {
-            "example": {
-                "PROVIDER_NAMES": {
-                    "OPENAI": "openai",
-                    "ANTHROPIC": "anthropic",
-                    "EXA": "exa",
-                    "GEM": "gem",
-                    "EXAMPLE_SERVICE": "example-service",
-                }
+        examples=[
+            {
+                "OPENAI": "openai",
+                "ANTHROPIC": "anthropic",
+                "EXA": "exa",
+                "GEM": "gem",
+                "EXAMPLE_SERVICE": "example-service",
             }
-        }
+        ],
+    )

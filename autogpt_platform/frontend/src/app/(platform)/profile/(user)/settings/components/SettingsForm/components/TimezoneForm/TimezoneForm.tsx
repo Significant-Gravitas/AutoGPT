@@ -3,7 +3,12 @@
 import * as React from "react";
 import { useTimezoneForm } from "./useTimezoneForm";
 import { User } from "@supabase/supabase-js";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Select,
@@ -11,7 +16,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 import {
   Form,
   FormControl,
@@ -19,7 +24,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
+} from "@/components/__legacy__/ui/form";
 
 type TimezoneFormProps = {
   user: User;

@@ -2,7 +2,7 @@ import logging
 from typing import Annotated, Sequence
 
 import fastapi
-from autogpt_libs.auth.depends import auth_middleware, get_user_id
+from autogpt_libs.auth.dependencies import get_user_id, requires_user
 
 import backend.server.v2.builder.db as builder_db
 import backend.server.v2.builder.model as builder_model
@@ -15,7 +15,9 @@ from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
 
-router = fastapi.APIRouter()
+router = fastapi.APIRouter(
+    dependencies=[fastapi.Security(requires_user)],
+)
 
 
 # Taken from backend/server/v2/store/db.py
@@ -41,12 +43,9 @@ def sanitize_query(query: str | None) -> str | None:
 @router.get(
     "/suggestions",
     summary="Get Builder suggestions",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.SuggestionsResponse,
 )
-async def get_suggestions(
-    user_id: Annotated[str, fastapi.Depends(get_user_id)],
-) -> builder_model.SuggestionsResponse:
+async def get_suggestions() -> builder_model.SuggestionsResponse:
     """
     Get all suggestions for the Blocks Menu.
     """
@@ -76,7 +75,6 @@ async def get_suggestions(
 @router.get(
     "/categories",
     summary="Get Builder block categories",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=Sequence[builder_model.BlockCategoryResponse],
 )
 async def get_block_categories(
@@ -91,7 +89,6 @@ async def get_block_categories(
 @router.get(
     "/blocks",
     summary="Get Builder blocks",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.BlockResponse,
 )
 async def get_blocks(
@@ -114,9 +111,27 @@ async def get_blocks(
 
 
 @router.get(
+    "/blocks/batch",
+    summary="Get specific blocks",
+    response_model=list[builder_model.BlockInfo],
+)
+async def get_specific_blocks(
+    block_ids: Annotated[list[str], fastapi.Query()],
+) -> list[builder_model.BlockInfo]:
+    """
+    Get specific blocks by their IDs.
+    """
+    blocks = []
+    for block_id in block_ids:
+        block = builder_db.get_block_by_id(block_id)
+        if block:
+            blocks.append(block)
+    return blocks
+
+
+@router.get(
     "/providers",
     summary="Get Builder integration providers",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.ProviderResponse,
 )
 async def get_providers(
@@ -132,31 +147,34 @@ async def get_providers(
     )
 
 
-@router.post(
+# Not using post method because on frontend, orval doesn't support Infinite Query with POST method.
+@router.get(
     "/search",
     summary="Builder search",
     tags=["store", "private"],
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.SearchResponse,
 )
 async def search(
-    options: builder_model.SearchRequest,
-    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    search_query: Annotated[str | None, fastapi.Query()] = None,
+    filter: Annotated[list[str] | None, fastapi.Query()] = None,
+    search_id: Annotated[str | None, fastapi.Query()] = None,
+    by_creator: Annotated[list[str] | None, fastapi.Query()] = None,
+    page: Annotated[int, fastapi.Query()] = 1,
+    page_size: Annotated[int, fastapi.Query()] = 50,
 ) -> builder_model.SearchResponse:
     """
     Search for blocks (including integrations), marketplace agents, and user library agents.
     """
     # If no filters are provided, then we will return all types
-    if not options.filter:
-        options.filter = [
+    if not filter:
+        filter = [
             "blocks",
             "integrations",
             "marketplace_agents",
             "my_agents",
         ]
-    options.search_query = sanitize_query(options.search_query)
-    options.page = options.page or 1
-    options.page_size = options.page_size or 50
+    search_query = sanitize_query(search_query)
 
     # Blocks&Integrations
     blocks = builder_model.SearchBlocksResponse(
@@ -167,13 +185,13 @@ async def search(
         total_block_count=0,
         total_integration_count=0,
     )
-    if "blocks" in options.filter or "integrations" in options.filter:
+    if "blocks" in filter or "integrations" in filter:
         blocks = builder_db.search_blocks(
-            include_blocks="blocks" in options.filter,
-            include_integrations="integrations" in options.filter,
-            query=options.search_query or "",
-            page=options.page,
-            page_size=options.page_size,
+            include_blocks="blocks" in filter,
+            include_integrations="integrations" in filter,
+            query=search_query or "",
+            page=page,
+            page_size=page_size,
         )
 
     # Library Agents
@@ -181,12 +199,12 @@ async def search(
         agents=[],
         pagination=Pagination.empty(),
     )
-    if "my_agents" in options.filter:
+    if "my_agents" in filter:
         my_agents = await library_db.list_library_agents(
             user_id=user_id,
-            search_term=options.search_query,
-            page=options.page,
-            page_size=options.page_size,
+            search_term=search_query,
+            page=page,
+            page_size=page_size,
         )
 
     # Marketplace Agents
@@ -194,12 +212,12 @@ async def search(
         agents=[],
         pagination=Pagination.empty(),
     )
-    if "marketplace_agents" in options.filter:
+    if "marketplace_agents" in filter:
         marketplace_agents = await store_db.get_store_agents(
-            creators=options.by_creator,
-            search_query=options.search_query,
-            page=options.page,
-            page_size=options.page_size,
+            creators=by_creator,
+            search_query=search_query,
+            page=page,
+            page_size=page_size,
         )
 
     more_pages = False
@@ -219,7 +237,7 @@ async def search(
             "marketplace_agents": marketplace_agents.pagination.total_items,
             "my_agents": my_agents.pagination.total_items,
         },
-        page=options.page,
+        page=page,
         more_pages=more_pages,
     )
 
@@ -227,11 +245,10 @@ async def search(
 @router.get(
     "/counts",
     summary="Get Builder item counts",
-    dependencies=[fastapi.Depends(auth_middleware)],
     response_model=builder_model.CountResponse,
 )
 async def get_counts(
-    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
 ) -> builder_model.CountResponse:
     """
     Get item counts for the menu categories in the Blocks Menu.

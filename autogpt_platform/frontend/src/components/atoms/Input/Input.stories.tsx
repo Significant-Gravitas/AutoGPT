@@ -26,6 +26,8 @@ const meta: Meta<typeof Input> = {
         "tel",
         "url",
         "textarea",
+        "date",
+        "datetime-local",
       ],
       description: "Input type",
     },
@@ -107,6 +109,38 @@ export const WithError: Story = {
     type: "email",
     placeholder: "Enter your email",
     error: "Please enter a valid email address",
+  },
+};
+
+export const DateInput: Story = {
+  args: {
+    label: "Date",
+    type: "date",
+    placeholder: "Select a date",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Native HTML date input integrated in the design system Input. Value format is yyyy-MM-dd.",
+      },
+    },
+  },
+};
+
+export const DateTimeLocalInput: Story = {
+  args: {
+    label: "Date & Time",
+    type: "datetime-local",
+    placeholder: "Select date and time",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Native datetime-local input. Value is a local time string (e.g. 2025-08-28T14:30).",
+      },
+    },
   },
 };
 
@@ -210,6 +244,21 @@ function renderInputTypes() {
           placeholder="Enter your description"
           id="description"
           rows={4}
+        />
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-sm">Native date input.</p>
+        <Input label="Date" type="date" placeholder="Select a date" id="date" />
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="font-mono text-sm">
+          Native datetime-local input (local time, no timezone).
+        </p>
+        <Input
+          label="Date & Time"
+          type="datetime-local"
+          placeholder="Select date and time"
+          id="datetime"
         />
       </div>
     </div>

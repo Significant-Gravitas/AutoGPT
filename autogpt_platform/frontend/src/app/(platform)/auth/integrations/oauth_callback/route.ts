@@ -1,4 +1,4 @@
-import { OAuthPopupResultMessage } from "@/components/integrations/credentials-input";
+import { OAuthPopupResultMessage } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import { NextResponse } from "next/server";
 
 // This route is intended to be used as the callback for integration OAuth flows,

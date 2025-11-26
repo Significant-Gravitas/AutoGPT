@@ -1,7 +1,6 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import { formatAgentStatus, getStatusColor } from "./helpers";
 import { formatDate } from "@/lib/utils/time";
 
 interface Props {
@@ -11,20 +10,6 @@ interface Props {
 export function AgentDetails({ agent }: Props) {
   return (
     <div className="mt-4 flex flex-col gap-5">
-      <div>
-        <Text variant="body-medium" className="mb-1 !text-black">
-          Current Status
-        </Text>
-        <div className="flex items-center gap-2">
-          <div
-            className={`h-2 w-2 rounded-full ${getStatusColor(agent.status)}`}
-          />
-          <Text variant="body" className="!text-zinc-700">
-            {formatAgentStatus(agent.status)}
-          </Text>
-        </div>
-      </div>
-
       <div>
         <Text variant="body-medium" className="mb-1 !text-black">
           Version

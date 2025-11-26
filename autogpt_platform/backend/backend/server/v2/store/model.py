@@ -14,6 +14,7 @@ class MyAgent(pydantic.BaseModel):
     agent_image: str | None = None
     description: str
     last_edited: datetime.datetime
+    recommended_schedule_cron: str | None = None
 
 
 class MyAgentsResponse(pydantic.BaseModel):
@@ -48,11 +49,13 @@ class StoreAgentDetails(pydantic.BaseModel):
     creator_avatar: str
     sub_heading: str
     description: str
+    instructions: str | None = None
     categories: list[str]
     runs: int
     rating: float
     versions: list[str]
     last_updated: datetime.datetime
+    recommended_schedule_cron: str | None = None
 
     active_version_id: str | None = None
     has_approved_version: bool = False
@@ -101,6 +104,7 @@ class StoreSubmission(pydantic.BaseModel):
     sub_heading: str
     slug: str
     description: str
+    instructions: str | None = None
     image_urls: list[str]
     date_submitted: datetime.datetime
     status: prisma.enums.SubmissionStatus
@@ -155,8 +159,10 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     video_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
+    instructions: str | None = None
     categories: list[str] = []
     changes_summary: str | None = None
+    recommended_schedule_cron: str | None = None
 
 
 class StoreSubmissionEditRequest(pydantic.BaseModel):
@@ -165,8 +171,10 @@ class StoreSubmissionEditRequest(pydantic.BaseModel):
     video_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
+    instructions: str | None = None
     categories: list[str] = []
     changes_summary: str | None = None
+    recommended_schedule_cron: str | None = None
 
 
 class ProfileDetails(pydantic.BaseModel):

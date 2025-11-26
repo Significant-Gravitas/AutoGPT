@@ -5,10 +5,14 @@ import React from "react";
 import "./globals.css";
 
 import { Providers } from "@/app/providers";
-import TallyPopupSimple from "@/components/TallyPopup";
-import { GoogleAnalytics } from "@/components/analytics/google-analytics";
+import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
+import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
+import { SetupAnalytics } from "@/services/analytics";
+import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
+import { environment } from "@/services/environment";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
@@ -20,6 +24,11 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const headersList = await headers();
+  const host = headersList.get("host") || "";
+  const isDev = environment.isDev();
+  const isLocal = environment.isLocal();
+
   return (
     <html
       lang="en"
@@ -27,8 +36,21 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <GoogleAnalytics
-          gaId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
+        <link
+          rel="icon"
+          href={
+            isLocal
+              ? "/favicon-local.ico"
+              : isDev
+                ? "/favicon-dev.ico"
+                : "/favicon.ico"
+          }
+        />
+        <SetupAnalytics
+          host={host}
+          ga={{
+            gaId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
+          }}
         />
       </head>
       <body>
@@ -42,6 +64,7 @@ export default async function RootLayout({
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
             {children}
             <TallyPopupSimple />
+            <VercelAnalyticsWrapper />
 
             {/* React Query DevTools is only available in development */}
             {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
@@ -52,6 +75,7 @@ export default async function RootLayout({
             )}
           </div>
           <Toaster />
+          <CookieConsentBanner />
         </Providers>
       </body>
     </html>

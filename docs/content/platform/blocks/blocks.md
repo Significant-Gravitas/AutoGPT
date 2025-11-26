@@ -2,6 +2,12 @@
 
 AutoGPT uses a modular approach with various "blocks" to handle different tasks. These blocks are the building blocks of AutoGPT workflows, allowing users to create complex automations by combining simple, specialized components.
 
+!!! info "Creating Your Own Blocks"
+    Want to create your own custom blocks? Check out our guides:
+    
+    - [Build your own Blocks](../new_blocks.md) - Step-by-step tutorial with examples
+    - [Block SDK Guide](../block-sdk-guide.md) - Advanced SDK patterns with OAuth, webhooks, and provider configuration
+
 Below is a comprehensive list of all available blocks, categorized by their primary function. Click on any block name to view its detailed documentation.
 
 ## Basic Operations

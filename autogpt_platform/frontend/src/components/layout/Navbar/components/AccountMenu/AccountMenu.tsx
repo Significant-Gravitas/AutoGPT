@@ -1,14 +1,17 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from "@/components/__legacy__/ui/popover";
 import Link from "next/link";
 import * as React from "react";
 import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 
 interface Props {
   userName?: string;
@@ -37,7 +40,7 @@ export function AccountMenu({
           aria-haspopup="true"
           data-testid="profile-popout-menu-trigger"
         >
-          <Avatar className="h-10 w-10">
+          <Avatar>
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
             <AvatarFallback aria-hidden="true">
               {userName?.charAt(0) || "U"}
