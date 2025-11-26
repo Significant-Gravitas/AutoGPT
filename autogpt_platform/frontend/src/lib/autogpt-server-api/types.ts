@@ -956,8 +956,8 @@ export interface UserOnboarding {
 
 export interface OnboardingNotificationPayload {
   type: "onboarding";
-  event: "step_completed";
-  step: OnboardingStep;
+  event: "step_completed" | "increment_runs";
+  step: OnboardingStep | null;
 }
 
 export type WebSocketNotification =

@@ -93,4 +93,4 @@ class NotificationPayload(pydantic.BaseModel):
 
 
 class OnboardingNotificationPayload(NotificationPayload):
-    step: OnboardingStep
+    step: OnboardingStep | None

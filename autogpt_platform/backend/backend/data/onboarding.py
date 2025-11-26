@@ -186,7 +186,7 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
 
 
 async def _send_onboarding_notification(
-    user_id: str, step: OnboardingStep, event: str = "step_completed"
+    user_id: str, step: OnboardingStep | None, event: str = "step_completed"
 ):
     """
     Sends an onboarding notification to the user.
@@ -364,7 +364,7 @@ async def increment_runs(user_id: str):
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            "agentRuns": new_run_count,
+            "agentRuns": {"increment": 1},
             "lastRunAt": last_run_at,
             "consecutiveRunDays": consecutive_run_days,
         },
@@ -375,6 +375,9 @@ async def increment_runs(user_id: str):
 
     for step in new_steps:
         await complete_onboarding_step(user_id, step)
+    # Send progress notification if no steps were completed, so client refetches onboarding state
+    if not new_steps:
+        await _send_onboarding_notification(user_id, None, event="increment_runs")
 
 
 async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
