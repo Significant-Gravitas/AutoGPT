@@ -11,6 +11,17 @@ export const TUTORIAL_SELECTORS = {
   OUTPUT_NODE: '[data-id="custom-node-3 "]',
   CALCULATOR_NODE: '[data-id="custom-node-1"]',
 
+  // Paricular field selector
+  NAME_FIELD_OUTPUT_NODE: '[data-id="field-3-root_name"]',
+
+  // Output Handlers
+  INPUT_BLOCK_RESULT_OUTPUT_HANDLEER: '[data-id="output-handler-2-Result"]',
+  CALCULATOR_RESULT_OUTPUT_HANDLEER: '[data-id="input-handler-1-Result"]',
+
+  // Input Handler
+  CALCULATOR_NUMBER_A_INPUT_HANDLER: '[data-id="label-1-root_a"]',
+  OUTPUT_VALUE_INPUT_HANDLEER: '[data-id="label-3-root_value"]',
+
   // Block Menu
   BLOCKS_TRIGGER: '[data-id="blocks-control-popover-trigger"]',
   BLOCKS_CONTENT: '[data-id="blocks-control-popover-content"]',

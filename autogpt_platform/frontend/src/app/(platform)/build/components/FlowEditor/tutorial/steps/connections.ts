@@ -1,8 +1,3 @@
-/**
- * Connection steps - Steps 14-16
- * Connect blocks together
- */
-
 import { StepOptions } from "shepherd.js";
 import { BLOCK_IDS, TUTORIAL_SELECTORS } from "../constants";
 import {
@@ -55,22 +50,19 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         </div>
       `,
       attachTo: {
-        element: `${TUTORIAL_SELECTORS.INPUT_NODE} [data-handlepos="right"]`,
+        element: TUTORIAL_SELECTORS.INPUT_BLOCK_RESULT_OUTPUT_HANDLEER,
         on: "right",
       },
+      modalOverlayOpeningPadding: 10,
       when: {
         show: () => {
           resetConnectionState();
           const inputNode = getNodeByBlockId(BLOCK_IDS.AGENT_INPUT);
           if (inputNode) {
-            // Highlight the output handle specifically
             const outputHandle = document.querySelector(
-              `[data-id="custom-node-${inputNode.id}"] [data-handlepos="right"]`,
+              TUTORIAL_SELECTORS.INPUT_BLOCK_RESULT_OUTPUT_HANDLEER,
             );
             if (outputHandle) {
-              highlightElement(
-                `[data-id="custom-node-${inputNode.id}"] [data-handlepos="right"]`,
-              );
               outputHandle.addEventListener("mousedown", handleMouseDown);
             }
           }
@@ -80,7 +72,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
           const inputNode = getNodeByBlockId(BLOCK_IDS.AGENT_INPUT);
           if (inputNode) {
             const outputHandle = document.querySelector(
-              `[data-id="custom-node-${inputNode.id}"] [data-handlepos="right"]`,
+              TUTORIAL_SELECTORS.INPUT_BLOCK_RESULT_OUTPUT_HANDLEER,
             );
             if (outputHandle) {
               outputHandle.removeEventListener("mousedown", handleMouseDown);
@@ -116,19 +108,13 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         </div>
       `,
       attachTo: {
-        element: `${TUTORIAL_SELECTORS.CALCULATOR_NODE} [data-handlepos="left"]`,
-        on: "left",
+        element: TUTORIAL_SELECTORS.INPUT_BLOCK_RESULT_OUTPUT_HANDLEER,
+        on: "bottom",
       },
+      modalOverlayOpeningPadding: 10,
+      extraHighlights: [TUTORIAL_SELECTORS.CALCULATOR_NUMBER_A_INPUT_HANDLER],
       when: {
         show: () => {
-          const calcNode = getNodeByBlockId(BLOCK_IDS.CALCULATOR);
-          if (calcNode) {
-            // Highlight/pulse the input handles
-            pulseElement(
-              `[data-id="custom-node-${calcNode.id}"] [data-handlepos="left"]`,
-            );
-          }
-
           // Subscribe to edge store changes to detect connection
           const unsubscribe = useEdgeStore.subscribe(() => {
             const connected = isConnectionMade(
@@ -214,7 +200,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         </div>
       `,
       attachTo: {
-        element: `${TUTORIAL_SELECTORS.CALCULATOR_NODE} [data-handlepos="right"]`,
+        element: TUTORIAL_SELECTORS.CALCULATOR_RESULT_OUTPUT_HANDLEER,
         on: "right",
       },
       beforeShowPromise: async () => {
@@ -227,11 +213,11 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
           const calcNode = getNodeByBlockId(BLOCK_IDS.CALCULATOR);
           if (calcNode) {
             const outputHandle = document.querySelector(
-              `[data-id="custom-node-${calcNode.id}"] [data-handlepos="right"]`,
+              TUTORIAL_SELECTORS.CALCULATOR_RESULT_OUTPUT_HANDLEER,
             );
             if (outputHandle) {
               highlightElement(
-                `[data-id="custom-node-${calcNode.id}"] [data-handlepos="right"]`,
+                TUTORIAL_SELECTORS.CALCULATOR_RESULT_OUTPUT_HANDLEER,
               );
               outputHandle.addEventListener("mousedown", handleMouseDown);
             }
@@ -242,7 +228,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
           const calcNode = getNodeByBlockId(BLOCK_IDS.CALCULATOR);
           if (calcNode) {
             const outputHandle = document.querySelector(
-              `[data-id="custom-node-${calcNode.id}"] [data-handlepos="right"]`,
+              TUTORIAL_SELECTORS.CALCULATOR_RESULT_OUTPUT_HANDLEER,
             );
             if (outputHandle) {
               outputHandle.removeEventListener("mousedown", handleMouseDown);
@@ -278,17 +264,12 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
         </div>
       `,
       attachTo: {
-        element: `${TUTORIAL_SELECTORS.OUTPUT_NODE} [data-handlepos="left"]`,
+        element: TUTORIAL_SELECTORS.OUTPUT_VALUE_INPUT_HANDLEER,
         on: "left",
       },
       when: {
         show: () => {
           const outputNode = getNodeByBlockId(BLOCK_IDS.AGENT_OUTPUT);
-          if (outputNode) {
-            pulseElement(
-              `[data-id="custom-node-${outputNode.id}"] [data-handlepos="left"]`,
-            );
-          }
 
           // Subscribe to edge store changes
           const unsubscribe = useEdgeStore.subscribe(() => {

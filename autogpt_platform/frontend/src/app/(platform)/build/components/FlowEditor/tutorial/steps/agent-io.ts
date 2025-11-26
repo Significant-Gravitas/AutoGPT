@@ -204,9 +204,10 @@ export const createAgentIOSteps = (tour: any): StepOptions[] => [
       </div>
     `,
     attachTo: {
-      element: TUTORIAL_SELECTORS.AGENT_OUTPUT_NODE_FORM_CONTAINER,
-      on: "top",
+      element: TUTORIAL_SELECTORS.NAME_FIELD_OUTPUT_NODE,
+      on: "bottom",
     },
+    modalOverlayOpeningPadding: 10,
     when: {
       show: () => {
         // Poll for name being set
