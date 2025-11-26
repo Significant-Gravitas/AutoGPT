@@ -3892,12 +3892,6 @@
         "summary": "Get Execution Diagnostics",
         "description": "Get comprehensive diagnostic information about execution status.\n\nReturns all execution metrics including:\n- Current state (running, queued)\n- Orphaned executions (>24h old, likely not in executor)\n- Failure metrics (1h, 24h, rate)\n- Long-running detection (stuck >1h, >24h)\n- Stuck queued detection\n- Throughput metrics (completions/hour)\n- RabbitMQ queue depths",
         "operationId": "getV2Get execution diagnostics",
-    "/api/executions/admin/execution_analytics/config": {
-      "get": {
-        "tags": ["v2", "admin", "admin", "execution_analytics"],
-        "summary": "Get Execution Analytics Configuration",
-        "description": "Get the configuration for execution analytics including:\n- Available AI models with metadata\n- Default system and user prompts\n- Recommended model selection",
-        "operationId": "getV2Get execution analytics configuration",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3905,7 +3899,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExecutionDiagnosticsResponse"
-                  "$ref": "#/components/schemas/ExecutionAnalyticsConfig"
                 }
               }
             }
@@ -4275,20 +4268,6 @@
               "schema": { "$ref": "#/components/schemas/StopExecutionsRequest" }
             }
           },
-    "/api/executions/admin/execution_analytics": {
-      "post": {
-        "tags": ["v2", "admin", "admin", "execution_analytics"],
-        "summary": "Generate Execution Analytics",
-        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
-        "operationId": "postV2Generate execution analytics",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExecutionAnalyticsRequest"
-              }
-            }
-          },
           "required": true
         },
         "responses": {
@@ -4298,7 +4277,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RequeueExecutionResponse"
-                  "$ref": "#/components/schemas/ExecutionAnalyticsResponse"
                 }
               }
             }
@@ -4658,6 +4636,72 @@
                 "schema": {
                   "$ref": "#/components/schemas/RequeueExecutionResponse"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/executions/admin/execution_analytics/config": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Get Execution Analytics Configuration",
+        "description": "Get the configuration for execution analytics including:\n- Available AI models with metadata\n- Default system and user prompts\n- Recommended model selection",
+        "operationId": "getV2Get execution analytics configuration",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsConfig"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/executions/admin/execution_analytics": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Generate Execution Analytics",
+        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
+        "operationId": "postV2Generate execution analytics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionAnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           },
@@ -6512,125 +6556,6 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
-      "ExecutionDiagnosticsResponse": {
-        "properties": {
-          "running_executions": {
-            "type": "integer",
-            "title": "Running Executions"
-          },
-          "queued_executions_db": {
-            "type": "integer",
-            "title": "Queued Executions Db"
-          },
-          "queued_executions_rabbitmq": {
-            "type": "integer",
-            "title": "Queued Executions Rabbitmq"
-          },
-          "cancel_queue_depth": {
-            "type": "integer",
-            "title": "Cancel Queue Depth"
-          },
-          "orphaned_running": {
-            "type": "integer",
-            "title": "Orphaned Running"
-          },
-          "orphaned_queued": { "type": "integer", "title": "Orphaned Queued" },
-          "failed_count_1h": { "type": "integer", "title": "Failed Count 1H" },
-          "failed_count_24h": {
-            "type": "integer",
-            "title": "Failed Count 24H"
-          },
-          "failure_rate_24h": { "type": "number", "title": "Failure Rate 24H" },
-          "stuck_running_24h": {
-            "type": "integer",
-            "title": "Stuck Running 24H"
-          },
-          "stuck_running_1h": {
-            "type": "integer",
-            "title": "Stuck Running 1H"
-          },
-          "oldest_running_hours": {
-            "anyOf": [{ "type": "number" }, { "type": "null" }],
-            "title": "Oldest Running Hours"
-          },
-          "stuck_queued_1h": { "type": "integer", "title": "Stuck Queued 1H" },
-          "queued_never_started": {
-            "type": "integer",
-            "title": "Queued Never Started"
-          },
-          "invalid_queued_with_start": {
-            "type": "integer",
-            "title": "Invalid Queued With Start"
-          },
-          "invalid_running_without_start": {
-            "type": "integer",
-            "title": "Invalid Running Without Start"
-          },
-          "completed_1h": { "type": "integer", "title": "Completed 1H" },
-          "completed_24h": { "type": "integer", "title": "Completed 24H" },
-          "throughput_per_hour": {
-            "type": "number",
-            "title": "Throughput Per Hour"
-          },
-          "timestamp": { "type": "string", "title": "Timestamp" }
-        },
-        "type": "object",
-        "required": [
-          "running_executions",
-          "queued_executions_db",
-          "queued_executions_rabbitmq",
-          "cancel_queue_depth",
-          "orphaned_running",
-          "orphaned_queued",
-          "failed_count_1h",
-          "failed_count_24h",
-          "failure_rate_24h",
-          "stuck_running_24h",
-          "stuck_running_1h",
-          "oldest_running_hours",
-          "stuck_queued_1h",
-          "queued_never_started",
-          "invalid_queued_with_start",
-          "invalid_running_without_start",
-          "completed_1h",
-          "completed_24h",
-          "throughput_per_hour",
-          "timestamp"
-        ],
-        "title": "ExecutionDiagnosticsResponse",
-        "description": "Response model for execution diagnostics"
-      },
-      "FailedExecutionDetail": {
-        "properties": {
-          "execution_id": { "type": "string", "title": "Execution Id" },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_name": { "type": "string", "title": "Graph Name" },
-          "graph_version": { "type": "integer", "title": "Graph Version" },
-          "user_id": { "type": "string", "title": "User Id" },
-          "user_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "User Email"
-          },
-          "status": { "type": "string", "title": "Status" },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "started_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Started At"
-          },
-          "failed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Failed At"
-          },
       "ExecutionAnalyticsConfig": {
         "properties": {
           "available_models": {
@@ -6783,6 +6708,142 @@
         },
         "type": "object",
         "required": [
+          "agent_id",
+          "version_id",
+          "user_id",
+          "exec_id",
+          "summary_text",
+          "score",
+          "status"
+        ],
+        "title": "ExecutionAnalyticsResult"
+      },
+      "ExecutionDiagnosticsResponse": {
+        "properties": {
+          "running_executions": {
+            "type": "integer",
+            "title": "Running Executions"
+          },
+          "queued_executions_db": {
+            "type": "integer",
+            "title": "Queued Executions Db"
+          },
+          "queued_executions_rabbitmq": {
+            "type": "integer",
+            "title": "Queued Executions Rabbitmq"
+          },
+          "cancel_queue_depth": {
+            "type": "integer",
+            "title": "Cancel Queue Depth"
+          },
+          "orphaned_running": {
+            "type": "integer",
+            "title": "Orphaned Running"
+          },
+          "orphaned_queued": { "type": "integer", "title": "Orphaned Queued" },
+          "failed_count_1h": { "type": "integer", "title": "Failed Count 1H" },
+          "failed_count_24h": {
+            "type": "integer",
+            "title": "Failed Count 24H"
+          },
+          "failure_rate_24h": { "type": "number", "title": "Failure Rate 24H" },
+          "stuck_running_24h": {
+            "type": "integer",
+            "title": "Stuck Running 24H"
+          },
+          "stuck_running_1h": {
+            "type": "integer",
+            "title": "Stuck Running 1H"
+          },
+          "oldest_running_hours": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Oldest Running Hours"
+          },
+          "stuck_queued_1h": { "type": "integer", "title": "Stuck Queued 1H" },
+          "queued_never_started": {
+            "type": "integer",
+            "title": "Queued Never Started"
+          },
+          "invalid_queued_with_start": {
+            "type": "integer",
+            "title": "Invalid Queued With Start"
+          },
+          "invalid_running_without_start": {
+            "type": "integer",
+            "title": "Invalid Running Without Start"
+          },
+          "completed_1h": { "type": "integer", "title": "Completed 1H" },
+          "completed_24h": { "type": "integer", "title": "Completed 24H" },
+          "throughput_per_hour": {
+            "type": "number",
+            "title": "Throughput Per Hour"
+          },
+          "timestamp": { "type": "string", "title": "Timestamp" }
+        },
+        "type": "object",
+        "required": [
+          "running_executions",
+          "queued_executions_db",
+          "queued_executions_rabbitmq",
+          "cancel_queue_depth",
+          "orphaned_running",
+          "orphaned_queued",
+          "failed_count_1h",
+          "failed_count_24h",
+          "failure_rate_24h",
+          "stuck_running_24h",
+          "stuck_running_1h",
+          "oldest_running_hours",
+          "stuck_queued_1h",
+          "queued_never_started",
+          "invalid_queued_with_start",
+          "invalid_running_without_start",
+          "completed_1h",
+          "completed_24h",
+          "throughput_per_hour",
+          "timestamp"
+        ],
+        "title": "ExecutionDiagnosticsResponse",
+        "description": "Response model for execution diagnostics"
+      },
+      "FailedExecutionDetail": {
+        "properties": {
+          "execution_id": { "type": "string", "title": "Execution Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_name": { "type": "string", "title": "Graph Name" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "failed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Failed At"
+          },
+          "error_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
           "execution_id",
           "graph_id",
           "graph_name",
@@ -6811,15 +6872,6 @@
         "required": ["executions", "total"],
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
-          "agent_id",
-          "version_id",
-          "user_id",
-          "exec_id",
-          "summary_text",
-          "score",
-          "status"
-        ],
-        "title": "ExecutionAnalyticsResult"
       },
       "Graph": {
         "properties": {
