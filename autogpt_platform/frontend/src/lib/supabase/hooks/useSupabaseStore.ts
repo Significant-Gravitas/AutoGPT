@@ -140,6 +140,13 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     broadcastLogout();
 
+    // Clear React Query cache to prevent stale data from old user
+    if (typeof window !== "undefined") {
+      const { getQueryClient } = await import("@/lib/react-query/queryClient");
+      const queryClient = getQueryClient();
+      queryClient.clear();
+    }
+
     set({
       user: null,
       hasLoadedUser: false,
