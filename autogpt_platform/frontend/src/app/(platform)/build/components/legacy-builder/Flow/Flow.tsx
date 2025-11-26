@@ -65,7 +65,6 @@ import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/N
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
-import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -137,7 +136,6 @@ const FlowEditor: React.FC<{
     isStopping,
     isScheduling,
     graphExecutionError,
-    graphExecutionStatus,
     nodes,
     setNodes,
     edges,

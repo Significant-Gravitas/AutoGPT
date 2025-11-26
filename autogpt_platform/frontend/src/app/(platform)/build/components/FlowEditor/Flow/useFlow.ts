@@ -13,7 +13,6 @@ import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
 import { useGraphStore } from "../../../stores/graphStore";
-import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";

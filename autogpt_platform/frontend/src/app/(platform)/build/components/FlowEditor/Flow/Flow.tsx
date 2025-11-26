@@ -18,7 +18,7 @@ import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
 
 export const Flow = () => {
-  const [{ flowID, flowExecutionID }] = useQueryStates({
+  const [{ flowExecutionID }] = useQueryStates({
     flowID: parseAsString,
     flowExecutionID: parseAsString,
   });
