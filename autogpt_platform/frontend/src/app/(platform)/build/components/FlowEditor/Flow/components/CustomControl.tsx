@@ -7,14 +7,15 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import {
   ChalkboardIcon,
+  CircleNotchIcon,
   FrameCornersIcon,
   MinusIcon,
   PlusIcon,
 } from "@phosphor-icons/react/dist/ssr";
 import { LockIcon, LockOpenIcon } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
-import { startTutorial } from "../../tutorial";
+import { startTutorial, setTutorialLoadingCallback } from "../../tutorial";
 
 export const CustomControls = memo(
   ({
@@ -26,6 +27,14 @@ export const CustomControls = memo(
   }) => {
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const { isTutorialRunning, setIsTutorialRunning } = useTutorialStore();
+    const [isTutorialLoading, setIsTutorialLoading] = useState(false);
+
+    // Set up callback for tutorial loading state
+    useEffect(() => {
+      setTutorialLoadingCallback(setIsTutorialLoading);
+      return () => setTutorialLoadingCallback(() => {});
+    }, []);
+
     const controls = [
       {
         id: "zoom-in-button",
@@ -43,13 +52,20 @@ export const CustomControls = memo(
       },
       {
         id: "tutorial-button",
-        icon: <ChalkboardIcon className="size-4" />,
-        label: "Start Tutorial",
+        icon: isTutorialLoading ? (
+          <CircleNotchIcon className="size-4 animate-spin" />
+        ) : (
+          <ChalkboardIcon className="size-4" />
+        ),
+        label: isTutorialLoading ? "Loading Tutorial..." : "Start Tutorial",
         onClick: () => {
-          startTutorial();
-          setIsTutorialRunning(true);
+          if (!isTutorialLoading) {
+            startTutorial();
+            setIsTutorialRunning(true);
+          }
         },
-        className: `h-10 w-10 border-none ${isTutorialRunning ? "bg-zinc-100" : "bg-white"}`,
+        className: `h-10 w-10 border-none ${isTutorialRunning || isTutorialLoading ? "bg-zinc-100" : "bg-white"}`,
+        disabled: isTutorialLoading,
       },
       {
         id: "fit-view-button",
@@ -85,6 +101,7 @@ export const CustomControls = memo(
                 onClick={control.onClick}
                 className={control.className}
                 data-id={control.id}
+                disabled={"disabled" in control ? control.disabled : false}
               >
                 {control.icon}
                 <span className="sr-only">{control.label}</span>

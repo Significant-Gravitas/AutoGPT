@@ -14,6 +14,60 @@ import {
 import { ICONS } from "../icons";
 import { banner } from "../styles";
 
+// Helper to generate the requirements HTML
+const getRequirementsHtml = () => `
+  <div id="requirements-box" class="mt-3 p-3 bg-amber-50 ring-1 ring-amber-200 rounded-2xl">
+    <p id="requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
+    <ul id="requirements-list" class="text-[0.8125rem] text-amber-600 m-0 pl-4 space-y-1">
+      <li id="req-a" class="flex items-center gap-2">
+        <span class="req-icon">○</span> Enter a number in field <strong>A</strong> (e.g., 10)
+      </li>
+      <li id="req-b" class="flex items-center gap-2">
+        <span class="req-icon">○</span> Enter a number in field <strong>B</strong> (e.g., 5)
+      </li>
+      <li id="req-op" class="flex items-center gap-2">
+        <span class="req-icon">○</span> Select an <strong>Operation</strong> (Add, Multiply, etc.)
+      </li>
+    </ul>
+  </div>
+`;
+
+// Helper to update requirements box to success state
+const updateToSuccessState = () => {
+  const reqBox = document.querySelector("#requirements-box");
+  const reqTitle = document.querySelector("#requirements-title");
+  const reqList = document.querySelector("#requirements-list");
+
+  if (reqBox && reqTitle) {
+    reqBox.classList.remove("bg-amber-50", "ring-amber-200");
+    reqBox.classList.add("bg-green-50", "ring-green-200");
+    reqTitle.classList.remove("text-amber-600");
+    reqTitle.classList.add("text-green-600");
+    reqTitle.innerHTML = "🎉 Hurray! All values are completed!";
+    if (reqList) {
+      reqList.classList.add("hidden");
+    }
+  }
+};
+
+// Helper to update requirements box back to warning state
+const updateToWarningState = () => {
+  const reqBox = document.querySelector("#requirements-box");
+  const reqTitle = document.querySelector("#requirements-title");
+  const reqList = document.querySelector("#requirements-list");
+
+  if (reqBox && reqTitle) {
+    reqBox.classList.remove("bg-green-50", "ring-green-200");
+    reqBox.classList.add("bg-amber-50", "ring-amber-200");
+    reqTitle.classList.remove("text-green-600");
+    reqTitle.classList.add("text-amber-600");
+    reqTitle.innerHTML = "⚠️ Required to continue:";
+    if (reqList) {
+      reqList.classList.remove("hidden");
+    }
+  }
+};
+
 /**
  * Creates the configure calculator step
  */
@@ -25,22 +79,8 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Now let's configure the block with actual values.</p>
-        
-        <div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p class="text-sm font-medium text-amber-800 m-0 mb-2">⚠️ Required to continue:</p>
-          <ul class="text-[0.8125rem] text-amber-700 m-0 pl-4 space-y-1">
-            <li id="req-a" class="flex items-center gap-2">
-              <span class="req-icon">○</span> Enter a number in field <strong>A</strong> (e.g., 10)
-            </li>
-            <li id="req-b" class="flex items-center gap-2">
-              <span class="req-icon">○</span> Enter a number in field <strong>B</strong> (e.g., 5)
-            </li>
-            <li id="req-op" class="flex items-center gap-2">
-              <span class="req-icon">○</span> Select an <strong>Operation</strong> (Add, Multiply, etc.)
-            </li>
-          </ul>
-        </div>
-        ${banner(ICONS.ClickIcon, "Fill in all the required fields above")}
+        ${getRequirementsHtml()}
+        ${banner(ICONS.ClickIcon, "Fill in all the required fields above", "action")}
       </div>
     `,
     beforeShowPromise: () => {
@@ -57,6 +97,8 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
         if (node) {
           highlightElement(`[data-id="custom-node-${node.id}"]`);
         }
+
+        let wasComplete = false;
 
         // Start polling to update requirements UI and button visibility
         const checkInterval = setInterval(() => {
@@ -77,6 +119,8 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
             hardcodedValues.operation !== null &&
             hardcodedValues.operation !== "";
 
+          const allComplete = hasA && hasB && hasOp;
+
           // Update requirement icons
           const reqA = document.querySelector("#req-a .req-icon");
           const reqB = document.querySelector("#req-b .req-icon");
@@ -87,22 +131,37 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
           if (reqOp) reqOp.textContent = hasOp ? "✓" : "○";
 
           // Update styling for completed items
-          document
-            .querySelector("#req-a")
-            ?.classList.toggle("text-green-700", hasA);
-          document
-            .querySelector("#req-b")
-            ?.classList.toggle("text-green-700", hasB);
-          document
-            .querySelector("#req-op")
-            ?.classList.toggle("text-green-700", hasOp);
+          const reqAEl = document.querySelector("#req-a");
+          const reqBEl = document.querySelector("#req-b");
+          const reqOpEl = document.querySelector("#req-op");
+
+          if (reqAEl) {
+            reqAEl.classList.toggle("text-green-600", hasA);
+            reqAEl.classList.toggle("text-amber-600", !hasA);
+          }
+          if (reqBEl) {
+            reqBEl.classList.toggle("text-green-600", hasB);
+            reqBEl.classList.toggle("text-amber-600", !hasB);
+          }
+          if (reqOpEl) {
+            reqOpEl.classList.toggle("text-green-600", hasOp);
+            reqOpEl.classList.toggle("text-amber-600", !hasOp);
+          }
+
+          // Update box to success state when all complete
+          if (allComplete && !wasComplete) {
+            updateToSuccessState();
+            wasComplete = true;
+          } else if (!allComplete && wasComplete) {
+            updateToWarningState();
+            wasComplete = false;
+          }
 
           // Show/hide the next button based on completion
           const nextBtn = document.querySelector(
             ".shepherd-button-primary",
           ) as HTMLButtonElement;
           if (nextBtn) {
-            const allComplete = hasA && hasB && hasOp;
             nextBtn.style.opacity = allComplete ? "1" : "0.5";
             nextBtn.style.pointerEvents = allComplete ? "auto" : "none";
           }

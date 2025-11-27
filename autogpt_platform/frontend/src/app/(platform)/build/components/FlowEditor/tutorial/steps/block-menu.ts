@@ -31,7 +31,7 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Let's start by opening the Block Menu.</p>
-        ${banner(ICONS.ClickIcon, "Click this button to open the menu")}
+        ${banner(ICONS.ClickIcon, "Click this button to open the menu", "action")}
       </div>
     `,
     attachTo: {
@@ -94,7 +94,7 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Let's add a Calculator block to start.</p>
-        ${banner(ICONS.Keyboard, "Type Calculator in the search bar")}
+        ${banner(ICONS.Keyboard, "Type Calculator in the search bar", "action")}
         <p class="text-xs font-normal leading-[1.125rem] text-zinc-500 m-0" style="margin-top: 0.5rem;">The search will filter blocks as you type.</p>
       </div>
     `,
@@ -157,8 +157,12 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     text: `
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">You should see the <strong>Calculator</strong> block in the results.</p>
-        ${banner(ICONS.ClickIcon, "Click on the Calculator block to add it")}
-        ${banner(ICONS.Drag, "You can also drag blocks onto the canvas", "bg-zinc-100 ring-1 ring-zinc-600 text-zinc-700")}
+        ${banner(ICONS.ClickIcon, "Click on the Calculator block to add it", "action")}
+        
+        <div class="bg-zinc-100 ring-1 ring-zinc-200 rounded-2xl p-2 px-4 mt-2 flex items-start gap-2 text-sm font-medium text-zinc-600">  
+          <span class="flex-shrink-0">${ICONS.Drag}</span>
+          <span>You can also drag blocks onto the canvas</span>
+        </div>
       </div>
     `,
     attachTo: {

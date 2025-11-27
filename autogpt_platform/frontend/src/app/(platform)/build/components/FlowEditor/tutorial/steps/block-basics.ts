@@ -99,7 +99,7 @@ export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
       <div class="text-sm leading-[1.375rem] text-zinc-800">
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">On the <strong>right side</strong> is the <strong>output handle</strong>.</p>
         <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.5rem;">This is where the result flows <em>out</em> to connect to other blocks.</p>
-        ${banner(ICONS.Drag, "You can drag from output to input handler to connect blocks")}
+        ${banner(ICONS.Drag, "You can drag from output to input handler to connect blocks", "info")}
       </div>
     `,
     attachTo: {

@@ -16,11 +16,11 @@ export const TUTORIAL_SELECTORS = {
 
   // Output Handlers
   INPUT_BLOCK_RESULT_OUTPUT_HANDLEER: '[data-id="output-handler-2-Result"]',
-  CALCULATOR_RESULT_OUTPUT_HANDLEER: '[data-id="input-handler-1-Result"]',
+  CALCULATOR_RESULT_OUTPUT_HANDLEER: '[data-id="output-handler-1-Result"]',
 
   // Input Handler
   CALCULATOR_NUMBER_A_INPUT_HANDLER: '[data-id="label-1-root_a"]',
-  OUTPUT_VALUE_INPUT_HANDLEER: '[data-id="label-3-root_value"]',
+  OUTPUT_VALUE_INPUT_HANDLEER: '[data-id="label-3-value"]',
 
   // Block Menu
   BLOCKS_TRIGGER: '[data-id="blocks-control-popover-trigger"]',
@@ -63,6 +63,16 @@ export const TUTORIAL_SELECTORS = {
   STOP_BUTTON: '[data-id="stop-graph-button"]',
   SCHEDULE_BUTTON: '[data-id="schedule-graph-button"]',
   AGENT_OUTPUTS_BUTTON: '[data-id="agent-outputs-button"]',
+
+  // Run Input Dialog
+  RUN_INPUT_DIALOG_CONTENT: '[data-id="run-input-dialog-content"]',
+  RUN_INPUT_CREDENTIALS_SECTION: '[data-id="run-input-credentials-section"]',
+  RUN_INPUT_CREDENTIALS_FORM: '[data-id="run-input-credentials-form"]',
+  RUN_INPUT_INPUTS_SECTION: '[data-id="run-input-inputs-section"]',
+  RUN_INPUT_INPUTS_FORM: '[data-id="run-input-inputs-form"]',
+  RUN_INPUT_ACTIONS_SECTION: '[data-id="run-input-actions-section"]',
+  RUN_INPUT_MANUAL_RUN_BUTTON: '[data-id="run-input-manual-run-button"]',
+  RUN_INPUT_SCHEDULE_BUTTON: '[data-id="run-input-schedule-button"]',
 
   // Custom Controls (bottom left)
   CUSTOM_CONTROLS: '[data-id="custom-controls"]',

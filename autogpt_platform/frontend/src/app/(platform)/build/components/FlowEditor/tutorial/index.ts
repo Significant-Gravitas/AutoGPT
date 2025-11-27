@@ -10,12 +10,33 @@ import {
   clearPrefetchedBlocks,
 } from "./helpers";
 
+// Track loading state for tutorial
+let isTutorialLoading = false;
+let tutorialLoadingCallback: ((loading: boolean) => void) | null = null;
+
+export const setTutorialLoadingCallback = (
+  callback: (loading: boolean) => void,
+) => {
+  tutorialLoadingCallback = callback;
+};
+
+export const getTutorialLoadingState = () => isTutorialLoading;
+
 /**
  * Starts the interactive tutorial
  */
 export const startTutorial = async () => {
-  // Prefetch Agent Input and Agent Output blocks at the start
-  await prefetchTutorialBlocks();
+  // Set loading state
+  isTutorialLoading = true;
+  tutorialLoadingCallback?.(true);
+
+  try {
+    // Prefetch Agent Input and Agent Output blocks at the start
+    await prefetchTutorialBlocks();
+  } finally {
+    isTutorialLoading = false;
+    tutorialLoadingCallback?.(false);
+  }
 
   const tour = new Shepherd.Tour({
     useModalOverlay: TUTORIAL_CONFIG.USE_MODAL_OVERLAY,
