@@ -44,6 +44,7 @@ type NodeStore = {
   ) => void;
   getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
   getNodeBlockUIType: (nodeId: string) => BlockUIType;
+  hasWebhookNodes: () => boolean;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -201,6 +202,11 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return (
       get().nodes.find((n) => n.id === nodeId)?.data?.uiType ??
       BlockUIType.STANDARD
+    );
+  },
+  hasWebhookNodes: () => {
+    return get().nodes.some((n) =>
+      [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(n.data.uiType),
     );
   },
 }));
