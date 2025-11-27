@@ -11,6 +11,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useRunsSidebar } from "./useRunsSidebar";
 import { RunListItem } from "./components/RunListItem";
 import { ScheduleListItem } from "./components/ScheduleListItem";
+import { TemplateListItem } from "./components/TemplateListItem";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -23,6 +24,7 @@ interface RunsSidebarProps {
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
+    presetsCount: number;
     loading?: boolean;
   }) => void;
 }
@@ -36,8 +38,11 @@ export function RunsSidebar({
   const {
     runs,
     schedules,
+    presets,
     runsCount,
     schedulesCount,
+    triggersCount,
+    regularPresetsCount,
     error,
     loading,
     fetchMoreRuns,
@@ -69,13 +74,15 @@ export function RunsSidebar({
     <TabsLine
       value={tabValue}
       onValueChange={(v) => {
-        const value = v as "runs" | "scheduled";
+        const value = v as "runs" | "scheduled" | "templates";
         setTabValue(value);
         if (value === "runs") {
           if (runs && runs.length) onSelectRun(runs[0].id);
-        } else {
+        } else if (value === "scheduled") {
           if (schedules && schedules.length)
             onSelectRun(`schedule:${schedules[0].id}`);
+        } else if (value === "templates") {
+          if (presets && presets.length) onSelectRun(`preset:${presets[0].id}`);
         }
       }}
       className="min-w-0 overflow-hidden"
@@ -86,6 +93,18 @@ export function RunsSidebar({
         </TabsLineTrigger>
         <TabsLineTrigger value="scheduled">
           Scheduled <span className="ml-3 inline-block">{schedulesCount}</span>
+        </TabsLineTrigger>
+        <TabsLineTrigger value="templates">
+          Templates{" "}
+          <span className="ml-3 inline-block">
+            {triggersCount > 0 && regularPresetsCount > 0
+              ? `${triggersCount} + ${regularPresetsCount}`
+              : triggersCount > 0
+                ? `${triggersCount} trigger${triggersCount !== 1 ? "s" : ""}`
+                : regularPresetsCount > 0
+                  ? `${regularPresetsCount} preset${regularPresetsCount !== 1 ? "s" : ""}`
+                  : "0"}
+          </span>
         </TabsLineTrigger>
       </TabsLineList>
 
@@ -121,6 +140,36 @@ export function RunsSidebar({
                 />
               </div>
             ))}
+          </div>
+        </TabsLineContent>
+        <TabsLineContent value="templates">
+          <div className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden">
+            {/* Triggers first */}
+            {presets
+              .filter((preset) => !!preset.webhook)
+              .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime())
+              .map((preset) => (
+                <div className="w-[15rem] lg:w-full" key={preset.id}>
+                  <TemplateListItem
+                    preset={preset}
+                    selected={selectedRunId === `preset:${preset.id}`}
+                    onClick={() => onSelectRun(`preset:${preset.id}`)}
+                  />
+                </div>
+              ))}
+            {/* Regular presets second */}
+            {presets
+              .filter((preset) => !preset.webhook)
+              .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime())
+              .map((preset) => (
+                <div className="w-[15rem] lg:w-full" key={preset.id}>
+                  <TemplateListItem
+                    preset={preset}
+                    selected={selectedRunId === `preset:${preset.id}`}
+                    onClick={() => onSelectRun(`preset:${preset.id}`)}
+                  />
+                </div>
+              ))}
           </div>
         </TabsLineContent>
       </>
