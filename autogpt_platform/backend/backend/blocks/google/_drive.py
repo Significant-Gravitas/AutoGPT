@@ -12,6 +12,23 @@ from backend.util.request import Requests
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
 
+AttachmentView = Literal[
+    "DOCS",
+    "DOCUMENTS",
+    "SPREADSHEETS",
+    "PRESENTATIONS",
+    "DOCS_IMAGES",
+    "FOLDERS",
+]
+ATTACHMENT_VIEWS: tuple[AttachmentView, ...] = (
+    "DOCS",
+    "DOCUMENTS",
+    "SPREADSHEETS",
+    "PRESENTATIONS",
+    "DOCS_IMAGES",
+    "FOLDERS",
+)
+
 
 class GoogleDriveFile(BaseModel):
     """Represents a single file/folder picked from Google Drive"""
@@ -35,18 +52,7 @@ class GoogleDriveFile(BaseModel):
 def GoogleDrivePickerField(
     multiselect: bool = False,
     allow_folder_selection: bool = False,
-    allowed_views: Optional[
-        list[
-            Literal[
-                "DOCS",
-                "DOCUMENTS",
-                "SPREADSHEETS",
-                "PRESENTATIONS",
-                "DOCS_IMAGES",
-                "FOLDERS",
-            ]
-        ]
-    ] = None,
+    allowed_views: Optional[list[AttachmentView]] = None,
     allowed_mime_types: Optional[list[str]] = None,
     scopes: Optional[list[str]] = None,
     title: Optional[str] = None,
@@ -90,12 +96,12 @@ def GoogleDrivePickerField(
     picker_config = {
         "multiselect": multiselect,
         "allow_folder_selection": allow_folder_selection,
-        "allowed_views": allowed_views or ["DOCS"],
+        "allowed_views": list(allowed_views) if allowed_views else ["DOCS"],
     }
 
     # Add optional configurations
     if allowed_mime_types:
-        picker_config["allowed_mime_types"] = allowed_mime_types
+        picker_config["allowed_mime_types"] = list(allowed_mime_types)
 
     # Determine required scopes based on config
     base_scopes = scopes if scopes is not None else []
@@ -134,22 +140,6 @@ def GoogleDrivePickerField(
 
 DRIVE_API_URL = "https://www.googleapis.com/drive/v3/files"
 _requests = Requests(trusted_origins=["https://www.googleapis.com"])
-AttachmentView = Literal[
-    "DOCS",
-    "DOCUMENTS",
-    "SPREADSHEETS",
-    "PRESENTATIONS",
-    "DOCS_IMAGES",
-    "FOLDERS",
-]
-ATTACHMENT_VIEWS: tuple[AttachmentView, ...] = (
-    "DOCS",
-    "DOCUMENTS",
-    "SPREADSHEETS",
-    "PRESENTATIONS",
-    "DOCS_IMAGES",
-    "FOLDERS",
-)
 
 
 def GoogleDriveAttachmentField(

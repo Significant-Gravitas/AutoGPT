@@ -39,8 +39,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Button } from "../../../../../components/__legacy__/ui/button";
-import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input";
+import { Button } from "@/components/__legacy__/ui/button";
+import { LocalValuedInput } from "@/components/__legacy__/ui/input";
 import {
   MultiSelector,
   MultiSelectorContent,
@@ -48,16 +48,16 @@ import {
   MultiSelectorItem,
   MultiSelectorList,
   MultiSelectorTrigger,
-} from "../../../../../components/__legacy__/ui/multiselect";
+} from "@/components/__legacy__/ui/multiselect";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../../../../components/__legacy__/ui/select";
-import { Switch } from "../../../../../components/atoms/Switch/Switch";
-import { NodeTableInput } from "../../../../../components/node-table-input";
+} from "@/components/__legacy__/ui/select";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import { NodeTableInput } from "@/components/node-table-input";
 import NodeHandle from "./NodeHandle";
 
 type NodeObjectInputTreeProps = {

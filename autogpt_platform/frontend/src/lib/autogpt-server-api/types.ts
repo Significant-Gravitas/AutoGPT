@@ -126,10 +126,19 @@ export type GoogleDriveFile = {
   isFolder?: boolean;
 };
 
+/** Valid view types for Google Drive Picker - matches backend AttachmentView */
+export type AttachmentView =
+  | "DOCS"
+  | "DOCUMENTS"
+  | "SPREADSHEETS"
+  | "PRESENTATIONS"
+  | "DOCS_IMAGES"
+  | "FOLDERS";
+
 export type GoogleDrivePickerConfig = {
   multiselect?: boolean;
   allow_folder_selection?: boolean;
-  allowed_views?: string[];
+  allowed_views?: AttachmentView[];
   allowed_mime_types?: string[];
   scopes?: string[];
 };

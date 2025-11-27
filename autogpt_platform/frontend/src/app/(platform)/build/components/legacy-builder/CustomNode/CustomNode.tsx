@@ -51,12 +51,9 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Badge } from "../../../../../../components/__legacy__/ui/badge";
-import { IconCoin } from "../../../../../../components/__legacy__/ui/icons";
-import {
-  Alert,
-  AlertDescription,
-} from "../../../../../../components/molecules/Alert/Alert";
+import { Badge } from "@/components/__legacy__/ui/badge";
+import { IconCoin } from "@/components/__legacy__/ui/icons";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { BuilderContext } from "../Flow/Flow";
 import { history } from "../history";
 import InputModalComponent from "../InputModalComponent";

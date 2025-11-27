@@ -324,17 +324,16 @@ class GoogleSheetsReadBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             spreadsheet_id = input_data.spreadsheet.id
             data = await asyncio.to_thread(
@@ -455,24 +454,24 @@ class GoogleSheetsWriteBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            # Customize message for write operations on CSV files
+            if "CSV file" in validation_error:
+                yield "error", validation_error.replace(
+                    "Please use a CSV reader block instead, or",
+                    "CSV files are read-only through Google Drive. Please",
+                )
+            else:
+                yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                # Customize message for write operations on CSV files
-                if "CSV file" in validation_error:
-                    yield "error", validation_error.replace(
-                        "Please use a CSV reader block instead, or",
-                        "CSV files are read-only through Google Drive. Please",
-                    )
-                else:
-                    yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._write_sheet,
@@ -608,17 +607,16 @@ class GoogleSheetsAppendBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
 
             # Determine which values to use and convert if needed
@@ -765,17 +763,17 @@ class GoogleSheetsClearBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._clear_range,
@@ -877,17 +875,17 @@ class GoogleSheetsMetadataBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._get_metadata,
@@ -1004,17 +1002,17 @@ class GoogleSheetsManageSheetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._manage_sheet,
@@ -1165,17 +1163,17 @@ class GoogleSheetsBatchOperationsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._batch_operations,
@@ -1326,17 +1324,17 @@ class GoogleSheetsFindReplaceBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._find_replace,
@@ -1505,17 +1503,17 @@ class GoogleSheetsFindBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._find_text,
@@ -1770,17 +1768,17 @@ class GoogleSheetsFormatBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
+        if not input_data.spreadsheet:
+            yield "error", "No spreadsheet selected"
+            return
+
+        # Check if the selected file is actually a Google Sheets spreadsheet
+        validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+        if validation_error:
+            yield "error", validation_error
+            return
+
         try:
-            if not input_data.spreadsheet:
-                yield "error", "No spreadsheet selected"
-                return
-
-            # Check if the selected file is actually a Google Sheets spreadsheet
-            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
-            if validation_error:
-                yield "error", validation_error
-                return
-
             service = _build_sheets_service(credentials)
             result = await asyncio.to_thread(
                 self._format_cells,
