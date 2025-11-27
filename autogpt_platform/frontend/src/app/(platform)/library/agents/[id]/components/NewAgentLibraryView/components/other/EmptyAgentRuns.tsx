@@ -3,8 +3,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
 import { PlusIcon } from "@phosphor-icons/react";
-import { RunAgentModal } from "../../modals/RunAgentModal/RunAgentModal";
-import { RunDetailCard } from "../../selected-views/RunDetailCard/RunDetailCard";
+import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
+import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 
 type Props = {
   agentName: string;

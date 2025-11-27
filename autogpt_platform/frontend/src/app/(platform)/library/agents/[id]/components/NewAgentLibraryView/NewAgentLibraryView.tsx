@@ -6,11 +6,11 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
+import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
+import { EmptyAgentRuns } from "./components/other/EmptyAgentRuns";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
-import { AgentRunsLoading } from "./components/sidebar-lists/AgentRunsLoading";
-import { EmptyAgentRuns } from "./components/sidebar-lists/EmptyAgentRuns/EmptyAgentRuns";
-import { RunsSidebar } from "./components/sidebar-lists/RunsSidebar/RunsSidebar";
+import { AgentRunsLists } from "./components/sidebar/AgentRunsLists/AgentRunsLists";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
@@ -74,7 +74,7 @@ export function NewAgentLibraryView() {
           />
         </div>
 
-        <RunsSidebar
+        <AgentRunsLists
           agent={agent}
           selectedRunId={selectedRun}
           onSelectRun={handleSelectRun}
