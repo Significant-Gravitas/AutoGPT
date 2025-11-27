@@ -24,13 +24,15 @@ export function useAgentRunsView() {
   const [sidebarCounts, setSidebarCounts] = useState({
     runsCount: 0,
     schedulesCount: 0,
+    presetsCount: 0,
   });
   const [sidebarLoading, setSidebarLoading] = useState(true);
 
   const hasAnyItems = useMemo(
     () =>
       (sidebarCounts.runsCount ?? 0) > 0 ||
-      (sidebarCounts.schedulesCount ?? 0) > 0,
+      (sidebarCounts.schedulesCount ?? 0) > 0 ||
+      (sidebarCounts.presetsCount ?? 0) > 0,
     [sidebarCounts],
   );
 
@@ -49,11 +51,13 @@ export function useAgentRunsView() {
     (counts: {
       runsCount: number;
       schedulesCount: number;
+      presetsCount: number;
       loading?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
         schedulesCount: counts.schedulesCount,
+        presetsCount: counts.presetsCount,
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);

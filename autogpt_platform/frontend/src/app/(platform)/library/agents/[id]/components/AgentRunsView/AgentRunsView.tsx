@@ -11,6 +11,7 @@ import { RunAgentModal } from "./components/RunAgentModal/RunAgentModal";
 import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
 import { SelectedRunView } from "./components/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/SelectedScheduleView/SelectedScheduleView";
+import { SelectedTemplateView } from "./components/SelectedTemplateView/SelectedTemplateView";
 import { useAgentRunsView } from "./useAgentRunsView";
 
 export function AgentRunsView() {
@@ -98,6 +99,23 @@ export function AgentRunsView() {
                 agent={agent}
                 scheduleId={selectedRun.replace("schedule:", "")}
                 onClearSelectedRun={handleClearSelectedRun}
+              />
+            ) : selectedRun.startsWith("preset:") ? (
+              <SelectedTemplateView
+                agent={agent}
+                presetID={selectedRun.replace("preset:", "")}
+                onDelete={(templateId) => {
+                  // TODO: Implement template deletion
+                  console.log("Delete template:", templateId);
+                }}
+                onRun={(templateId) => {
+                  // TODO: Implement template execution
+                  console.log("Run template:", templateId);
+                }}
+                onCreateSchedule={(templateId) => {
+                  // TODO: Implement schedule creation from template
+                  console.log("Create schedule from template:", templateId);
+                }}
               />
             ) : (
               <SelectedRunView
