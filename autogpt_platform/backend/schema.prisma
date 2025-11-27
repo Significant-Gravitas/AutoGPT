@@ -911,6 +911,7 @@ enum APIKeyPermission {
   EXECUTE_BLOCK // Can execute individual blocks
   READ_BLOCK // Can get block information
   READ_STORE // Can read store agents and creators
+  USE_TOOLS // Can use chat tools via external API
 }
 
 model APIKey {
