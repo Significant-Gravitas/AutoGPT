@@ -37,7 +37,7 @@ export type FlagValues = {
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 const mockFlags = {
-  [Flag.BETA_BLOCKS]: ["8b2a7b3c-6e9d-4a5f-8c1b-2e3f4a5b6c7d"], // Human-in-the-Loop block
+  [Flag.BETA_BLOCKS]: [],
   [Flag.NEW_BLOCK_MENU]: false,
   [Flag.NEW_AGENT_RUNS]: false,
   [Flag.GRAPH_SEARCH]: true,
