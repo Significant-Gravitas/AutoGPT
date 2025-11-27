@@ -1,53 +1,70 @@
 from typing import Any, Dict, List
 
 import requests
-from backend.data.block import Block, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+
+from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.model import SchemaField
 
 
 class AgentShieldFirewallBlock(Block):
     """
-    Block: AgentShield Firewall + Analytics
+    Block: AgentShield / Vigil Firewall + Analytics
 
-    This block routes LLM calls through the AgentShield Gateway so that:
+    Routes LLM calls through the AgentShield gateway so that:
     - per-agent / per-tenant policies are enforced
     - PII / unsafe prompts can be blocked
     - every request/response is logged for analytics (Vigil)
-
-    Inputs:
-        gateway_url: full URL to AgentShield gateway endpoint
-                     e.g. https://gateway.agentshield.yourdomain.com/v1/chat/completions
-        api_key:     AgentShield API key for this agent
-        tenant_id:   Tenant identifier (e.g. "demo-enterprise")
-        model:       Model name to request from AgentShield (e.g. "gpt-4o")
-        messages:    Standard OpenAI-style messages array
-    Outputs:
-        completion:  Raw JSON response returned by the AgentShield gateway
     """
 
     class Input(BlockSchemaInput):
-        gateway_url: str
-        api_key: str
-        tenant_id: str
-        model: str
-        messages: List[Dict[str, Any]]
+        gateway_url: str = SchemaField(
+            description=(
+                "Full URL for the AgentShield/Vigil gateway "
+                "`/v1/chat/completions` endpoint."
+            ),
+            placeholder="https://gateway.example.com/v1/chat/completions",
+        )
+        api_key: str = SchemaField(
+            description="AgentShield/Vigil API key for this agent.",
+            secret=True,
+        )
+        tenant_id: str = SchemaField(
+            description="Tenant / organization identifier (e.g. `demo-enterprise`).",
+        )
+        model: str = SchemaField(
+            description="Model to request via the gateway (e.g. `gpt-4o`).",
+            default="gpt-4o",
+        )
+        messages: List[Dict[str, Any]] = SchemaField(
+            description="OpenAI-style messages array sent through the firewall.",
+            default=[],
+        )
 
     class Output(BlockSchemaOutput):
-        completion: Dict[str, Any]
+        completion: Dict[str, Any] = SchemaField(
+            description=(
+                "Raw JSON completion returned from the AgentShield/Vigil gateway "
+                "after policy enforcement."
+            ),
+        )
 
     def __init__(self) -> None:
         super().__init__(
-            # Unique ID for the block (pre-generated UUID)
+            # Keep this UUID stable once merged
             id="375e0fe5-e3cf-45c3-8262-e3deb46116df",
             input_schema=AgentShieldFirewallBlock.Input,
             output_schema=AgentShieldFirewallBlock.Output,
-            # Sample input for testing in the UI / test runner
+            # Sample data for the block test harness
             test_input={
                 "gateway_url": "https://gateway.example.com/v1/chat/completions",
                 "api_key": "ask_test_api_key",
                 "tenant_id": "demo-enterprise",
                 "model": "gpt-4o",
                 "messages": [
-                    {"role": "user", "content": "Say hello from AgentShield test block."}
+                    {
+                        "role": "user",
+                        "content": "Say hello from AgentShield/Vigil test block.",
+                    },
                 ],
             },
             # For non-deterministic outputs we assert type (dict) instead of exact value
@@ -59,7 +76,7 @@ class AgentShieldFirewallBlock(Block):
                         {
                             "message": {
                                 "role": "assistant",
-                                "content": "Hello from AgentShield test stub."
+                                "content": "Hello from Vigil test stub.",
                             }
                         }
                     ],
@@ -81,10 +98,10 @@ class AgentShieldFirewallBlock(Block):
         payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        Actual HTTP call to AgentShield Gateway.
+        Actual HTTP call to the AgentShield gateway.
 
-        This is kept as a separate method so the AutoGPT test harness can
-        override it via `test_mock` without performing real network calls.
+        Kept separate so the block test harness can override via `test_mock`
+        without making real network calls.
         """
         response = requests.post(
             gateway_url,
@@ -99,13 +116,10 @@ class AgentShieldFirewallBlock(Block):
         response.raise_for_status()
         return response.json()
 
-    def run(self, input_data: Input, **kwargs: Any) -> BlockOutput:
+    def run(self, input_data: Input, **kwargs: Any) -> BlockOutput:  # type: ignore[reportReturnType]
         """
-        Execute the block:
-
-        1. Build a standard /v1/chat/completions payload from inputs
-        2. Send it through the AgentShield gateway
-        3. Yield the full completion JSON as `completion`
+        Build a /v1/chat/completions payload, send it through the firewall,
+        and yield the full JSON as `completion`.
         """
         payload: Dict[str, Any] = {
             "model": input_data.model,
@@ -119,5 +133,4 @@ class AgentShieldFirewallBlock(Block):
             payload=payload,
         )
 
-        # Yield a single output field named "completion"
         yield "completion", data
