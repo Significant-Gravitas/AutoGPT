@@ -912,6 +912,9 @@ enum APIKeyPermission {
   READ_BLOCK // Can get block information
   READ_STORE // Can read store agents and creators
   USE_TOOLS // Can use chat tools via external API
+  MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them
+  READ_INTEGRATIONS // Can list credentials and providers
+  DELETE_INTEGRATIONS // Can delete credentials
 }
 
 model APIKey {
