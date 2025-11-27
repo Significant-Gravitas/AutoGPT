@@ -268,6 +268,9 @@ class GoogleSheetsReadBlock(Block):
         result: list[list[str]] = SchemaField(
             description="The data read from the spreadsheet",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         error: str = SchemaField(
             description="Error message if any",
         )
@@ -298,6 +301,17 @@ class GoogleSheetsReadBlock(Block):
                         ["Alice", "85"],
                     ],
                 ),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
             ],
             test_mock={
                 "_read_sheet": lambda *args, **kwargs: [
@@ -327,6 +341,15 @@ class GoogleSheetsReadBlock(Block):
                 self._read_sheet, service, spreadsheet_id, input_data.range
             )
             yield "result", data
+            # Output the GoogleDriveFile for chaining
+            yield "spreadsheet", GoogleDriveFile(
+                id=spreadsheet_id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "read")
 
@@ -374,6 +397,9 @@ class GoogleSheetsWriteBlock(Block):
         result: dict = SchemaField(
             description="The result of the write operation",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         error: str = SchemaField(
             description="Error message if any",
         )
@@ -404,6 +430,17 @@ class GoogleSheetsWriteBlock(Block):
                 (
                     "result",
                     {"updatedCells": 4, "updatedColumns": 2, "updatedRows": 2},
+                ),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
                 ),
             ],
             test_mock={
@@ -445,6 +482,15 @@ class GoogleSheetsWriteBlock(Block):
                 input_data.values,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "write")
 
@@ -511,6 +557,12 @@ class GoogleSheetsAppendBlock(Block):
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Append API response")
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
+        error: str = SchemaField(
+            description="Error message if any",
+        )
 
     def __init__(self):
         super().__init__(
@@ -532,6 +584,17 @@ class GoogleSheetsAppendBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"updatedCells": 2, "updatedColumns": 2, "updatedRows": 1}),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
             ],
             test_mock={
                 "_append_sheet": lambda *args, **kwargs: {
@@ -587,6 +650,15 @@ class GoogleSheetsAppendBlock(Block):
                 input_data.insert_data_option,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", f"Failed to append to Google Sheet: {str(e)}"
 
@@ -644,6 +716,9 @@ class GoogleSheetsClearBlock(Block):
         result: dict = SchemaField(
             description="The result of the clear operation",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         error: str = SchemaField(
             description="Error message if any",
         )
@@ -668,6 +743,17 @@ class GoogleSheetsClearBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"clearedRange": "Sheet1!A1:B2"}),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
             ],
             test_mock={
                 "_clear_range": lambda *args, **kwargs: {
@@ -698,6 +784,15 @@ class GoogleSheetsClearBlock(Block):
                 input_data.range,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", f"Failed to clear Google Sheet range: {str(e)}"
 
@@ -727,6 +822,9 @@ class GoogleSheetsMetadataBlock(Block):
         result: dict = SchemaField(
             description="The metadata of the spreadsheet including sheets info",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         error: str = SchemaField(
             description="Error message if any",
         )
@@ -755,6 +853,17 @@ class GoogleSheetsMetadataBlock(Block):
                         "title": "Test Spreadsheet",
                         "sheets": [{"title": "Sheet1", "sheetId": 0}],
                     },
+                ),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
                 ),
             ],
             test_mock={
@@ -786,6 +895,15 @@ class GoogleSheetsMetadataBlock(Block):
                 input_data.spreadsheet.id,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", f"Failed to get spreadsheet metadata: {str(e)}"
 
@@ -835,6 +953,12 @@ class GoogleSheetsManageSheetBlock(Block):
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="Operation result")
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
+        error: str = SchemaField(
+            description="Error message if any",
+        )
 
     def __init__(self):
         super().__init__(
@@ -855,7 +979,20 @@ class GoogleSheetsManageSheetBlock(Block):
                 "sheet_name": "NewSheet",
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("result", {"success": True, "sheetId": 123})],
+            test_output=[
+                ("result", {"success": True, "sheetId": 123}),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
+            ],
             test_mock={
                 "_manage_sheet": lambda *args, **kwargs: {
                     "success": True,
@@ -889,6 +1026,15 @@ class GoogleSheetsManageSheetBlock(Block):
                 input_data.destination_sheet_name,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", f"Failed to manage sheet: {str(e)}"
 
@@ -958,6 +1104,9 @@ class GoogleSheetsBatchOperationsBlock(Block):
         result: dict = SchemaField(
             description="The result of the batch operations",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         error: str = SchemaField(
             description="Error message if any",
         )
@@ -993,6 +1142,17 @@ class GoogleSheetsBatchOperationsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"totalUpdatedCells": 4, "replies": []}),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
             ],
             test_mock={
                 "_batch_operations": lambda *args, **kwargs: {
@@ -1024,6 +1184,14 @@ class GoogleSheetsBatchOperationsBlock(Block):
                 input_data.operations,
             )
             yield "result", result
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", f"Failed to perform batch operations: {str(e)}"
 
@@ -1108,6 +1276,9 @@ class GoogleSheetsFindReplaceBlock(Block):
         result: dict = SchemaField(
             description="The result of the find/replace operation including number of replacements",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         error: str = SchemaField(
             description="Error message if any",
         )
@@ -1135,6 +1306,17 @@ class GoogleSheetsFindReplaceBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("result", {"occurrencesChanged": 5}),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
             ],
             test_mock={
                 "_find_replace": lambda *args, **kwargs: {"occurrencesChanged": 5},
@@ -1167,6 +1349,14 @@ class GoogleSheetsFindReplaceBlock(Block):
                 input_data.match_entire_cell,
             )
             yield "result", result
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", f"Failed to find/replace in Google Sheet: {str(e)}"
 
@@ -1248,6 +1438,9 @@ class GoogleSheetsFindBlock(Block):
         count: int = SchemaField(
             description="Number of occurrences found",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         error: str = SchemaField(
             description="Error message if any",
         )
@@ -1285,6 +1478,17 @@ class GoogleSheetsFindBlock(Block):
                     ],
                 ),
                 ("result", {"success": True}),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
             ],
             test_mock={
                 "_find_text": lambda *args, **kwargs: {
@@ -1327,6 +1531,14 @@ class GoogleSheetsFindBlock(Block):
             yield "count", result["count"]
             yield "locations", result["locations"]
             yield "result", {"success": True}
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
         except Exception as e:
             yield "error", f"Failed to find text in Google Sheet: {str(e)}"
 
@@ -1511,6 +1723,12 @@ class GoogleSheetsFormatBlock(Block):
 
     class Output(BlockSchemaOutput):
         result: dict = SchemaField(description="API response or success flag")
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
+        error: str = SchemaField(
+            description="Error message if any",
+        )
 
     def __init__(self):
         super().__init__(
@@ -1532,7 +1750,20 @@ class GoogleSheetsFormatBlock(Block):
                 "bold": True,
             },
             test_credentials=TEST_CREDENTIALS,
-            test_output=[("result", {"success": True})],
+            test_output=[
+                ("result", {"success": True}),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
+            ],
             test_mock={"_format_cells": lambda *args, **kwargs: {"success": True}},
         )
 
@@ -1566,6 +1797,14 @@ class GoogleSheetsFormatBlock(Block):
                 yield "error", result["error"]
             else:
                 yield "result", result
+                yield "spreadsheet", GoogleDriveFile(
+                    id=input_data.spreadsheet.id,
+                    name=input_data.spreadsheet.name,
+                    mimeType="application/vnd.google-apps.spreadsheet",
+                    url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                    iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                    isFolder=False,
+                )
         except Exception as e:
             yield "error", f"Failed to format Google Sheet cells: {str(e)}"
 
@@ -1653,6 +1892,9 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
         result: dict = SchemaField(
             description="The result containing spreadsheet ID and URL",
         )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The created spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
         spreadsheet_id: str = SchemaField(
             description="The ID of the created spreadsheet",
         )
@@ -1678,6 +1920,17 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
                 ("spreadsheet_id", "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"),
                 (
                     "spreadsheet_url",
@@ -1689,6 +1942,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
                 "_create_spreadsheet": lambda *args, **kwargs: {
                     "spreadsheetId": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                    "title": "Test Spreadsheet",
                 },
             },
         )
@@ -1707,8 +1961,19 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
         if "error" in result:
             yield "error", result["error"]
         else:
-            yield "spreadsheet_id", result["spreadsheetId"]
-            yield "spreadsheet_url", result["spreadsheetUrl"]
+            spreadsheet_id = result["spreadsheetId"]
+            spreadsheet_url = result["spreadsheetUrl"]
+            # Output the full GoogleDriveFile object for easy chaining
+            yield "spreadsheet", GoogleDriveFile(
+                id=spreadsheet_id,
+                name=result.get("title", input_data.title),
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=spreadsheet_url,
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
+            yield "spreadsheet_id", spreadsheet_id
+            yield "spreadsheet_url", spreadsheet_url
             yield "result", {"success": True}
 
     def _create_spreadsheet(self, service, title: str, sheet_names: list[str]) -> dict:
@@ -1744,6 +2009,152 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             return {
                 "spreadsheetId": spreadsheet_id,
                 "spreadsheetUrl": spreadsheet_url,
+                "title": title,
             }
         except Exception as e:
             return {"error": str(e)}
+
+
+class GoogleSheetsUpdateCellBlock(Block):
+    """Update a single cell in a Google Sheets spreadsheet."""
+
+    class Input(BlockSchemaInput):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            ["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+            title="Spreadsheet",
+            description="Select a Google Sheets spreadsheet",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
+        )
+        cell: str = SchemaField(
+            description="Cell address in A1 notation (e.g., 'A1', 'Sheet1!B2')",
+            placeholder="A1",
+        )
+        value: str = SchemaField(
+            description="Value to write to the cell",
+        )
+        value_input_option: ValueInputOption = SchemaField(
+            description="How input data should be interpreted",
+            default=ValueInputOption.USER_ENTERED,
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        result: dict = SchemaField(
+            description="The result of the update operation",
+        )
+        spreadsheet: GoogleDriveFile = SchemaField(
+            description="The spreadsheet as a GoogleDriveFile (for chaining to other blocks)",
+        )
+        error: str = SchemaField(
+            description="Error message if any",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+            description="Update a single cell in a Google Sheets spreadsheet.",
+            categories={BlockCategory.DATA},
+            input_schema=GoogleSheetsUpdateCellBlock.Input,
+            output_schema=GoogleSheetsUpdateCellBlock.Output,
+            disabled=GOOGLE_SHEETS_DISABLED,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "spreadsheet": {
+                    "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    "name": "Test Spreadsheet",
+                    "mimeType": "application/vnd.google-apps.spreadsheet",
+                },
+                "cell": "A1",
+                "value": "Hello World",
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "result",
+                    {"updatedCells": 1, "updatedColumns": 1, "updatedRows": 1},
+                ),
+                (
+                    "spreadsheet",
+                    GoogleDriveFile(
+                        id="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                        name="Test Spreadsheet",
+                        mimeType="application/vnd.google-apps.spreadsheet",
+                        url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
+                        iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                        isFolder=False,
+                    ),
+                ),
+            ],
+            test_mock={
+                "_update_cell": lambda *args, **kwargs: {
+                    "updatedCells": 1,
+                    "updatedColumns": 1,
+                    "updatedRows": 1,
+                },
+            },
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            if not input_data.spreadsheet:
+                yield "error", "No spreadsheet selected"
+                return
+
+            # Check if the selected file is actually a Google Sheets spreadsheet
+            validation_error = _validate_spreadsheet_file(input_data.spreadsheet)
+            if validation_error:
+                yield "error", validation_error
+                return
+
+            service = _build_sheets_service(credentials)
+            result = await asyncio.to_thread(
+                self._update_cell,
+                service,
+                input_data.spreadsheet.id,
+                input_data.cell,
+                input_data.value,
+                input_data.value_input_option,
+            )
+
+            yield "result", result
+            yield "spreadsheet", GoogleDriveFile(
+                id=input_data.spreadsheet.id,
+                name=input_data.spreadsheet.name,
+                mimeType="application/vnd.google-apps.spreadsheet",
+                url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
+                iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
+                isFolder=False,
+            )
+        except Exception as e:
+            yield "error", _handle_sheets_api_error(str(e), "update")
+
+    def _update_cell(
+        self,
+        service,
+        spreadsheet_id: str,
+        cell: str,
+        value: str,
+        value_input_option: ValueInputOption,
+    ) -> dict:
+        body = {"values": [[value]]}
+        result = (
+            service.spreadsheets()
+            .values()
+            .update(
+                spreadsheetId=spreadsheet_id,
+                range=cell,
+                valueInputOption=value_input_option.value,
+                body=body,
+            )
+            .execute()
+        )
+        return {
+            "updatedCells": result.get("updatedCells", 0),
+            "updatedRows": result.get("updatedRows", 0),
+            "updatedColumns": result.get("updatedColumns", 0),
+        }
