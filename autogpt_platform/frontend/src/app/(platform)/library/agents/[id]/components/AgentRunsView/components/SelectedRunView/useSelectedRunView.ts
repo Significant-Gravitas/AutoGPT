@@ -7,7 +7,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 export function useSelectedRunView(graphId: string, runId: string) {
   const query = useGetV1GetExecutionDetails(graphId, runId, {
     query: {
-      refetchInterval: (q) => {
+      refetchInterval: (q: any) => {
         const isSuccess = q.state.data?.status === 200;
 
         if (!isSuccess) return false;
@@ -19,7 +19,8 @@ export function useSelectedRunView(graphId: string, runId: string) {
         if (
           status === AgentExecutionStatus.RUNNING ||
           status === AgentExecutionStatus.QUEUED ||
-          status === AgentExecutionStatus.INCOMPLETE
+          status === AgentExecutionStatus.INCOMPLETE ||
+          status === AgentExecutionStatus.REVIEW
         )
           return 1500;
         return false;

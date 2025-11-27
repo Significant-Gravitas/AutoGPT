@@ -18,6 +18,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
     openRunInputDialog,
     setOpenRunInputDialog,
     isExecutingGraph,
+    isTerminatingGraph,
     isSaving,
   } = useRunGraph();
   const isGraphRunning = useGraphStore(
@@ -34,8 +35,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
                 "border-red-500 bg-gradient-to-br from-red-400 to-red-500 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.5),0_2px_4px_0_rgba(0,0,0,0.2)]",
             )}
             onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
-            disabled={!flowID || isExecutingGraph}
-            isLoading={isExecutingGraph || isSaving}
+            disabled={!flowID || isExecutingGraph || isTerminatingGraph}
+            isLoading={isExecutingGraph || isTerminatingGraph || isSaving}
           >
             {!isGraphRunning ? (
               <PlayIcon className="size-6 drop-shadow-sm" />
