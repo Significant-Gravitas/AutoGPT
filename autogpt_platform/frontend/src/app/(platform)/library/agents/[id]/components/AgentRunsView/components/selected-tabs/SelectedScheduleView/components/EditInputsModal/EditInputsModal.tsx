@@ -1,14 +1,13 @@
 "use client";
 
-import React from "react";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
-import { useEditInputsModal } from "./useEditInputsModal";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { PencilSimpleIcon } from "@phosphor-icons/react";
+import { RunAgentInputs } from "../../../../modals/RunAgentInputs/RunAgentInputs";
+import { useEditInputsModal } from "./useEditInputsModal";
 
 type Props = {
   agent: LibraryAgent;

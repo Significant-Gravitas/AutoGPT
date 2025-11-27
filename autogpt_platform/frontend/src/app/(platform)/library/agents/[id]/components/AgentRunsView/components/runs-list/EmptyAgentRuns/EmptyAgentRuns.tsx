@@ -1,10 +1,10 @@
-import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
-import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
-import { Text } from "@/components/atoms/Text/Text";
-import { RunAgentModal } from "../RunAgentModal/RunAgentModal";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
 import { PlusIcon } from "@phosphor-icons/react";
+import { RunAgentModal } from "../../modals/RunAgentModal/RunAgentModal";
+import { RunDetailCard } from "../../selected-tabs/RunDetailCard/RunDetailCard";
 
 type Props = {
   agentName: string;

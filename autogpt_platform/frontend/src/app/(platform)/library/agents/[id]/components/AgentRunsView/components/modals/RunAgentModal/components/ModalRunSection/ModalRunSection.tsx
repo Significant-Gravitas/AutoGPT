@@ -1,13 +1,13 @@
-import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Input } from "@/components/atoms/Input/Input";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { useRunAgentModalContext } from "../../context";
-import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
-import { InfoIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { toDisplayName } from "@/providers/agent-credentials/helper";
-import { getCredentialTypeDisplayName } from "./helpers";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { toDisplayName } from "@/providers/agent-credentials/helper";
+import { InfoIcon } from "@phosphor-icons/react";
+import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
+import { useRunAgentModalContext } from "../../context";
+import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
+import { getCredentialTypeDisplayName } from "./helpers";
 
 export function ModalRunSection() {
   const {

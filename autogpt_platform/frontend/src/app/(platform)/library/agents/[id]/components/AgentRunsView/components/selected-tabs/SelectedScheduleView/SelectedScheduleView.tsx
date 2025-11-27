@@ -1,24 +1,23 @@
 "use client";
 
-import React from "react";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   TabsLine,
   TabsLineContent,
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { useSelectedScheduleView } from "./useSelectedScheduleView";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
+import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
-import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
-import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { ScheduleActions } from "./components/ScheduleActions";
+import { useSelectedScheduleView } from "./useSelectedScheduleView";
 
 interface Props {
   agent: LibraryAgent;

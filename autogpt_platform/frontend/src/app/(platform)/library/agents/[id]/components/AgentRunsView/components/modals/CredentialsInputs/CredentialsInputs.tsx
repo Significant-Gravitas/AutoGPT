@@ -1,4 +1,3 @@
-import { Button } from "@/components/atoms/Button/Button";
 import {
   IconKey,
   IconKeyPlus,
@@ -12,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
+import { Button } from "@/components/atoms/Button/Button";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -31,11 +32,10 @@ import {
   FaMedium,
   FaTwitter,
 } from "react-icons/fa";
-import { APIKeyCredentialsModal } from "../APIKeyCredentialsModal/APIKeyCredentialsModal";
-import { HostScopedCredentialsModal } from "../HotScopedCredentialsModal/HotScopedCredentialsModal";
-import { OAuthFlowWaitingModal } from "../OAuthWaitingModal/OAuthWaitingModal";
-import { PasswordCredentialsModal } from "../PasswordCredentialsModal/PasswordCredentialsModal";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import { APIKeyCredentialsModal } from "./APIKeyCredentialsModal/APIKeyCredentialsModal";
+import { HostScopedCredentialsModal } from "./HotScopedCredentialsModal/HotScopedCredentialsModal";
+import { OAuthFlowWaitingModal } from "./OAuthWaitingModal/OAuthWaitingModal";
+import { PasswordCredentialsModal } from "./PasswordCredentialsModal/PasswordCredentialsModal";
 
 const fallbackIcon = FaKey;
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { globalRegistry } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
-import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
+import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/selected-tabs/OutputRenderers";
+import { globalRegistry } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/selected-tabs/OutputRenderers";
 
 export const TextRenderer: React.FC<{
   value: any;

@@ -6,11 +6,11 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { AgentRunsLoading } from "./components/AgentRunsLoading";
-import { EmptyAgentRuns } from "./components/EmptyAgentRuns/EmptyAgentRuns";
-import { RunAgentModal } from "./components/RunAgentModal/RunAgentModal";
-import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
-import { SelectedRunView } from "./components/SelectedRunView/SelectedRunView";
-import { SelectedScheduleView } from "./components/SelectedScheduleView/SelectedScheduleView";
+import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
+import { EmptyAgentRuns } from "./components/runs-list/EmptyAgentRuns/EmptyAgentRuns";
+import { RunsSidebar } from "./components/runs-list/RunsSidebar/RunsSidebar";
+import { SelectedRunView } from "./components/selected-tabs/SelectedRunView/SelectedRunView";
+import { SelectedScheduleView } from "./components/selected-tabs/SelectedScheduleView/SelectedScheduleView";
 import { useAgentRunsView } from "./useAgentRunsView";
 
 export function AgentRunsView() {
