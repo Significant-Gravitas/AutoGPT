@@ -439,6 +439,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         '"regex:" to match via regular expression.',
     )
 
+    external_oauth_callback_origins: List[str] = Field(
+        default=["http://localhost:3000"],
+        description="Allowed callback URL origins for external OAuth flows. "
+        "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
+    )
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
