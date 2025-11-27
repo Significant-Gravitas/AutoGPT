@@ -53,8 +53,6 @@ export function useCopyPaste() {
             edges: selectedEdges,
           };
 
-          console.log("copiedData", copiedData);
-
           storage.set(Key.COPIED_FLOW_DATA, JSON.stringify(copiedData));
         }
 
