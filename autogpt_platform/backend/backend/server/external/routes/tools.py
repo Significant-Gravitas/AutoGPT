@@ -1,7 +1,7 @@
 """External API routes for chat tools - stateless HTTP endpoints."""
 
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Security
 from prisma.enums import APIKeyPermission
@@ -24,12 +24,15 @@ class FindAgentRequest(BaseModel):
 
 
 class RunAgentRequest(BaseModel):
-    """Unified request for all agent operations."""
+    """Request to run or schedule an agent.
 
-    action: Literal["get_details", "validate", "run", "schedule"] = Field(
-        default="run",
-        description="Action to perform: get_details, validate, run, or schedule",
-    )
+    The tool automatically handles the setup flow:
+    - First call returns available inputs so user can decide what values to use
+    - Returns missing credentials if user needs to configure them
+    - Executes when inputs are provided OR use_defaults=true
+    - Schedules execution if schedule_name and cron are provided
+    """
+
     username_agent_slug: str = Field(
         ...,
         description="The marketplace agent slug (e.g., 'username/agent-name')",
@@ -38,9 +41,13 @@ class RunAgentRequest(BaseModel):
         default_factory=dict,
         description="Dictionary of input values for the agent",
     )
+    use_defaults: bool = Field(
+        default=False,
+        description="Set to true to run with default values (user must confirm)",
+    )
     schedule_name: str | None = Field(
         None,
-        description="Name for scheduled execution (required for action='schedule')",
+        description="Name for scheduled execution (triggers scheduling mode)",
     )
     cron: str | None = Field(
         None,
@@ -92,19 +99,13 @@ async def run_agent(
     api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
 ) -> dict[str, Any]:
     """
-    Unified endpoint for all agent operations.
+    Run or schedule an agent from the marketplace.
 
-    Actions:
-    - **get_details**: Get agent info, required inputs, and credentials
-    - **validate**: Check if credentials and inputs are ready
-    - **run**: Execute agent immediately with provided inputs
-    - **schedule**: Set up scheduled execution with cron expression
-
-    Workflow:
-    1. Call with action="get_details" to see what the agent needs
-    2. If credentials are needed, configure them via the platform
-    3. Call with action="validate" to confirm readiness
-    4. Call with action="run" or action="schedule" with inputs
+    The endpoint automatically handles the setup flow:
+    - Returns missing inputs if required fields are not provided
+    - Returns missing credentials if user needs to configure them
+    - Executes immediately if all requirements are met
+    - Schedules execution if schedule_name and cron are provided
 
     For scheduled execution:
     - Cron format: "minute hour day month weekday"
@@ -112,18 +113,20 @@ async def run_agent(
     - Timezone: Use IANA timezone names like "America/New_York"
 
     Args:
-        request: Action, agent slug, and optional inputs/schedule config
+        request: Agent slug, inputs, and optional schedule config
 
     Returns:
-        Response varies by action - details, validation status, or execution started
+        - setup_requirements: If inputs or credentials are missing
+        - execution_started: If agent was run or scheduled successfully
+        - error: If something went wrong
     """
     session = _create_ephemeral_session(api_key.user_id)
     result = await run_agent_tool._execute(
         user_id=api_key.user_id,
         session=session,
-        action=request.action,
         username_agent_slug=request.username_agent_slug,
         inputs=request.inputs,
+        use_defaults=request.use_defaults,
         schedule_name=request.schedule_name or "",
         cron=request.cron or "",
         timezone=request.timezone,

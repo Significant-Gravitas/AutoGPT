@@ -1,7 +1,7 @@
-"""Unified tool for agent operations: get details, validate, run, and schedule."""
+"""Unified tool for agent operations with automatic state detection."""
 
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
@@ -36,17 +36,17 @@ from backend.util.timezone_utils import (
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
-ActionType = Literal["get_details", "validate", "run", "schedule"]
-
 
 class RunAgentTool(BaseTool):
-    """Unified tool for agent operations.
+    """Unified tool for agent operations with automatic state detection.
 
-    Supports four actions:
-    - get_details: Get agent information and requirements
-    - validate: Check if user has required credentials and inputs
-    - run: Execute the agent immediately
-    - schedule: Set up scheduled execution with cron
+    The tool automatically determines what to do based on provided parameters:
+    1. Fetches agent details (always, silently)
+    2. Checks if required inputs are provided
+    3. Checks if user has required credentials
+    4. Runs immediately OR schedules (if cron is provided)
+
+    The response tells the caller what's missing or confirms execution.
     """
 
     @property
@@ -55,57 +55,53 @@ class RunAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Unified tool for agent operations. Use different actions:
+        return """Run or schedule an agent from the marketplace.
 
-        1. action="get_details": Get agent info and requirements
-        2. action="validate": Check if credentials and inputs are ready
-        3. action="run": Execute agent immediately with provided inputs
-        4. action="schedule": Set up scheduled execution with cron
+        The tool automatically handles the setup flow:
+        - Returns missing inputs if required fields are not provided
+        - Returns missing credentials if user needs to configure them
+        - Executes immediately if all requirements are met
+        - Schedules execution if cron expression is provided
 
-        WORKFLOW:
-        1. First call with action="get_details" to see what the agent needs
-        2. If credentials are needed, wait for user to configure them
-        3. Call with action="validate" to confirm readiness
-        4. Finally call with action="run" or action="schedule" with inputs"""
+        For scheduled execution, provide: schedule_name, cron, and optionally timezone."""
 
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["get_details", "validate", "run", "schedule"],
-                    "description": "Action to perform: get_details, validate, run, or schedule",
-                },
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Agent identifier in format 'username/agent-name'",
                 },
                 "inputs": {
                     "type": "object",
-                    "description": "Input values for the agent (required for run/schedule)",
+                    "description": "Input values for the agent",
                     "additionalProperties": True,
+                },
+                "use_defaults": {
+                    "type": "boolean",
+                    "description": "Set to true to run with default values (user must confirm)",
                 },
                 "schedule_name": {
                     "type": "string",
-                    "description": "Name for scheduled execution (required for schedule)",
+                    "description": "Name for scheduled execution (triggers scheduling mode)",
                 },
                 "cron": {
                     "type": "string",
-                    "description": "Cron expression for schedule (5 fields: min hour day month weekday)",
+                    "description": "Cron expression (5 fields: min hour day month weekday)",
                 },
                 "timezone": {
                     "type": "string",
                     "description": "IANA timezone for schedule (default: UTC)",
                 },
             },
-            "required": ["action", "username_agent_slug"],
+            "required": ["username_agent_slug"],
         }
 
     @property
     def requires_auth(self) -> bool:
-        """All actions require authentication."""
+        """All operations require authentication."""
         return True
 
     async def _execute(
@@ -114,9 +110,13 @@ class RunAgentTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        """Route to appropriate action handler."""
-        action: ActionType = kwargs.get("action", "run")  # type: ignore
+        """Execute the tool with automatic state detection."""
         agent_slug = kwargs.get("username_agent_slug", "").strip()
+        inputs = kwargs.get("inputs", {})
+        use_defaults = kwargs.get("use_defaults", False)
+        schedule_name = kwargs.get("schedule_name", "").strip()
+        cron = kwargs.get("cron", "").strip()
+        timezone = kwargs.get("timezone", "UTC").strip()
         session_id = session.session_id
 
         # Validate agent slug format
@@ -126,38 +126,18 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        # Auth is required for all actions
+        # Auth is required
         if not user_id:
             return ErrorResponse(
                 message="Authentication required. Please sign in to use this tool.",
                 session_id=session_id,
             )
 
-        if action == "get_details":
-            return await self._get_details(user_id, session, agent_slug, **kwargs)
-        elif action == "validate":
-            return await self._validate_setup(user_id, session, agent_slug, **kwargs)
-        elif action == "run":
-            return await self._run_agent(user_id, session, agent_slug, **kwargs)
-        elif action == "schedule":
-            return await self._schedule_agent(user_id, session, agent_slug, **kwargs)
-        else:
-            return ErrorResponse(
-                message=f"Unknown action: {action}. Use: get_details, validate, run, or schedule",
-                session_id=session_id,
-            )
-
-    async def _get_details(
-        self,
-        user_id: str,
-        session: ChatSession,
-        agent_slug: str,
-        **kwargs,
-    ) -> ToolResponseBase:
-        """Get detailed information about an agent."""
-        session_id = session.session_id
+        # Determine if this is a schedule request
+        is_schedule = bool(schedule_name or cron)
 
         try:
+            # Step 1: Fetch agent details (always happens first)
             username, agent_name = agent_slug.split("/", 1)
             graph, store_agent = await fetch_graph_from_store_slug(username, agent_name)
 
@@ -167,58 +147,174 @@ class RunAgentTool(BaseTool):
                     session_id=session_id,
                 )
 
-            # Extract credentials from schema
-            credentials = extract_credentials_from_schema(
-                graph.credentials_input_schema
+            # Step 2: Check credentials
+            graph_credentials, missing_creds = await match_user_credentials_to_graph(
+                user_id, graph
             )
 
-            # Check if user has required credentials
-            missing_creds = await check_user_has_required_credentials(
-                user_id, credentials
-            )
-
-            trigger_info = (
-                graph.trigger_setup_info.model_dump()
-                if graph.trigger_setup_info
-                else None
-            )
-
-            agent_details = AgentDetails(
-                id=graph.id,
-                name=graph.name,
-                description=graph.description,
-                inputs=graph.input_schema,
-                credentials=credentials,
-                execution_options=ExecutionOptions(
-                    manual=trigger_info is None,
-                    scheduled=trigger_info is None,
-                    webhook=trigger_info is not None,
-                ),
-                trigger_info=trigger_info,
-            )
-
-            # Build next action hint message
             if missing_creds:
-                next_msg = (
-                    f"Agent requires {len(missing_creds)} credential(s). "
-                    "User needs to configure credentials, then call run_agent with action='validate'."
+                # Return credentials needed response with input data info
+                # The UI handles credential setup automatically, so the message
+                # focuses on asking about input data
+                credentials = extract_credentials_from_schema(
+                    graph.credentials_input_schema
                 )
-            elif credentials:
-                next_msg = (
-                    "Agent requires credentials. User has them configured. "
-                    "Call run_agent with action='validate' to confirm readiness."
+                missing_creds_check = await check_user_has_required_credentials(
+                    user_id, credentials
+                )
+                missing_credentials_dict = {
+                    c.id: c.model_dump() for c in missing_creds_check
+                }
+
+                # Build message with input information
+                inputs_list = self._get_inputs_list(graph.input_schema)
+                required_names = [i["name"] for i in inputs_list if i["required"]]
+                optional_names = [i["name"] for i in inputs_list if not i["required"]]
+
+                message_parts = [f"Agent '{graph.name}' accepts the following inputs:"]
+                if required_names:
+                    message_parts.append(f"Required: {', '.join(required_names)}.")
+                if optional_names:
+                    message_parts.append(
+                        f"Optional (have defaults): {', '.join(optional_names)}."
+                    )
+                if not inputs_list:
+                    message_parts = [f"Agent '{graph.name}' has no required inputs."]
+                message_parts.append(
+                    "What values would you like to use, or would you like to run with defaults?"
+                )
+
+                return SetupRequirementsResponse(
+                    message=" ".join(message_parts),
+                    session_id=session_id,
+                    setup_info=SetupInfo(
+                        agent_id=graph.id,
+                        agent_name=graph.name,
+                        user_readiness=UserReadiness(
+                            has_all_credentials=False,
+                            missing_credentials=missing_credentials_dict,
+                            ready_to_run=False,
+                        ),
+                        requirements={
+                            "credentials": [c.model_dump() for c in credentials],
+                            "inputs": inputs_list,
+                            "execution_modes": self._get_execution_modes(graph),
+                        },
+                    ),
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
+
+            # Step 3: Check inputs
+            # Get all available input fields from schema
+            input_properties = graph.input_schema.get("properties", {})
+            required_fields = set(graph.input_schema.get("required", []))
+            provided_inputs = set(inputs.keys())
+
+            # If agent has inputs but none were provided AND use_defaults is not set,
+            # always show what's available first so user can decide
+            if input_properties and not provided_inputs and not use_defaults:
+                credentials = extract_credentials_from_schema(
+                    graph.credentials_input_schema
+                )
+                trigger_info = (
+                    graph.trigger_setup_info.model_dump()
+                    if graph.trigger_setup_info
+                    else None
+                )
+                inputs_list = self._get_inputs_list(graph.input_schema)
+                required_names = [i["name"] for i in inputs_list if i["required"]]
+                optional_names = [i["name"] for i in inputs_list if not i["required"]]
+
+                message_parts = [f"Agent '{graph.name}' accepts the following inputs:"]
+                if required_names:
+                    message_parts.append(f"Required: {', '.join(required_names)}.")
+                if optional_names:
+                    message_parts.append(
+                        f"Optional (have defaults): {', '.join(optional_names)}."
+                    )
+                message_parts.append(
+                    "Ask the user what values to use, or call again with use_defaults=true to run with default values."
+                )
+
+                return AgentDetailsResponse(
+                    message=" ".join(message_parts),
+                    session_id=session_id,
+                    agent=AgentDetails(
+                        id=graph.id,
+                        name=graph.name,
+                        description=graph.description,
+                        inputs=graph.input_schema,
+                        credentials=credentials,
+                        execution_options=ExecutionOptions(
+                            manual=trigger_info is None,
+                            scheduled=trigger_info is None,
+                            webhook=trigger_info is not None,
+                        ),
+                        trigger_info=trigger_info,
+                    ),
+                    user_authenticated=True,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
+
+            # Check if required inputs are missing (and not using defaults)
+            missing_inputs = required_fields - provided_inputs
+
+            if missing_inputs and not use_defaults:
+                # Return agent details with missing inputs info
+                credentials = extract_credentials_from_schema(
+                    graph.credentials_input_schema
+                )
+                trigger_info = (
+                    graph.trigger_setup_info.model_dump()
+                    if graph.trigger_setup_info
+                    else None
+                )
+                return AgentDetailsResponse(
+                    message=(
+                        f"Agent '{graph.name}' is missing required inputs: {', '.join(missing_inputs)}. "
+                        "Please provide these values to run the agent."
+                    ),
+                    session_id=session_id,
+                    agent=AgentDetails(
+                        id=graph.id,
+                        name=graph.name,
+                        description=graph.description,
+                        inputs=graph.input_schema,
+                        credentials=credentials,
+                        execution_options=ExecutionOptions(
+                            manual=trigger_info is None,
+                            scheduled=trigger_info is None,
+                            webhook=trigger_info is not None,
+                        ),
+                        trigger_info=trigger_info,
+                    ),
+                    user_authenticated=True,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                )
+
+            # Step 4: Execute or Schedule
+            if is_schedule:
+                return await self._schedule_agent(
+                    user_id=user_id,
+                    session=session,
+                    graph=graph,
+                    graph_credentials=graph_credentials,
+                    inputs=inputs,
+                    schedule_name=schedule_name,
+                    cron=cron,
+                    timezone=timezone,
                 )
             else:
-                next_msg = "Agent is ready. Call run_agent with action='run' and provide required inputs."
-
-            return AgentDetailsResponse(
-                message=f"Found agent '{agent_details.name}'. {next_msg}",
-                session_id=session_id,
-                agent=agent_details,
-                user_authenticated=True,
-                graph_id=graph.id,
-                graph_version=graph.version,
-            )
+                return await self._run_agent(
+                    user_id=user_id,
+                    session=session,
+                    graph=graph,
+                    graph_credentials=graph_credentials,
+                    inputs=inputs,
+                )
 
         except NotFoundError:
             return ErrorResponse(
@@ -226,229 +322,104 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
         except DatabaseError as e:
-            logger.error(f"Database error getting agent details: {e}", exc_info=True)
+            logger.error(f"Database error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to get agent details: {e!s}",
+                message=f"Failed to process request: {e!s}",
                 session_id=session_id,
             )
         except Exception as e:
-            logger.error(f"Error getting agent details: {e}", exc_info=True)
+            logger.error(f"Error processing agent request: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Failed to get agent details: {e!s}",
+                message=f"Failed to process request: {e!s}",
                 error=str(e),
                 session_id=session_id,
             )
 
-    async def _validate_setup(
-        self,
-        user_id: str,
-        session: ChatSession,
-        agent_slug: str,
-        **kwargs,
-    ) -> ToolResponseBase:
-        """Validate that user has required credentials and inputs."""
-        session_id = session.session_id
-        inputs = kwargs.get("inputs", {})
-
-        try:
-            username, agent_name = agent_slug.split("/", 1)
-            graph, store_agent = await fetch_graph_from_store_slug(username, agent_name)
-
-            if not graph:
-                return ErrorResponse(
-                    message=f"Agent '{agent_slug}' not found",
-                    session_id=session_id,
+    def _get_inputs_list(self, input_schema: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract inputs list from schema."""
+        inputs_list = []
+        if isinstance(input_schema, dict) and "properties" in input_schema:
+            for field_name, field_schema in input_schema["properties"].items():
+                inputs_list.append(
+                    {
+                        "name": field_name,
+                        "title": field_schema.get("title", field_name),
+                        "type": field_schema.get("type", "string"),
+                        "description": field_schema.get("description", ""),
+                        "required": field_name in input_schema.get("required", []),
+                    }
                 )
+        return inputs_list
 
-            # Extract and check credentials
-            credentials = extract_credentials_from_schema(
-                graph.credentials_input_schema
-            )
-            missing_creds = await check_user_has_required_credentials(
-                user_id, credentials
-            )
-
-            # Check inputs
-            required_fields = set(graph.input_schema.get("required", []))
-            provided_inputs = set(inputs.keys())
-            missing_inputs = required_fields - provided_inputs
-
-            # Build user readiness
-            missing_credentials_dict = {c.id: c.model_dump() for c in missing_creds}
-            user_readiness = UserReadiness(
-                has_all_credentials=len(missing_creds) == 0,
-                missing_credentials=missing_credentials_dict,
-                ready_to_run=len(missing_inputs) == 0 and len(missing_creds) == 0,
-            )
-
-            # Build execution modes
-            trigger_info = graph.trigger_setup_info
-            execution_modes = []
-            if trigger_info is None:
-                execution_modes.extend(["manual", "scheduled"])
-            else:
-                execution_modes.append("webhook")
-
-            # Build inputs list
-            inputs_list = []
-            if (
-                isinstance(graph.input_schema, dict)
-                and "properties" in graph.input_schema
-            ):
-                for field_name, field_schema in graph.input_schema[
-                    "properties"
-                ].items():
-                    inputs_list.append(
-                        {
-                            "name": field_name,
-                            "title": field_schema.get("title", field_name),
-                            "type": field_schema.get("type", "string"),
-                            "description": field_schema.get("description", ""),
-                            "required": field_name
-                            in graph.input_schema.get("required", []),
-                        }
-                    )
-
-            requirements = {
-                "credentials": credentials,
-                "inputs": inputs_list,
-                "execution_modes": execution_modes,
-            }
-
-            # Build message
-            if missing_creds:
-                message = (
-                    "User needs to configure credentials before proceeding. "
-                    "Wait for confirmation, then call run_agent with action='validate' again."
-                )
-            elif missing_inputs:
-                missing_names = ", ".join(missing_inputs)
-                message = (
-                    f"Missing required inputs: {missing_names}. "
-                    f"Call run_agent with action='run' and provide these inputs."
-                )
-            else:
-                message = (
-                    "Agent is ready to run. "
-                    "Call run_agent with action='run' (or action='schedule' for scheduled execution)."
-                )
-
-            return SetupRequirementsResponse(
-                message=message,
-                session_id=session_id,
-                setup_info=SetupInfo(
-                    agent_id=graph.id,
-                    agent_name=graph.name,
-                    user_readiness=user_readiness,
-                    requirements=requirements,
-                ),
-                graph_id=graph.id,
-                graph_version=graph.version,
-            )
-
-        except Exception as e:
-            logger.error(f"Error validating setup: {e}", exc_info=True)
-            return ErrorResponse(
-                message=f"Failed to validate setup: {e!s}",
-                error=str(e),
-                session_id=session_id,
-            )
+    def _get_execution_modes(self, graph) -> list[str]:
+        """Get available execution modes for the graph."""
+        trigger_info = graph.trigger_setup_info
+        if trigger_info is None:
+            return ["manual", "scheduled"]
+        return ["webhook"]
 
     async def _run_agent(
         self,
         user_id: str,
         session: ChatSession,
-        agent_slug: str,
-        **kwargs,
+        graph,
+        graph_credentials: dict,
+        inputs: dict,
     ) -> ToolResponseBase:
         """Execute an agent immediately."""
         session_id = session.session_id
-        inputs = kwargs.get("inputs", {})
 
-        try:
-            username, agent_name = agent_slug.split("/", 1)
-            graph, store_agent = await fetch_graph_from_store_slug(username, agent_name)
-
-            if not graph:
-                return ErrorResponse(
-                    message=f"Agent '{agent_slug}' not found",
-                    session_id=session_id,
-                )
-
-            # Check rate limits
-            if session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs:
-                return ErrorResponse(
-                    message="Maximum agent runs reached for this session. Please try again later.",
-                    session_id=session_id,
-                )
-
-            # Match credentials
-            graph_credentials, missing_creds = await match_user_credentials_to_graph(
-                user_id, graph
-            )
-
-            if missing_creds:
-                return ErrorResponse(
-                    message=(
-                        f"Missing {len(missing_creds)} required credential(s). "
-                        "Call run_agent with action='validate' to see what's needed."
-                    ),
-                    session_id=session_id,
-                    details={"missing_credentials": missing_creds},
-                )
-
-            # Get or create library agent
-            library_agent = await get_or_create_library_agent(graph, user_id)
-
-            # Execute
-            execution = await execution_utils.add_graph_execution(
-                graph_id=library_agent.graph_id,
-                user_id=user_id,
-                inputs=inputs,
-                graph_credentials_inputs=graph_credentials,
-            )
-
-            # Track successful run
-            session.successful_agent_runs[library_agent.graph_id] = (
-                session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
-            )
-
-            library_agent_link = f"/library/agents/{library_agent.id}"
-            return ExecutionStartedResponse(
-                message=(
-                    f"Agent execution started. "
-                    f"View at {library_agent_link}. "
-                    "Do not run again unless explicitly requested."
-                ),
-                session_id=session_id,
-                execution_id=execution.id,
-                graph_id=library_agent.graph_id,
-                graph_name=library_agent.name,
-                library_agent_id=library_agent.id,
-                library_agent_link=library_agent_link,
-            )
-
-        except Exception as e:
-            logger.error(f"Error running agent: {e}", exc_info=True)
+        # Check rate limits
+        if session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs:
             return ErrorResponse(
-                message=f"Failed to run agent: {e!s}",
-                error=str(e),
+                message="Maximum agent runs reached for this session. Please try again later.",
                 session_id=session_id,
             )
+
+        # Get or create library agent
+        library_agent = await get_or_create_library_agent(graph, user_id)
+
+        # Execute
+        execution = await execution_utils.add_graph_execution(
+            graph_id=library_agent.graph_id,
+            user_id=user_id,
+            inputs=inputs,
+            graph_credentials_inputs=graph_credentials,
+        )
+
+        # Track successful run
+        session.successful_agent_runs[library_agent.graph_id] = (
+            session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
+        )
+
+        library_agent_link = f"/library/agents/{library_agent.id}"
+        return ExecutionStartedResponse(
+            message=(
+                f"Agent '{library_agent.name}' execution started successfully. "
+                f"View at {library_agent_link}. "
+                "Do not run again unless explicitly requested."
+            ),
+            session_id=session_id,
+            execution_id=execution.id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            library_agent_id=library_agent.id,
+            library_agent_link=library_agent_link,
+        )
 
     async def _schedule_agent(
         self,
         user_id: str,
         session: ChatSession,
-        agent_slug: str,
-        **kwargs,
+        graph,
+        graph_credentials: dict,
+        inputs: dict,
+        schedule_name: str,
+        cron: str,
+        timezone: str,
     ) -> ToolResponseBase:
         """Set up scheduled execution for an agent."""
         session_id = session.session_id
-        inputs = kwargs.get("inputs", {})
-        schedule_name = kwargs.get("schedule_name", "").strip()
-        cron = kwargs.get("cron", "").strip()
-        timezone = kwargs.get("timezone", "UTC").strip()
 
         # Validate schedule params
         if not schedule_name:
@@ -462,92 +433,57 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        try:
-            username, agent_name = agent_slug.split("/", 1)
-            graph, store_agent = await fetch_graph_from_store_slug(username, agent_name)
-
-            if not graph:
-                return ErrorResponse(
-                    message=f"Agent '{agent_slug}' not found",
-                    session_id=session_id,
-                )
-
-            # Check rate limits
-            if (
-                session.successful_agent_schedules.get(graph.id, 0)
-                >= config.max_agent_schedules
-            ):
-                return ErrorResponse(
-                    message="Maximum agent schedules reached for this session.",
-                    session_id=session_id,
-                )
-
-            # Match credentials
-            graph_credentials, missing_creds = await match_user_credentials_to_graph(
-                user_id, graph
-            )
-
-            if missing_creds:
-                return ErrorResponse(
-                    message=(
-                        f"Missing {len(missing_creds)} required credential(s). "
-                        "Call run_agent with action='validate' to see what's needed."
-                    ),
-                    session_id=session_id,
-                    details={"missing_credentials": missing_creds},
-                )
-
-            # Get or create library agent
-            library_agent = await get_or_create_library_agent(graph, user_id)
-
-            # Get user timezone
-            user = await get_user_by_id(user_id)
-            user_timezone = get_user_timezone_or_utc(
-                user.timezone if user else timezone
-            )
-
-            # Create schedule
-            result = await get_scheduler_client().add_execution_schedule(
-                user_id=user_id,
-                graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
-                name=schedule_name,
-                cron=cron,
-                input_data=inputs,
-                input_credentials=graph_credentials,
-                user_timezone=user_timezone,
-            )
-
-            # Convert next_run_time to user timezone for display
-            if result.next_run_time:
-                result.next_run_time = convert_utc_time_to_user_timezone(
-                    result.next_run_time, user_timezone
-                )
-
-            # Track successful schedule
-            session.successful_agent_schedules[library_agent.graph_id] = (
-                session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
-            )
-
-            library_agent_link = f"/library/agents/{library_agent.id}"
-            return ExecutionStartedResponse(
-                message=(
-                    f"Agent scheduled successfully as '{schedule_name}'. "
-                    f"View at {library_agent_link}. "
-                    "Do not schedule again unless explicitly requested."
-                ),
-                session_id=session_id,
-                execution_id=result.id,
-                graph_id=library_agent.graph_id,
-                graph_name=library_agent.name,
-                library_agent_id=library_agent.id,
-                library_agent_link=library_agent_link,
-            )
-
-        except Exception as e:
-            logger.error(f"Error scheduling agent: {e}", exc_info=True)
+        # Check rate limits
+        if (
+            session.successful_agent_schedules.get(graph.id, 0)
+            >= config.max_agent_schedules
+        ):
             return ErrorResponse(
-                message=f"Failed to schedule agent: {e!s}",
-                error=str(e),
+                message="Maximum agent schedules reached for this session.",
                 session_id=session_id,
             )
+
+        # Get or create library agent
+        library_agent = await get_or_create_library_agent(graph, user_id)
+
+        # Get user timezone
+        user = await get_user_by_id(user_id)
+        user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
+
+        # Create schedule
+        result = await get_scheduler_client().add_execution_schedule(
+            user_id=user_id,
+            graph_id=library_agent.graph_id,
+            graph_version=library_agent.graph_version,
+            name=schedule_name,
+            cron=cron,
+            input_data=inputs,
+            input_credentials=graph_credentials,
+            user_timezone=user_timezone,
+        )
+
+        # Convert next_run_time to user timezone for display
+        if result.next_run_time:
+            result.next_run_time = convert_utc_time_to_user_timezone(
+                result.next_run_time, user_timezone
+            )
+
+        # Track successful schedule
+        session.successful_agent_schedules[library_agent.graph_id] = (
+            session.successful_agent_schedules.get(library_agent.graph_id, 0) + 1
+        )
+
+        library_agent_link = f"/library/agents/{library_agent.id}"
+        return ExecutionStartedResponse(
+            message=(
+                f"Agent '{library_agent.name}' scheduled successfully as '{schedule_name}'. "
+                f"View at {library_agent_link}. "
+                "Do not schedule again unless explicitly requested."
+            ),
+            session_id=session_id,
+            execution_id=result.id,
+            graph_id=library_agent.graph_id,
+            graph_name=library_agent.name,
+            library_agent_id=library_agent.id,
+            library_agent_link=library_agent_link,
+        )
