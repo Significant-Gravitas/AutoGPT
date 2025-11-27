@@ -2054,7 +2054,7 @@ class GoogleSheetsUpdateCellBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e",
+            id="df521b68-62d9-42e4-924f-fb6c245516fc",
             description="Update a single cell in a Google Sheets spreadsheet.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsUpdateCellBlock.Input,
