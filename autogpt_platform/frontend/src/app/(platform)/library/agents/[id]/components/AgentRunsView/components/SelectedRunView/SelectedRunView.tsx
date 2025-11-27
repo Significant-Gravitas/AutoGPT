@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import {
   TabsLine,
   TabsLineContent,
@@ -9,12 +9,16 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { useSelectedRunView } from "./useSelectedRunView";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunOutputs } from "./components/RunOutputs";
+import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import { parseAsString, useQueryState } from "nuqs";
 
 interface Props {
   agent: LibraryAgent;
@@ -33,6 +37,24 @@ export function SelectedRunView({
     agent.graph_id,
     runId,
   );
+
+  const {
+    pendingReviews,
+    isLoading: reviewsLoading,
+    refetch: refetchReviews,
+  } = usePendingReviewsForExecution(runId);
+
+  // Tab state management
+  const [activeTab, setActiveTab] = useQueryState(
+    "tab",
+    parseAsString.withDefault("output"),
+  );
+
+  useEffect(() => {
+    if (run?.status === AgentExecutionStatus.REVIEW && runId) {
+      refetchReviews();
+    }
+  }, [run?.status, runId, refetchReviews]);
 
   if (responseError || httpError) {
     return (
@@ -65,10 +87,15 @@ export function SelectedRunView({
       />
 
       {/* Content */}
-      <TabsLine defaultValue="output">
+      <TabsLine value={activeTab} onValueChange={setActiveTab}>
         <TabsLineList>
           <TabsLineTrigger value="output">Output</TabsLineTrigger>
           <TabsLineTrigger value="input">Your input</TabsLineTrigger>
+          {run?.status === AgentExecutionStatus.REVIEW && (
+            <TabsLineTrigger value="reviews">
+              Reviews ({pendingReviews.length})
+            </TabsLineTrigger>
+          )}
         </TabsLineList>
 
         <TabsLineContent value="output">
@@ -92,6 +119,26 @@ export function SelectedRunView({
             />
           </RunDetailCard>
         </TabsLineContent>
+
+        {run?.status === AgentExecutionStatus.REVIEW && (
+          <TabsLineContent value="reviews">
+            <RunDetailCard>
+              {reviewsLoading ? (
+                <div className="text-neutral-500">Loading reviews…</div>
+              ) : pendingReviews.length > 0 ? (
+                <PendingReviewsList
+                  reviews={pendingReviews}
+                  onReviewComplete={refetchReviews}
+                  emptyMessage="No pending reviews for this execution"
+                />
+              ) : (
+                <div className="text-neutral-600">
+                  No pending reviews for this execution
+                </div>
+              )}
+            </RunDetailCard>
+          </TabsLineContent>
+        )}
       </TabsLine>
     </div>
   );
