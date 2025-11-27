@@ -22,17 +22,6 @@ from backend.server.v2.executions.review.model import (
 logger = logging.getLogger(__name__)
 
 
-def handle_database_error(
-    operation: str, resource_id: str, error: Exception
-) -> HTTPException:
-    """Centralized database error handling for review operations."""
-    logger.error(f"Database error during {operation} for {resource_id}: {str(error)}")
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=f"Internal server error during {operation}",
-    )
-
-
 router = APIRouter(
     tags=["executions", "review", "private"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
@@ -114,19 +103,14 @@ async def list_pending_reviews_for_execution(
     """
 
     # Verify user owns the graph execution before returning reviews
-    try:
-        graph_exec = await get_graph_execution_meta(
-            user_id=user_id, execution_id=graph_exec_id
+    graph_exec = await get_graph_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    )
+    if not graph_exec:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to graph execution",
         )
-        if not graph_exec:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied to graph execution",
-            )
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions as-is
-    except Exception as e:
-        raise handle_database_error("graph ownership verification", graph_exec_id, e)
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
 
@@ -147,79 +131,64 @@ async def process_review_action(
             detail="At least one review must be provided",
         )
 
-    try:
-        # Build review decisions map
-        review_decisions = {}
-        for review in request.reviews:
-            if review.approved:
-                review_decisions[review.node_exec_id] = (
-                    ReviewStatus.APPROVED,
-                    review.reviewed_data,
-                    review.message,
+    # Build review decisions map
+    review_decisions = {}
+    for review in request.reviews:
+        if review.approved:
+            review_decisions[review.node_exec_id] = (
+                ReviewStatus.APPROVED,
+                review.reviewed_data,
+                review.message,
+            )
+        else:
+            review_decisions[review.node_exec_id] = (
+                ReviewStatus.REJECTED,
+                None,
+                review.message,
+            )
+
+    # Process all reviews
+    updated_reviews = await process_all_reviews_for_execution(
+        user_id=user_id,
+        review_decisions=review_decisions,
+    )
+
+    # Count results
+    approved_count = sum(
+        1
+        for review in updated_reviews.values()
+        if review.status == ReviewStatus.APPROVED
+    )
+    rejected_count = sum(
+        1
+        for review in updated_reviews.values()
+        if review.status == ReviewStatus.REJECTED
+    )
+
+    # Resume execution if we processed some reviews
+    if updated_reviews:
+        # Get graph execution ID from any processed review
+        first_review = next(iter(updated_reviews.values()))
+        graph_exec_id = first_review.graph_exec_id
+
+        # Check if any pending reviews remain for this execution
+        still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
+
+        if not still_has_pending:
+            # Resume execution
+            try:
+                await add_graph_execution(
+                    graph_id=first_review.graph_id,
+                    user_id=user_id,
+                    graph_exec_id=graph_exec_id,
                 )
-            else:
-                review_decisions[review.node_exec_id] = (
-                    ReviewStatus.REJECTED,
-                    None,
-                    review.message,
-                )
+                logger.info(f"Resumed execution {graph_exec_id}")
+            except Exception as e:
+                logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
 
-        # Process all reviews
-        updated_reviews = await process_all_reviews_for_execution(
-            user_id=user_id,
-            review_decisions=review_decisions,
-        )
-
-        # Count results
-        approved_count = sum(
-            1
-            for review in updated_reviews.values()
-            if review.status == ReviewStatus.APPROVED
-        )
-        rejected_count = sum(
-            1
-            for review in updated_reviews.values()
-            if review.status == ReviewStatus.REJECTED
-        )
-
-        # Resume execution if we processed some reviews
-        if updated_reviews:
-            # Get graph execution ID from any processed review
-            first_review = next(iter(updated_reviews.values()))
-            graph_exec_id = first_review.graph_exec_id
-
-            # Check if any pending reviews remain for this execution
-            still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
-
-            if not still_has_pending:
-                # Resume execution
-                try:
-                    await add_graph_execution(
-                        graph_id=first_review.graph_id,
-                        user_id=user_id,
-                        graph_exec_id=graph_exec_id,
-                    )
-                    logger.info(f"Resumed execution {graph_exec_id}")
-                except Exception as e:
-                    logger.error(
-                        f"Failed to resume execution {graph_exec_id}: {str(e)}"
-                    )
-
-        return ReviewResponse(
-            approved_count=approved_count,
-            rejected_count=rejected_count,
-            failed_count=0,
-            error=None,
-        )
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
-    except Exception as e:
-        logger.error(f"Error processing reviews: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while processing reviews",
-        )
+    return ReviewResponse(
+        approved_count=approved_count,
+        rejected_count=rejected_count,
+        failed_count=0,
+        error=None,
+    )
