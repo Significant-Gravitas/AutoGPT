@@ -7,7 +7,6 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { InfoIcon } from "lucide-react";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 // Base type for cron expression only
 type CronOnlyCallback = (cronExpression: string) => void;
@@ -49,7 +48,6 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
   const [scheduleName, setScheduleName] = useState<string>(
     props.mode === "with-name" ? props.defaultScheduleName || "" : "",
   );
-  const { completeStep } = useOnboarding();
 
   // Get user's timezone
   const { data: userTimezone } = useGetV1GetUserTimezone({
@@ -94,7 +92,6 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
       props.onSubmit(cronExpression);
     }
     setOpen(false);
-    completeStep("SCHEDULE_AGENT");
   };
 
   return (

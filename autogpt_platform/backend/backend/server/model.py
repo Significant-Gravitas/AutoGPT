@@ -1,7 +1,8 @@
 import enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import pydantic
+from prisma.enums import OnboardingStep
 
 from backend.data.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
@@ -35,8 +36,13 @@ class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
     graph_id: str
 
 
+GraphCreationSource = Literal["builder", "upload"]
+GraphExecutionSource = Literal["builder", "library", "onboarding"]
+
+
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
+    source: GraphCreationSource | None = None
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):
@@ -83,6 +89,8 @@ class NotificationPayload(pydantic.BaseModel):
     type: str
     event: str
 
+    model_config = pydantic.ConfigDict(extra="allow")
+
 
 class OnboardingNotificationPayload(NotificationPayload):
-    step: str
+    step: OnboardingStep | None

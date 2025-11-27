@@ -12,6 +12,9 @@ import {
   useGetV2GetAgentByVersion,
   useGetV2GetAgentGraph,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { resolveResponse } from "@/app/api/helpers";
+import { postV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
+import { GraphID } from "@/lib/autogpt-server-api";
 
 export function useOnboardingRunStep() {
   const onboarding = useOnboarding(undefined, "AGENT_CHOICE");
@@ -77,12 +80,7 @@ export function useOnboardingRunStep() {
 
     setShowInput(true);
     onboarding.setStep(6);
-    onboarding.updateState({
-      completedSteps: [
-        ...(onboarding.state.completedSteps || []),
-        "AGENT_NEW_RUN",
-      ],
-    });
+    onboarding.completeStep("AGENT_NEW_RUN");
   }
 
   function handleSetAgentInput(key: string, value: string) {
@@ -111,21 +109,22 @@ export function useOnboardingRunStep() {
     setRunningAgent(true);
 
     try {
-      const libraryAgent = await api.addMarketplaceAgentToLibrary(
-        storeAgent?.store_listing_version_id || "",
+      const libraryAgent = await resolveResponse(
+        postV2AddMarketplaceAgent({
+          store_listing_version_id: storeAgent?.store_listing_version_id || "",
+          source: "onboarding",
+        }),
       );
 
       const { id: runID } = await api.executeGraph(
-        libraryAgent.graph_id,
+        libraryAgent.graph_id as GraphID,
         libraryAgent.graph_version,
         onboarding.state.agentInput || {},
         inputCredentials,
+        "onboarding",
       );
 
-      onboarding.updateState({
-        onboardingAgentExecutionId: runID,
-        agentRuns: (onboarding.state.agentRuns || 0) + 1,
-      });
+      onboarding.updateState({ onboardingAgentExecutionId: runID });
 
       router.push("/onboarding/6-congrats");
     } catch (error) {

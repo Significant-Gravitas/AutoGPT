@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import AsyncGenerator
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 from backend.data.event_bus import AsyncRedisEventBus
 from backend.server.model import NotificationPayload
@@ -14,6 +14,11 @@ class NotificationEvent(BaseModel):
 
     user_id: str
     payload: NotificationPayload
+
+    @field_serializer("payload")
+    def serialize_payload(self, payload: NotificationPayload):
+        """Ensure extra fields survive Redis serialization."""
+        return payload.model_dump()
 
 
 class AsyncRedisNotificationEventBus(AsyncRedisEventBus[NotificationEvent]):

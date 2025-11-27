@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import StarRating from "./StarRating";
-import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import SmartImage from "@/components/__legacy__/SmartImage";
+import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 
 type OnboardingAgentCardProps = {
   agent?: StoreAgentDetails;
