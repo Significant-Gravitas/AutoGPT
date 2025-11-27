@@ -451,3 +451,144 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     # Both executions should succeed (though they create different objects)
     assert result1 == mock_graph_exec
     assert result2 == mock_graph_exec_2
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_requeue_mode(mocker: MockerFixture):
+    """Test that add_graph_execution with graph_exec_id requeues instead of creating"""
+    from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+    from backend.executor.utils import add_graph_execution
+
+    existing_exec_id = "existing-exec-123"
+    graph_id = "graph-456"
+    user_id = "user-789"
+    graph_version = 1
+
+    # Mock existing execution (QUEUED, ready to requeue)
+    mock_existing_exec_meta = mocker.MagicMock()
+    mock_existing_exec_meta.id = existing_exec_id
+    mock_existing_exec_meta.user_id = user_id
+    mock_existing_exec_meta.graph_id = graph_id
+    mock_existing_exec_meta.graph_version = graph_version
+    mock_existing_exec_meta.status = ExecutionStatus.QUEUED
+
+    mock_existing_exec_full = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_existing_exec_full.id = existing_exec_id
+    mock_existing_exec_full.user_id = user_id
+    mock_existing_exec_full.graph_id = graph_id
+    mock_existing_exec_full.graph_version = graph_version
+    mock_existing_exec_full.status = ExecutionStatus.QUEUED
+    mock_existing_exec_full.nodes_input_masks = {"node1": {"input1": "value1"}}
+    mock_existing_exec_full.node_executions = []
+    mock_existing_exec_full.to_graph_execution_entry.return_value = mocker.MagicMock()
+    mock_existing_exec_full.to_graph_execution_entry.return_value.model_dump_json.return_value = (
+        "{}"
+    )
+
+    # Mock database manager
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mock_existing_exec_meta
+    )
+    mock_edb.get_graph_execution = mocker.AsyncMock(
+        return_value=mock_existing_exec_full
+    )
+    mock_edb.create_graph_execution = mocker.AsyncMock()  # Should NOT be called
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock()
+
+    # Mock prisma
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = True
+
+    # Mock queue
+    mock_queue = mocker.AsyncMock()
+    mock_queue.publish_message = mocker.AsyncMock()
+
+    # Mock event bus
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+
+    # Mock user context
+    mock_user_context = mocker.MagicMock()
+
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue", return_value=mock_queue
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=mock_event_bus,
+    )
+    mocker.patch(
+        "backend.executor.utils.get_user_context", return_value=mock_user_context
+    )
+
+    # Call add_graph_execution in REQUEUE mode
+    await add_graph_execution(
+        graph_id=graph_id,
+        user_id=user_id,
+        graph_version=graph_version,
+        graph_exec_id=existing_exec_id,  # This triggers REQUEUE mode
+    )
+
+    # Verify: Should NOT create new execution
+    mock_edb.create_graph_execution.assert_not_called()
+
+    # Verify: Should fetch existing execution
+    mock_edb.get_graph_execution_meta.assert_called_once()
+    mock_edb.get_graph_execution.assert_called_once()
+
+    # Verify: Should publish to queue (same as create mode)
+    mock_queue.publish_message.assert_called_once()
+
+    # Verify: Should update status to QUEUED
+    mock_edb.update_graph_execution_stats.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_requeue_fails_if_not_queued(mocker: MockerFixture):
+    """Test that requeue mode fails if execution is not in QUEUED status"""
+    from backend.data.execution import ExecutionStatus
+    from backend.executor.utils import add_graph_execution
+
+    # Mock execution that's RUNNING (not QUEUED)
+    mock_exec_meta = mocker.MagicMock()
+    mock_exec_meta.id = "exec-running-123"
+    mock_exec_meta.user_id = "user-123"
+    mock_exec_meta.graph_id = "graph-456"
+    mock_exec_meta.graph_version = 1
+    mock_exec_meta.status = ExecutionStatus.RUNNING  # Wrong status!
+
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_meta = mocker.AsyncMock(return_value=mock_exec_meta)
+
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = True
+
+    # Should raise ValueError
+    with pytest.raises(ValueError, match="Can only requeue QUEUED executions"):
+        await add_graph_execution(
+            graph_id="graph-456",
+            user_id="user-123",
+            graph_exec_id="exec-running-123",  # Requeue mode
+        )
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_requeue_fails_if_not_found(mocker: MockerFixture):
+    """Test that requeue mode fails if execution doesn't exist"""
+    from backend.executor.utils import add_graph_execution
+
+    # Mock execution not found
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_edb.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = True
+
+    # Should raise ValueError
+    with pytest.raises(ValueError, match="Execution .* not found"):
+        await add_graph_execution(
+            graph_id="graph-456",
+            user_id="user-123",
+            graph_exec_id="nonexistent-exec",  # Requeue mode
+        )
