@@ -95,6 +95,7 @@
     "react-markdown": "9.0.3",
     "react-modal": "3.16.3",
     "react-shepherd": "6.1.9",
+    "react-use": "17.6.0",
     "react-window": "1.8.11",
     "recharts": "3.3.0",
     "rehype-autolink-headings": "7.1.0",
@@ -114,6 +115,7 @@
     "zustand": "5.0.8"
   },
   "devDependencies": {
+    "@chromatic-com/storybook": "4.1.1",
     "@chromatic-com/storybook": "4.1.2",
     "@playwright/test": "1.56.1",
     "@storybook/addon-a11y": "9.1.5",
