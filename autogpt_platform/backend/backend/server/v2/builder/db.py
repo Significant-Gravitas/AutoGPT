@@ -16,6 +16,7 @@ from backend.server.v2.builder.model import (
     Provider,
     ProviderResponse,
     SearchBlocksResponse,
+    SearchEntry,
 )
 from backend.util.cache import cached
 from backend.util.models import Pagination
@@ -127,6 +128,60 @@ def get_block_by_id(block_id: str) -> BlockInfo | None:
         if block.id == block_id:
             return block.get_info()
     return None
+
+
+async def update_search(user_id: str, search: SearchEntry) -> str:
+    """
+    Upsert a search request for the user and return the search ID.
+    """
+    if search.search_id:
+        # Update existing search
+        await prisma.models.BuilderSearch.prisma().update(
+            where={
+                "id": search.search_id,
+            },
+            data={
+                "searchQuery": search.search_query or "",
+                "filter": search.filter or [],  # type: ignore
+                "byCreator": search.by_creator or [],
+            },
+        )
+        return search.search_id
+    else:
+        # Create new search
+        new_search = await prisma.models.BuilderSearch.prisma().create(
+            data={
+                "userId": user_id,
+                "searchQuery": search.search_query or "",
+                "filter": search.filter or [],  # type: ignore
+                "byCreator": search.by_creator or [],
+            }
+        )
+        return new_search.id
+
+
+async def get_recent_searches(user_id: str, limit: int = 5) -> list[SearchEntry]:
+    """
+    Get the user's most recent search requests.
+    """
+    searches = await prisma.models.BuilderSearch.prisma().find_many(
+        where={
+            "userId": user_id,
+        },
+        order={
+            "updatedAt": "desc",
+        },
+        take=limit,
+    )
+    return [
+        SearchEntry(
+            search_query=s.searchQuery,
+            filter=s.filter,  # type: ignore
+            by_creator=s.byCreator,
+            search_id=s.id,
+        )
+        for s in searches
+    ]
 
 
 def search_blocks(

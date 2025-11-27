@@ -53,6 +53,7 @@ model User {
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
+  BuilderSearch         BuilderSearch[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
@@ -110,6 +111,19 @@ model UserOnboarding {
   consecutiveRunDays            Int              @default(0)
 
   userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BuilderSearch {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  searchQuery String
+  filter      String[]  @default([])
+  byCreator   String[]  @default([])
+
+  userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
