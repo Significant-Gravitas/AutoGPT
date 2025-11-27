@@ -1,6 +1,6 @@
 "use client";
 
-import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-tabs/SelectedRunView/components/RunOutputs";
+import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/RunOutputs";
 import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
 import {
   Card,

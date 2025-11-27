@@ -1,9 +1,9 @@
-import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-tabs/OutputRenderers";
+import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import {
   globalRegistry,
   OutputActions,
   OutputItem,
-} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-tabs/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import { beautifyString } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Clipboard, Maximize2 } from "lucide-react";

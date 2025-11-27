@@ -4,7 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
 import { PlusIcon } from "@phosphor-icons/react";
 import { RunAgentModal } from "../../modals/RunAgentModal/RunAgentModal";
-import { RunDetailCard } from "../../selected-tabs/RunDetailCard/RunDetailCard";
+import { RunDetailCard } from "../../selected-views/RunDetailCard/RunDetailCard";
 
 type Props = {
   agentName: string;
