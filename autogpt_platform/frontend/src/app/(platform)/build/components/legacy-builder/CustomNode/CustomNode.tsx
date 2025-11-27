@@ -645,6 +645,8 @@ export const CustomNode = React.memo(
           return "border-purple-200 dark:border-purple-800 border-4";
         case "queued":
           return "border-cyan-200 dark:border-cyan-800 border-4";
+        case "review":
+          return "border-orange-200 dark:border-orange-800 border-4";
         default:
           return "";
       }
@@ -664,6 +666,8 @@ export const CustomNode = React.memo(
           return "bg-purple-200 dark:bg-purple-800";
         case "queued":
           return "bg-cyan-200 dark:bg-cyan-800";
+        case "review":
+          return "bg-orange-200 dark:bg-orange-800";
         default:
           return "";
       }
@@ -1008,6 +1012,8 @@ export const CustomNode = React.memo(
                             data.status === "QUEUED",
                           "border-gray-600 bg-gray-600 font-black":
                             data.status === "INCOMPLETE",
+                          "border-orange-600 bg-orange-600 text-white":
+                            data.status === "REVIEW",
                         },
                   )}
                 >

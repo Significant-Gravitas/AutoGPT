@@ -73,6 +73,7 @@ async def test_block_credit_usage(server: SpinTestServer):
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
+            graph_version=1,
             node_id="test_node",
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
@@ -94,6 +95,7 @@ async def test_block_credit_usage(server: SpinTestServer):
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
+            graph_version=1,
             node_id="test_node",
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",

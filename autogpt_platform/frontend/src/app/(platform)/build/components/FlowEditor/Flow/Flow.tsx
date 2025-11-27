@@ -13,9 +13,16 @@ import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useCopyPaste } from "./useCopyPaste";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
 
 export const Flow = () => {
+  const [{ flowExecutionID }] = useQueryStates({
+    flowID: parseAsString,
+    flowExecutionID: parseAsString,
+  });
+
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
@@ -44,7 +51,9 @@ export const Flow = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleCopyPaste]);
-  const { isGraphRunning } = useGraphStore();
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
@@ -72,6 +81,7 @@ export const Flow = () => {
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
+      <FloatingReviewsPanel executionId={flowExecutionID || undefined} />
     </div>
   );
 };

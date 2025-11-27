@@ -2,6 +2,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import {
   CheckCircleIcon,
   ClockIcon,
+  EyeIcon,
   PauseCircleIcon,
   StopCircleIcon,
   WarningCircleIcon,
@@ -35,6 +36,11 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
     ),
     bgColor: "bg-yellow-50",
     textColor: "!text-yellow-700",
+  },
+  REVIEW: {
+    icon: <EyeIcon size={16} className="text-orange-700" weight="bold" />,
+    bgColor: "bg-orange-50",
+    textColor: "!text-orange-700",
   },
   COMPLETED: {
     icon: (

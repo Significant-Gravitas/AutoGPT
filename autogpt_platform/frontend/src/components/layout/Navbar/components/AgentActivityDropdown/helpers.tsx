@@ -114,7 +114,8 @@ export function isActiveExecution(
   const status = execution.status;
   return (
     status === AgentExecutionStatus.RUNNING ||
-    status === AgentExecutionStatus.QUEUED
+    status === AgentExecutionStatus.QUEUED ||
+    status === AgentExecutionStatus.REVIEW
   );
 }
 
