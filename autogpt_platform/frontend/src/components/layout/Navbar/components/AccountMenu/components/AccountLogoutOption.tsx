@@ -5,17 +5,20 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function AccountLogoutOption() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const supabase = useSupabase();
+  const router = useRouter();
   const { toast } = useToast();
 
   async function handleLogout() {
     setIsLoggingOut(true);
     try {
       await supabase.logOut();
+      router.push("/login");
     } catch (e) {
       Sentry.captureException(e);
       toast({
@@ -25,7 +28,9 @@ export function AccountLogoutOption() {
         variant: "destructive",
       });
     } finally {
-      setIsLoggingOut(false);
+      setTimeout(() => {
+        setIsLoggingOut(false);
+      }, 3000);
     }
   }
 

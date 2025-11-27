@@ -26,12 +26,19 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
   const dynamicMenuItems = getAccountMenuItems(user?.role);
   const isChatEnabled = useGetFlag(Flag.CHAT);
 
-  const { data: profile } = useGetV2GetUserProfile({
-    query: {
-      select: (res) => (res.status === 200 ? res.data : null),
-      enabled: isLoggedIn,
+  const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
+    {
+      query: {
+        select: (res) => (res.status === 200 ? res.data : null),
+        enabled: isLoggedIn && !!user,
+        // Include user ID in query key to ensure cache invalidation when user changes
+        queryKey: ["/api/store/profile", user?.id],
+      },
     },
-  });
+  );
+
+  const { isUserLoading } = useSupabase();
+  const isLoadingProfile = isProfileLoading || isUserLoading;
 
   const linksWithChat = useMemo(() => {
     const chatLink = { name: "Chat", href: "/chat" };
@@ -84,6 +91,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
                   userEmail={profile?.name}
                   avatarSrc={profile?.avatar_url ?? ""}
                   menuItemGroups={dynamicMenuItems}
+                  isLoading={isLoadingProfile}
                 />
               </div>
             </div>

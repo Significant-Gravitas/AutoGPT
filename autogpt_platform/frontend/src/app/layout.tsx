@@ -6,6 +6,7 @@ import "./globals.css";
 
 import { Providers } from "@/app/providers";
 import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
+import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
@@ -54,29 +55,31 @@ export default async function RootLayout({
         />
       </head>
       <body>
-        <Providers
-          attribute="class"
-          defaultTheme="light"
-          // Feel free to remove this line if you want to use the system theme by default
-          // enableSystem
-          disableTransitionOnChange
-        >
-          <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
-            {children}
-            <TallyPopupSimple />
-            <VercelAnalyticsWrapper />
+        <ErrorBoundary context="application">
+          <Providers
+            attribute="class"
+            defaultTheme="light"
+            // Feel free to remove this line if you want to use the system theme by default
+            // enableSystem
+            disableTransitionOnChange
+          >
+            <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
+              {children}
+              <TallyPopupSimple />
+              <VercelAnalyticsWrapper />
 
-            {/* React Query DevTools is only available in development */}
-            {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
-              <ReactQueryDevtools
-                initialIsOpen={false}
-                buttonPosition={"bottom-left"}
-              />
-            )}
-          </div>
-          <Toaster />
-          <CookieConsentBanner />
-        </Providers>
+              {/* React Query DevTools is only available in development */}
+              {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
+                <ReactQueryDevtools
+                  initialIsOpen={false}
+                  buttonPosition={"bottom-left"}
+                />
+              )}
+            </div>
+            <Toaster />
+            <CookieConsentBanner />
+          </Providers>
+        </ErrorBoundary>
       </body>
     </html>
   );
