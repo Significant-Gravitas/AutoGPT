@@ -70,6 +70,7 @@ export function useAgentRunsView() {
     hasAnyItems,
     showSidebarLayout,
     selectedRun,
+    sidebarLoading,
     handleClearSelectedRun,
     handleCountsChange,
     handleSelectRun,

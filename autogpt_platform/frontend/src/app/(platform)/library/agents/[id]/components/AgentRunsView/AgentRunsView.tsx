@@ -22,6 +22,7 @@ export function AgentRunsView() {
     error,
     agentId,
     selectedRun,
+    sidebarLoading,
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
@@ -107,6 +108,9 @@ export function AgentRunsView() {
                 onClearSelectedRun={handleClearSelectedRun}
               />
             )
+          ) : sidebarLoading ? (
+            // Show loading state while sidebar is loading to prevent flash of empty state
+            <div className="text-gray-600">Loading runs...</div>
           ) : hasAnyItems ? (
             <div className="text-gray-600">
               Select a run to view its details
