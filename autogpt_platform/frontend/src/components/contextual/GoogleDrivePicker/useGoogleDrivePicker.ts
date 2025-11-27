@@ -1,6 +1,10 @@
+import { getGetV1GetSpecificCredentialByIdQueryOptions } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import type { OAuth2Credentials } from "@/app/api/__generated__/models/oAuth2Credentials";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
-import { useMemo, useRef, useState } from "react";
+import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCredentialsSchema,
   GooglePickerView,
@@ -54,10 +58,15 @@ export function useGoogleDrivePicker(options: Props) {
   const requestedScopes = options?.scopes || defaultScopes;
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthInProgress, setIsAuthInProgress] = useState(false);
+  const [hasInsufficientScopes, setHasInsufficientScopes] = useState(false);
+  const [selectedCredential, setSelectedCredential] = useState<
+    CredentialsMetaInput | undefined
+  >();
   const accessTokenRef = useRef<string | null>(null);
   const tokenClientRef = useRef<TokenClient | null>(null);
   const pickerReadyRef = useRef(false);
   const credentials = useCredentials(getCredentialsSchema(requestedScopes));
+  const queryClient = useQueryClient();
   const isReady = pickerReadyRef.current && !!tokenClientRef.current;
   const { toast } = useToast();
 
@@ -66,10 +75,109 @@ export function useGoogleDrivePicker(options: Props) {
     return credentials.savedCredentials?.length > 0;
   }, [credentials]);
 
+  useEffect(() => {
+    if (
+      hasGoogleOAuth &&
+      credentials &&
+      !credentials.isLoading &&
+      credentials.savedCredentials?.length > 0
+    ) {
+      setHasInsufficientScopes(false);
+    }
+  }, [hasGoogleOAuth, credentials]);
+
+  useEffect(() => {
+    if (
+      credentials &&
+      !credentials.isLoading &&
+      credentials.savedCredentials?.length === 1 &&
+      !selectedCredential
+    ) {
+      setSelectedCredential({
+        id: credentials.savedCredentials[0].id,
+        type: credentials.savedCredentials[0].type,
+        provider: credentials.savedCredentials[0].provider,
+        title: credentials.savedCredentials[0].title,
+      });
+    }
+  }, [credentials, selectedCredential]);
+
   async function openPicker() {
     try {
       await ensureLoaded();
-      console.log(accessTokenRef.current);
+
+      if (
+        hasGoogleOAuth &&
+        credentials &&
+        !credentials.isLoading &&
+        credentials.savedCredentials?.length > 0
+      ) {
+        const credentialId =
+          selectedCredential?.id || credentials.savedCredentials[0].id;
+
+        try {
+          const queryOptions = getGetV1GetSpecificCredentialByIdQueryOptions(
+            "google",
+            credentialId,
+          );
+
+          const response = await queryClient.fetchQuery(queryOptions);
+
+          if (response.status === 200 && response.data) {
+            const cred = response.data;
+            if (cred.type === "oauth2") {
+              const oauthCred = cred as OAuth2Credentials;
+              if (oauthCred.access_token) {
+                const credentialScopes = new Set(oauthCred.scopes || []);
+                const requiredScopesSet = new Set(requestedScopes);
+                const hasRequiredScopes = Array.from(requiredScopesSet).every(
+                  (scope) => credentialScopes.has(scope),
+                );
+
+                if (!hasRequiredScopes) {
+                  const error = new Error(
+                    "The saved Google OAuth credentials do not have the required permissions. Please sign in again with the correct permissions.",
+                  );
+                  toast({
+                    title: "Insufficient Permissions",
+                    description: error.message,
+                    variant: "destructive",
+                  });
+                  setHasInsufficientScopes(true);
+                  if (onError) onError(error);
+                  return;
+                }
+
+                accessTokenRef.current = oauthCred.access_token;
+                buildAndShowPicker(oauthCred.access_token);
+                return;
+              }
+            }
+          }
+
+          const error = new Error(
+            "Failed to retrieve Google OAuth credentials. Please try signing in again.",
+          );
+          if (onError) onError(error);
+          return;
+        } catch (err) {
+          const error =
+            err instanceof Error
+              ? err
+              : new Error("Failed to fetch Google OAuth credentials");
+
+          toast({
+            title: "Authentication Error",
+            description: error.message,
+            variant: "destructive",
+          });
+
+          if (onError) onError(error);
+
+          return;
+        }
+      }
+
       const token = accessTokenRef.current || (await requestAccessToken());
       buildAndShowPicker(token);
     } catch (e) {
@@ -195,6 +303,9 @@ export function useGoogleDrivePicker(options: Props) {
     isAuthInProgress,
     handleOpenPicker: openPicker,
     credentials,
-    hasGoogleOAuth,
+    hasGoogleOAuth: hasInsufficientScopes ? false : hasGoogleOAuth,
+    accessToken: accessTokenRef.current,
+    selectedCredential,
+    setSelectedCredential,
   };
 }

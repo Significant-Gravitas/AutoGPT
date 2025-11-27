@@ -1,70 +1,67 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useContext,
-} from "react";
-import Link from "next/link";
-import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import "./customnode.css";
-import InputModalComponent from "../InputModalComponent";
-import OutputModalComponent from "../OutputModalComponent";
-import {
-  BlockIORootSchema,
-  BlockIOSubSchema,
-  BlockIOStringSubSchema,
-  Category,
-  NodeExecutionResult,
-  BlockUIType,
-  BlockCost,
-} from "@/lib/autogpt-server-api";
-import {
-  beautifyString,
-  cn,
-  fillObjectDefaultsFromSchema,
-  getValue,
-  hasNonNullNonObjectValue,
-  isObject,
-  parseKeys,
-  setNestedProperty,
-} from "@/lib/utils";
-import { Button } from "@/components/atoms/Button/Button";
-import { TextRenderer } from "@/components/__legacy__/ui/render";
-import { history } from "../history";
-import NodeHandle from "../NodeHandle";
-import { NodeGenericInputField, NodeTextBoxInput } from "../NodeInputs";
-import { getPrimaryCategoryColor } from "@/lib/utils";
-import { BuilderContext } from "../Flow/Flow";
-import { Badge } from "../../../../../../components/__legacy__/ui/badge";
-import NodeOutputs from "../NodeOutputs";
-import { IconCoin } from "../../../../../../components/__legacy__/ui/icons";
-import * as Separator from "@radix-ui/react-separator";
-import * as ContextMenu from "@radix-ui/react-context-menu";
-import {
-  Alert,
-  AlertDescription,
-} from "../../../../../../components/molecules/Alert/Alert";
-import {
-  DotsVerticalIcon,
-  TrashIcon,
-  CopyIcon,
-  ExitIcon,
-  Pencil1Icon,
-} from "@radix-ui/react-icons";
-import { InfoIcon, Key } from "@phosphor-icons/react";
-import useCredits from "@/hooks/useCredits";
 import { getV1GetAyrshareSsoUrl } from "@/app/api/__generated__/endpoints/integrations/integrations";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { Input } from "@/components/__legacy__/ui/input";
+import { TextRenderer } from "@/components/__legacy__/ui/render";
+import { Button } from "@/components/atoms/Button/Button";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { Switch } from "@/components/atoms/Switch/Switch";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import useCredits from "@/hooks/useCredits";
+import {
+  BlockCost,
+  BlockIORootSchema,
+  BlockIOStringSubSchema,
+  BlockIOSubSchema,
+  BlockUIType,
+  Category,
+  NodeExecutionResult,
+} from "@/lib/autogpt-server-api";
+import {
+  beautifyString,
+  cn,
+  fillObjectDefaultsFromSchema,
+  getPrimaryCategoryColor,
+  getValue,
+  hasNonNullNonObjectValue,
+  isObject,
+  parseKeys,
+  setNestedProperty,
+} from "@/lib/utils";
+import { InfoIcon, Key } from "@phosphor-icons/react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import {
+  CopyIcon,
+  DotsVerticalIcon,
+  ExitIcon,
+  Pencil1Icon,
+  TrashIcon,
+} from "@radix-ui/react-icons";
+import * as Separator from "@radix-ui/react-separator";
+import { Edge, NodeProps, useReactFlow, Node as XYNode } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import Link from "next/link";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Badge } from "@/components/__legacy__/ui/badge";
+import { IconCoin } from "@/components/__legacy__/ui/icons";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { BuilderContext } from "../Flow/Flow";
+import { history } from "../history";
+import InputModalComponent from "../InputModalComponent";
+import NodeHandle from "../NodeHandle";
+import { NodeGenericInputField, NodeTextBoxInput } from "../NodeInputs";
+import NodeOutputs from "../NodeOutputs";
+import OutputModalComponent from "../OutputModalComponent";
+import "./customnode.css";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -366,6 +363,7 @@ export const CustomNode = React.memo(
               // For OUTPUT blocks, only show the 'value' (hides 'name') input connection handle
               !(nodeType == BlockUIType.OUTPUT && propKey == "name");
             const isConnected = isInputHandleConnected(propKey);
+
             return (
               !isHidden &&
               (isRequired || isAdvancedOpen || isConnected || !isAdvanced) && (
