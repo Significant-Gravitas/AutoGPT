@@ -75,6 +75,7 @@ export type ChatMessageData =
       executionId: string;
       agentName?: string;
       message?: string;
+      libraryAgentLink?: string;
       timestamp?: string | Date;
     };
 

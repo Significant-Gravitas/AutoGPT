@@ -159,8 +159,9 @@ export function parseToolResponse(
         type: "execution_started",
         toolName: "execution_started",
         executionId: (parsedResult.execution_id as string) || "",
-        agentName: parsedResult.agent_name as string | undefined,
+        agentName: (parsedResult.graph_name as string) || undefined,
         message: parsedResult.message as string | undefined,
+        libraryAgentLink: parsedResult.library_agent_link as string | undefined,
         timestamp: timestamp || new Date(),
       };
     }
@@ -263,7 +264,7 @@ export function extractCredentialsNeeded(
       }));
       return {
         type: "credentials_needed",
-        toolName: "get_required_setup_info",
+        toolName: "run_agent",
         credentials,
         message: `To run ${agentName}, you need to add ${credentials.length === 1 ? "credentials" : `${credentials.length} credentials`}.`,
         agentName,

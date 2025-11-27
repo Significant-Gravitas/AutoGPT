@@ -13,17 +13,9 @@ class ResponseType(str, Enum):
 
     AGENT_CAROUSEL = "agent_carousel"
     AGENT_DETAILS = "agent_details"
-    AGENT_DETAILS_NEED_LOGIN = "agent_details_need_login"
-    AGENT_DETAILS_NEED_CREDENTIALS = "agent_details_need_credentials"
     SETUP_REQUIREMENTS = "setup_requirements"
-    SCHEDULE_CREATED = "schedule_created"
-    WEBHOOK_CREATED = "webhook_created"
-    PRESET_CREATED = "preset_created"
     EXECUTION_STARTED = "execution_started"
     NEED_LOGIN = "need_login"
-    NEED_CREDENTIALS = "need_credentials"
-    INSUFFICIENT_CREDITS = "insufficient_credits"
-    VALIDATION_ERROR = "validation_error"
     ERROR = "error"
     NO_RESULTS = "no_results"
     SUCCESS = "success"
@@ -112,7 +104,7 @@ class AgentDetails(BaseModel):
 
 
 class AgentDetailsResponse(ToolResponseBase):
-    """Response for get_agent_details tool."""
+    """Response for get_details action."""
 
     type: ResponseType = ResponseType.AGENT_DETAILS
     agent: AgentDetails
@@ -121,51 +113,7 @@ class AgentDetailsResponse(ToolResponseBase):
     graph_version: int | None = None
 
 
-class AgentDetailsNeedLoginResponse(ToolResponseBase):
-    """Response when agent details need login."""
-
-    type: ResponseType = ResponseType.AGENT_DETAILS_NEED_LOGIN
-    agent: AgentDetails
-    agent_info: dict[str, Any] | None = None
-    graph_id: str | None = None
-    graph_version: int | None = None
-
-
-class AgentDetailsNeedCredentialsResponse(ToolResponseBase):
-    """Response when agent needs credentials to be configured."""
-
-    type: ResponseType = ResponseType.NEED_CREDENTIALS
-    agent: AgentDetails
-    credentials_schema: dict[str, Any]
-    agent_info: dict[str, Any] | None = None
-    graph_id: str | None = None
-    graph_version: int | None = None
-
-
 # Setup info models
-class SetupRequirementInfo(BaseModel):
-    """Setup requirement information."""
-
-    key: str
-    provider: str
-    required: bool = True
-    user_has: bool = False
-    credential_id: str | None = None
-    type: str | None = None
-    scopes: list[str] | None = None
-    description: str | None = None
-
-
-class ExecutionModeInfo(BaseModel):
-    """Execution mode information."""
-
-    type: str  # manual, scheduled, webhook
-    description: str
-    supported: bool
-    config_required: dict[str, str] | None = None
-    trigger_info: dict[str, Any] | None = None
-
-
 class UserReadiness(BaseModel):
     """User readiness status."""
 
@@ -187,11 +135,10 @@ class SetupInfo(BaseModel):
         },
     )
     user_readiness: UserReadiness = Field(default_factory=UserReadiness)
-    setup_instructions: list[str] = []
 
 
 class SetupRequirementsResponse(ToolResponseBase):
-    """Response for get_required_setup_info tool."""
+    """Response for validate action."""
 
     type: ResponseType = ResponseType.SETUP_REQUIREMENTS
     setup_info: SetupInfo
@@ -199,70 +146,17 @@ class SetupRequirementsResponse(ToolResponseBase):
     graph_version: int | None = None
 
 
-# Setup agent models
-class ScheduleCreatedResponse(ToolResponseBase):
-    """Response for scheduled agent setup."""
-
-    type: ResponseType = ResponseType.SCHEDULE_CREATED
-    schedule_id: str
-    name: str
-    cron: str
-    timezone: str = "UTC"
-    next_run: str | None = None
-    graph_id: str
-    graph_name: str
-
-
-class WebhookCreatedResponse(ToolResponseBase):
-    """Response for webhook agent setup."""
-
-    type: ResponseType = ResponseType.WEBHOOK_CREATED
-    webhook_id: str
-    webhook_url: str
-    preset_id: str | None = None
-    name: str
-    graph_id: str
-    graph_name: str
-
-
-class PresetCreatedResponse(ToolResponseBase):
-    """Response for preset agent setup."""
-
-    type: ResponseType = ResponseType.PRESET_CREATED
-    preset_id: str
-    name: str
-    graph_id: str
-    graph_name: str
-
-
-# Run agent models
+# Execution models
 class ExecutionStartedResponse(ToolResponseBase):
-    """Response for agent execution started."""
+    """Response for run/schedule actions."""
 
     type: ResponseType = ResponseType.EXECUTION_STARTED
     execution_id: str
     graph_id: str
     graph_name: str
+    library_agent_id: str | None = None
+    library_agent_link: str | None = None
     status: str = "QUEUED"
-    ended_at: str | None = None
-    outputs: dict[str, Any] | None = None
-    error: str | None = None
-    timeout_reached: bool | None = None
-
-
-class InsufficientCreditsResponse(ToolResponseBase):
-    """Response for insufficient credits."""
-
-    type: ResponseType = ResponseType.INSUFFICIENT_CREDITS
-    balance: float
-
-
-class ValidationErrorResponse(ToolResponseBase):
-    """Response for validation errors."""
-
-    type: ResponseType = ResponseType.VALIDATION_ERROR
-    error: str
-    details: dict[str, Any] | None = None
 
 
 # Auth/error models
