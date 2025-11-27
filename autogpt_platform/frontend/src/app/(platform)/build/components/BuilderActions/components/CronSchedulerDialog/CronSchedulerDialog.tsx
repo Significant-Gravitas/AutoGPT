@@ -1,4 +1,4 @@
-import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/modals/ScheduleAgentModal/components/CronScheduler/CronScheduler";
+import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/ScheduleAgentModal/components/CronScheduler/CronScheduler";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";

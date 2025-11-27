@@ -1,7 +1,7 @@
 import {
   OutputActions,
   OutputItem,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/selected-tabs/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-tabs/OutputRenderers";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";

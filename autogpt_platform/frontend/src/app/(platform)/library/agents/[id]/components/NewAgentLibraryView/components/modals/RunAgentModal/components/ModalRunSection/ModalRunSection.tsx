@@ -1,4 +1,4 @@
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/modals/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";

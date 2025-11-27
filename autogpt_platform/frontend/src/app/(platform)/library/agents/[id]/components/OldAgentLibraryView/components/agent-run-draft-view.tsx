@@ -12,8 +12,8 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/modals/CredentialsInputs/CredentialsInputs";
-import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/modals/RunAgentInputs/RunAgentInputs";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentInputs/RunAgentInputs";
 import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
 import ActionButtonGroup from "@/components/__legacy__/action-button-group";
 import type { ButtonAction } from "@/components/__legacy__/types";

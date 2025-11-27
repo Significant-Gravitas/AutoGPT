@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCallback, useMemo, useState } from "react";
 
-export function useAgentRunsView() {
+export function useNewAgentLibraryView() {
   const { id } = useParams();
   const agentId = id as string;
   const {

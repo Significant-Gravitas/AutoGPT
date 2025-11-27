@@ -5,15 +5,15 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
-import { AgentRunsLoading } from "./components/AgentRunsLoading";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
+import { AgentRunsLoading } from "./components/runs-list/AgentRunsLoading";
 import { EmptyAgentRuns } from "./components/runs-list/EmptyAgentRuns/EmptyAgentRuns";
 import { RunsSidebar } from "./components/runs-list/RunsSidebar/RunsSidebar";
 import { SelectedRunView } from "./components/selected-tabs/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-tabs/SelectedScheduleView/SelectedScheduleView";
-import { useAgentRunsView } from "./useAgentRunsView";
+import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
-export function AgentRunsView() {
+export function NewAgentLibraryView() {
   const {
     agent,
     hasAnyItems,
@@ -26,7 +26,7 @@ export function AgentRunsView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
-  } = useAgentRunsView();
+  } = useNewAgentLibraryView();
 
   useEffect(() => {
     if (agent) {

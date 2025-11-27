@@ -3,12 +3,12 @@
 import type {
   OutputMetadata,
   OutputRenderer,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/selected-tabs/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-tabs/OutputRenderers";
 import {
   globalRegistry,
   OutputActions,
   OutputItem,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/selected-tabs/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-tabs/OutputRenderers";
 import React, { useMemo } from "react";
 
 type OutputsRecord = Record<string, Array<unknown>>;

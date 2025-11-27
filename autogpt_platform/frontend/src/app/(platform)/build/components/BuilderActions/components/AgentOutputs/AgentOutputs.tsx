@@ -5,7 +5,7 @@ import {
   globalRegistry,
   OutputActions,
   OutputItem,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/selected-tabs/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-tabs/OutputRenderers";
 import { Label } from "@/components/__legacy__/ui/label";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import {
