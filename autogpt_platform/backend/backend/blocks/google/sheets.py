@@ -383,7 +383,6 @@ class GoogleSheetsWriteBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         range: str = SchemaField(
             description="The A1 notation of the range to write",
@@ -522,7 +521,6 @@ class GoogleSheetsAppendBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         sheet_name: str = SchemaField(
             description="Optional sheet to append to (defaults to first sheet)",
@@ -706,7 +704,6 @@ class GoogleSheetsClearBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         range: str = SchemaField(
             description="The A1 notation of the range to clear",
@@ -939,7 +936,6 @@ class GoogleSheetsManageSheetBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         operation: SheetOperation = SchemaField(description="Operation to perform")
         sheet_name: str = SchemaField(
@@ -1097,7 +1093,6 @@ class GoogleSheetsBatchOperationsBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         operations: list[BatchOperation] = SchemaField(
             description="List of operations to perform",
@@ -1255,7 +1250,6 @@ class GoogleSheetsFindReplaceBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         find_text: str = SchemaField(
             description="The text to find",
@@ -1714,7 +1708,6 @@ class GoogleSheetsFormatBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         range: str = SchemaField(
             description="A1 notation – sheet optional",
