@@ -4,10 +4,7 @@ import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 import { useState } from "react";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import {
-  getV2GetSpecificAgent,
-  useGetV2ListStoreAgentsInfinite,
-} from "@/app/api/__generated__/endpoints/store/store";
+import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import {
   getGetV2ListLibraryAgentsQueryKey,
   usePostV2AddMarketplaceAgent,
