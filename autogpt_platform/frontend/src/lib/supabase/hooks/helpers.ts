@@ -51,9 +51,11 @@ export async function fetchUser(): Promise<FetchUserResult> {
     const { user, error } = await getCurrentUser();
 
     if (error || !user) {
+      // Only mark as loaded if we got an explicit error (not just no user)
+      // This allows retrying when cookies aren't ready yet after login
       return {
         user: null,
-        hasLoadedUser: true,
+        hasLoadedUser: !!error, // Only true if there was an error, not just no user
         isUserLoading: false,
       };
     }
@@ -68,7 +70,7 @@ export async function fetchUser(): Promise<FetchUserResult> {
     console.error("Get user error:", error);
     return {
       user: null,
-      hasLoadedUser: true,
+      hasLoadedUser: true, // Error means we tried and failed, so mark as loaded
       isUserLoading: false,
     };
   }
