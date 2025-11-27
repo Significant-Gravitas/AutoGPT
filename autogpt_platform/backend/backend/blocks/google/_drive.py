@@ -114,11 +114,6 @@ def GoogleDrivePickerField(
         # (read/write) use the block's credentials field which has the appropriate scopes.
         picker_scopes.add("https://www.googleapis.com/auth/drive.file")
 
-    # Note: We don't add spreadsheets.readonly or documents.readonly scopes here
-    # because those require difficult approval processes. The picker only needs
-    # drive.file scope to let users select files. The block's credentials handle
-    # the actual API access permissions.
-
     picker_config["scopes"] = sorted(picker_scopes)
 
     # Set appropriate default value

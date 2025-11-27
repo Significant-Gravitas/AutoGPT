@@ -2025,7 +2025,6 @@ class GoogleSheetsUpdateCellBlock(Block):
             description="Select a Google Sheets spreadsheet",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
-            scopes=["https://www.googleapis.com/auth/spreadsheets"],
         )
         cell: str = SchemaField(
             description="Cell address in A1 notation (e.g., 'A1', 'Sheet1!B2')",
