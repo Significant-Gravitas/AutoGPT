@@ -24,8 +24,6 @@ from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
 llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
-_static_counts_cache: dict | None = None
-_suggested_blocks: list[BlockInfo] | None = None
 
 
 def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
@@ -306,16 +304,12 @@ async def get_counts(user_id: str) -> CountResponse:
     )
 
 
+@cached(ttl_seconds=3600)
 async def _get_static_counts():
     """
     Get counts of blocks, integrations, and marketplace agents.
     This is cached to avoid unnecessary database queries and calculations.
-    Can't use functools.cache here because the function is async.
     """
-    global _static_counts_cache
-    if _static_counts_cache is not None:
-        return _static_counts_cache
-
     all_blocks = 0
     input_blocks = 0
     action_blocks = 0
@@ -342,7 +336,7 @@ async def _get_static_counts():
 
     marketplace_agents = await prisma.models.StoreAgent.prisma().count()
 
-    _static_counts_cache = {
+    return {
         "all_blocks": all_blocks,
         "input_blocks": input_blocks,
         "action_blocks": action_blocks,
@@ -350,8 +344,6 @@ async def _get_static_counts():
         "integrations": integrations,
         "marketplace_agents": marketplace_agents,
     }
-
-    return _static_counts_cache
 
 
 def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
@@ -384,13 +376,9 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
     return providers
 
 
+@cached(ttl_seconds=3600)
 async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
-    global _suggested_blocks
-
-    if _suggested_blocks is not None and len(_suggested_blocks) >= count:
-        return _suggested_blocks[:count]
-
-    _suggested_blocks = []
+    suggested_blocks = []
     # Sum the number of executions for each block type
     # Prisma cannot group by nested relations, so we do a raw query
     # Calculate the cutoff timestamp
@@ -431,7 +419,7 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     # Sort blocks by execution count
     blocks.sort(key=lambda x: x[1], reverse=True)
 
-    _suggested_blocks = [block[0] for block in blocks]
+    suggested_blocks = [block[0] for block in blocks]
 
     # Return the top blocks
-    return _suggested_blocks[:count]
+    return suggested_blocks[:count]
