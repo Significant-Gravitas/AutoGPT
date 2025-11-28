@@ -129,7 +129,10 @@ export const AnyOfField = ({
 
     return (
       <div className="mb-0 flex flex-col">
-        <div className="flex items-center justify-between gap-2">
+        <div
+          className="flex items-center justify-between gap-2"
+          data-id={`label-${nodeId}-${name}`}
+        >
           <div
             className={cn(
               "ml-1 flex items-center gap-1",
@@ -167,10 +170,12 @@ export const AnyOfField = ({
     );
   }
 
+  console.log("name", `field-${nodeId}-${name}`);
   return (
     <div className="mb-0 flex flex-col">
       <div
         className={cn("ml-1 flex items-center gap-1", showHandles && "-ml-2")}
+        data-id={`label-${nodeId}-${name}`}
       >
         {showHandles && (
           <NodeHandle

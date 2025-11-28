@@ -52,9 +52,12 @@ export const OutputHandler = ({
             const isConnected = isOutputConnected(nodeId, key);
             const shouldShow = isConnected || isOutputVisible;
             const { displayType, colorClass } = getTypeDisplayInfo(property);
-
             return shouldShow ? (
-              <div key={key} className="relative flex items-center gap-2">
+              <div
+                data-id={`output-handler-${nodeId}-${property?.title || key}`}
+                key={key}
+                className="relative flex items-center gap-2"
+              >
                 {property?.description && (
                   <TooltipProvider>
                     <Tooltip>

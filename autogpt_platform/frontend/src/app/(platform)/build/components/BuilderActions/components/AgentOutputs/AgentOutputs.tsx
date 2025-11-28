@@ -76,7 +76,10 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         <Tooltip>
           <TooltipTrigger asChild>
             <SheetTrigger asChild>
-              <BuilderActionButton disabled={!flowID || !hasOutputs()}>
+              <BuilderActionButton
+                data-id="agent-outputs-button"
+                disabled={!flowID || !hasOutputs()}
+              >
                 <BookOpenIcon className="size-6" />
               </BuilderActionButton>
             </SheetTrigger>

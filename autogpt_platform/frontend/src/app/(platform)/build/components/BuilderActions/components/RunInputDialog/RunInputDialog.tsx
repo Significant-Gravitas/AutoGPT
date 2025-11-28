@@ -8,6 +8,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
 import { useRunInputDialog } from "./useRunInputDialog";
 import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog";
+import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
+import { useEffect } from "react";
 
 export const RunInputDialog = ({
   isOpen,
@@ -37,6 +39,21 @@ export const RunInputDialog = ({
     isExecutingGraph,
   } = useRunInputDialog({ setIsOpen });
 
+  // Tutorial integration - track input values for the tutorial
+  const setTutorialInputValues = useTutorialStore(
+    (state) => state.setTutorialInputValues,
+  );
+  const isTutorialRunning = useTutorialStore(
+    (state) => state.isTutorialRunning,
+  );
+
+  // Update tutorial store when input values change
+  useEffect(() => {
+    if (isTutorialRunning) {
+      setTutorialInputValues(inputValues);
+    }
+  }, [inputValues, isTutorialRunning, setTutorialInputValues]);
+
   return (
     <>
       <Dialog
@@ -48,16 +65,16 @@ export const RunInputDialog = ({
         styling={{ maxWidth: "600px", minWidth: "600px" }}
       >
         <Dialog.Content>
-          <div className="space-y-6 p-1">
+          <div className="space-y-6 p-1" data-id="run-input-dialog-content">
             {/* Credentials Section */}
             {hasCredentials() && (
-              <div>
+              <div data-id="run-input-credentials-section">
                 <div className="mb-4">
                   <Text variant="h4" className="text-gray-900">
                     Credentials
                   </Text>
                 </div>
-                <div className="px-2">
+                <div className="px-2" data-id="run-input-credentials-form">
                   <FormRenderer
                     jsonSchema={credentialsSchema as RJSFSchema}
                     handleChange={(v) => handleCredentialChange(v.formData)}
@@ -74,13 +91,13 @@ export const RunInputDialog = ({
 
             {/* Inputs Section */}
             {hasInputs() && (
-              <div>
+              <div data-id="run-input-inputs-section">
                 <div className="mb-4">
                   <Text variant="h4" className="text-gray-900">
                     Inputs
                   </Text>
                 </div>
-                <div className="px-2">
+                <div className="px-2" data-id="run-input-inputs-form">
                   <FormRenderer
                     jsonSchema={inputSchema as RJSFSchema}
                     handleChange={(v) => handleInputChange(v.formData)}
@@ -96,7 +113,10 @@ export const RunInputDialog = ({
             )}
 
             {/* Action Button */}
-            <div className="flex justify-end pt-2">
+            <div
+              className="flex justify-end pt-2"
+              data-id="run-input-actions-section"
+            >
               {purpose === "run" && (
                 <Button
                   variant="primary"
@@ -104,6 +124,7 @@ export const RunInputDialog = ({
                   className="group h-fit min-w-0 gap-2"
                   onClick={handleManualRun}
                   loading={isExecutingGraph}
+                  data-id="run-input-manual-run-button"
                 >
                   {!isExecutingGraph && (
                     <PlayIcon className="size-5 transition-transform group-hover:scale-110" />
@@ -117,6 +138,7 @@ export const RunInputDialog = ({
                   size="large"
                   className="group h-fit min-w-0 gap-2"
                   onClick={() => setOpenCronSchedulerDialog(true)}
+                  data-id="run-input-schedule-button"
                 >
                   <ClockIcon className="size-5 transition-transform group-hover:scale-110" />
                   <span className="font-semibold">Schedule Run</span>

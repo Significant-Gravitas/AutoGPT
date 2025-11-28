@@ -30,6 +30,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
       <Tooltip>
         <TooltipTrigger asChild>
           <BuilderActionButton
+            data-id={isGraphRunning ? "stop-graph-button" : "run-graph-button"}
             className={cn(
               isGraphRunning &&
                 "border-red-500 bg-gradient-to-br from-red-400 to-red-500 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.5),0_2px_4px_0_rgba(0,0,0,0.2)]",

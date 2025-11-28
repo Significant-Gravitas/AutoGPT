@@ -24,6 +24,7 @@ export const ScheduleGraph = ({ flowID }: { flowID: string | null }) => {
         <Tooltip>
           <TooltipTrigger asChild>
             <BuilderActionButton
+              data-id="schedule-graph-button"
               onClick={handleScheduleGraph}
               disabled={!flowID}
             >
