@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncGenerator, Literal, Optional, overload
+from typing import TYPE_CHECKING, AsyncGenerator, Literal, Optional, overload
 
 from prisma.models import AgentNode, AgentPreset, IntegrationWebhook
 from prisma.types import (
@@ -19,9 +19,11 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import webhook_ingress_url
-from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
+
+if TYPE_CHECKING:
+    from backend.server.v2.library.model import LibraryAgentPreset
 
 from .db import BaseDbModel
 from .graph import NodeModel
@@ -64,7 +66,7 @@ class Webhook(BaseDbModel):
 
 class WebhookWithRelations(Webhook):
     triggered_nodes: list[NodeModel]
-    triggered_presets: list[LibraryAgentPreset]
+    triggered_presets: list["LibraryAgentPreset"]
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
@@ -73,6 +75,12 @@ class WebhookWithRelations(Webhook):
                 "AgentNodes and AgentPresets must be included in "
                 "IntegrationWebhook query with relations"
             )
+        # LibraryAgentPreset import is moved to TYPE_CHECKING to avoid circular import:
+        # integrations.py → library/model.py → integrations.py (for Webhook)
+        # Runtime import is used in WebhookWithRelations.from_db() method instead
+        # Import at runtime to avoid circular dependency
+        from backend.server.v2.library.model import LibraryAgentPreset
+
         return WebhookWithRelations(
             **Webhook.from_db(webhook).model_dump(),
             triggered_nodes=[NodeModel.from_db(node) for node in webhook.AgentNodes],

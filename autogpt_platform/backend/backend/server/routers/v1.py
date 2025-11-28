@@ -44,7 +44,7 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
-from backend.data.execution import UserContext
+from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -387,19 +387,15 @@ async def execute_graph_block(
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
-    # Get user context for block execution
     user = await get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-
-    user_context = UserContext(timezone=user.timezone)
 
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
-            user_context=user_context,
             user_id=user_id,
             # Note: graph_exec_id and graph_id are not available for direct block execution
         ):
@@ -842,9 +838,18 @@ async def update_graph(
 
     if new_graph_version.is_active:
         # Keep the library agent up to date with the new active version
-        await library_db.update_agent_version_in_library(
+        library = await library_db.update_agent_version_in_library(
             user_id, graph.id, graph.version
         )
+        if (
+            new_graph_version.has_human_in_the_loop
+            and library.settings.human_in_the_loop_safe_mode is None
+        ):
+            await library_db.update_library_agent_settings(
+                user_id=user_id,
+                agent_id=library.id,
+                settings=GraphSettings(human_in_the_loop_safe_mode=True),
+            )
 
         # Handle activation of the new graph first to ensure continuity
         new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
@@ -901,13 +906,52 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await library_db.update_agent_version_in_library(
+    library = await library_db.update_agent_version_in_library(
         user_id, new_active_graph.id, new_active_graph.version
     )
+    if (
+        new_active_graph.has_human_in_the_loop
+        and library.settings.human_in_the_loop_safe_mode is None
+    ):
+        await library_db.update_library_agent_settings(
+            user_id=user_id,
+            agent_id=library.id,
+            settings=GraphSettings(human_in_the_loop_safe_mode=True),
+        )
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
+
+
+@v1_router.patch(
+    path="/graphs/{graph_id}/settings",
+    summary="Update graph settings",
+    tags=["graphs"],
+    dependencies=[Security(requires_user)],
+)
+async def update_graph_settings(
+    graph_id: str,
+    settings: GraphSettings,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> GraphSettings:
+    """Update graph settings for the user's library agent."""
+    # Get the library agent for this graph
+    library_agent = await library_db.get_library_agent_by_graph_id(
+        graph_id=graph_id, user_id=user_id
+    )
+    if not library_agent:
+        raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
+
+    # Update the library agent settings
+    updated_agent = await library_db.update_library_agent_settings(
+        user_id=user_id,
+        agent_id=library_agent.id,
+        settings=settings,
+    )
+
+    # Return the updated settings
+    return GraphSettings.model_validate(updated_agent.settings)
 
 
 @v1_router.post(

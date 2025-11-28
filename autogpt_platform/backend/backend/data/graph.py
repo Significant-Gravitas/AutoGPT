@@ -61,6 +61,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class GraphSettings(BaseModel):
+    human_in_the_loop_safe_mode: bool | None = None
+
+
 class Link(BaseDbModel):
     source_id: str
     sink_id: str
@@ -224,6 +228,15 @@ class BaseGraph(BaseDbModel):
     @property
     def has_external_trigger(self) -> bool:
         return self.webhook_input_node is not None
+
+    @computed_field
+    @property
+    def has_human_in_the_loop(self) -> bool:
+        return any(
+            node.block_id
+            for node in self.nodes
+            if node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
+        )
 
     @property
     def webhook_input_node(self) -> Node | None:
@@ -1103,6 +1116,28 @@ async def delete_graph(graph_id: str, user_id: str) -> int:
     if entries_count:
         logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
     return entries_count
+
+
+async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
+    lib = await LibraryAgent.prisma().find_first(
+        where={
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "isArchived": False,
+        },
+        order={"agentGraphVersion": "desc"},
+    )
+    if not lib or not lib.settings:
+        return GraphSettings()
+
+    try:
+        return GraphSettings.model_validate(lib.settings)
+    except Exception:
+        logger.warning(
+            f"Malformed settings for LibraryAgent user={user_id} graph={graph_id}"
+        )
+        return GraphSettings()
 
 
 async def validate_graph_execution_permissions(

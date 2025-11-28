@@ -11,7 +11,7 @@ from backend.data.block import (
     BlockType,
     get_block,
 )
-from backend.data.execution import ExecutionStatus, NodesInputMasks
+from backend.data.execution import ExecutionContext, ExecutionStatus, NodesInputMasks
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
@@ -72,9 +72,9 @@ class AgentExecutorBlock(Block):
         input_data: Input,
         *,
         graph_exec_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
-
         from backend.executor import utils as execution_utils
 
         graph_exec = await execution_utils.add_graph_execution(
@@ -83,8 +83,9 @@ class AgentExecutorBlock(Block):
             user_id=input_data.user_id,
             inputs=input_data.inputs,
             nodes_input_masks=input_data.nodes_input_masks,
-            parent_graph_exec_id=graph_exec_id,
-            is_sub_graph=True,  # AgentExecutorBlock executions are always sub-graphs
+            execution_context=execution_context.model_copy(
+                update={"parent_execution_id": graph_exec_id},
+            ),
         )
 
         logger = execution_utils.LogMetadata(

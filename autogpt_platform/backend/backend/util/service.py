@@ -28,6 +28,7 @@ from typing import (
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
+from prisma.errors import DataError
 from pydantic import BaseModel, TypeAdapter, create_model
 
 import backend.util.exceptions as exceptions
@@ -193,6 +194,7 @@ EXCEPTION_MAPPING = {
     e.__name__: e
     for e in [
         ValueError,
+        DataError,
         RuntimeError,
         TimeoutError,
         ConnectionError,
@@ -412,6 +414,9 @@ class AppService(BaseAppService, ABC):
             ValueError, self._handle_internal_http_error(400)
         )
         self.fastapi_app.add_exception_handler(
+            DataError, self._handle_internal_http_error(400)
+        )
+        self.fastapi_app.add_exception_handler(
             Exception, self._handle_internal_http_error(500)
         )
 
@@ -472,6 +477,7 @@ def get_service_client(
             exclude_exceptions=(
                 # Don't retry these specific exceptions that won't be fixed by retrying
                 ValueError,  # Invalid input/parameters
+                DataError,  # Prisma data integrity errors (foreign key, unique constraints)
                 KeyError,  # Missing required data
                 TypeError,  # Wrong data types
                 AttributeError,  # Missing attributes

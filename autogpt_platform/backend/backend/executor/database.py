@@ -28,6 +28,7 @@ from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
     get_graph_metadata,
+    get_graph_settings,
     get_node,
     validate_graph_execution_permissions,
 )
@@ -150,6 +151,7 @@ class DatabaseManager(AppService):
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
     get_graph_metadata = _(get_graph_metadata)
+    get_graph_settings = _(get_graph_settings)
 
     # Credits
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -254,6 +256,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
+    get_graph_settings = d.get_graph_settings
     get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution

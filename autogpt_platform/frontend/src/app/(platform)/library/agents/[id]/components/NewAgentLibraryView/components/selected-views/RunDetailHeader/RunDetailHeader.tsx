@@ -14,6 +14,7 @@ import moment from "moment";
 import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { ShareRunButton } from "../ShareRunButton/ShareRunButton";
+import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 import { useRunDetailHeader } from "./useRunDetailHeader";
 
 type Props = {
@@ -79,6 +80,11 @@ export function RunDetailHeader({
                     shareToken={run.share_token}
                   />
                 )}
+                <FloatingSafeModeToggle
+                  graph={agent}
+                  variant="white"
+                  fullWidth={false}
+                />
                 {!isRunning ? (
                   <Button
                     variant="secondary"

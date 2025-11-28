@@ -71,6 +71,18 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+class ExecutionContext(BaseModel):
+    """
+    Unified context that carries execution-level data throughout the entire execution flow.
+    This includes information needed by blocks, sub-graphs, and execution management.
+    """
+
+    safe_mode: bool = True
+    user_timezone: str = "UTC"
+    root_execution_id: Optional[str] = None
+    parent_execution_id: Optional[str] = None
+
+
 # -------------------------- Models -------------------------- #
 
 
@@ -365,9 +377,8 @@ class GraphExecutionWithNodes(GraphExecution):
 
     def to_graph_execution_entry(
         self,
-        user_context: "UserContext",
+        execution_context: ExecutionContext,
         compiled_nodes_input_masks: Optional[NodesInputMasks] = None,
-        parent_graph_exec_id: Optional[str] = None,
     ):
         return GraphExecutionEntry(
             user_id=self.user_id,
@@ -375,8 +386,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
             nodes_input_masks=compiled_nodes_input_masks,
-            user_context=user_context,
-            parent_graph_exec_id=parent_graph_exec_id,
+            execution_context=execution_context,
         )
 
 
@@ -449,7 +459,7 @@ class NodeExecutionResult(BaseModel):
         )
 
     def to_node_execution_entry(
-        self, user_context: "UserContext"
+        self, execution_context: ExecutionContext
     ) -> "NodeExecutionEntry":
         return NodeExecutionEntry(
             user_id=self.user_id,
@@ -460,7 +470,7 @@ class NodeExecutionResult(BaseModel):
             node_id=self.node_id,
             block_id=self.block_id,
             inputs=self.input_data,
-            user_context=user_context,
+            execution_context=execution_context,
         )
 
 
@@ -1099,20 +1109,13 @@ async def get_latest_node_execution(
 # ----------------- Execution Infrastructure ----------------- #
 
 
-class UserContext(BaseModel):
-    """Generic user context for graph execution containing user-specific settings."""
-
-    timezone: str
-
-
 class GraphExecutionEntry(BaseModel):
     user_id: str
     graph_exec_id: str
     graph_id: str
     graph_version: int
     nodes_input_masks: Optional[NodesInputMasks] = None
-    user_context: UserContext
-    parent_graph_exec_id: Optional[str] = None
+    execution_context: ExecutionContext
 
 
 class NodeExecutionEntry(BaseModel):
@@ -1124,7 +1127,7 @@ class NodeExecutionEntry(BaseModel):
     node_id: str
     block_id: str
     inputs: BlockInput
-    user_context: UserContext
+    execution_context: ExecutionContext
 
 
 class ExecutionQueue(Generic[T]):

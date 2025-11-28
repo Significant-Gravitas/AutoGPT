@@ -5,36 +5,50 @@ import { Button } from "@/components/atoms/Button/Button";
 import { ClockIcon, XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
+import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
+  graphId?: string;
   className?: string;
 }
 
 export function FloatingReviewsPanel({
   executionId,
+  graphId,
   className,
 }: FloatingReviewsPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const executionStatus = useGraphStore((state) => state.graphExecutionStatus);
+  const { data: executionDetails } = useGetV1GetExecutionDetails(
+    graphId || "",
+    executionId || "",
+    {
+      query: {
+        enabled: !!(graphId && executionId),
+      },
+    },
+  );
+
+  const executionStatus =
+    executionDetails?.status === 200 ? executionDetails.data.status : undefined;
 
   const { pendingReviews, isLoading, refetch } = usePendingReviewsForExecution(
     executionId || "",
   );
 
   useEffect(() => {
-    if (executionStatus === AgentExecutionStatus.REVIEW && executionId) {
+    if (executionId) {
       refetch();
     }
   }, [executionStatus, executionId, refetch]);
 
   if (
     !executionId ||
-    (!isLoading && pendingReviews.length === 0) ||
-    executionStatus !== AgentExecutionStatus.REVIEW
+    (!isLoading &&
+      pendingReviews.length === 0 &&
+      executionStatus !== AgentExecutionStatus.REVIEW)
   ) {
     return null;
   }

@@ -348,9 +348,6 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_graph_exec.node_executions = []  # Add this to avoid AttributeError
     mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
 
-    # Mock user context
-    mock_user_context = {"user_id": user_id, "context": "test_context"}
-
     # Mock the queue and event bus
     mock_queue = mocker.AsyncMock()
     mock_event_bus = mocker.MagicMock()
@@ -362,7 +359,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
-    mock_get_user_context = mocker.patch("backend.executor.utils.get_user_context")
+    mock_udb = mocker.patch("backend.executor.utils.user_db")
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
     mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
@@ -380,7 +378,14 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         return_value=mock_graph_exec
     )
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
-    mock_get_user_context.return_value = mock_user_context
+    # Mock user and settings data
+    mock_user = mocker.MagicMock()
+    mock_user.timezone = "UTC"
+    mock_settings = mocker.MagicMock()
+    mock_settings.human_in_the_loop_safe_mode = True
+
+    mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
     mock_get_queue.return_value = mock_queue
     mock_get_event_bus.return_value = mock_event_bus
 
