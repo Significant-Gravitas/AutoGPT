@@ -112,12 +112,6 @@ def GoogleDrivePickerField(
         # Use drive.file for minimal scope - only access files selected by user in picker
         picker_scopes.add("https://www.googleapis.com/auth/drive.file")
 
-    views = set(allowed_views or [])
-    if "SPREADSHEETS" in views:
-        picker_scopes.add("https://www.googleapis.com/auth/spreadsheets.readonly")
-    if "DOCUMENTS" in views or "DOCS" in views:
-        picker_scopes.add("https://www.googleapis.com/auth/documents.readonly")
-
     picker_config["scopes"] = sorted(picker_scopes)
 
     # Set appropriate default value

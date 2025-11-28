@@ -250,9 +250,7 @@ class BatchOperation(BlockSchemaInput):
 
 class GoogleSheetsReadBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -375,9 +373,7 @@ class GoogleSheetsReadBlock(Block):
 
 class GoogleSheetsWriteBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -513,9 +509,7 @@ class GoogleSheetsWriteBlock(Block):
 
 class GoogleSheetsAppendBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -696,9 +690,7 @@ class GoogleSheetsAppendBlock(Block):
 
 class GoogleSheetsClearBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -806,9 +798,7 @@ class GoogleSheetsClearBlock(Block):
 
 class GoogleSheetsMetadataBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -928,9 +918,7 @@ class GoogleSheetsMetadataBlock(Block):
 
 class GoogleSheetsManageSheetBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -1085,9 +1073,7 @@ class GoogleSheetsManageSheetBlock(Block):
 
 class GoogleSheetsBatchOperationsBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -1242,9 +1228,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
 
 class GoogleSheetsFindReplaceBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -1392,9 +1376,7 @@ class GoogleSheetsFindReplaceBlock(Block):
 
 class GoogleSheetsFindBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -1700,9 +1682,7 @@ class GoogleSheetsFindBlock(Block):
 
 class GoogleSheetsFormatBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
@@ -1875,9 +1855,7 @@ class GoogleSheetsFormatBlock(Block):
 
 class GoogleSheetsCreateSpreadsheetBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         title: str = SchemaField(
             description="The title of the new spreadsheet",
         )
@@ -2017,9 +1995,7 @@ class GoogleSheetsUpdateCellBlock(Block):
     """Update a single cell in a Google Sheets spreadsheet."""
 
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField(
-            ["https://www.googleapis.com/auth/spreadsheets"]
-        )
+        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
         spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
