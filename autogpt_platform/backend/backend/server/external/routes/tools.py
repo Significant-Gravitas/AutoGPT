@@ -1,4 +1,11 @@
-"""External API routes for chat tools - stateless HTTP endpoints."""
+"""External API routes for chat tools - stateless HTTP endpoints.
+
+Note: These endpoints use ephemeral sessions that are not persisted to Redis.
+As a result, session-based rate limiting (max_agent_runs, max_agent_schedules)
+is not enforced for external API calls. Each request creates a fresh session
+with zeroed counters. Rate limiting for external API consumers should be
+handled separately (e.g., via API key quotas).
+"""
 
 import logging
 from typing import Any
@@ -76,7 +83,12 @@ class SetupAgentRequest(AgentSlugRequest):
 
 
 def _create_ephemeral_session(user_id: str | None) -> ChatSession:
-    """Create an ephemeral session for stateless API requests."""
+    """Create an ephemeral session for stateless API requests.
+
+    Note: These sessions are NOT persisted to Redis, so session-based rate
+    limiting (max_agent_runs, max_agent_schedules) will not be enforced
+    across requests.
+    """
     return ChatSession.new(user_id)
 
 
