@@ -140,6 +140,7 @@ async def execute_block_test(block: Block):
         "graph_exec_id": str(uuid.uuid4()),
         "node_exec_id": str(uuid.uuid4()),
         "user_id": str(uuid.uuid4()),
+        "graph_version": 1,  # Default version for tests
         "user_context": UserContext(timezone="UTC"),  # Default for tests
     }
     input_model = cast(type[BlockSchema], block.input_schema)

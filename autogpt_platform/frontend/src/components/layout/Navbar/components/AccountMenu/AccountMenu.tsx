@@ -3,15 +3,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import Link from "next/link";
-import * as React from "react";
-import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
-import { AccountLogoutOption } from "./components/AccountLogoutOption";
-import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import Link from "next/link";
+import * as React from "react";
+import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
+import { AccountLogoutOption } from "./components/AccountLogoutOption";
 
 interface Props {
   userName?: string;
@@ -19,6 +20,7 @@ interface Props {
   avatarSrc?: string;
   hideNavBarUsername?: boolean;
   menuItemGroups: MenuItemGroup[];
+  isLoading?: boolean;
 }
 
 export function AccountMenu({
@@ -26,6 +28,7 @@ export function AccountMenu({
   userEmail,
   avatarSrc,
   menuItemGroups,
+  isLoading = false,
 }: Props) {
   const popupId = React.useId();
 
@@ -63,15 +66,24 @@ export function AccountMenu({
             </AvatarFallback>
           </Avatar>
           <div className="relative flex h-[47px] w-[173px] flex-col items-start justify-center gap-1">
-            <div className="max-w-[10.5rem] truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
-              {userName}
-            </div>
-            <div
-              data-testid="account-menu-user-email"
-              className="max-w-[10.5rem] truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400"
-            >
-              {userEmail}
-            </div>
+            {isLoading || !userName || !userEmail ? (
+              <>
+                <Skeleton className="h-4 w-24 bg-white/40" />
+                <Skeleton className="h-4 w-32 bg-white/40" />
+              </>
+            ) : (
+              <>
+                <div className="max-w-[10.5rem] truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
+                  {userName}
+                </div>
+                <div
+                  data-testid="account-menu-user-email"
+                  className="max-w-[10.5rem] truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400"
+                >
+                  {userEmail}
+                </div>
+              </>
+            )}
           </div>
         </div>
 

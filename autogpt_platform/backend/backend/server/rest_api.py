@@ -29,6 +29,7 @@ import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
 import backend.server.v2.chat.routes as chat_routes
+import backend.server.v2.executions.review.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -273,6 +274,11 @@ app.include_router(
     backend.server.v2.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.server.v2.executions.review.routes.router,
+    tags=["v2", "executions", "review"],
+    prefix="/api/review",
 )
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
