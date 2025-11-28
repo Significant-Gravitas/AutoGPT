@@ -16,6 +16,7 @@ import { useCopyPaste } from "./useCopyPaste";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
+import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 
 export const Flow = () => {
   const [{ flowExecutionID }] = useQueryStates({
@@ -26,6 +27,9 @@ export const Flow = () => {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
+  );
+  const hasWebhookNodes = useNodeStore(
+    useShallow((state) => state.hasWebhookNodes()),
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
@@ -76,7 +80,7 @@ export const Flow = () => {
           <Background />
           <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
           <NewControlPanel />
-          <BuilderActions />
+          {hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />}
           {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
