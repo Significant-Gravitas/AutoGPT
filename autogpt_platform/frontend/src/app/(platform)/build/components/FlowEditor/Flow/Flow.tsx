@@ -19,7 +19,6 @@ import { CustomControls } from "./components/CustomControl";
 
 export const Flow = () => {
   const [{ flowExecutionID }] = useQueryStates({
-    flowID: parseAsString,
     flowExecutionID: parseAsString,
   });
 
@@ -81,6 +80,8 @@ export const Flow = () => {
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
+
+      {/* TODO: Need to update it in future - also do not send executionId as prop - rather use useQueryState inside the component */}
       <FloatingReviewsPanel executionId={flowExecutionID || undefined} />
     </div>
   );
