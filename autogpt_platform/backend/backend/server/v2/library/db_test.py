@@ -10,7 +10,6 @@ import backend.server.v2.library.db as db
 import backend.server.v2.store.exceptions
 from backend.data.db import connect
 from backend.data.includes import library_agent_include
-from backend.util.json import SafeJson
 
 
 @pytest.mark.asyncio
@@ -33,7 +32,7 @@ async def test_get_library_agents(mocker):
             id="ua1",
             userId="test-user",
             agentGraphId="agent2",
-            settings=SafeJson("{}"),
+            settings="{}",  # type: ignore
             agentGraphVersion=1,
             isCreatedByUser=False,
             isDeleted=False,
@@ -125,7 +124,7 @@ async def test_add_agent_to_library(mocker):
         id="ua1",
         userId="test-user",
         agentGraphId=mock_store_listing_data.agentGraphId,
-        settings=SafeJson("{}"),
+        settings="{}",  # type: ignore
         agentGraphVersion=1,
         isCreatedByUser=False,
         isDeleted=False,
