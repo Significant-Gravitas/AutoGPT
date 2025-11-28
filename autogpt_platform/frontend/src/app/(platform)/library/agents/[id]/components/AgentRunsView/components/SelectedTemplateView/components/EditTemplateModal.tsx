@@ -73,10 +73,9 @@ export function EditTemplateModal({
   });
 
   // Input schema validation (reusing logic from useAgentRunModal)
-  const agentInputSchema = agent.input_schema || {
-    properties: {},
-    required: [],
-  };
+  const agentInputSchema = agent.trigger_setup_info
+    ? agent.trigger_setup_info.config_schema
+    : agent.input_schema;
   const agentInputFields = (() => {
     if (
       !agentInputSchema ||

@@ -4,17 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
+import { useGetV2ListPresetsInfinite } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import type { LibraryAgentPresetResponse } from "@/app/api/__generated__/models/libraryAgentPresetResponse";
 import { useSearchParams } from "next/navigation";
 import { okData } from "@/app/api/helpers";
 import {
+  getPaginatedTotalCount,
+  getPaginationNextPageNumber,
   getRunsPollingInterval,
-  computeRunsCount,
-  getNextRunsPageParam,
-  extractRunsFromPages,
+  unpaginate,
 } from "./helpers";
 
 type Args = {
@@ -45,7 +43,18 @@ export function useRunsSidebar({ graphId, onSelectRun, onCountsChange }: Args) {
           getRunsPollingInterval(q.state.data?.pages, tabValue === "runs"),
         refetchIntervalInBackground: true,
         refetchOnWindowFocus: false,
-        getNextPageParam: getNextRunsPageParam,
+        getNextPageParam: getPaginationNextPageNumber,
+      },
+    },
+  );
+
+  const presetsQuery = useGetV2ListPresetsInfinite(
+    { graph_id: graphId || null, page: 1, page_size: 100 },
+    {
+      query: {
+        enabled: !!graphId,
+        refetchOnWindowFocus: false,
+        getNextPageParam: getPaginationNextPageNumber,
       },
     },
   );
@@ -55,36 +64,27 @@ export function useRunsSidebar({ graphId, onSelectRun, onCountsChange }: Args) {
     {
       query: {
         enabled: !!graphId,
-        select: (r) => okData<GraphExecutionJobInfo[]>(r) ?? [],
-      },
-    },
-  );
-
-  const presetsQuery = useGetV2ListPresets(
-    { graph_id: graphId || null, page: 1, page_size: 100 },
-    {
-      query: {
-        enabled: !!graphId,
-        select: (r) => okData<LibraryAgentPresetResponse>(r)?.presets ?? [],
+        select: (r) => okData(r) ?? [],
       },
     },
   );
 
   const runs = useMemo(
-    () => extractRunsFromPages(runsQuery.data),
+    () => (runsQuery.data ? unpaginate(runsQuery.data, "executions") : []),
     [runsQuery.data],
   );
-
+  const presets = useMemo(
+    () => (presetsQuery.data ? unpaginate(presetsQuery.data, "presets") : []),
+    [presetsQuery.data],
+  );
   const schedules = schedulesQuery.data || [];
-  const presets = presetsQuery.data || [];
 
-  const runsCount = computeRunsCount(runsQuery.data, runs.length);
+  const runsCount = getPaginatedTotalCount(runsQuery.data, runs.length);
+  const presetsCount = getPaginatedTotalCount(
+    presetsQuery.data,
+    presets.length,
+  );
   const schedulesCount = schedules.length;
-  const presetsCount = presets.length;
-  const triggersCount = presets.filter((preset) => !!preset.webhook).length;
-  const regularPresetsCount = presets.filter(
-    (preset) => !preset.webhook,
-  ).length;
   const loading =
     !schedulesQuery.isSuccess ||
     !runsQuery.isSuccess ||
@@ -128,8 +128,8 @@ export function useRunsSidebar({ graphId, onSelectRun, onCountsChange }: Args) {
 
   return {
     runs,
-    schedules,
     presets,
+    schedules,
     error: schedulesQuery.error || runsQuery.error || presetsQuery.error,
     loading,
     runsQuery,
@@ -137,12 +137,13 @@ export function useRunsSidebar({ graphId, onSelectRun, onCountsChange }: Args) {
     tabValue,
     setTabValue,
     runsCount,
-    schedulesCount,
     presetsCount,
-    triggersCount,
-    regularPresetsCount,
-    fetchMoreRuns: runsQuery.fetchNextPage,
+    schedulesCount,
     hasMoreRuns: runsQuery.hasNextPage,
+    fetchMoreRuns: runsQuery.fetchNextPage,
     isFetchingMoreRuns: runsQuery.isFetchingNextPage,
+    hasMorePresets: presetsQuery.hasNextPage,
+    fetchMorePresets: presetsQuery.fetchNextPage,
+    isFetchingMorePresets: presetsQuery.isFetchingNextPage,
   };
 }

@@ -41,13 +41,15 @@ export function RunsSidebar({
     presets,
     runsCount,
     schedulesCount,
-    triggersCount,
-    regularPresetsCount,
+    presetsCount,
     error,
     loading,
-    fetchMoreRuns,
     hasMoreRuns,
+    fetchMoreRuns,
     isFetchingMoreRuns,
+    hasMorePresets,
+    fetchMorePresets,
+    isFetchingMorePresets,
     tabValue,
     setTabValue,
   } = useRunsSidebar({
@@ -95,16 +97,8 @@ export function RunsSidebar({
           Scheduled <span className="ml-3 inline-block">{schedulesCount}</span>
         </TabsLineTrigger>
         <TabsLineTrigger value="templates">
-          Templates{" "}
-          <span className="ml-3 inline-block">
-            {triggersCount > 0 && regularPresetsCount > 0
-              ? `${triggersCount} + ${regularPresetsCount}`
-              : triggersCount > 0
-                ? `${triggersCount} trigger${triggersCount !== 1 ? "s" : ""}`
-                : regularPresetsCount > 0
-                  ? `${regularPresetsCount} preset${regularPresetsCount !== 1 ? "s" : ""}`
-                  : "0"}
-          </span>
+          {agent.trigger_setup_info ? "Triggers" : "Templates"}{" "}
+          <span className="ml-3 inline-block">{presetsCount}</span>
         </TabsLineTrigger>
       </TabsLineList>
 
@@ -143,34 +137,25 @@ export function RunsSidebar({
           </div>
         </TabsLineContent>
         <TabsLineContent value="templates">
-          <div className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden">
-            {/* Triggers first */}
-            {presets
-              .filter((preset) => !!preset.webhook)
-              .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime())
-              .map((preset) => (
-                <div className="w-[15rem] lg:w-full" key={preset.id}>
-                  <TemplateListItem
-                    preset={preset}
-                    selected={selectedRunId === `preset:${preset.id}`}
-                    onClick={() => onSelectRun(`preset:${preset.id}`)}
-                  />
-                </div>
-              ))}
-            {/* Regular presets second */}
-            {presets
-              .filter((preset) => !preset.webhook)
-              .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime())
-              .map((preset) => (
-                <div className="w-[15rem] lg:w-full" key={preset.id}>
-                  <TemplateListItem
-                    preset={preset}
-                    selected={selectedRunId === `preset:${preset.id}`}
-                    onClick={() => onSelectRun(`preset:${preset.id}`)}
-                  />
-                </div>
-              ))}
-          </div>
+          <InfiniteList
+            items={presets}
+            hasMore={!!hasMorePresets}
+            isFetchingMore={isFetchingMorePresets}
+            onEndReached={fetchMorePresets}
+            className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden"
+            itemWrapperClassName="w-auto lg:w-full"
+            renderItem={(preset) => (
+              <div className="w-[15rem] lg:w-full">
+                <TemplateListItem
+                  preset={preset}
+                  selected={selectedRunId === `preset:${preset.id}`}
+                  onClick={() =>
+                    onSelectRun && onSelectRun(`preset:${preset.id}`)
+                  }
+                />
+              </div>
+            )}
+          />
         </TabsLineContent>
       </>
     </TabsLine>

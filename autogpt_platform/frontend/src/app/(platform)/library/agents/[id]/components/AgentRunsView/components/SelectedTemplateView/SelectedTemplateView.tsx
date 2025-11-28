@@ -20,12 +20,12 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
-  useGetV2ListPresets,
   useDeleteV2DeleteAPreset,
   usePostV2ExecuteAPreset,
   getGetV2ListPresetsQueryKey,
+  useGetV2GetASpecificPreset,
+  getGetV2GetASpecificPresetQueryKey,
 } from "@/app/api/__generated__/endpoints/presets/presets";
-import type { LibraryAgentPresetResponse } from "@/app/api/__generated__/models/libraryAgentPresetResponse";
 import { getGetV1ListGraphExecutionsInfiniteQueryOptions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
@@ -53,28 +53,22 @@ export function SelectedTemplateView({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
-  // Fetch preset data
-  const presetsQuery = useGetV2ListPresets(
-    { graph_id: agent.graph_id, page: 1, page_size: 100 },
-    {
-      query: {
-        enabled: !!agent.graph_id && !!presetID,
-      },
-    },
-  );
+  const templateOrTrigger = agent.trigger_setup_info ? "Trigger" : "Template";
 
-  const preset = useMemo(() => {
-    const response = okData<LibraryAgentPresetResponse>(presetsQuery.data);
-    const presets = response?.presets ?? [];
-    return presets.find((preset) => preset.id === presetID) || null;
-  }, [presetsQuery.data, presetID]);
+  const presetQuery = useGetV2GetASpecificPreset(presetID, {
+    query: {
+      enabled: !!agent.graph_id && !!presetID,
+      // select: okData,
+    },
+  });
+  const preset = useMemo(() => okData(presetQuery.data), [presetQuery.data]);
 
   // Delete preset mutation
   const deleteTemplateMutation = useDeleteV2DeleteAPreset({
     mutation: {
       onSuccess: () => {
         toast({
-          title: "Template deleted successfully",
+          title: `${templateOrTrigger} deleted successfully`,
           variant: "default",
         });
         // Invalidate presets list
@@ -85,7 +79,7 @@ export function SelectedTemplateView({
       },
       onError: (error) => {
         toast({
-          title: "Failed to delete template",
+          title: `Failed to delete ${templateOrTrigger.toLowerCase()}`,
           description: String(error),
           variant: "destructive",
         });
@@ -100,7 +94,7 @@ export function SelectedTemplateView({
       onSuccess: (response) => {
         if (response.status === 200) {
           toast({
-            title: "Template execution started",
+            title: `${templateOrTrigger} execution started`,
             variant: "default",
           });
           // Invalidate runs list for this graph
@@ -114,7 +108,7 @@ export function SelectedTemplateView({
       },
       onError: (error) => {
         toast({
-          title: "Failed to run template",
+          title: `Failed to run ${templateOrTrigger.toLowerCase()}`,
           description: String(error),
           variant: "destructive",
         });
@@ -133,8 +127,8 @@ export function SelectedTemplateView({
     executeTemplateMutation.mutate({
       presetId: presetID,
       data: {
-        inputs: {},
-        credential_inputs: {},
+        // inputs: {},
+        // credential_inputs: {},
       },
     });
   };
@@ -143,6 +137,9 @@ export function SelectedTemplateView({
     // Invalidate presets list to refresh data
     queryClient.invalidateQueries({
       queryKey: getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
+    });
+    queryClient.invalidateQueries({
+      queryKey: getGetV2GetASpecificPresetQueryKey(presetID),
     });
   };
 
@@ -156,8 +153,8 @@ export function SelectedTemplateView({
     });
   };
 
-  const isLoading = presetsQuery.isLoading;
-  const error = presetsQuery.error;
+  const isLoading = presetQuery.isLoading;
+  const error = presetQuery.error;
 
   if (error) {
     return (
@@ -167,7 +164,7 @@ export function SelectedTemplateView({
             ? {
                 message: String(
                   (error as unknown as { message?: string })?.message ||
-                    "Failed to load template",
+                    `Failed to load ${templateOrTrigger.toLowerCase()}`,
                 ),
               }
             : undefined
@@ -205,25 +202,27 @@ export function SelectedTemplateView({
               <Text variant="h2" className="!text-2xl font-bold">
                 {preset?.name || "Loading..."}
               </Text>
-              <Text variant="body-medium" className="!text-zinc-500">
-                Template • {agent.name}
-              </Text>
+              {/* <Text variant="body-medium" className="!text-zinc-500">
+                {templateOrTrigger} • {agent.name}
+              </Text> */}
             </div>
           </div>
           {preset ? (
             <div className="flex gap-2">
-              <Button
-                variant="primary"
-                size="small"
-                onClick={() => {
-                  handleRunTemplate();
-                  onRun?.(presetID);
-                }}
-                disabled={isRunning || isDeleting}
-                leftIcon={<PlayIcon size={16} />}
-              >
-                {isRunning ? "Running..." : "Run Template"}
-              </Button>
+              {!agent.has_external_trigger ? (
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={() => {
+                    handleRunTemplate();
+                    onRun?.(presetID);
+                  }}
+                  disabled={isRunning || isDeleting}
+                  leftIcon={<PlayIcon size={16} />}
+                >
+                  {isRunning ? "Running..." : `Run ${templateOrTrigger}`}
+                </Button>
+              ) : null}
               <EditTemplateModal
                 triggerSlot={
                   <Button
@@ -269,7 +268,9 @@ export function SelectedTemplateView({
       <TabsLine defaultValue="input">
         <TabsLineList>
           <TabsLineTrigger value="input">Your input</TabsLineTrigger>
-          <TabsLineTrigger value="details">Template details</TabsLineTrigger>
+          <TabsLineTrigger value="details">
+            {templateOrTrigger} details
+          </TabsLineTrigger>
         </TabsLineList>
 
         <TabsLineContent value="input">

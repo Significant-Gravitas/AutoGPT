@@ -1,5 +1,4 @@
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryState } from "nuqs";
@@ -9,14 +8,10 @@ export function useAgentRunsView() {
   const { id } = useParams();
   const agentId = id as string;
   const {
-    data: response,
+    data: agent,
     isSuccess,
     error,
-  } = useGetV2GetLibraryAgent(agentId, {
-    query: {
-      select: okData<LibraryAgent>,
-    },
-  });
+  } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
 
   const [runParam, setRunParam] = useQueryState("executionId", parseAsString);
   const selectedRun = runParam ?? undefined;
@@ -70,7 +65,7 @@ export function useAgentRunsView() {
     agentId: id,
     ready: isSuccess,
     error,
-    agent: response,
+    agent,
     hasAnyItems,
     showSidebarLayout,
     selectedRun,

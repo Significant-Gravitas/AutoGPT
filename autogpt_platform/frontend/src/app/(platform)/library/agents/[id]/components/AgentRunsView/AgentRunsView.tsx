@@ -49,6 +49,8 @@ export function AgentRunsView() {
     return <AgentRunsLoading />;
   }
 
+  const templateOrTrigger = agent.has_external_trigger ? "Trigger" : "Template";
+
   return (
     <div
       className={
@@ -89,6 +91,7 @@ export function AgentRunsView() {
             items={[
               { name: "My Library", link: "/library" },
               { name: agent.name, link: `/library/agents/${agentId}` },
+              // TODO: show breadcrumb for selected template/trigger/schedule
             ]}
           />
         </div>
