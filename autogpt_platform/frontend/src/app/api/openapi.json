@@ -6924,12 +6924,7 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "settings": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/GraphSettings" },
-              { "type": "null" }
-            ]
-          }
+          "settings": { "$ref": "#/components/schemas/GraphSettings" }
         },
         "type": "object",
         "required": [
