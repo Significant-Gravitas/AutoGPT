@@ -1,12 +1,15 @@
 import logging
+import urllib.parse
 from collections import defaultdict
-from typing import Annotated, Any, Optional, Sequence
+from typing import Annotated, Any, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Security
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from typing_extensions import TypedDict
 
 import backend.data.block
+import backend.server.v2.store.cache as store_cache
+import backend.server.v2.store.model as store_model
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import APIKeyInfo
@@ -144,3 +147,149 @@ async def get_graph_execution_results(
             else None
         ),
     )
+
+
+##############################################
+############### Store Endpoints ##############
+##############################################
+
+
+@v1_router.get(
+    path="/store/agents",
+    tags=["store"],
+    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    response_model=store_model.StoreAgentsResponse,
+)
+async def get_store_agents(
+    featured: bool = False,
+    creator: str | None = None,
+    sorted_by: Literal["rating", "runs", "name", "updated_at"] | None = None,
+    search_query: str | None = None,
+    category: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> store_model.StoreAgentsResponse:
+    """
+    Get a paginated list of agents from the store with optional filtering and sorting.
+
+    Args:
+        featured: Filter to only show featured agents
+        creator: Filter agents by creator username
+        sorted_by: Sort agents by "runs", "rating", "name", or "updated_at"
+        search_query: Search agents by name, subheading and description
+        category: Filter agents by category
+        page: Page number for pagination (default 1)
+        page_size: Number of agents per page (default 20)
+
+    Returns:
+        StoreAgentsResponse: Paginated list of agents matching the filters
+    """
+    if page < 1:
+        raise HTTPException(status_code=422, detail="Page must be greater than 0")
+
+    if page_size < 1:
+        raise HTTPException(status_code=422, detail="Page size must be greater than 0")
+
+    agents = await store_cache._get_cached_store_agents(
+        featured=featured,
+        creator=creator,
+        sorted_by=sorted_by,
+        search_query=search_query,
+        category=category,
+        page=page,
+        page_size=page_size,
+    )
+    return agents
+
+
+@v1_router.get(
+    path="/store/agents/{username}/{agent_name}",
+    tags=["store"],
+    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    response_model=store_model.StoreAgentDetails,
+)
+async def get_store_agent(
+    username: str,
+    agent_name: str,
+) -> store_model.StoreAgentDetails:
+    """
+    Get details of a specific store agent by username and agent name.
+
+    Args:
+        username: Creator's username
+        agent_name: Name/slug of the agent
+
+    Returns:
+        StoreAgentDetails: Detailed information about the agent
+    """
+    username = urllib.parse.unquote(username).lower()
+    agent_name = urllib.parse.unquote(agent_name).lower()
+    agent = await store_cache._get_cached_agent_details(
+        username=username, agent_name=agent_name
+    )
+    return agent
+
+
+@v1_router.get(
+    path="/store/creators",
+    tags=["store"],
+    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    response_model=store_model.CreatorsResponse,
+)
+async def get_store_creators(
+    featured: bool = False,
+    search_query: str | None = None,
+    sorted_by: Literal["agent_rating", "agent_runs", "num_agents"] | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> store_model.CreatorsResponse:
+    """
+    Get a paginated list of store creators with optional filtering and sorting.
+
+    Args:
+        featured: Filter to only show featured creators
+        search_query: Search creators by profile description
+        sorted_by: Sort by "agent_rating", "agent_runs", or "num_agents"
+        page: Page number for pagination (default 1)
+        page_size: Number of creators per page (default 20)
+
+    Returns:
+        CreatorsResponse: Paginated list of creators matching the filters
+    """
+    if page < 1:
+        raise HTTPException(status_code=422, detail="Page must be greater than 0")
+
+    if page_size < 1:
+        raise HTTPException(status_code=422, detail="Page size must be greater than 0")
+
+    creators = await store_cache._get_cached_store_creators(
+        featured=featured,
+        search_query=search_query,
+        sorted_by=sorted_by,
+        page=page,
+        page_size=page_size,
+    )
+    return creators
+
+
+@v1_router.get(
+    path="/store/creators/{username}",
+    tags=["store"],
+    dependencies=[Security(require_permission(APIKeyPermission.READ_STORE))],
+    response_model=store_model.CreatorDetails,
+)
+async def get_store_creator(
+    username: str,
+) -> store_model.CreatorDetails:
+    """
+    Get details of a specific store creator by username.
+
+    Args:
+        username: Creator's username
+
+    Returns:
+        CreatorDetails: Detailed information about the creator
+    """
+    username = urllib.parse.unquote(username).lower()
+    creator = await store_cache._get_cached_creator_details(username=username)
+    return creator
