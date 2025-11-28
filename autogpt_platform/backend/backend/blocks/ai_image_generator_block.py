@@ -5,6 +5,7 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
+from backend.blocks.replicate._helper import run_replicate_with_retry
 from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import (
     APIKeyCredentials,
@@ -181,7 +182,9 @@ class AIImageGeneratorBlock(Block):
             client = ReplicateClient(api_token=credentials.api_key.get_secret_value())
 
             # Run the model with input parameters
-            output = await client.async_run(model_name, input=input_params, wait=False)
+            output = await run_replicate_with_retry(
+                client, model_name, input_params, wait=False
+            )
 
             # Process output
             if isinstance(output, list) and len(output) > 0:
