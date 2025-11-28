@@ -16,6 +16,7 @@ import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ShareRunButton } from "../ShareRunButton/ShareRunButton";
+import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 
 type Props = {
   agent: LibraryAgent;
@@ -80,6 +81,11 @@ export function RunDetailHeader({
                     shareToken={run.share_token}
                   />
                 )}
+                <FloatingSafeModeToggle
+                  graph={agent}
+                  variant="white"
+                  fullWidth={false}
+                />
                 {!isRunning ? (
                   <Button
                     variant="secondary"

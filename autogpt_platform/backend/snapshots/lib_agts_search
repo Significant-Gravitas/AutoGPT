@@ -30,7 +30,8 @@
       "can_access_graph": true,
       "is_latest_version": true,
       "is_favorite": false,
-      "recommended_schedule_cron": null
+      "recommended_schedule_cron": null,
+      "settings": null
     },
     {
       "id": "test-agent-2",
@@ -62,7 +63,8 @@
       "can_access_graph": false,
       "is_latest_version": true,
       "is_favorite": false,
-      "recommended_schedule_cron": null
+      "recommended_schedule_cron": null,
+      "settings": null
     }
   ],
   "pagination": {

@@ -46,6 +46,7 @@ from backend.util.settings import Secrets
 
 # Type alias for any provider name (including custom ones)
 AnyProviderName = str  # Will be validated as ProviderName at runtime
+USER_TIMEZONE_NOT_SET = "not-set"
 
 
 class User(BaseModel):
@@ -98,7 +99,7 @@ class User(BaseModel):
 
     # User timezone for scheduling and time display
     timezone: str = Field(
-        default="not-set",
+        default=USER_TIMEZONE_NOT_SET,
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
 
@@ -155,7 +156,7 @@ class User(BaseModel):
             notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
             notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
             notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
-            timezone=prisma_user.timezone or "not-set",
+            timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
         )
 
 

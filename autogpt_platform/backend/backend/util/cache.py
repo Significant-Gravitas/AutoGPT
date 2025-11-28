@@ -27,6 +27,7 @@ from backend.util.settings import Settings
 P = ParamSpec("P")
 R = TypeVar("R")
 R_co = TypeVar("R_co", covariant=True)
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -143,7 +144,7 @@ def cached(
     ttl_seconds: int,
     shared_cache: bool = False,
     refresh_ttl_on_get: bool = False,
-) -> Callable[[Callable], CachedFunction]:
+) -> Callable[[Callable[P, R]], CachedFunction[P, R]]:
     """
     Thundering herd safe cache decorator for both sync and async functions.
 
@@ -169,7 +170,7 @@ def cached(
             return {"result": param}
     """
 
-    def decorator(target_func):
+    def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
         cache_storage: dict[tuple, CachedValue] = {}
         _event_loop_locks: dict[Any, asyncio.Lock] = {}
 
@@ -386,7 +387,7 @@ def cached(
         setattr(wrapper, "cache_info", cache_info)
         setattr(wrapper, "cache_delete", cache_delete)
 
-        return cast(CachedFunction, wrapper)
+        return cast(CachedFunction[P, R], wrapper)
 
     return decorator
 
