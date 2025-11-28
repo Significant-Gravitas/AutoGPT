@@ -9,6 +9,7 @@ const statusStyles: Record<AgentExecutionStatus, string> = {
   INCOMPLETE: "text-slate-700 border-slate-400",
   QUEUED: "text-blue-700 border-blue-400",
   RUNNING: "text-amber-700 border-amber-400",
+  REVIEW: "text-orange-700 border-orange-400 bg-orange-50",
   COMPLETED: "text-green-700 border-green-400",
   TERMINATED: "text-orange-700 border-orange-400",
   FAILED: "text-red-700  border-red-400",
