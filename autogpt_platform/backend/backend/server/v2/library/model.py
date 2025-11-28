@@ -125,8 +125,12 @@ class LibraryAgent(pydantic.BaseModel):
             creator_image_url=creator_image_url,
             status=status,
             updated_at=updated_at,
-            name=graph.name,
-            description=graph.description,
+            # Use custom name/description if set (e.g., from marketplace),
+            # otherwise fall back to graph's name/description
+            name=agent.name if agent.name else graph.name,
+            description=(
+                agent.description if agent.description else graph.description
+            ),
             instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
