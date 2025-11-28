@@ -375,20 +375,6 @@ async def add_generated_agent_image(
     )
 
 
-def _has_human_in_the_loop_blocks(graph: graph_db.GraphModel) -> bool:
-    """
-    Check if the graph contains any Human In The Loop blocks.
-
-    Args:
-        graph: The graph to check
-
-    Returns:
-        True if the graph contains HITL blocks, False otherwise
-    """
-    HITL_BLOCK_ID = "8b2a7b3c-6e9d-4a5f-8c1b-2e3f4a5b6c7d"
-    return any(node.block_id == HITL_BLOCK_ID for node in graph.nodes)
-
-
 def _initialize_graph_settings(graph: graph_db.GraphModel) -> GraphSettings:
     """
     Initialize GraphSettings based on graph content.
@@ -399,7 +385,7 @@ def _initialize_graph_settings(graph: graph_db.GraphModel) -> GraphSettings:
     Returns:
         GraphSettings with appropriate human_in_the_loop_safe_mode value
     """
-    if _has_human_in_the_loop_blocks(graph):
+    if graph.has_human_in_the_loop:
         # Graph has HITL blocks - set safe mode to True by default
         return GraphSettings(human_in_the_loop_safe_mode=True)
     else:
@@ -476,7 +462,7 @@ async def update_agent_version_in_library(
     user_id: str,
     agent_graph_id: str,
     agent_graph_version: int,
-) -> None:
+) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library if useGraphIsActiveVersion is True.
 
@@ -500,7 +486,7 @@ async def update_agent_version_in_library(
                 "useGraphIsActiveVersion": True,
             },
         )
-        await prisma.models.LibraryAgent.prisma().update(
+        lib = await prisma.models.LibraryAgent.prisma().update(
             where={"id": library_agent.id},
             data={
                 "AgentGraph": {
@@ -513,6 +499,10 @@ async def update_agent_version_in_library(
                 },
             },
         )
+        if lib is None:
+            raise NotFoundError(f"Library agent {library_agent.id} not found")
+
+        return library_model.LibraryAgent.from_db(lib)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating agent version in library: {e}")
         raise DatabaseError("Failed to update agent version in library") from e

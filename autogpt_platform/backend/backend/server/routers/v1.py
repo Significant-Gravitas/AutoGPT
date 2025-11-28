@@ -838,9 +838,18 @@ async def update_graph(
 
     if new_graph_version.is_active:
         # Keep the library agent up to date with the new active version
-        await library_db.update_agent_version_in_library(
+        library = await library_db.update_agent_version_in_library(
             user_id, graph.id, graph.version
         )
+        if (
+            new_graph_version.has_human_in_the_loop
+            and library.settings.human_in_the_loop_safe_mode is None
+        ):
+            await library_db.update_library_agent_settings(
+                user_id=user_id,
+                agent_id=library.id,
+                settings=GraphSettings(human_in_the_loop_safe_mode=True),
+            )
 
         # Handle activation of the new graph first to ensure continuity
         new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
@@ -897,9 +906,18 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await library_db.update_agent_version_in_library(
+    library = await library_db.update_agent_version_in_library(
         user_id, new_active_graph.id, new_active_graph.version
     )
+    if (
+        new_active_graph.has_human_in_the_loop
+        and library.settings.human_in_the_loop_safe_mode is None
+    ):
+        await library_db.update_library_agent_settings(
+            user_id=user_id,
+            agent_id=library.id,
+            settings=GraphSettings(human_in_the_loop_safe_mode=True),
+        )
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version

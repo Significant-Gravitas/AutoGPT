@@ -72,7 +72,7 @@ class LibraryAgent(pydantic.BaseModel):
     recommended_schedule_cron: str | None = None
 
     # User-specific settings for this library agent
-    settings: GraphSettings | None = None
+    settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
 
     @staticmethod
     def from_db(
