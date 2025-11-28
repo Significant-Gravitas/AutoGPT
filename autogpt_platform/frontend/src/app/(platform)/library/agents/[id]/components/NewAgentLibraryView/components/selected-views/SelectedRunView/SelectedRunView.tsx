@@ -1,24 +1,24 @@
 "use client";
 
-import React, { useEffect } from "react";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   TabsLine,
   TabsLineContent,
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { useSelectedRunView } from "./useSelectedRunView";
-import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
-import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
-import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
-import { RunOutputs } from "./components/RunOutputs";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { parseAsString, useQueryState } from "nuqs";
+import { useEffect } from "react";
+import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
+import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
+import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
+import { RunOutputs } from "./components/RunOutputs";
+import { useSelectedRunView } from "./useSelectedRunView";
 
 interface Props {
   agent: LibraryAgent;
