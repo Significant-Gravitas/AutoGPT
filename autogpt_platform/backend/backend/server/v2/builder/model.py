@@ -53,16 +53,6 @@ class ProviderResponse(BaseModel):
     pagination: Pagination
 
 
-# Search
-class SearchRequest(BaseModel):
-    search_query: str | None = None
-    filter: list[FilterType] | None = None
-    by_creator: list[str] | None = None
-    search_id: str | None = None
-    page: int | None = None
-    page_size: int | None = None
-
-
 class SearchBlocksResponse(BaseModel):
     blocks: BlockResponse
     total_block_count: int

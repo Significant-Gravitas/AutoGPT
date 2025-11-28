@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -7,12 +7,12 @@ import prisma.enums
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from prisma import Json
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.admin.credit_admin_routes as credit_admin_routes
 import backend.server.v2.admin.model as admin_model
 from backend.data.model import UserTransaction
+from backend.util.json import SafeJson
 from backend.util.models import Pagination
 
 app = fastapi.FastAPI()
@@ -37,11 +37,13 @@ def test_add_user_credits_success(
 ) -> None:
     """Test successful credit addition by admin"""
     # Mock the credit model
-    mock_credit_model = mocker.patch(
-        "backend.server.v2.admin.credit_admin_routes._user_credit_model"
-    )
+    mock_credit_model = Mock()
     mock_credit_model._add_transaction = AsyncMock(
         return_value=(1500, "transaction-123-uuid")
+    )
+    mocker.patch(
+        "backend.server.v2.admin.credit_admin_routes.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {
@@ -62,11 +64,17 @@ def test_add_user_credits_success(
     call_args = mock_credit_model._add_transaction.call_args
     assert call_args[0] == (target_user_id, 500)
     assert call_args[1]["transaction_type"] == prisma.enums.CreditTransactionType.GRANT
-    # Check that metadata is a Json object with the expected content
-    assert isinstance(call_args[1]["metadata"], Json)
-    assert call_args[1]["metadata"] == Json(
-        {"admin_id": admin_user_id, "reason": "Test credit grant for debugging"}
-    )
+    # Check that metadata is a SafeJson object with the expected content
+    assert isinstance(call_args[1]["metadata"], SafeJson)
+    actual_metadata = call_args[1]["metadata"]
+    expected_data = {
+        "admin_id": admin_user_id,
+        "reason": "Test credit grant for debugging",
+    }
+
+    # SafeJson inherits from Json which stores parsed data in the .data attribute
+    assert actual_metadata.data["admin_id"] == expected_data["admin_id"]
+    assert actual_metadata.data["reason"] == expected_data["reason"]
 
     # Snapshot test the response
     configured_snapshot.assert_match(
@@ -81,11 +89,13 @@ def test_add_user_credits_negative_amount(
 ) -> None:
     """Test credit deduction by admin (negative amount)"""
     # Mock the credit model
-    mock_credit_model = mocker.patch(
-        "backend.server.v2.admin.credit_admin_routes._user_credit_model"
-    )
+    mock_credit_model = Mock()
     mock_credit_model._add_transaction = AsyncMock(
         return_value=(200, "transaction-456-uuid")
+    )
+    mocker.patch(
+        "backend.server.v2.admin.credit_admin_routes.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {

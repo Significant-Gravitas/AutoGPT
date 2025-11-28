@@ -11,7 +11,6 @@ import pydantic
 import stripe
 from autogpt_libs.auth import get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from autogpt_libs.utils.cache import cached
 from fastapi import (
     APIRouter,
     Body,
@@ -40,6 +39,7 @@ from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
     TransactionHistory,
+    UserCredit,
     get_auto_top_up,
     get_user_credit_model,
     set_auto_top_up,
@@ -52,6 +52,7 @@ from backend.data.onboarding import (
     get_recommended_agents,
     get_user_onboarding,
     onboarding_enabled,
+    reset_user_onboarding,
     update_user_onboarding,
 )
 from backend.data.user import (
@@ -84,9 +85,11 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
@@ -108,7 +111,37 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-_user_credit_model = get_user_credit_model()
+async def hide_activity_summaries_if_disabled(
+    executions: list[execution_db.GraphExecutionMeta], user_id: str
+) -> list[execution_db.GraphExecutionMeta]:
+    """Hide activity summaries and scores if AI_ACTIVITY_STATUS feature is disabled."""
+    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return executions  # Return as-is if feature is enabled
+
+    # Filter out activity features if disabled
+    filtered_executions = []
+    for execution in executions:
+        if execution.stats:
+            filtered_stats = execution.stats.without_activity_features()
+            execution = execution.model_copy(update={"stats": filtered_stats})
+        filtered_executions.append(execution)
+    return filtered_executions
+
+
+async def hide_activity_summary_if_disabled(
+    execution: execution_db.GraphExecution | execution_db.GraphExecutionWithNodes,
+    user_id: str,
+) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
+    """Hide activity summary and score for a single execution if AI_ACTIVITY_STATUS feature is disabled."""
+    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return execution  # Return as-is if feature is enabled
+
+    # Filter out activity features if disabled
+    if execution.stats:
+        filtered_stats = execution.stats.without_activity_features()
+        return execution.model_copy(update={"stats": filtered_stats})
+    return execution
+
 
 # Define the API routes
 v1_router = APIRouter()
@@ -261,6 +294,16 @@ async def is_onboarding_enabled():
     return await onboarding_enabled()
 
 
+@v1_router.post(
+    "/onboarding/reset",
+    summary="Reset onboarding progress",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
+    return await reset_user_onboarding(user_id)
+
+
 ########################################################
 ##################### Blocks ###########################
 ########################################################
@@ -291,7 +334,7 @@ def _compute_blocks_sync() -> str:
     return dumps(result)
 
 
-@cached()
+@cached(ttl_seconds=3600)
 async def _get_cached_blocks() -> str:
     """
     Async cached function with thundering herd protection.
@@ -478,7 +521,8 @@ async def upload_file(
 async def get_user_credits(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, int]:
-    return {"credits": await _user_credit_model.get_credits(user_id)}
+    user_credit_model = await get_user_credit_model(user_id)
+    return {"credits": await user_credit_model.get_credits(user_id)}
 
 
 @v1_router.post(
@@ -490,9 +534,8 @@ async def get_user_credits(
 async def request_top_up(
     request: RequestTopUp, user_id: Annotated[str, Security(get_user_id)]
 ):
-    checkout_url = await _user_credit_model.top_up_intent(
-        user_id, request.credit_amount
-    )
+    user_credit_model = await get_user_credit_model(user_id)
+    checkout_url = await user_credit_model.top_up_intent(user_id, request.credit_amount)
     return {"checkout_url": checkout_url}
 
 
@@ -507,7 +550,8 @@ async def refund_top_up(
     transaction_key: str,
     metadata: dict[str, str],
 ) -> int:
-    return await _user_credit_model.top_up_refund(user_id, transaction_key, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.top_up_refund(user_id, transaction_key, metadata)
 
 
 @v1_router.patch(
@@ -517,7 +561,8 @@ async def refund_top_up(
     dependencies=[Security(requires_user)],
 )
 async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
-    await _user_credit_model.fulfill_checkout(user_id=user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    await user_credit_model.fulfill_checkout(user_id=user_id)
     return Response(status_code=200)
 
 
@@ -531,18 +576,23 @@ async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
     if request.threshold < 0:
-        raise ValueError("Threshold must be greater than 0")
+        raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
-        raise ValueError("Amount must be greater than or equal to 500")
-    if request.amount < request.threshold:
-        raise ValueError("Amount must be greater than or equal to threshold")
+        raise HTTPException(
+            status_code=422, detail="Amount must be greater than or equal to 500"
+        )
+    if request.amount != 0 and request.amount < request.threshold:
+        raise HTTPException(
+            status_code=422, detail="Amount must be greater than or equal to threshold"
+        )
 
-    current_balance = await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    current_balance = await user_credit_model.get_credits(user_id)
 
     if current_balance < request.threshold:
-        await _user_credit_model.top_up_credits(user_id, request.amount)
+        await user_credit_model.top_up_credits(user_id, request.amount)
     else:
-        await _user_credit_model.top_up_credits(user_id, 0)
+        await user_credit_model.top_up_credits(user_id, 0)
 
     await set_auto_top_up(
         user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
@@ -590,15 +640,13 @@ async def stripe_webhook(request: Request):
         event["type"] == "checkout.session.completed"
         or event["type"] == "checkout.session.async_payment_succeeded"
     ):
-        await _user_credit_model.fulfill_checkout(
-            session_id=event["data"]["object"]["id"]
-        )
+        await UserCredit().fulfill_checkout(session_id=event["data"]["object"]["id"])
 
     if event["type"] == "charge.dispute.created":
-        await _user_credit_model.handle_dispute(event["data"]["object"])
+        await UserCredit().handle_dispute(event["data"]["object"])
 
     if event["type"] == "refund.created" or event["type"] == "charge.dispute.closed":
-        await _user_credit_model.deduct_credits(event["data"]["object"])
+        await UserCredit().deduct_credits(event["data"]["object"])
 
     return Response(status_code=200)
 
@@ -612,7 +660,8 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> dict[str, str]:
-    return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
+    user_credit_model = await get_user_credit_model(user_id)
+    return {"url": await user_credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(
@@ -630,7 +679,8 @@ async def get_credit_history(
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
         raise ValueError("Transaction count limit must be between 1 and 1000")
 
-    return await _user_credit_model.get_transaction_history(
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_transaction_history(
         user_id=user_id,
         transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
@@ -647,7 +697,8 @@ async def get_credit_history(
 async def get_refund_requests(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[RefundRequest]:
-    return await _user_credit_model.get_refund_requests(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_refund_requests(user_id)
 
 
 ########################################################
@@ -752,7 +803,9 @@ async def create_new_graph(
 async def delete_graph(
     graph_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> DeleteGraphResponse:
-    if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
+    if active_version := await graph_db.get_graph(
+        graph_id=graph_id, version=None, user_id=user_id
+    ):
         await on_graph_deactivate(active_version, user_id=user_id)
 
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
@@ -832,7 +885,11 @@ async def set_graph_active_version(
     if not new_active_graph:
         raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
 
-    current_active_graph = await graph_db.get_graph(graph_id, user_id=user_id)
+    current_active_graph = await graph_db.get_graph(
+        graph_id=graph_id,
+        version=None,
+        user_id=user_id,
+    )
 
     # Handle activation of the new graph first to ensure continuity
     await on_graph_activate(new_active_graph, user_id=user_id)
@@ -869,7 +926,8 @@ async def execute_graph(
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> execution_db.GraphExecutionMeta:
-    current_balance = await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    current_balance = await user_credit_model.get_credits(user_id)
     if current_balance <= 0:
         raise HTTPException(
             status_code=402,
@@ -968,7 +1026,12 @@ async def list_graphs_executions(
         page=1,
         page_size=250,
     )
-    return paginated_result.executions
+
+    # Apply feature flags to filter out disabled features
+    filtered_executions = await hide_activity_summaries_if_disabled(
+        paginated_result.executions, user_id
+    )
+    return filtered_executions
 
 
 @v1_router.get(
@@ -985,11 +1048,19 @@ async def list_graph_executions(
         25, ge=1, le=100, description="Number of executions per page"
     ),
 ) -> execution_db.GraphExecutionsPaginated:
-    return await execution_db.get_graph_executions_paginated(
+    paginated_result = await execution_db.get_graph_executions_paginated(
         graph_id=graph_id,
         user_id=user_id,
         page=page,
         page_size=page_size,
+    )
+
+    # Apply feature flags to filter out disabled features
+    filtered_executions = await hide_activity_summaries_if_disabled(
+        paginated_result.executions, user_id
+    )
+    return execution_db.GraphExecutionsPaginated(
+        executions=filtered_executions, pagination=paginated_result.pagination
     )
 
 
@@ -1004,21 +1075,27 @@ async def get_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
-    graph = await graph_db.get_graph(graph_id=graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
-        )
-
     result = await execution_db.get_graph_execution(
         user_id=user_id,
         execution_id=graph_exec_id,
-        include_node_executions=graph.user_id == user_id,
+        include_node_executions=True,
     )
     if not result or result.graph_id != graph_id:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
+
+    if not await graph_db.get_graph(
+        graph_id=result.graph_id,
+        version=result.graph_version,
+        user_id=user_id,
+    ):
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
+        )
+
+    # Apply feature flags to filter out disabled features
+    result = await hide_activity_summary_if_disabled(result, user_id)
 
     return result
 
@@ -1121,7 +1198,7 @@ async def disable_execution_sharing(
 async def get_shared_execution(
     share_token: Annotated[
         str,
-        Path(regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
     ],
 ) -> execution_db.SharedExecutionResponse:
     """Get a shared graph execution by share token (no auth required)."""

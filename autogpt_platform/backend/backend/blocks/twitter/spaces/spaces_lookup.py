@@ -36,7 +36,7 @@ from backend.blocks.twitter._types import (
     UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.data.model import SchemaField
 
 
@@ -76,7 +76,7 @@ class TwitterGetSpacesBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         ids: list[str] = SchemaField(description="List of space IDs")
         titles: list[str] = SchemaField(description="List of space titles")
@@ -86,7 +86,6 @@ class TwitterGetSpacesBlock(Block):
         includes: dict = SchemaField(
             description="Additional data requested via expansions"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -231,7 +230,7 @@ class TwitterGetSpaceByIdBlock(Block):
             placeholder="Enter Space ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         id: str = SchemaField(description="Space ID")
         title: str = SchemaField(description="Space title")
@@ -242,7 +241,6 @@ class TwitterGetSpaceByIdBlock(Block):
         includes: dict = SchemaField(
             description="Additional data requested via expansions"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -393,7 +391,7 @@ class TwitterGetSpaceBuyersBlock(Block):
             placeholder="Enter Space ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         buyer_ids: list[str] = SchemaField(description="List of buyer IDs")
         usernames: list[str] = SchemaField(description="List of buyer usernames")
@@ -403,7 +401,6 @@ class TwitterGetSpaceBuyersBlock(Block):
         includes: dict = SchemaField(
             description="Additional data requested via expansions"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -521,7 +518,7 @@ class TwitterGetSpaceTweetsBlock(Block):
             placeholder="Enter Space ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         tweet_ids: list[str] = SchemaField(description="List of tweet IDs")
         texts: list[str] = SchemaField(description="List of tweet texts")
@@ -532,7 +529,6 @@ class TwitterGetSpaceTweetsBlock(Block):
             description="Additional data requested via expansions"
         )
         meta: dict = SchemaField(description="Response metadata")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

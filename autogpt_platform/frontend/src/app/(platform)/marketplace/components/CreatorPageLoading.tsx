@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 
 export const CreatorPageLoading = () => {
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
+    <div className="mx-auto w-full max-w-[1360px]">
       <main className="mt-5 px-4">
         <Skeleton className="mb-4 h-6 w-40" />
 

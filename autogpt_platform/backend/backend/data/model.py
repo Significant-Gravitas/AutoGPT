@@ -347,6 +347,9 @@ class APIKeyCredentials(_BaseCredentials):
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
     def auth_header(self) -> str:
+        # Linear API keys should not have Bearer prefix
+        if self.provider == "linear":
+            return self.api_key.get_secret_value()
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
@@ -829,6 +832,10 @@ class GraphExecutionStats(BaseModel):
     cost: int = Field(default=0, description="Total execution cost (cents)")
     activity_status: Optional[str] = Field(
         default=None, description="AI-generated summary of what the agent did"
+    )
+    correctness_score: Optional[float] = Field(
+        default=None,
+        description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
     )
 
 

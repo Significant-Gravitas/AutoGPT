@@ -5,7 +5,7 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
-from backend.data.block import Block, BlockCategory, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -60,6 +60,14 @@ SIZE_TO_RECRAFT_DIMENSIONS = {
     ImageSize.TALL: "1024x1536",
 }
 
+SIZE_TO_NANO_BANANA_RATIO = {
+    ImageSize.SQUARE: "1:1",
+    ImageSize.LANDSCAPE: "4:3",
+    ImageSize.PORTRAIT: "3:4",
+    ImageSize.WIDE: "16:9",
+    ImageSize.TALL: "9:16",
+}
+
 
 class ImageStyle(str, Enum):
     """
@@ -98,10 +106,11 @@ class ImageGenModel(str, Enum):
     FLUX_ULTRA = "Flux 1.1 Pro Ultra"
     RECRAFT = "Recraft v3"
     SD3_5 = "Stable Diffusion 3.5 Medium"
+    NANO_BANANA_PRO = "Nano Banana Pro"
 
 
 class AIImageGeneratorBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]
         ] = CredentialsField(
@@ -135,9 +144,8 @@ class AIImageGeneratorBlock(Block):
             title="Image Style",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         image_url: str = SchemaField(description="URL of the generated image")
-        error: str = SchemaField(description="Error message if generation failed")
 
     def __init__(self):
         super().__init__(
@@ -259,6 +267,20 @@ class AIImageGeneratorBlock(Block):
                 }
                 output = await self._run_client(
                     credentials, "recraft-ai/recraft-v3", input_params
+                )
+                return output
+
+            elif input_data.model == ImageGenModel.NANO_BANANA_PRO:
+                # Use Nano Banana Pro (Google Gemini 3 Pro Image)
+                input_params = {
+                    "prompt": modified_prompt,
+                    "aspect_ratio": SIZE_TO_NANO_BANANA_RATIO[input_data.size],
+                    "resolution": "2K",  # Default to 2K for good quality/cost balance
+                    "output_format": "jpg",
+                    "safety_filter_level": "block_only_high",  # Most permissive
+                }
+                output = await self._run_client(
+                    credentials, "google/nano-banana-pro", input_params
                 )
                 return output
 

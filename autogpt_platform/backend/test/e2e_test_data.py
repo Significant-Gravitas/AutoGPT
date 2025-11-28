@@ -402,7 +402,9 @@ class TestDataCreator:
                     from backend.data.graph import get_graph
 
                     graph = await get_graph(
-                        graph_data["id"], graph_data.get("version", 1), user["id"]
+                        graph_data["id"],
+                        graph_data.get("version", 1),
+                        user_id=user["id"],
                     )
                     if graph:
                         # Use the API function to create library agent
@@ -749,10 +751,11 @@ class TestDataCreator:
         """Add credits to users."""
         print("Adding credits to users...")
 
-        credit_model = get_user_credit_model()
-
         for user in self.users:
             try:
+                # Get user-specific credit model
+                credit_model = await get_user_credit_model(user["id"])
+
                 # Skip credits for disabled credit model to avoid errors
                 if (
                     hasattr(credit_model, "__class__")

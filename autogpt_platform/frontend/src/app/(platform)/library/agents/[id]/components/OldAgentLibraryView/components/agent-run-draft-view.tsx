@@ -12,6 +12,9 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentInputs/RunAgentInputs";
+import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
 import ActionButtonGroup from "@/components/__legacy__/action-button-group";
 import type { ButtonAction } from "@/components/__legacy__/types";
 import {
@@ -25,24 +28,21 @@ import {
   IconPlay,
   IconSave,
 } from "@/components/__legacy__/ui/icons";
-import { CalendarClockIcon, Trash2Icon } from "lucide-react";
-import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
-import { cn, isEmpty } from "@/lib/utils";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { CopyIcon } from "@phosphor-icons/react";
-import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/atoms/Button/Button";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
   useToast,
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { cn, isEmpty } from "@/lib/utils";
+import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
+import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
-import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { analytics } from "@/services/analytics";
+import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 
 export function AgentRunDraftView({
   graph,
@@ -103,8 +103,7 @@ export function AgentRunDraftView({
   const [changedPresetAttributes, setChangedPresetAttributes] = useState<
     Set<keyof LibraryAgentPresetUpdatable>
   >(new Set());
-  const { state: onboardingState, completeStep: completeOnboardingStep } =
-    useOnboarding();
+  const { completeStep: completeOnboardingStep } = useOnboarding();
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] = useState(false);
 
   // Update values if agentPreset parameter is changed
@@ -141,18 +140,26 @@ export function AgentRunDraftView({
     const requiredInputs = new Set(
       agentInputSchema.required as string[] | undefined,
     );
-    return [
-      nonEmptyInputs.isSupersetOf(requiredInputs),
-      [...requiredInputs.difference(nonEmptyInputs)],
-    ];
+    // Backwards-compatible implementation of isSupersetOf and difference
+    const isSuperset = Array.from(requiredInputs).every((item) =>
+      nonEmptyInputs.has(item),
+    );
+    const difference = Array.from(requiredInputs).filter(
+      (item) => !nonEmptyInputs.has(item),
+    );
+    return [isSuperset, difference];
   }, [agentInputSchema.required, inputValues]);
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
     const availableCredentials = new Set(Object.keys(inputCredentials));
     const allCredentials = new Set(Object.keys(agentCredentialsInputFields));
-    return [
-      availableCredentials.isSupersetOf(allCredentials),
-      [...allCredentials.difference(availableCredentials)],
-    ];
+    // Backwards-compatible implementation of isSupersetOf and difference
+    const isSuperset = Array.from(allCredentials).every((item) =>
+      availableCredentials.has(item),
+    );
+    const difference = Array.from(allCredentials).filter(
+      (item) => !availableCredentials.has(item),
+    );
+    return [isSuperset, difference];
   }, [agentCredentialsInputFields, inputCredentials]);
   const notifyMissingInputs = useCallback(
     (needPresetName: boolean = true) => {
@@ -197,9 +204,13 @@ export function AgentRunDraftView({
         .catch(toastOnFail("execute agent preset"));
     }
     // Mark run agent onboarding step as completed
-    if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
-      completeOnboardingStep("MARKETPLACE_RUN_AGENT");
-    }
+    completeOnboardingStep("MARKETPLACE_RUN_AGENT");
+
+    analytics.sendDatafastEvent("run_agent", {
+      name: graph.name,
+      id: graph.id,
+    });
+
     if (runCount > 0) {
       completeOnboardingStep("RE_RUN_AGENT");
     }
@@ -210,7 +221,6 @@ export function AgentRunDraftView({
     inputCredentials,
     onRun,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
@@ -246,7 +256,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
@@ -286,7 +295,6 @@ export function AgentRunDraftView({
     onUpdatePreset,
     toast,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
@@ -334,7 +342,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    onboardingState,
     completeOnboardingStep,
   ]);
 
@@ -379,6 +386,12 @@ export function AgentRunDraftView({
           credentials: inputCredentials,
         })
         .catch(toastOnFail("set up agent run schedule"));
+
+      analytics.sendDatafastEvent("schedule_agent", {
+        name: graph.name,
+        id: graph.id,
+        cronExpression: cronExpression,
+      });
 
       if (schedule && onCreateSchedule) onCreateSchedule(schedule);
     },

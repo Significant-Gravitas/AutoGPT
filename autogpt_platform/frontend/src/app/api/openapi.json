@@ -9,8 +9,8 @@
     "/api/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
-        "summary": "Login",
-        "operationId": "getV1Login",
+        "summary": "Initiate OAuth flow",
+        "operationId": "getV1Initiate oauth flow",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -60,8 +60,8 @@
     "/api/integrations/{provider}/callback": {
       "post": {
         "tags": ["v1", "integrations"],
-        "summary": "Callback",
-        "operationId": "postV1Callback",
+        "summary": "Exchange OAuth code for tokens",
+        "operationId": "postV1Exchange oauth code for tokens",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -79,7 +79,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/Body_postV1Callback" }
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Exchange_oauth_code_for_tokens"
+              }
             }
           }
         },
@@ -112,7 +114,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Credentials",
-        "operationId": "getV1ListCredentials",
+        "operationId": "getV1List credentials",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -123,7 +125,7 @@
                     "$ref": "#/components/schemas/CredentialsMetaResponse"
                   },
                   "type": "array",
-                  "title": "Response Getv1Listcredentials"
+                  "title": "Response Getv1List Credentials"
                 }
               }
             }
@@ -184,7 +186,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
-        "operationId": "postV1CreateCredentials",
+        "operationId": "postV1Create credentials",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -246,7 +248,7 @@
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Postv1Createcredentials"
+                  "title": "Response Postv1Create Credentials"
                 }
               }
             }
@@ -268,8 +270,8 @@
     "/api/integrations/{provider}/credentials/{cred_id}": {
       "get": {
         "tags": ["v1", "integrations"],
-        "summary": "Get Credential",
-        "operationId": "getV1GetCredential",
+        "summary": "Get Specific Credential By ID",
+        "operationId": "getV1Get specific credential by id",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -315,7 +317,7 @@
                       "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Getv1Getcredential"
+                  "title": "Response Getv1Get Specific Credential By Id"
                 }
               }
             }
@@ -892,6 +894,23 @@
         "tags": ["v1", "onboarding", "public"],
         "summary": "Check onboarding enabled",
         "operationId": "getV1Check onboarding enabled",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/reset": {
+      "post": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Reset onboarding progress",
+        "operationId": "postV1Reset onboarding progress",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2551,7 +2570,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\nResults are cached for 15 minutes.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -2578,7 +2597,13 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "anyOf": [
+                {
+                  "enum": ["rating", "runs", "name", "updated_at"],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
               "title": "Sorted By"
             }
           },
@@ -2637,7 +2662,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
-        "description": "This is only used on the AgentDetails Page.\nResults are cached for 15 minutes.\n\nIt returns the store listing agents details.",
+        "description": "This is only used on the AgentDetails Page.\n\nIt returns the store listing agents details.",
         "operationId": "getV2Get specific agent",
         "parameters": [
           {
@@ -2677,7 +2702,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
-        "description": "Get Agent Graph from Store Listing Version ID.\nResults are cached for 1 hour.",
+        "description": "Get Agent Graph from Store Listing Version ID.",
         "operationId": "getV2Get agent graph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2711,7 +2736,7 @@
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent by version",
-        "description": "Get Store Agent Details from Store Listing Version ID.\nResults are cached for 1 hour.",
+        "description": "Get Store Agent Details from Store Listing Version ID.",
         "operationId": "getV2Get agent by version",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2801,7 +2826,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store creators",
-        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\nResults are cached for 1 hour.\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
+        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
         "operationId": "getV2List store creators",
         "parameters": [
           {
@@ -2828,7 +2853,13 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "anyOf": [
+                {
+                  "enum": ["agent_rating", "agent_runs", "num_agents"],
+                  "type": "string"
+                },
+                { "type": "null" }
+              ],
               "title": "Sorted By"
             }
           },
@@ -2869,7 +2900,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
-        "description": "Get the details of a creator.\nResults are cached for 1 hour.\n- Creator Details Page",
+        "description": "Get the details of a creator.\n- Creator Details Page",
         "operationId": "getV2Get creator details",
         "parameters": [
           {
@@ -2903,7 +2934,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
-        "description": "Get user's own agents.\nResults are cached for 5 minutes per user.",
+        "description": "Get user's own agents.",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2998,7 +3029,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
-        "description": "Get a paginated list of store submissions for the authenticated user.\nResults are cached for 1 hour per user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
+        "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
         "operationId": "getV2List my submissions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -3398,6 +3429,52 @@
         }
       }
     },
+    "/api/builder/blocks/batch": {
+      "get": {
+        "tags": ["v2"],
+        "summary": "Get specific blocks",
+        "description": "Get specific blocks by their IDs.",
+        "operationId": "getV2Get specific blocks",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "block_ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "title": "Block Ids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/BlockInfo" },
+                  "title": "Response Getv2Get Specific Blocks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/builder/providers": {
       "get": {
         "tags": ["v2"],
@@ -3443,19 +3520,68 @@
       }
     },
     "/api/builder/search": {
-      "post": {
+      "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Builder search",
         "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
-        "operationId": "postV2Builder search",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SearchRequest" }
+        "operationId": "getV2Builder search",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Query"
             }
           },
-          "required": true
-        },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "Filter"
+            }
+          },
+          {
+            "name": "search_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search Id"
+            }
+          },
+          {
+            "name": "by_creator",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "null" }
+              ],
+              "title": "By Creator"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 1, "title": "Page" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50, "title": "Page Size" }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3476,8 +3602,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/builder/counts": {
@@ -3759,6 +3884,250 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
+      }
+    },
+    "/api/executions/admin/execution_analytics/config": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Get Execution Analytics Configuration",
+        "description": "Get the configuration for execution analytics including:\n- Available AI models with metadata\n- Default system and user prompts\n- Recommended model selection",
+        "operationId": "getV2Get execution analytics configuration",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsConfig"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/executions/admin/execution_analytics": {
+      "post": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Generate Execution Analytics",
+        "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
+        "operationId": "postV2Generate execution analytics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionAnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAnalyticsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/review/pending": {
+      "get": {
+        "tags": [
+          "v2",
+          "executions",
+          "review",
+          "executions",
+          "review",
+          "private"
+        ],
+        "summary": "Get Pending Reviews",
+        "description": "Get all pending reviews for the current user.\n\nRetrieves all reviews with status \"WAITING\" that belong to the authenticated user.\nResults are ordered by creation time (newest first).\n\nArgs:\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects with status converted to typed literals\n\nRaises:\n    HTTPException: If authentication fails or database error occurs\n\nNote:\n    Reviews with invalid status values are logged as warnings but excluded\n    from results rather than failing the entire request.",
+        "operationId": "getV2Get pending reviews",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number (1-indexed)",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number (1-indexed)"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of reviews per page",
+              "default": 25,
+              "title": "Page Size"
+            },
+            "description": "Number of reviews per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending reviews",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Pending Reviews"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/review/execution/{graph_exec_id}": {
+      "get": {
+        "tags": [
+          "v2",
+          "executions",
+          "review",
+          "executions",
+          "review",
+          "private"
+        ],
+        "summary": "Get Pending Reviews for Execution",
+        "description": "Get all pending reviews for a specific graph execution.\n\nRetrieves all reviews with status \"WAITING\" for the specified graph execution\nthat belong to the authenticated user. Results are ordered by creation time\n(oldest first) to preserve review order within the execution.\n\nArgs:\n    graph_exec_id: ID of the graph execution to get reviews for\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects for the specified execution\n\nRaises:\n    HTTPException:\n        - 403: If user doesn't own the graph execution\n        - 500: If authentication fails or database error occurs\n\nNote:\n    Only returns reviews owned by the authenticated user for security.\n    Reviews with invalid status are excluded with warning logs.",
+        "operationId": "getV2Get pending reviews for execution",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "graph_exec_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Exec Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending reviews for the execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Pending Reviews For Execution"
+                }
+              }
+            }
+          },
+          "400": { "description": "Invalid graph execution ID" },
+          "403": { "description": "Access denied to graph execution" },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/review/action": {
+      "post": {
+        "tags": [
+          "v2",
+          "executions",
+          "review",
+          "executions",
+          "review",
+          "private"
+        ],
+        "summary": "Process Review Action",
+        "description": "Process reviews with approve or reject actions.",
+        "operationId": "postV2ProcessReviewAction",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ReviewRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReviewResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/library/presets": {
@@ -4133,7 +4502,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "List of library agents",
             "content": {
               "application/json": {
                 "schema": {
@@ -4431,7 +4800,7 @@
     },
     "/api/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
-        "tags": ["v2", "library", "private", "store, library"],
+        "tags": ["v2", "library", "private", "store", "library"],
         "summary": "Get Agent By Store ID",
         "description": "Get Library Agent from Store Listing Version ID.",
         "operationId": "getV2Get agent by store id",
@@ -4446,7 +4815,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Library agent found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4459,6 +4828,7 @@
               }
             }
           },
+          "404": { "description": "Agent not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4548,44 +4918,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/turnstile/verify": {
-      "post": {
-        "tags": ["v2", "turnstile"],
-        "summary": "Verify Turnstile Token",
-        "description": "Verify a Cloudflare Turnstile token.\nThis endpoint verifies a token returned by the Cloudflare Turnstile challenge\non the client side. It returns whether the verification was successful.",
-        "operationId": "postV2Verify turnstile token",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TurnstileVerifyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TurnstileVerifyResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/email/unsubscribe": {
       "post": {
         "tags": ["v1", "email"],
@@ -4668,6 +5000,189 @@
           }
         },
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
+      }
+    },
+    "/api/chat/sessions": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Create Session",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "operationId": "postV2CreateSession",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/sessions/{session_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Session",
+        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session; raises NotFoundError if not found.",
+        "operationId": "getV2GetSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/stream": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Chat",
+        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "getV2StreamChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "message",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000,
+              "title": "Message"
+            }
+          },
+          {
+            "name": "is_user_message",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Is User Message"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/assign-user": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Session Assign User",
+        "description": "Assign an authenticated user to a chat session.\n\nUsed (typically post-login) to claim an existing anonymous session as the current authenticated user.\n\nArgs:\n    session_id: The identifier for the (previously anonymous) session.\n    user_id: The authenticated user's ID to associate with the session.\n\nReturns:\n    dict: Status of the assignment.",
+        "operationId": "patchV2SessionAssignUser",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Sessionassignuser"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/health": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Health Check",
+        "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation, assignment, and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
+        "operationId": "getV2HealthCheck",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Healthcheck"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/health": {
@@ -4801,7 +5316,8 @@
           "RUNNING",
           "COMPLETED",
           "TERMINATED",
-          "FAILED"
+          "FAILED",
+          "REVIEW"
         ],
         "title": "AgentExecutionStatus"
       },
@@ -5062,7 +5578,7 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
-      "Body_postV1Callback": {
+      "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
           "code": {
             "type": "string",
@@ -5072,7 +5588,7 @@
         },
         "type": "object",
         "required": ["code", "state_token"],
-        "title": "Body_postV1Callback"
+        "title": "Body_postV1Exchange oauth code for tokens"
       },
       "Body_postV1Execute_graph_agent": {
         "properties": {
@@ -5245,6 +5761,20 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
+      },
+      "CreateSessionResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "user_id"],
+        "title": "CreateSessionResponse",
+        "description": "Response model containing information on a newly created chat session."
       },
       "Creator": {
         "properties": {
@@ -5433,6 +5963,168 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "ExecutionAnalyticsConfig": {
+        "properties": {
+          "available_models": {
+            "items": { "$ref": "#/components/schemas/ModelInfo" },
+            "type": "array",
+            "title": "Available Models"
+          },
+          "default_system_prompt": {
+            "type": "string",
+            "title": "Default System Prompt"
+          },
+          "default_user_prompt": {
+            "type": "string",
+            "title": "Default User Prompt"
+          },
+          "recommended_model": {
+            "type": "string",
+            "title": "Recommended Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available_models",
+          "default_system_prompt",
+          "default_user_prompt",
+          "recommended_model"
+        ],
+        "title": "ExecutionAnalyticsConfig"
+      },
+      "ExecutionAnalyticsRequest": {
+        "properties": {
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Graph ID to analyze"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version",
+            "description": "Optional graph version"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id",
+            "description": "Optional user ID filter"
+          },
+          "created_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created After",
+            "description": "Optional created date lower bound"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Model to use for generation",
+            "default": "gpt-4o-mini"
+          },
+          "batch_size": {
+            "type": "integer",
+            "maximum": 25.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "description": "Batch size for concurrent processing",
+            "default": 10
+          },
+          "system_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "System Prompt",
+            "description": "Custom system prompt (default: built-in prompt)"
+          },
+          "user_prompt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Prompt",
+            "description": "Custom user prompt with {{GRAPH_NAME}} and {{EXECUTION_DATA}} placeholders (default: built-in prompt)"
+          },
+          "skip_existing": {
+            "type": "boolean",
+            "title": "Skip Existing",
+            "description": "Whether to skip executions that already have activity status and correctness score",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["graph_id"],
+        "title": "ExecutionAnalyticsRequest"
+      },
+      "ExecutionAnalyticsResponse": {
+        "properties": {
+          "total_executions": {
+            "type": "integer",
+            "title": "Total Executions"
+          },
+          "processed_executions": {
+            "type": "integer",
+            "title": "Processed Executions"
+          },
+          "successful_analytics": {
+            "type": "integer",
+            "title": "Successful Analytics"
+          },
+          "failed_analytics": {
+            "type": "integer",
+            "title": "Failed Analytics"
+          },
+          "skipped_executions": {
+            "type": "integer",
+            "title": "Skipped Executions"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionAnalyticsResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_executions",
+          "processed_executions",
+          "successful_analytics",
+          "failed_analytics",
+          "skipped_executions",
+          "results"
+        ],
+        "title": "ExecutionAnalyticsResponse"
+      },
+      "ExecutionAnalyticsResult": {
+        "properties": {
+          "agent_id": { "type": "string", "title": "Agent Id" },
+          "version_id": { "type": "integer", "title": "Version Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "exec_id": { "type": "string", "title": "Exec Id" },
+          "summary_text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Summary Text"
+          },
+          "score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Score"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "error_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id",
+          "version_id",
+          "user_id",
+          "exec_id",
+          "summary_text",
+          "score",
+          "status"
+        ],
+        "title": "ExecutionAnalyticsResult"
+      },
       "Graph": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -5575,9 +6267,17 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Schedule Id"
+          },
           "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "agent_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Name"
+          },
           "cron": { "type": "string", "title": "Cron" },
           "input_data": {
             "additionalProperties": true,
@@ -6449,6 +7149,16 @@
         "required": ["query", "response"],
         "title": "Message"
       },
+      "ModelInfo": {
+        "properties": {
+          "value": { "type": "string", "title": "Value" },
+          "label": { "type": "string", "title": "Label" },
+          "provider": { "type": "string", "title": "Provider" }
+        },
+        "type": "object",
+        "required": ["value", "label", "provider"],
+        "title": "ModelInfo"
+      },
       "MyAgent": {
         "properties": {
           "agent_id": { "type": "string", "title": "Agent Id" },
@@ -6825,6 +7535,114 @@
         "type": "object",
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
+      },
+      "PendingHumanReviewModel": {
+        "properties": {
+          "node_exec_id": {
+            "type": "string",
+            "title": "Node Exec Id",
+            "description": "Node execution ID (primary key)"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "User ID associated with the review"
+          },
+          "graph_exec_id": {
+            "type": "string",
+            "title": "Graph Exec Id",
+            "description": "Graph execution ID"
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Graph ID"
+          },
+          "graph_version": {
+            "type": "integer",
+            "title": "Graph Version",
+            "description": "Graph version"
+          },
+          "payload": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "items": {}, "type": "array" },
+              { "type": "string" },
+              { "type": "integer" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ],
+            "title": "Payload",
+            "description": "The actual data payload awaiting review"
+          },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions",
+            "description": "Instructions or message for the reviewer"
+          },
+          "editable": {
+            "type": "boolean",
+            "title": "Editable",
+            "description": "Whether the reviewer can edit the data"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewStatus",
+            "description": "Review status"
+          },
+          "review_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Message",
+            "description": "Optional message from the reviewer"
+          },
+          "was_edited": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Was Edited",
+            "description": "Whether the data was modified during review"
+          },
+          "processed": {
+            "type": "boolean",
+            "title": "Processed",
+            "description": "Whether the review result has been processed by the execution engine",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the review was created"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At",
+            "description": "When the review was last updated"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At",
+            "description": "When the review was completed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_exec_id",
+          "user_id",
+          "graph_exec_id",
+          "graph_id",
+          "graph_version",
+          "payload",
+          "editable",
+          "status",
+          "created_at"
+        ],
+        "title": "PendingHumanReviewModel",
+        "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
       "PostmarkBounceEnum": {
         "type": "integer",
@@ -7295,6 +8113,92 @@
         "required": ["credit_amount"],
         "title": "RequestTopUp"
       },
+      "ReviewItem": {
+        "properties": {
+          "node_exec_id": {
+            "type": "string",
+            "title": "Node Exec Id",
+            "description": "Node execution ID to review"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved",
+            "description": "Whether this review is approved (True) or rejected (False)"
+          },
+          "message": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Message",
+            "description": "Optional review message"
+          },
+          "reviewed_data": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "items": {}, "type": "array" },
+              { "type": "string" },
+              { "type": "integer" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed Data",
+            "description": "Optional edited data (ignored if approved=False)"
+          }
+        },
+        "type": "object",
+        "required": ["node_exec_id", "approved"],
+        "title": "ReviewItem",
+        "description": "Single review item for processing."
+      },
+      "ReviewRequest": {
+        "properties": {
+          "reviews": {
+            "items": { "$ref": "#/components/schemas/ReviewItem" },
+            "type": "array",
+            "title": "Reviews",
+            "description": "All reviews with their approval status, data, and messages"
+          }
+        },
+        "type": "object",
+        "required": ["reviews"],
+        "title": "ReviewRequest",
+        "description": "Request model for processing ALL pending reviews for an execution.\n\nThis request must include ALL pending reviews for a graph execution.\nEach review will be either approved (with optional data modifications)\nor rejected (data ignored). The execution will resume only after ALL reviews are processed."
+      },
+      "ReviewResponse": {
+        "properties": {
+          "approved_count": {
+            "type": "integer",
+            "title": "Approved Count",
+            "description": "Number of reviews successfully approved"
+          },
+          "rejected_count": {
+            "type": "integer",
+            "title": "Rejected Count",
+            "description": "Number of reviews successfully rejected"
+          },
+          "failed_count": {
+            "type": "integer",
+            "title": "Failed Count",
+            "description": "Number of reviews that failed processing"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error",
+            "description": "Error message if operation failed"
+          }
+        },
+        "type": "object",
+        "required": ["approved_count", "rejected_count", "failed_count"],
+        "title": "ReviewResponse",
+        "description": "Response from review endpoint."
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": ["WAITING", "APPROVED", "REJECTED"],
+        "title": "ReviewStatus"
+      },
       "ReviewSubmissionRequest": {
         "properties": {
           "store_listing_version_id": {
@@ -7342,53 +8246,6 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
-      "SearchRequest": {
-        "properties": {
-          "search_query": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Query"
-          },
-          "filter": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "blocks",
-                    "integrations",
-                    "marketplace_agents",
-                    "my_agents"
-                  ]
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Filter"
-          },
-          "by_creator": {
-            "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
-              { "type": "null" }
-            ],
-            "title": "By Creator"
-          },
-          "search_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Id"
-          },
-          "page": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page"
-          },
-          "page_size": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Page Size"
-          }
-        },
-        "type": "object",
-        "title": "SearchRequest"
-      },
       "SearchResponse": {
         "properties": {
           "items": {
@@ -7421,6 +8278,26 @@
         "type": "object",
         "required": ["items", "total_items", "page", "more_pages"],
         "title": "SearchResponse"
+      },
+      "SessionDetailResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "updated_at": { "type": "string", "title": "Updated At" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "messages": {
+            "items": { "additionalProperties": true, "type": "object" },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "updated_at", "user_id", "messages"],
+        "title": "SessionDetailResponse",
+        "description": "Response model providing complete details for a chat session, including messages."
       },
       "SetGraphActiveVersion": {
         "properties": {
@@ -7534,6 +8411,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Activity Status",
             "description": "AI-generated summary of what the agent did"
+          },
+          "correctness_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Correctness Score",
+            "description": "AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose"
           }
         },
         "additionalProperties": true,
@@ -8622,57 +9504,6 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
-      },
-      "TurnstileVerifyRequest": {
-        "properties": {
-          "token": {
-            "type": "string",
-            "title": "Token",
-            "description": "The Turnstile token to verify"
-          },
-          "action": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Action",
-            "description": "The action that the user is attempting to perform"
-          }
-        },
-        "type": "object",
-        "required": ["token"],
-        "title": "TurnstileVerifyRequest",
-        "description": "Request model for verifying a Turnstile token."
-      },
-      "TurnstileVerifyResponse": {
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "title": "Success",
-            "description": "Whether the token verification was successful"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error",
-            "description": "Error message if verification failed"
-          },
-          "challenge_timestamp": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Challenge Timestamp",
-            "description": "Timestamp of the challenge (ISO format)"
-          },
-          "hostname": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Hostname",
-            "description": "Hostname of the site where the challenge was solved"
-          },
-          "action": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Action",
-            "description": "The action associated with this verification"
-          }
-        },
-        "type": "object",
-        "required": ["success"],
-        "title": "TurnstileVerifyResponse",
-        "description": "Response model for the Turnstile verification endpoint."
       },
       "UpdatePermissionsRequest": {
         "properties": {

@@ -1,15 +1,19 @@
-import { isServerSide } from "@/lib/utils/is-server-side";
 import * as Sentry from "@sentry/nextjs";
+import { environment } from "../environment";
 
 export enum Key {
   LOGOUT = "supabase-logout",
   WEBSOCKET_DISCONNECT_INTENT = "websocket-disconnect-intent",
   COPIED_FLOW_DATA = "copied-flow-data",
   SHEPHERD_TOUR = "shepherd-tour",
+  WALLET_LAST_SEEN_CREDITS = "wallet-last-seen-credits",
+  LIBRARY_AGENTS_CACHE = "library-agents-cache",
+  CHAT_SESSION_ID = "chat_session_id",
+  COOKIE_CONSENT = "autogpt_cookie_consent",
 }
 
 function get(key: Key) {
-  if (isServerSide()) {
+  if (environment.isServerSide()) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
@@ -22,7 +26,7 @@ function get(key: Key) {
 }
 
 function set(key: Key, value: string) {
-  if (isServerSide()) {
+  if (environment.isServerSide()) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
@@ -30,7 +34,7 @@ function set(key: Key, value: string) {
 }
 
 function clean(key: Key) {
-  if (isServerSide()) {
+  if (environment.isServerSide()) {
     Sentry.captureException(new Error("Local storage is not available"));
     return;
   }
