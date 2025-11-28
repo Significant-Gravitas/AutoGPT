@@ -5,13 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { useSearchParams } from "next/navigation";
 import { okData } from "@/app/api/helpers";
+import { useSearchParams } from "next/navigation";
 import {
-  getRunsPollingInterval,
   computeRunsCount,
-  getNextRunsPageParam,
   extractRunsFromPages,
+  getNextRunsPageParam,
+  getRunsPollingInterval,
 } from "./helpers";
 
 type Args = {
@@ -24,7 +24,11 @@ type Args = {
   }) => void;
 };
 
-export function useRunsSidebar({ graphId, onSelectRun, onCountsChange }: Args) {
+export function useAgentRunsLists({
+  graphId,
+  onSelectRun,
+  onCountsChange,
+}: Args) {
   const params = useSearchParams();
   const existingRunId = params.get("executionId") as string | undefined;
   const [tabValue, setTabValue] = useState<"runs" | "scheduled">("runs");

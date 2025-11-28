@@ -5,15 +5,15 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { PlusIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
-import { AgentRunsLoading } from "./components/AgentRunsLoading";
-import { EmptyAgentRuns } from "./components/EmptyAgentRuns/EmptyAgentRuns";
-import { RunAgentModal } from "./components/RunAgentModal/RunAgentModal";
-import { RunsSidebar } from "./components/RunsSidebar/RunsSidebar";
-import { SelectedRunView } from "./components/SelectedRunView/SelectedRunView";
-import { SelectedScheduleView } from "./components/SelectedScheduleView/SelectedScheduleView";
-import { useAgentRunsView } from "./useAgentRunsView";
+import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
+import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
+import { EmptyAgentRuns } from "./components/other/EmptyAgentRuns";
+import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
+import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
+import { AgentRunsLists } from "./components/sidebar/AgentRunsLists/AgentRunsLists";
+import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
-export function AgentRunsView() {
+export function NewAgentLibraryView() {
   const {
     agent,
     hasAnyItems,
@@ -22,10 +22,11 @@ export function AgentRunsView() {
     error,
     agentId,
     selectedRun,
+    sidebarLoading,
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
-  } = useAgentRunsView();
+  } = useNewAgentLibraryView();
 
   useEffect(() => {
     if (agent) {
@@ -73,7 +74,7 @@ export function AgentRunsView() {
           />
         </div>
 
-        <RunsSidebar
+        <AgentRunsLists
           agent={agent}
           selectedRunId={selectedRun}
           onSelectRun={handleSelectRun}
@@ -107,6 +108,9 @@ export function AgentRunsView() {
                 onClearSelectedRun={handleClearSelectedRun}
               />
             )
+          ) : sidebarLoading ? (
+            // Show loading state while sidebar is loading to prevent flash of empty state
+            <div className="text-gray-600">Loading runs...</div>
           ) : hasAnyItems ? (
             <div className="text-gray-600">
               Select a run to view its details
