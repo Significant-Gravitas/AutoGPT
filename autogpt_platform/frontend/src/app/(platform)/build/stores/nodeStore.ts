@@ -163,9 +163,10 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       block_id: node.data.block_id,
       input_default: node.data.hardcodedValues,
       metadata: {
-        // TODO: Add more metadata
         position: node.position,
-        customized_name: node.data.metadata?.customized_name,
+        ...(node.data.metadata?.customized_name !== undefined && {
+          customized_name: node.data.metadata.customized_name,
+        }),
       },
     };
   },
