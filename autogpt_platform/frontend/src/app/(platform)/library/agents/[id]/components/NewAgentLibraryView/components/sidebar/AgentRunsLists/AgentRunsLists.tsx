@@ -1,22 +1,21 @@
 "use client";
 
-import React from "react";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
 import {
   TabsLine,
+  TabsLineContent,
   TabsLineList,
   TabsLineTrigger,
-  TabsLineContent,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useRunsSidebar } from "./useRunsSidebar";
 import { RunListItem } from "./components/RunListItem";
 import { ScheduleListItem } from "./components/ScheduleListItem";
-import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { InfiniteList } from "@/components/molecules/InfiniteList/InfiniteList";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { useAgentRunsLists } from "./useAgentRunsLists";
 
-interface RunsSidebarProps {
+interface Props {
   agent: LibraryAgent;
   selectedRunId?: string;
   onSelectRun: (id: string) => void;
@@ -27,12 +26,12 @@ interface RunsSidebarProps {
   }) => void;
 }
 
-export function RunsSidebar({
+export function AgentRunsLists({
   agent,
   selectedRunId,
   onSelectRun,
   onCountsChange,
-}: RunsSidebarProps) {
+}: Props) {
   const {
     runs,
     schedules,
@@ -45,7 +44,7 @@ export function RunsSidebar({
     isFetchingMoreRuns,
     tabValue,
     setTabValue,
-  } = useRunsSidebar({
+  } = useAgentRunsLists({
     graphId: agent.graph_id,
     onSelectRun,
     onCountsChange,

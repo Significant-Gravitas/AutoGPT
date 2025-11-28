@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from "react";
-import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
-import { downloadOutputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers/utils/download";
+import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import { globalRegistry } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import { downloadOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers/utils/download";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { globalRegistry } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
 import { beautifyString } from "@/lib/utils";
+import React, { useMemo, useState } from "react";
 
 export const useNodeDataViewer = (
   data: any,
