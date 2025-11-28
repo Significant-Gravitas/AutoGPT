@@ -31,7 +31,9 @@
       "is_latest_version": true,
       "is_favorite": false,
       "recommended_schedule_cron": null,
-      "settings": null
+      "settings": {
+        "human_in_the_loop_safe_mode": null
+      }
     },
     {
       "id": "test-agent-2",
@@ -64,7 +66,9 @@
       "is_latest_version": true,
       "is_favorite": false,
       "recommended_schedule_cron": null,
-      "settings": null
+      "settings": {
+        "human_in_the_loop_safe_mode": null
+      }
     }
   ],
   "pagination": {
