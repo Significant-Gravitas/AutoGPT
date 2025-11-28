@@ -21,7 +21,7 @@ export const RunningBackground = () => {
           borderWidth: "15px",
           borderStyle: "solid",
           borderColor: "transparent",
-          borderImage: "linear-gradient(to right, #BC82F3, #BC82F3) 1",
+          borderImage: "linear-gradient(to right, #D4A5F9, #D4A5F9) 1",
         }}
       ></div>
       <div
@@ -30,7 +30,7 @@ export const RunningBackground = () => {
           borderWidth: "10px",
           borderStyle: "solid",
           borderColor: "transparent",
-          borderImage: "linear-gradient(to right, #BC82F3, #BC82F3) 1",
+          borderImage: "linear-gradient(to right, #D4A5F9, #D4A5F9) 1",
         }}
       ></div>
       <div
@@ -39,7 +39,7 @@ export const RunningBackground = () => {
           borderWidth: "6px",
           borderStyle: "solid",
           borderColor: "transparent",
-          borderImage: "linear-gradient(to right, #BC82F3, #BC82F3) 1",
+          borderImage: "linear-gradient(to right, #D4A5F9, #D4A5F9) 1",
         }}
       ></div>
       <div
@@ -48,7 +48,7 @@ export const RunningBackground = () => {
           borderWidth: "6px",
           borderStyle: "solid",
           borderColor: "transparent",
-          borderImage: "linear-gradient(to right, #BC82F3, #BC82F3) 1",
+          borderImage: "linear-gradient(to right, #D4A5F9, #D4A5F9) 1",
         }}
       ></div>
     </div>
