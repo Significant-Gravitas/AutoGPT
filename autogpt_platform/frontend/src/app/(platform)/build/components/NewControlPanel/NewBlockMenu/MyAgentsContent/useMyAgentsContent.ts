@@ -1,22 +1,16 @@
-import {
-  getV2GetLibraryAgent,
-  useGetV2ListLibraryAgentsInfinite,
-} from "@/app/api/__generated__/endpoints/library/library";
+import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { useState } from "react";
-import { convertLibraryAgentIntoCustomNode } from "../helpers";
-import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useShallow } from "zustand/react/shallow";
-import { useReactFlow } from "@xyflow/react";
+import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export const useMyAgentsContent = () => {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [isGettingAgentDetails, setIsGettingAgentDetails] = useState(false);
-  const addBlock = useNodeStore(useShallow((state) => state.addBlock));
-  const { setViewport } = useReactFlow();
-  // This endpoints is not giving info about inputSchema and outputSchema
-  // Will create new endpoint for this
+  const { addLibraryAgentToBuilder } = useAddAgentToBuilder();
+  const { toast } = useToast();
+
   const {
     data: agents,
     fetchNextPage,
@@ -58,32 +52,14 @@ export const useMyAgentsContent = () => {
     setIsGettingAgentDetails(true);
 
     try {
-      const response = await getV2GetLibraryAgent(agent.id);
-
-      if (!response.data) {
-        console.error("Failed to get agent details", selectedAgentId, agent.id);
-        return;
-      }
-
-      const { input_schema, output_schema } = response.data as LibraryAgent;
-      const { block, hardcodedValues } = convertLibraryAgentIntoCustomNode(
-        agent,
-        input_schema,
-        output_schema,
-      );
-      const customNode = addBlock(block, hardcodedValues);
-      setTimeout(() => {
-        setViewport(
-          {
-            x: -customNode.position.x * 0.8 + window.innerWidth / 2,
-            y: -customNode.position.y * 0.8 + (window.innerHeight - 400) / 2,
-            zoom: 0.8,
-          },
-          { duration: 500 },
-        );
-      }, 50);
+      await addLibraryAgentToBuilder(agent);
     } catch (error) {
-      console.error("Error adding block:", error);
+      toast({
+        title: "Failed to add agent to builder",
+        description:
+          ((error as any).message as string) || "An unexpected error occurred.",
+        variant: "destructive",
+      });
     } finally {
       setSelectedAgentId(null);
       setIsGettingAgentDetails(false);
