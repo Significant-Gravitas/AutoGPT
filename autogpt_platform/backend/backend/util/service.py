@@ -757,4 +757,3 @@ def endpoint_to_async(
 
     update_wrapper(_stub, func)
     return cast(Callable[Concatenate[Any, P], Awaitable[R]], _stub)
-    
