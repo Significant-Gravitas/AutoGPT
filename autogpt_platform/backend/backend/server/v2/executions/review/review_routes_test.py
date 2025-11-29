@@ -22,6 +22,7 @@ pytestmark = pytest.mark.skip(
     reason="Tests failing in CI due to mocking issues - skipping until refactored"
 )
 
+
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
