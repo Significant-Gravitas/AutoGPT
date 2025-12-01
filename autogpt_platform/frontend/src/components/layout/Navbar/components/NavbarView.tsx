@@ -53,7 +53,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
         {shouldShowPreviewBanner && previewBranchName ? (
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
-        <nav className="inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
+        <nav className="border-zinc-[#EFEFF0] inline-flex h-[60px] w-full items-center border border-[#EFEFF0] bg-[#F3F4F6]/20 p-3 backdrop-blur-[26px]">
           {/* Left section */}
           {!isSmallScreen ? (
             <div className="flex flex-1 items-center gap-5">

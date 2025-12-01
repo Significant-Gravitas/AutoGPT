@@ -262,6 +262,30 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         if not library_agent:
             raise NotFoundError(f"Library agent #{id} not found")
 
+        # Fetch marketplace listing if the agent has been published
+        store_listing = None
+        profile = None
+        if library_agent.AgentGraph:
+            store_listing = await prisma.models.StoreListing.prisma().find_first(
+                where={
+                    "agentGraphId": library_agent.AgentGraph.id,
+                    "isDeleted": False,
+                    "hasApprovedVersion": True,
+                },
+                include={
+                    "ActiveVersion": True,
+                },
+            )
+            if (
+                store_listing
+                and store_listing.ActiveVersion
+                and store_listing.owningUserId
+            ):
+                # Fetch Profile separately since User doesn't have a direct Profile relation
+                profile = await prisma.models.Profile.prisma().find_first(
+                    where={"userId": store_listing.owningUserId}
+                )
+
         return library_model.LibraryAgent.from_db(
             library_agent,
             sub_graphs=(
@@ -269,6 +293,8 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                 if library_agent.AgentGraph
                 else None
             ),
+            store_listing=store_listing,
+            profile=profile,
         )
 
     except prisma.errors.PrismaError as e:
