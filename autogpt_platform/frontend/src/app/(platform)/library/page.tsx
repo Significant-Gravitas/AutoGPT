@@ -1,7 +1,6 @@
 "use client";
 
 import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
-import { environment } from "@/services/environment";
 import { useEffect } from "react";
 import FavoritesSection from "./components/FavoritesSection/FavoritesSection";
 import LibraryActionHeader from "./components/LibraryActionHeader/LibraryActionHeader";
@@ -31,7 +30,8 @@ export default function LibraryPage() {
         return;
       }
 
-      const baseUrl = environment.getAGPTServerApiUrl();
+      const baseUrl =
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
       const url = `${baseUrl}/library/agents?page=1&page_size=8`;
 
       console.log("[EXPERIMENTAL] Making direct API call to:", url);

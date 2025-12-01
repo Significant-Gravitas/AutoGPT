@@ -13,7 +13,6 @@ import {
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
-import { environment } from "@/services/environment";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect } from "react";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
@@ -72,7 +71,8 @@ export function SelectedRunView({
         return;
       }
 
-      const baseUrl = environment.getAGPTServerApiUrl();
+      const baseUrl =
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
       const url = `${baseUrl}/graphs/${agent.graph_id}/executions/${runId}`;
 
       console.log("[EXPERIMENTAL] Making direct API call to:", url);
