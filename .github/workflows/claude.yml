@@ -44,6 +44,12 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false  # slow
+          docker-images: false  # limited benefit
+
       # Backend Python/Poetry setup (mirrors platform-backend-ci.yml)
       - name: Set up Python
         uses: actions/setup-python@v5
