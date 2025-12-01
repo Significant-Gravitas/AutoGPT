@@ -2,6 +2,7 @@
 
 import { IconLaptop } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   ChatsIcon,
   CubeIcon,
@@ -11,7 +12,6 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 const iconWidthClass = "h-5 w-5";
 
@@ -75,7 +75,7 @@ export function NavbarLink({ name, href }: Props) {
           />
         )}
         <Text
-          variant="h4"
+          variant="h5"
           className={cn(
             "hidden !font-poppins lg:block",
             isActive ? "!text-white" : "!text-black",
