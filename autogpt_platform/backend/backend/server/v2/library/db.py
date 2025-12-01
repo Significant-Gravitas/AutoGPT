@@ -276,7 +276,11 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                     "ActiveVersion": True,
                 },
             )
-            if store_listing and store_listing.ActiveVersion and store_listing.owningUserId:
+            if (
+                store_listing
+                and store_listing.ActiveVersion
+                and store_listing.owningUserId
+            ):
                 # Fetch Profile separately since User doesn't have a direct Profile relation
                 profile = await prisma.models.Profile.prisma().find_first(
                     where={"userId": store_listing.owningUserId}
