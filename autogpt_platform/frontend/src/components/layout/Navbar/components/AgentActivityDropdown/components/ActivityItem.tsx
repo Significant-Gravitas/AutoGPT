@@ -2,19 +2,19 @@
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { Text } from "@/components/atoms/Text/Text";
+import { formatTimeAgo } from "@/lib/utils/time";
 import {
   CheckCircle,
+  CircleDashed,
   CircleNotch,
   Clock,
-  WarningOctagon,
-  StopCircle,
-  CircleDashed,
   Eye,
+  StopCircle,
+  WarningOctagon,
 } from "@phosphor-icons/react";
+import Link from "next/link";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { getExecutionDuration } from "../helpers";
-import Link from "next/link";
-import { formatTimeAgo } from "@/lib/utils/time";
 
 interface Props {
   execution: AgentExecutionWithInfo;
@@ -119,7 +119,7 @@ export function ActivityItem({ execution }: Props) {
 
   return withExecutionLink ? (
     <Link
-      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
+      className="hover:bg-bgLightGrey block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0"
       href={linkUrl}
       role="button"
     >
