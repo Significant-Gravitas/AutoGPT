@@ -64,7 +64,10 @@ async def create_session(
         CreateSessionResponse: Details of the created session.
 
     """
-    logger.info(f"Creating session with user_id: {user_id}")
+    logger.info(
+        f"Creating session with user_id: "
+        f"...{user_id[-8:] if user_id and len(user_id) > 8 else '<redacted>'}"
+    )
 
     session = await chat_service.create_chat_session(user_id)
 
