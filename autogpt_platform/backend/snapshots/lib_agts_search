@@ -8,6 +8,7 @@
       "creator_name": "Test Creator",
       "creator_image_url": "",
       "status": "COMPLETED",
+      "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 1",
       "description": "Test Description 1",
@@ -33,7 +34,8 @@
       "recommended_schedule_cron": null,
       "settings": {
         "human_in_the_loop_safe_mode": null
-      }
+      },
+      "marketplace_listing": null
     },
     {
       "id": "test-agent-2",
@@ -43,6 +45,7 @@
       "creator_name": "Test Creator",
       "creator_image_url": "",
       "status": "COMPLETED",
+      "created_at": "2023-01-01T00:00:00",
       "updated_at": "2023-01-01T00:00:00",
       "name": "Test Agent 2",
       "description": "Test Description 2",
@@ -68,7 +71,8 @@
       "recommended_schedule_cron": null,
       "settings": {
         "human_in_the_loop_safe_mode": null
-      }
+      },
+      "marketplace_listing": null
     }
   ],
   "pagination": {

@@ -5337,7 +5337,14 @@
       },
       "APIKeyPermission": {
         "type": "string",
-        "enum": ["EXECUTE_GRAPH", "READ_GRAPH", "EXECUTE_BLOCK", "READ_BLOCK"],
+        "enum": [
+          "EXECUTE_GRAPH",
+          "READ_GRAPH",
+          "EXECUTE_BLOCK",
+          "READ_BLOCK",
+          "READ_STORE",
+          "USE_TOOLS"
+        ],
         "title": "APIKeyPermission"
       },
       "APIKeyStatus": {
@@ -6870,6 +6877,11 @@
             "title": "Creator Image Url"
           },
           "status": { "$ref": "#/components/schemas/LibraryAgentStatus" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -6924,7 +6936,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
-          "settings": { "$ref": "#/components/schemas/GraphSettings" }
+          "settings": { "$ref": "#/components/schemas/GraphSettings" },
+          "marketplace_listing": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/MarketplaceListing" },
+              { "type": "null" }
+            ]
+          }
         },
         "type": "object",
         "required": [
@@ -6935,6 +6953,7 @@
           "creator_name",
           "creator_image_url",
           "status",
+          "created_at",
           "updated_at",
           "name",
           "description",
@@ -7221,6 +7240,31 @@
         "type": "object",
         "required": ["login_url", "state_token"],
         "title": "LoginResponse"
+      },
+      "MarketplaceListing": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "slug": { "type": "string", "title": "Slug" },
+          "creator": {
+            "$ref": "#/components/schemas/MarketplaceListingCreator"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "slug", "creator"],
+        "title": "MarketplaceListing",
+        "description": "Marketplace listing information for a library agent."
+      },
+      "MarketplaceListingCreator": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "id": { "type": "string", "title": "Id" },
+          "slug": { "type": "string", "title": "Slug" }
+        },
+        "type": "object",
+        "required": ["name", "id", "slug"],
+        "title": "MarketplaceListingCreator",
+        "description": "Creator information for a marketplace listing."
       },
       "Message": {
         "properties": {

@@ -25,6 +25,7 @@ export function useNewAgentLibraryView() {
     runsCount: 0,
     schedulesCount: 0,
   });
+
   const [sidebarLoading, setSidebarLoading] = useState(true);
 
   const hasAnyItems = useMemo(
