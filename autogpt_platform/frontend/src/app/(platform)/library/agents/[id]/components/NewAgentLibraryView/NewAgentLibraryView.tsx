@@ -17,7 +17,6 @@ export function NewAgentLibraryView() {
   const {
     agent,
     hasAnyItems,
-    showSidebarLayout,
     ready,
     error,
     agentId,
@@ -49,42 +48,46 @@ export function NewAgentLibraryView() {
     return <AgentRunsLoading />;
   }
 
+  const shouldShowSidebar = sidebarLoading || hasAnyItems;
+
   return (
     <div
       className={
-        showSidebarLayout
+        shouldShowSidebar
           ? "grid h-full grid-cols-1 gap-0 pt-3 md:gap-4 lg:grid-cols-[25%_70%]"
           : "grid h-full grid-cols-1 gap-0 pt-3 md:gap-4"
       }
     >
-      <div className={showSidebarLayout ? "p-4 pl-5" : "hidden p-4 pl-5"}>
-        <div className="mb-4">
-          <RunAgentModal
-            triggerSlot={
-              <Button variant="primary" size="large" className="w-full">
-                <PlusIcon size={20} /> New Run
-              </Button>
-            }
+      {shouldShowSidebar && (
+        <div className="p-4 pl-5">
+          <div className="mb-4">
+            <RunAgentModal
+              triggerSlot={
+                <Button variant="primary" size="large" className="w-full">
+                  <PlusIcon size={20} /> New Run
+                </Button>
+              }
+              agent={agent}
+              agentId={agent.id.toString()}
+              onRunCreated={(execution) => handleSelectRun(execution.id)}
+              onScheduleCreated={(schedule) =>
+                handleSelectRun(`schedule:${schedule.id}`)
+              }
+            />
+          </div>
+
+          <AgentRunsLists
             agent={agent}
-            agentId={agent.id.toString()}
-            onRunCreated={(execution) => handleSelectRun(execution.id)}
-            onScheduleCreated={(schedule) =>
-              handleSelectRun(`schedule:${schedule.id}`)
-            }
+            selectedRunId={selectedRun}
+            onSelectRun={handleSelectRun}
+            onCountsChange={handleCountsChange}
           />
         </div>
-
-        <AgentRunsLists
-          agent={agent}
-          selectedRunId={selectedRun}
-          onSelectRun={handleSelectRun}
-          onCountsChange={handleCountsChange}
-        />
-      </div>
+      )}
 
       {/* Main Content - 70% */}
       <div className="flex min-h-0 flex-col gap-4 p-4">
-        <div className={!showSidebarLayout ? "px-2" : ""}>
+        <div className={!shouldShowSidebar ? "px-2" : ""}>
           <Breadcrumbs
             items={[
               { name: "My Library", link: "/library" },

@@ -155,7 +155,7 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
 }
 
 export function getAccountMenuOptionIcon(icon: IconType) {
-  const iconClass = "w-5 h-5";
+  const iconClass = "size-4";
   switch (icon) {
     case IconType.LayoutDashboard:
       return <StorefrontIcon className={iconClass} />;
