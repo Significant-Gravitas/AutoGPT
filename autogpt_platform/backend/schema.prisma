@@ -59,6 +59,7 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  PendingHumanReviews   PendingHumanReview[]
 }
 
 enum OnboardingStep {
@@ -351,6 +352,7 @@ enum AgentExecutionStatus {
   COMPLETED
   TERMINATED
   FAILED
+  REVIEW
 }
 
 // This model describes the execution of an AgentGraph.
@@ -393,6 +395,8 @@ model AgentGraphExecution {
   shareToken String?   @unique
   sharedAt   DateTime?
 
+  PendingHumanReviews PendingHumanReview[]
+
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
@@ -422,6 +426,8 @@ model AgentNodeExecution {
   endedTime       DateTime?
 
   stats Json?
+
+  PendingHumanReview PendingHumanReview?
 
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
   @@index([agentNodeId, executionStatus])
@@ -462,6 +468,39 @@ model AgentNodeExecutionKeyValueData {
   updatedAt            DateTime? @updatedAt
 
   @@id([userId, key])
+}
+
+enum ReviewStatus {
+  WAITING
+  APPROVED
+  REJECTED
+}
+
+// Pending human reviews for Human-in-the-loop blocks
+model PendingHumanReview {
+  nodeExecId       String       @id
+  userId           String
+  graphExecId      String
+  graphId          String
+  graphVersion     Int
+  payload          Json         // The actual payload data to be reviewed
+  instructions     String?      // Instructions/message for the reviewer
+  editable         Boolean      @default(true) // Whether the reviewer can edit the data
+  status           ReviewStatus @default(WAITING)
+  reviewMessage    String?      // Optional message from the reviewer
+  wasEdited        Boolean?     // Whether the data was modified during review
+  processed        Boolean      @default(false) // Whether the review result has been processed by the execution engine
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime?    @updatedAt
+  reviewedAt       DateTime?
+  
+  User             User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  NodeExecution    AgentNodeExecution @relation(fields: [nodeExecId], references: [id], onDelete: Cascade)
+  GraphExecution   AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
+  
+  @@unique([nodeExecId]) // One pending review per node execution
+  @@index([userId, status])
+  @@index([graphExecId, status])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes

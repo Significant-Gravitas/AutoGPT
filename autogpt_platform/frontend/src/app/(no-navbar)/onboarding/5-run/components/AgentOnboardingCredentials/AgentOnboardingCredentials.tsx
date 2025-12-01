@@ -1,4 +1,4 @@
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
 import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
 import { useState } from "react";
