@@ -396,8 +396,7 @@ async def create_library_agent(
         DatabaseError: If there's an error during creation or if image generation fails.
     """
     logger.info(
-        f"Creating library agent for graph #{graph.id} v{graph.version}; "
-        f"user #...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
+        f"Creating library agent for graph #{graph.id} v{graph.version}; user:<redacted>"
     )
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
