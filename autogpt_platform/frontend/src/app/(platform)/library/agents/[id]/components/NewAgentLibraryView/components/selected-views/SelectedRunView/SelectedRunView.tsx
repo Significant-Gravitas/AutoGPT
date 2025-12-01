@@ -12,6 +12,8 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
+import { environment } from "@/services/environment";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect } from "react";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
@@ -49,6 +51,75 @@ export function SelectedRunView({
     "tab",
     parseAsString.withDefault("output"),
   );
+
+  // EXPERIMENTAL: Direct API call bypassing proxy
+  useEffect(() => {
+    if (!runId || !agent.graph_id) return;
+
+    async function makeDirectCall() {
+      const supabaseClient = ensureSupabaseClient();
+      if (!supabaseClient) {
+        console.error("[EXPERIMENTAL] No Supabase client available");
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabaseClient.auth.getSession();
+
+      if (!session?.access_token) {
+        console.error("[EXPERIMENTAL] No session token available");
+        return;
+      }
+
+      const baseUrl = environment.getAGPTServerApiUrl();
+      const url = `${baseUrl}/graphs/${agent.graph_id}/executions/${runId}`;
+
+      console.log("[EXPERIMENTAL] Making direct API call to:", url);
+      const startTime = performance.now();
+
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.log(
+          `[EXPERIMENTAL] Direct API call completed in ${duration.toFixed(2)}ms`,
+          {
+            status: response.status,
+            statusText: response.statusText,
+            duration: `${duration.toFixed(2)}ms`,
+            graphId: agent.graph_id,
+            runId: runId,
+          },
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log("[EXPERIMENTAL] Direct API response:", data);
+        } else {
+          const errorText = await response.text();
+          console.error("[EXPERIMENTAL] Direct API error:", errorText);
+        }
+      } catch (error) {
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        console.error(
+          `[EXPERIMENTAL] Direct API call failed after ${duration.toFixed(2)}ms:`,
+          error,
+        );
+      }
+    }
+
+    void makeDirectCall();
+  }, [runId, agent.graph_id]);
 
   useEffect(() => {
     if (run?.status === AgentExecutionStatus.REVIEW && runId) {
