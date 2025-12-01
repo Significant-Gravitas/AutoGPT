@@ -397,7 +397,7 @@ async def create_library_agent(
     """
     logger.info(
         f"Creating library agent for graph #{graph.id} v{graph.version}; "
-        f"user #{user_id}"
+        f"user #...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
     )
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]

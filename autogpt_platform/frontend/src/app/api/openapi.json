@@ -5297,10 +5297,7 @@
           "EXECUTE_BLOCK",
           "READ_BLOCK",
           "READ_STORE",
-          "USE_TOOLS",
-          "MANAGE_INTEGRATIONS",
-          "READ_INTEGRATIONS",
-          "DELETE_INTEGRATIONS"
+          "USE_TOOLS"
         ],
         "title": "APIKeyPermission"
       },
