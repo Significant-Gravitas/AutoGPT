@@ -119,7 +119,7 @@ export function ActivityItem({ execution }: Props) {
 
   return withExecutionLink ? (
     <Link
-      className="hover:bg-bgLightGrey block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0"
+      className="block cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-bgLightGrey"
       href={linkUrl}
       role="button"
     >

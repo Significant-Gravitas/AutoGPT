@@ -139,7 +139,7 @@ export function ActivityDropdown({
           </List>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
-            <div className="bg-bgLightGrey mx-auto inline-flex flex-col items-center justify-center rounded-full p-6">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
               <Bell className="h-6 w-6 text-zinc-300" />
             </div>
             <div className="flex flex-col items-center justify-center">
