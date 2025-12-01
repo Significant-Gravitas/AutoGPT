@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from backend.data.graph import GraphModel
+from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
 from backend.server.v2.chat.config import ChatConfig
@@ -35,6 +37,17 @@ from backend.util.timezone_utils import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+# Constants for response messages
+MSG_DO_NOT_RUN_AGAIN = "Do not run again unless explicitly requested."
+MSG_DO_NOT_SCHEDULE_AGAIN = "Do not schedule again unless explicitly requested."
+MSG_ASK_USER_FOR_VALUES = (
+    "Ask the user what values to use, or call again with use_defaults=true "
+    "to run with default values."
+)
+MSG_WHAT_VALUES_TO_USE = (
+    "What values would you like to use, or would you like to run with defaults?"
+)
 
 
 class RunAgentTool(BaseTool):
@@ -166,26 +179,8 @@ class RunAgentTool(BaseTool):
                     c.id: c.model_dump() for c in missing_creds_check
                 }
 
-                # Build message with input information
-                inputs_list = self._get_inputs_list(graph.input_schema)
-                required_names = [i["name"] for i in inputs_list if i["required"]]
-                optional_names = [i["name"] for i in inputs_list if not i["required"]]
-
-                message_parts = [f"Agent '{graph.name}' accepts the following inputs:"]
-                if required_names:
-                    message_parts.append(f"Required: {', '.join(required_names)}.")
-                if optional_names:
-                    message_parts.append(
-                        f"Optional (have defaults): {', '.join(optional_names)}."
-                    )
-                if not inputs_list:
-                    message_parts = [f"Agent '{graph.name}' has no required inputs."]
-                message_parts.append(
-                    "What values would you like to use, or would you like to run with defaults?"
-                )
-
                 return SetupRequirementsResponse(
-                    message=" ".join(message_parts),
+                    message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
                     session_id=session_id,
                     setup_info=SetupInfo(
                         agent_id=graph.id,
@@ -197,7 +192,7 @@ class RunAgentTool(BaseTool):
                         ),
                         requirements={
                             "credentials": [c.model_dump() for c in credentials],
-                            "inputs": inputs_list,
+                            "inputs": self._get_inputs_list(graph.input_schema),
                             "execution_modes": self._get_execution_modes(graph),
                         },
                     ),
@@ -217,42 +212,10 @@ class RunAgentTool(BaseTool):
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
                 )
-                trigger_info = (
-                    graph.trigger_setup_info.model_dump()
-                    if graph.trigger_setup_info
-                    else None
-                )
-                inputs_list = self._get_inputs_list(graph.input_schema)
-                required_names = [i["name"] for i in inputs_list if i["required"]]
-                optional_names = [i["name"] for i in inputs_list if not i["required"]]
-
-                message_parts = [f"Agent '{graph.name}' accepts the following inputs:"]
-                if required_names:
-                    message_parts.append(f"Required: {', '.join(required_names)}.")
-                if optional_names:
-                    message_parts.append(
-                        f"Optional (have defaults): {', '.join(optional_names)}."
-                    )
-                message_parts.append(
-                    "Ask the user what values to use, or call again with use_defaults=true to run with default values."
-                )
-
                 return AgentDetailsResponse(
-                    message=" ".join(message_parts),
+                    message=self._build_inputs_message(graph, MSG_ASK_USER_FOR_VALUES),
                     session_id=session_id,
-                    agent=AgentDetails(
-                        id=graph.id,
-                        name=graph.name,
-                        description=graph.description,
-                        inputs=graph.input_schema,
-                        credentials=credentials,
-                        execution_options=ExecutionOptions(
-                            manual=trigger_info is None,
-                            scheduled=trigger_info is None,
-                            webhook=trigger_info is not None,
-                        ),
-                        trigger_info=trigger_info,
-                    ),
+                    agent=self._build_agent_details(graph, credentials),
                     user_authenticated=True,
                     graph_id=graph.id,
                     graph_version=graph.version,
@@ -266,30 +229,14 @@ class RunAgentTool(BaseTool):
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
                 )
-                trigger_info = (
-                    graph.trigger_setup_info.model_dump()
-                    if graph.trigger_setup_info
-                    else None
-                )
                 return AgentDetailsResponse(
                     message=(
-                        f"Agent '{graph.name}' is missing required inputs: {', '.join(missing_inputs)}. "
+                        f"Agent '{graph.name}' is missing required inputs: "
+                        f"{', '.join(missing_inputs)}. "
                         "Please provide these values to run the agent."
                     ),
                     session_id=session_id,
-                    agent=AgentDetails(
-                        id=graph.id,
-                        name=graph.name,
-                        description=graph.description,
-                        inputs=graph.input_schema,
-                        credentials=credentials,
-                        execution_options=ExecutionOptions(
-                            manual=trigger_info is None,
-                            scheduled=trigger_info is None,
-                            webhook=trigger_info is not None,
-                        ),
-                        trigger_info=trigger_info,
-                    ),
+                    agent=self._build_agent_details(graph, credentials),
                     user_authenticated=True,
                     graph_id=graph.id,
                     graph_version=graph.version,
@@ -316,15 +263,17 @@ class RunAgentTool(BaseTool):
                     inputs=inputs,
                 )
 
-        except NotFoundError:
+        except NotFoundError as e:
             return ErrorResponse(
                 message=f"Agent '{agent_slug}' not found",
+                error=str(e) if str(e) else "not_found",
                 session_id=session_id,
             )
         except DatabaseError as e:
             logger.error(f"Database error: {e}", exc_info=True)
             return ErrorResponse(
                 message=f"Failed to process request: {e!s}",
+                error=str(e),
                 session_id=session_id,
             )
         except Exception as e:
@@ -351,20 +300,66 @@ class RunAgentTool(BaseTool):
                 )
         return inputs_list
 
-    def _get_execution_modes(self, graph) -> list[str]:
+    def _get_execution_modes(self, graph: GraphModel) -> list[str]:
         """Get available execution modes for the graph."""
         trigger_info = graph.trigger_setup_info
         if trigger_info is None:
             return ["manual", "scheduled"]
         return ["webhook"]
 
+    def _build_inputs_message(
+        self,
+        graph: GraphModel,
+        suffix: str,
+    ) -> str:
+        """Build a message describing available inputs for an agent."""
+        inputs_list = self._get_inputs_list(graph.input_schema)
+        required_names = [i["name"] for i in inputs_list if i["required"]]
+        optional_names = [i["name"] for i in inputs_list if not i["required"]]
+
+        message_parts = [f"Agent '{graph.name}' accepts the following inputs:"]
+        if required_names:
+            message_parts.append(f"Required: {', '.join(required_names)}.")
+        if optional_names:
+            message_parts.append(
+                f"Optional (have defaults): {', '.join(optional_names)}."
+            )
+        if not inputs_list:
+            message_parts = [f"Agent '{graph.name}' has no required inputs."]
+        message_parts.append(suffix)
+
+        return " ".join(message_parts)
+
+    def _build_agent_details(
+        self,
+        graph: GraphModel,
+        credentials: list[CredentialsMetaInput],
+    ) -> AgentDetails:
+        """Build AgentDetails from a graph."""
+        trigger_info = (
+            graph.trigger_setup_info.model_dump() if graph.trigger_setup_info else None
+        )
+        return AgentDetails(
+            id=graph.id,
+            name=graph.name,
+            description=graph.description,
+            inputs=graph.input_schema,
+            credentials=credentials,
+            execution_options=ExecutionOptions(
+                manual=trigger_info is None,
+                scheduled=trigger_info is None,
+                webhook=trigger_info is not None,
+            ),
+            trigger_info=trigger_info,
+        )
+
     async def _run_agent(
         self,
         user_id: str,
         session: ChatSession,
-        graph,
-        graph_credentials: dict,
-        inputs: dict,
+        graph: GraphModel,
+        graph_credentials: dict[str, CredentialsMetaInput],
+        inputs: dict[str, Any],
     ) -> ToolResponseBase:
         """Execute an agent immediately."""
         session_id = session.session_id
@@ -397,7 +392,7 @@ class RunAgentTool(BaseTool):
             message=(
                 f"Agent '{library_agent.name}' execution started successfully. "
                 f"View at {library_agent_link}. "
-                "Do not run again unless explicitly requested."
+                f"{MSG_DO_NOT_RUN_AGAIN}"
             ),
             session_id=session_id,
             execution_id=execution.id,
@@ -411,9 +406,9 @@ class RunAgentTool(BaseTool):
         self,
         user_id: str,
         session: ChatSession,
-        graph,
-        graph_credentials: dict,
-        inputs: dict,
+        graph: GraphModel,
+        graph_credentials: dict[str, CredentialsMetaInput],
+        inputs: dict[str, Any],
         schedule_name: str,
         cron: str,
         timezone: str,
@@ -478,7 +473,7 @@ class RunAgentTool(BaseTool):
             message=(
                 f"Agent '{library_agent.name}' scheduled successfully as '{schedule_name}'. "
                 f"View at {library_agent_link}. "
-                "Do not schedule again unless explicitly requested."
+                f"{MSG_DO_NOT_SCHEDULE_AGAIN}"
             ),
             session_id=session_id,
             execution_id=result.id,
