@@ -1,6 +1,6 @@
-import * as React from "react";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
+import * as React from "react";
 
 interface BreadcrumbItem {
   name: string;
@@ -18,12 +18,12 @@ export function Breadcrumbs({ items }: Props) {
         <React.Fragment key={index}>
           <Link
             href={item.link}
-            className="text-zinc-700 transition-colors hover:text-zinc-900 hover:no-underline"
+            className="text-zinc-600 transition-colors hover:text-zinc-900 hover:no-underline"
           >
             {item.name}
           </Link>
           {index < items.length - 1 && (
-            <Text variant="body-medium" className="text-zinc-700">
+            <Text variant="body-medium" className="text-zinc-600">
               /
             </Text>
           )}

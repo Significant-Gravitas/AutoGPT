@@ -55,6 +55,7 @@ async def test_get_library_agents_success(
                 can_access_graph=True,
                 is_latest_version=True,
                 is_favorite=False,
+                created_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
             library_model.LibraryAgent(
@@ -76,6 +77,7 @@ async def test_get_library_agents_success(
                 can_access_graph=False,
                 is_latest_version=True,
                 is_favorite=False,
+                created_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
         ],
@@ -149,6 +151,7 @@ async def test_get_favorite_library_agents_success(
                 can_access_graph=True,
                 is_latest_version=True,
                 is_favorite=True,
+                created_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
         ],
@@ -214,6 +217,7 @@ def test_add_agent_to_library_success(
         can_access_graph=True,
         is_latest_version=True,
         is_favorite=False,
+        created_at=FIXED_NOW,
         updated_at=FIXED_NOW,
     )
 
