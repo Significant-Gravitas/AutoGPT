@@ -1,8 +1,8 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 
 export const AgentPageLoading = () => {
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
+    <div className="mx-auto w-full max-w-[1360px]">
       <main className="mt-5 px-4">
         <div className="flex items-center space-x-2">
           <Skeleton className="h-4 w-24" />

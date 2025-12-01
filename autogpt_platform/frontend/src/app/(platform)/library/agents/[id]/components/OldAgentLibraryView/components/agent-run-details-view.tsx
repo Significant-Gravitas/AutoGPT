@@ -1,6 +1,6 @@
 "use client";
 import moment from "moment";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useEffect } from "react";
 
 import {
   Graph,
@@ -11,27 +11,36 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
 import {
   IconRefresh,
   IconSquare,
   IconCircleAlert,
-} from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import LoadingBox from "@/components/ui/loading";
+} from "@/components/__legacy__/ui/icons";
+import { Input } from "@/components/__legacy__/ui/input";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
 import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 import { AgentRunOutputView } from "./agent-run-output-view";
+import { analytics } from "@/services/analytics";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 
 export function AgentRunDetailsView({
   agent,
@@ -58,7 +67,22 @@ export function AgentRunDetailsView({
     [run],
   );
 
+  const { completeStep } = useOnboarding();
+
+  const {
+    pendingReviews,
+    isLoading: reviewsLoading,
+    refetch: refetchReviews,
+  } = usePendingReviewsForExecution(run.id);
+
   const toastOnFail = useToastOnFail();
+
+  // Refetch pending reviews when execution status changes to REVIEW
+  useEffect(() => {
+    if (runStatus === "review" && run.id) {
+      refetchReviews();
+    }
+  }, [runStatus, run.id, refetchReviews]);
 
   const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
     if (!run) return [];
@@ -126,7 +150,13 @@ export function AgentRunDetailsView({
           run.inputs!,
           run.credential_inputs!,
         )
-        .then(({ id }) => onRun(id))
+        .then(({ id }) => {
+          analytics.sendDatafastEvent("run_agent", {
+            name: graph.name,
+            id: graph.id,
+          });
+          onRun(id);
+        })
         .catch(toastOnFail("execute agent preset"));
     }
 
@@ -137,7 +167,14 @@ export function AgentRunDetailsView({
         run.inputs!,
         run.credential_inputs!,
       )
-      .then(({ id }) => onRun(id))
+      .then(({ id }) => {
+        analytics.sendDatafastEvent("run_agent", {
+          name: graph.name,
+          id: graph.id,
+        });
+        completeStep("RE_RUN_AGENT");
+        onRun(id);
+      })
       .catch(toastOnFail("execute agent"));
   }, [api, graph, run, onRun, toastOnFail]);
 
@@ -270,7 +307,7 @@ export function AgentRunDetailsView({
           <Card className="agpt-box">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-poppins text-lg">
-                Smart Agent Execution Summary
+                Task Summary
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -278,26 +315,103 @@ export function AgentRunDetailsView({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        This is an AI-generated summary and may not be
-                        completely accurate. It provides a conversational
-                        overview of what the agent accomplished during
-                        execution.
+                        This AI-generated summary describes how the agent
+                        handled your task. It’s an experimental feature and may
+                        occasionally be inaccurate.
                       </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <p className="text-sm leading-relaxed text-neutral-700">
                 {run.stats.activity_status}
               </p>
+
+              {/* Correctness Score */}
+              {typeof run.stats.correctness_score === "number" && (
+                <div className="flex items-center gap-3 rounded-lg bg-neutral-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-neutral-600">
+                      Success Estimate:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="relative h-2 w-16 overflow-hidden rounded-full bg-neutral-200">
+                        <div
+                          className={`h-full transition-all ${
+                            run.stats.correctness_score >= 0.8
+                              ? "bg-green-500"
+                              : run.stats.correctness_score >= 0.6
+                                ? "bg-yellow-500"
+                                : run.stats.correctness_score >= 0.4
+                                  ? "bg-orange-500"
+                                  : "bg-red-500"
+                          }`}
+                          style={{
+                            width: `${Math.round(run.stats.correctness_score * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium">
+                        {Math.round(run.stats.correctness_score * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <IconCircleAlert className="size-4 cursor-help text-neutral-400 hover:text-neutral-600" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="max-w-xs">
+                          AI-generated estimate of how well this execution
+                          achieved its intended purpose. This score indicates
+                          {run.stats.correctness_score >= 0.8
+                            ? " the agent was highly successful."
+                            : run.stats.correctness_score >= 0.6
+                              ? " the agent was mostly successful with minor issues."
+                              : run.stats.correctness_score >= 0.4
+                                ? " the agent was partially successful with some gaps."
+                                : " the agent had limited success with significant issues."}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
 
         {agentRunOutputs !== null && (
           <AgentRunOutputView agentRunOutputs={agentRunOutputs} />
+        )}
+
+        {/* Pending Reviews Section */}
+        {runStatus === "review" && (
+          <Card className="agpt-box">
+            <CardHeader>
+              <CardTitle className="font-poppins text-lg">
+                Pending Reviews ({pendingReviews.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {reviewsLoading ? (
+                <LoadingBox spinnerSize={12} className="h-24" />
+              ) : pendingReviews.length > 0 ? (
+                <PendingReviewsList
+                  reviews={pendingReviews}
+                  onReviewComplete={refetchReviews}
+                  emptyMessage="No pending reviews for this execution"
+                />
+              ) : (
+                <div className="py-4 text-neutral-600">
+                  No pending reviews for this execution
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         <Card className="agpt-box">

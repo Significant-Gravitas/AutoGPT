@@ -1,15 +1,20 @@
+"use client";
+
 import * as React from "react";
-import { Sidebar } from "@/components/agptui/Sidebar";
+import { Sidebar } from "@/components/__legacy__/Sidebar";
 import {
   IconDashboardLayout,
   IconIntegrations,
   IconProfile,
   IconSliders,
   IconCoin,
-} from "@/components/ui/icons";
+} from "@/components/__legacy__/ui/icons";
 import { KeyIcon } from "lucide-react";
+import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+
   const sidebarLinkGroups = [
     {
       links: [
@@ -18,7 +23,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           href: "/profile/dashboard",
           icon: <IconDashboardLayout className="h-6 w-6" />,
         },
-        ...(process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true"
+        ...(isPaymentEnabled
           ? [
               {
                 text: "Billing",
@@ -52,7 +57,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="flex min-h-screen w-screen max-w-[1360px] flex-col lg:flex-row">
+    <div className="flex min-h-screen w-full max-w-[1360px] flex-col lg:flex-row">
       <Sidebar linkGroups={sidebarLinkGroups} />
       <div className="flex-1 pl-4">{children}</div>
     </div>

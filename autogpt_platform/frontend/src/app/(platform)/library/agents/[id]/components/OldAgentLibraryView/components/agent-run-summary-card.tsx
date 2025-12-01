@@ -4,14 +4,14 @@ import moment from "moment";
 import { cn } from "@/lib/utils";
 
 import { Link2Icon, Link2OffIcon, MoreVertical } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/__legacy__/ui/card";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/__legacy__/ui/dropdown-menu";
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 import { AgentRunStatus, AgentRunStatusChip } from "./agent-run-status-chip";

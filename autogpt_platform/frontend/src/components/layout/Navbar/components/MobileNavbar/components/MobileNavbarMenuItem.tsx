@@ -1,4 +1,4 @@
-import { IconType } from "@/components/ui/icons";
+import { IconType } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { getAccountMenuOptionIcon } from "../../../helpers";

@@ -5,9 +5,14 @@ import { AgentSelectStep } from "./components/AgentSelectStep/AgentSelectStep";
 import { AgentInfoStep } from "./components/AgentInfoStep/AgentInfoStep";
 import { AgentReviewStep } from "./components/AgentReviewStep";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Props, usePublishAgentModal } from "./usePublishAgentModal";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import {
+  PublishAuthPrompt,
+  PublishAuthPromptSkeleton,
+} from "./components/PublishAuthPrompt";
 
 export function PublishAgentModal({
   trigger,
@@ -31,7 +36,17 @@ export function PublishAgentModal({
     handleBack,
   } = usePublishAgentModal({ targetState, onStateChange });
 
+  const { user, isUserLoading } = useSupabase();
+
   function renderContent() {
+    if (isUserLoading) {
+      return <PublishAuthPromptSkeleton />;
+    }
+
+    if (!user) {
+      return <PublishAuthPrompt />;
+    }
+
     switch (currentState.step) {
       case "select":
         return (

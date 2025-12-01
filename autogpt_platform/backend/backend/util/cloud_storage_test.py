@@ -72,16 +72,17 @@ class TestCloudStorageHandler:
         assert call_args[0][2] == content  # file content
         assert "metadata" in call_args[1]  # metadata argument
 
-    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
-    async def test_retrieve_file_gcs(self, mock_get_async_client, handler):
+    async def test_retrieve_file_gcs(self, mock_storage_class, handler):
         """Test retrieving file from GCS."""
-        # Mock async GCS client
+        # Mock async GCS client instance
         mock_async_client = AsyncMock()
-        mock_get_async_client.return_value = mock_async_client
+        mock_storage_class.return_value = mock_async_client
 
-        # Mock the download method
+        # Mock the download and close methods
         mock_async_client.download = AsyncMock(return_value=b"test content")
+        mock_async_client.close = AsyncMock()
 
         result = await handler.retrieve_file(
             "gcs://test-bucket/uploads/system/uuid123/file.txt"
@@ -92,16 +93,17 @@ class TestCloudStorageHandler:
             "test-bucket", "uploads/system/uuid123/file.txt"
         )
 
-    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
-    async def test_retrieve_file_not_found(self, mock_get_async_client, handler):
+    async def test_retrieve_file_not_found(self, mock_storage_class, handler):
         """Test retrieving non-existent file from GCS."""
-        # Mock async GCS client
+        # Mock async GCS client instance
         mock_async_client = AsyncMock()
-        mock_get_async_client.return_value = mock_async_client
+        mock_storage_class.return_value = mock_async_client
 
         # Mock the download method to raise a 404 exception
         mock_async_client.download = AsyncMock(side_effect=Exception("404 Not Found"))
+        mock_async_client.close = AsyncMock()
 
         with pytest.raises(FileNotFoundError):
             await handler.retrieve_file(
@@ -287,14 +289,15 @@ class TestCloudStorageHandler:
         ):
             handler._validate_file_access("invalid/path/file.txt", "user123")
 
-    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
-    async def test_retrieve_file_with_authorization(self, mock_get_client, handler):
+    async def test_retrieve_file_with_authorization(self, mock_storage_class, handler):
         """Test file retrieval with authorization."""
-        # Mock async GCS client
+        # Mock async GCS client instance
         mock_client = AsyncMock()
-        mock_get_client.return_value = mock_client
+        mock_storage_class.return_value = mock_client
         mock_client.download = AsyncMock(return_value=b"test content")
+        mock_client.close = AsyncMock()
 
         # Test successful retrieval of user's own file
         result = await handler.retrieve_file(
@@ -412,18 +415,19 @@ class TestCloudStorageHandler:
                 "uploads/executions/exec123/uuid456/file.txt", graph_exec_id="exec456"
             )
 
-    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
     async def test_retrieve_file_with_exec_authorization(
-        self, mock_get_async_client, handler
+        self, mock_storage_class, handler
     ):
         """Test file retrieval with execution authorization."""
-        # Mock async GCS client
+        # Mock async GCS client instance
         mock_async_client = AsyncMock()
-        mock_get_async_client.return_value = mock_async_client
+        mock_storage_class.return_value = mock_async_client
 
-        # Mock the download method
+        # Mock the download and close methods
         mock_async_client.download = AsyncMock(return_value=b"test content")
+        mock_async_client.close = AsyncMock()
 
         # Test successful retrieval of execution's own file
         result = await handler.retrieve_file(

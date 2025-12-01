@@ -6,16 +6,18 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel
 
 from backend.blocks.basic import Block
-from backend.data.model import APIKeyCredentials, Credentials
+from backend.data.model import Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
 
 if TYPE_CHECKING:
     from backend.sdk.provider import Provider
+
+logger = logging.getLogger(__name__)
 
 
 class SDKOAuthCredentials(BaseModel):
@@ -102,21 +104,8 @@ class AutoRegistry:
         """Register an environment variable as an API key for a provider."""
         with cls._lock:
             cls._api_key_mappings[provider] = env_var_name
-
-            # Dynamically check if the env var exists and create credential
-            import os
-
-            api_key = os.getenv(env_var_name)
-            if api_key:
-                credential = APIKeyCredentials(
-                    id=f"{provider}-default",
-                    provider=provider,
-                    api_key=SecretStr(api_key),
-                    title=f"Default {provider} credentials",
-                )
-                # Check if credential already exists to avoid duplicates
-                if not any(c.id == credential.id for c in cls._default_credentials):
-                    cls._default_credentials.append(credential)
+            # Note: The credential itself is created by ProviderBuilder.with_api_key()
+            # We only store the mapping here to avoid duplication
 
     @classmethod
     def get_all_credentials(cls) -> List[Credentials]:
@@ -210,3 +199,43 @@ class AutoRegistry:
                 webhooks.load_webhook_managers = patched_load
         except Exception as e:
             logging.warning(f"Failed to patch webhook managers: {e}")
+
+        # Patch credentials store to include SDK-registered credentials
+        try:
+            import sys
+            from typing import Any
+
+            # Get the module from sys.modules to respect mocking
+            if "backend.integrations.credentials_store" in sys.modules:
+                creds_store: Any = sys.modules["backend.integrations.credentials_store"]
+            else:
+                import backend.integrations.credentials_store
+
+                creds_store: Any = backend.integrations.credentials_store
+
+            if hasattr(creds_store, "IntegrationCredentialsStore"):
+                store_class = creds_store.IntegrationCredentialsStore
+                if hasattr(store_class, "get_all_creds"):
+                    original_get_all_creds = store_class.get_all_creds
+
+                    async def patched_get_all_creds(self, user_id: str):
+                        # Get original credentials
+                        original_creds = await original_get_all_creds(self, user_id)
+
+                        # Add SDK-registered credentials
+                        sdk_creds = cls.get_all_credentials()
+
+                        # Combine credentials, avoiding duplicates by ID
+                        existing_ids = {c.id for c in original_creds}
+                        for cred in sdk_creds:
+                            if cred.id not in existing_ids:
+                                original_creds.append(cred)
+
+                        return original_creds
+
+                    store_class.get_all_creds = patched_get_all_creds
+                    logger.info(
+                        "Successfully patched IntegrationCredentialsStore.get_all_creds"
+                    )
+        except Exception as e:
+            logging.warning(f"Failed to patch credentials store: {e}")

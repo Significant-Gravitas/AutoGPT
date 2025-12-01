@@ -3,13 +3,19 @@ from backend.blocks.hubspot._auth import (
     HubSpotCredentialsField,
     HubSpotCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.request import Requests
 
 
 class HubSpotCompanyBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: HubSpotCredentialsInput = HubSpotCredentialsField()
         operation: str = SchemaField(
             description="Operation to perform (create, update, get)", default="get"
@@ -22,7 +28,7 @@ class HubSpotCompanyBlock(Block):
             description="Company domain for get/update operations", default=""
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         company: dict = SchemaField(description="Company information")
         status: str = SchemaField(description="Operation status")
 

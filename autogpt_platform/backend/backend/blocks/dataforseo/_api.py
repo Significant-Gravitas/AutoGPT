@@ -113,6 +113,7 @@ class DataForSeoClient:
         include_serp_info: bool = False,
         include_clickstream_data: bool = False,
         limit: int = 100,
+        depth: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         Get related keywords from DataForSEO Labs.
@@ -125,6 +126,7 @@ class DataForSeoClient:
             include_serp_info: Include SERP data
             include_clickstream_data: Include clickstream metrics
             limit: Maximum number of results (up to 3000)
+            depth: Keyword search depth (0-4), controls number of returned keywords
 
         Returns:
             API response with related keywords
@@ -148,6 +150,8 @@ class DataForSeoClient:
             task_data["include_clickstream_data"] = include_clickstream_data
         if limit is not None:
             task_data["limit"] = limit
+        if depth is not None:
+            task_data["depth"] = depth
 
         payload = [task_data]
 

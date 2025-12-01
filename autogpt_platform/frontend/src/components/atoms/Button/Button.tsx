@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
-import Link, { type LinkProps } from "next/link";
+import NextLink, { type LinkProps } from "next/link";
 import React from "react";
 import { ButtonProps, extendedButtonVariants } from "./helpers";
 
@@ -31,6 +31,28 @@ export function Button(props: ButtonProps) {
     </>
   );
 
+  if (variant === "link") {
+    const buttonRest = { ...(restProps as Record<string, unknown>) };
+
+    if ("href" in buttonRest) {
+      delete buttonRest.href;
+    }
+
+    return (
+      <button
+        className={cn(
+          extendedButtonVariants({ variant: "link", className }),
+          loading && "pointer-events-none opacity-60",
+          isDisabled && "pointer-events-none opacity-50",
+        )}
+        disabled={isDisabled || loading}
+        {...(buttonRest as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+      >
+        {buttonContent}
+      </button>
+    );
+  }
+
   if (loading) {
     const loadingClassName =
       variant === "ghost"
@@ -44,14 +66,14 @@ export function Button(props: ButtonProps) {
           );
 
     return as === "NextLink" ? (
-      <Link
+      <NextLink
         {...(restProps as LinkProps)}
         className={loadingClassName}
         aria-disabled="true"
       >
         <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
         {children}
-      </Link>
+      </NextLink>
     ) : (
       <button className={loadingClassName} disabled>
         <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
@@ -62,7 +84,7 @@ export function Button(props: ButtonProps) {
 
   if (as === "NextLink") {
     return (
-      <Link
+      <NextLink
         {...(restProps as LinkProps)}
         className={cn(
           extendedButtonVariants({ variant, size, className }),
@@ -72,7 +94,7 @@ export function Button(props: ButtonProps) {
         aria-disabled={isDisabled}
       >
         {buttonContent}
-      </Link>
+      </NextLink>
     );
   }
 

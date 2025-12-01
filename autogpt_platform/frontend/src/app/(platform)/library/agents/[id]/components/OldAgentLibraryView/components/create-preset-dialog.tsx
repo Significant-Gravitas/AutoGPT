@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,9 +9,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/__legacy__/ui/dialog";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
 
 interface CreatePresetDialogProps {
   open: boolean;

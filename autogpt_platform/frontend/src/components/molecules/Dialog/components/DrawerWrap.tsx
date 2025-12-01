@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import { X } from "@phosphor-icons/react";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";

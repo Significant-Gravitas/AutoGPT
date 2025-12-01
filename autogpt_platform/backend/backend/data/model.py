@@ -270,6 +270,7 @@ def SchemaField(
     min_length: Optional[int] = None,
     max_length: Optional[int] = None,
     discriminator: Optional[str] = None,
+    format: Optional[str] = None,
     json_schema_extra: Optional[dict[str, Any]] = None,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
@@ -285,6 +286,7 @@ def SchemaField(
             "advanced": advanced,
             "hidden": hidden,
             "depends_on": depends_on,
+            "format": format,
             **(json_schema_extra or {}),
         }.items()
         if v is not None
@@ -345,6 +347,9 @@ class APIKeyCredentials(_BaseCredentials):
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
     def auth_header(self) -> str:
+        # Linear API keys should not have Bearer prefix
+        if self.provider == "linear":
+            return self.api_key.get_secret_value()
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
@@ -827,6 +832,10 @@ class GraphExecutionStats(BaseModel):
     cost: int = Field(default=0, description="Total execution cost (cents)")
     activity_status: Optional[str] = Field(
         default=None, description="AI-generated summary of what the agent did"
+    )
+    correctness_score: Optional[float] = Field(
+        default=None,
+        description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
     )
 
 

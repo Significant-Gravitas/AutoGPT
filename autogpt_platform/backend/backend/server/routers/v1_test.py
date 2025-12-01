@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -22,9 +23,12 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, setup_test_user):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    # setup_test_user fixture already executed and user is created in database
+    # It returns the user_id which we don't need to await
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
@@ -109,8 +113,8 @@ def test_get_graph_blocks(
 
     # Mock block costs
     mocker.patch(
-        "backend.server.routers.v1.get_block_costs",
-        return_value={"test-block": [{"cost": 10, "type": "credit"}]},
+        "backend.data.credit.get_block_cost",
+        return_value=[{"cost": 10, "type": "credit"}],
     )
 
     response = client.get("/blocks")
@@ -144,6 +148,15 @@ def test_execute_graph_block(
     mocker.patch(
         "backend.server.routers.v1.get_block",
         return_value=mock_block,
+    )
+
+    # Mock user for user_context
+    mock_user = Mock()
+    mock_user.timezone = "UTC"
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_by_id",
+        return_value=mock_user,
     )
 
     request_data = {
@@ -184,8 +197,12 @@ def test_get_user_credits(
     snapshot: Snapshot,
 ) -> None:
     """Test get user credits endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
 
     response = client.get("/credits")
 
@@ -205,9 +222,13 @@ def test_request_top_up(
     snapshot: Snapshot,
 ) -> None:
     """Test request top up endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.top_up_intent = AsyncMock(
         return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {"credit_amount": 500}
@@ -251,6 +272,74 @@ def test_get_auto_top_up(
     )
 
 
+def test_configure_auto_top_up(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
+    """Test configure auto top-up endpoint - this test would have caught the enum casting bug"""
+    # Mock the set_auto_top_up function to avoid database operations
+    mocker.patch(
+        "backend.server.routers.v1.set_auto_top_up",
+        return_value=None,
+    )
+
+    # Mock credit model to avoid Stripe API calls
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.get_credits.return_value = 50  # Current balance below threshold
+    mock_credit_model.top_up_credits.return_value = None
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    # Test data
+    request_data = {
+        "threshold": 100,
+        "amount": 500,
+    }
+
+    response = client.post("/credits/auto-top-up", json=request_data)
+
+    # This should succeed with our fix, but would have failed before with the enum casting error
+    assert response.status_code == 200
+    assert response.json() == "Auto top-up settings updated"
+
+
+def test_configure_auto_top_up_validation_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test configure auto top-up endpoint validation"""
+    # Mock set_auto_top_up to avoid database operations for successful case
+    mocker.patch("backend.server.routers.v1.set_auto_top_up")
+
+    # Mock credit model to avoid Stripe API calls for the successful case
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.get_credits.return_value = 50
+    mock_credit_model.top_up_credits.return_value = None
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    # Test negative threshold
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": -1, "amount": 500}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount too small (but not 0)
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 100, "amount": 100}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount = 0 (should be allowed)
+    response = client.post("/credits/auto-top-up", json={"threshold": 100, "amount": 0})
+    assert response.status_code == 200  # Should succeed
+
+
 # Graphs endpoints tests
 def test_get_graphs(
     mocker: pytest_mock.MockFixture,
@@ -265,11 +354,12 @@ def test_get_graphs(
         name="Test Graph",
         description="A test graph",
         user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(
-        "backend.server.routers.v1.graph_db.list_graphs",
-        return_value=[mock_graph],
+        "backend.data.graph.list_graphs_paginated",
+        return_value=Mock(graphs=[mock_graph]),
     )
 
     response = client.get("/graphs")
@@ -299,6 +389,7 @@ def test_get_graph(
         name="Test Graph",
         description="A test graph",
         user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(
@@ -348,6 +439,7 @@ def test_delete_graph(
         name="Test Graph",
         description="A test graph",
         user_id=test_user_id,
+        created_at=datetime(2025, 9, 4, 13, 37),
     )
 
     mocker.patch(

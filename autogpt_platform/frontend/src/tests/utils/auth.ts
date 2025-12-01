@@ -1,4 +1,3 @@
-import { faker } from "@faker-js/faker";
 import fs from "fs";
 import path from "path";
 import { signupTestUser } from "./signup";
@@ -22,6 +21,7 @@ export async function createTestUser(
   password?: string,
   ignoreOnboarding: boolean = true,
 ): Promise<TestUser> {
+  const { faker } = await import("@faker-js/faker");
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
@@ -29,6 +29,19 @@ export async function createTestUser(
     const browser = await getBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
+
+    // Auto-accept cookies in test environment to prevent banner from appearing
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        "autogpt_cookie_consent",
+        JSON.stringify({
+          hasConsented: true,
+          timestamp: Date.now(),
+          analytics: true,
+          monitoring: true,
+        }),
+      );
+    });
 
     try {
       const testUser = await signupTestUser(

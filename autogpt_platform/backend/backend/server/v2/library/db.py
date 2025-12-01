@@ -9,6 +9,7 @@ import prisma.models
 import prisma.types
 
 import backend.data.graph as graph_db
+import backend.data.integrations as integrations_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
@@ -20,7 +21,8 @@ from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
-from backend.util.exceptions import NotFoundError
+from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.settings import Config
@@ -61,11 +63,11 @@ async def list_library_agents(
 
     if page < 1 or page_size < 1:
         logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
-        raise store_exceptions.DatabaseError("Invalid pagination input")
+        raise DatabaseError("Invalid pagination input")
 
     if search_term and len(search_term.strip()) > 100:
         logger.warning(f"Search term too long: {repr(search_term)}")
-        raise store_exceptions.DatabaseError("Search term is too long")
+        raise DatabaseError("Search term is too long")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
         "userId": user_id,
@@ -101,7 +103,9 @@ async def list_library_agents(
     try:
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
-            include=library_agent_include(user_id),
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
             order=order_by,
             skip=(page - 1) * page_size,
             take=page_size,
@@ -141,7 +145,93 @@ async def list_library_agents(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agents: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch library agents") from e
+        raise DatabaseError("Failed to fetch library agents") from e
+
+
+async def list_favorite_library_agents(
+    user_id: str,
+    page: int = 1,
+    page_size: int = 50,
+) -> library_model.LibraryAgentResponse:
+    """
+    Retrieves a paginated list of favorite LibraryAgent records for a given user.
+
+    Args:
+        user_id: The ID of the user whose favorite LibraryAgents we want to retrieve.
+        page: Current page (1-indexed).
+        page_size: Number of items per page.
+
+    Returns:
+        A LibraryAgentResponse containing the list of favorite agents and pagination details.
+
+    Raises:
+        DatabaseError: If there is an issue fetching from Prisma.
+    """
+    logger.debug(
+        f"Fetching favorite library agents for user_id={user_id}, "
+        f"page={page}, page_size={page_size}"
+    )
+
+    if page < 1 or page_size < 1:
+        logger.warning(f"Invalid pagination: page={page}, page_size={page_size}")
+        raise DatabaseError("Invalid pagination input")
+
+    where_clause: prisma.types.LibraryAgentWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+        "isArchived": False,
+        "isFavorite": True,  # Only fetch favorites
+    }
+
+    # Sort favorites by updated date descending
+    order_by: prisma.types.LibraryAgentOrderByInput = {"updatedAt": "desc"}
+
+    try:
+        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where=where_clause,
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
+            order=order_by,
+            skip=(page - 1) * page_size,
+            take=page_size,
+        )
+        agent_count = await prisma.models.LibraryAgent.prisma().count(
+            where=where_clause
+        )
+
+        logger.debug(
+            f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
+        )
+
+        # Only pass valid agents to the response
+        valid_library_agents: list[library_model.LibraryAgent] = []
+
+        for agent in library_agents:
+            try:
+                library_agent = library_model.LibraryAgent.from_db(agent)
+                valid_library_agents.append(library_agent)
+            except Exception as e:
+                # Skip this agent if there was an error
+                logger.error(
+                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
+                )
+                continue
+
+        # Return the response with only valid agents
+        return library_model.LibraryAgentResponse(
+            agents=valid_library_agents,
+            pagination=Pagination(
+                total_items=agent_count,
+                total_pages=(agent_count + page_size - 1) // page_size,
+                current_page=page,
+                page_size=page_size,
+            ),
+        )
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching favorite library agents: {e}")
+        raise DatabaseError("Failed to fetch favorite library agents") from e
 
 
 async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
@@ -172,6 +262,30 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         if not library_agent:
             raise NotFoundError(f"Library agent #{id} not found")
 
+        # Fetch marketplace listing if the agent has been published
+        store_listing = None
+        profile = None
+        if library_agent.AgentGraph:
+            store_listing = await prisma.models.StoreListing.prisma().find_first(
+                where={
+                    "agentGraphId": library_agent.AgentGraph.id,
+                    "isDeleted": False,
+                    "hasApprovedVersion": True,
+                },
+                include={
+                    "ActiveVersion": True,
+                },
+            )
+            if (
+                store_listing
+                and store_listing.ActiveVersion
+                and store_listing.owningUserId
+            ):
+                # Fetch Profile separately since User doesn't have a direct Profile relation
+                profile = await prisma.models.Profile.prisma().find_first(
+                    where={"userId": store_listing.owningUserId}
+                )
+
         return library_model.LibraryAgent.from_db(
             library_agent,
             sub_graphs=(
@@ -179,11 +293,13 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                 if library_agent.AgentGraph
                 else None
             ),
+            store_listing=store_listing,
+            profile=profile,
         )
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
+        raise DatabaseError("Failed to fetch library agent") from e
 
 
 async def get_library_agent_by_store_version_id(
@@ -248,7 +364,7 @@ async def get_library_agent_by_graph_id(
         return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent by graph ID: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
+        raise DatabaseError("Failed to fetch library agent") from e
 
 
 async def add_generated_agent_image(
@@ -306,8 +422,7 @@ async def create_library_agent(
         DatabaseError: If there's an error during creation or if image generation fails.
     """
     logger.info(
-        f"Creating library agent for graph #{graph.id} v{graph.version}; "
-        f"user #{user_id}"
+        f"Creating library agent for graph #{graph.id} v{graph.version}; user:<redacted>"
     )
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
@@ -331,7 +446,9 @@ async def create_library_agent(
                             }
                         },
                     ),
-                    include=library_agent_include(user_id),
+                    include=library_agent_include(
+                        user_id, include_nodes=False, include_executions=False
+                    ),
                 )
                 for graph_entry in graph_entries
             )
@@ -387,9 +504,7 @@ async def update_agent_version_in_library(
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating agent version in library: {e}")
-        raise store_exceptions.DatabaseError(
-            "Failed to update agent version in library"
-        ) from e
+        raise DatabaseError("Failed to update agent version in library") from e
 
 
 async def update_library_agent(
@@ -452,22 +567,92 @@ async def update_library_agent(
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
-        raise store_exceptions.DatabaseError("Failed to update library agent") from e
+        raise DatabaseError("Failed to update library agent") from e
 
 
 async def delete_library_agent(
     library_agent_id: str, user_id: str, soft_delete: bool = True
 ) -> None:
+    # First get the agent to find the graph_id for cleanup
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": library_agent_id}, include={"AgentGraph": True}
+    )
+
+    if not library_agent or library_agent.userId != user_id:
+        raise NotFoundError(f"Library agent #{library_agent_id} not found")
+
+    graph_id = library_agent.agentGraphId
+
+    # Clean up associated schedules and webhooks BEFORE deleting the agent
+    # This prevents executions from starting after agent deletion
+    await _cleanup_schedules_for_graph(graph_id=graph_id, user_id=user_id)
+    await _cleanup_webhooks_for_graph(graph_id=graph_id, user_id=user_id)
+
+    # Delete the library agent after cleanup
     if soft_delete:
         deleted_count = await prisma.models.LibraryAgent.prisma().update_many(
-            where={"id": library_agent_id, "userId": user_id}, data={"isDeleted": True}
+            where={"id": library_agent_id, "userId": user_id},
+            data={"isDeleted": True},
         )
     else:
         deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
             where={"id": library_agent_id, "userId": user_id}
         )
+
     if deleted_count < 1:
         raise NotFoundError(f"Library agent #{library_agent_id} not found")
+
+
+async def _cleanup_schedules_for_graph(graph_id: str, user_id: str) -> None:
+    """
+    Clean up all schedules for a specific graph and user.
+
+    Args:
+        graph_id: The ID of the graph
+        user_id: The ID of the user
+    """
+    scheduler_client = get_scheduler_client()
+    schedules = await scheduler_client.get_execution_schedules(
+        graph_id=graph_id, user_id=user_id
+    )
+
+    for schedule in schedules:
+        try:
+            await scheduler_client.delete_schedule(
+                schedule_id=schedule.id, user_id=user_id
+            )
+            logger.info(f"Deleted schedule {schedule.id} for graph {graph_id}")
+        except Exception:
+            logger.exception(
+                f"Failed to delete schedule {schedule.id} for graph {graph_id}"
+            )
+
+
+async def _cleanup_webhooks_for_graph(graph_id: str, user_id: str) -> None:
+    """
+    Clean up webhook connections for a specific graph and user.
+    Unlinks webhooks from this graph and deletes them if no other triggers remain.
+
+    Args:
+        graph_id: The ID of the graph
+        user_id: The ID of the user
+    """
+    # Find all webhooks that trigger nodes in this graph
+    webhooks = await integrations_db.find_webhooks_by_graph_id(
+        graph_id=graph_id, user_id=user_id
+    )
+
+    for webhook in webhooks:
+        try:
+            # Unlink webhook from this graph's nodes and presets
+            await integrations_db.unlink_webhook_from_graph(
+                webhook_id=webhook.id, graph_id=graph_id, user_id=user_id
+            )
+            logger.info(f"Unlinked webhook {webhook.id} from graph {graph_id}")
+        except Exception:
+            logger.exception(
+                f"Failed to unlink webhook {webhook.id} from graph {graph_id}"
+            )
 
 
 async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
@@ -480,7 +665,7 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error deleting library agent: {e}")
-        raise store_exceptions.DatabaseError("Failed to delete library agent") from e
+        raise DatabaseError("Failed to delete library agent") from e
 
 
 async def add_store_agent_to_library(
@@ -556,7 +741,9 @@ async def add_store_agent_to_library(
                 },
                 "isCreatedByUser": False,
             },
-            include=library_agent_include(user_id),
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
         )
         logger.debug(
             f"Added graph #{graph.id} v{graph.version}"
@@ -569,7 +756,7 @@ async def add_store_agent_to_library(
         raise
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error adding agent to library: {e}")
-        raise store_exceptions.DatabaseError("Failed to add agent to library") from e
+        raise DatabaseError("Failed to add agent to library") from e
 
 
 ##############################################
@@ -603,7 +790,7 @@ async def list_presets(
         logger.warning(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
-        raise store_exceptions.DatabaseError("Invalid pagination parameters")
+        raise DatabaseError("Invalid pagination parameters")
 
     query_filter: prisma.types.AgentPresetWhereInput = {
         "userId": user_id,
@@ -639,7 +826,7 @@ async def list_presets(
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error getting presets: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch presets") from e
+        raise DatabaseError("Failed to fetch presets") from e
 
 
 async def get_preset(
@@ -669,7 +856,7 @@ async def get_preset(
         return library_model.LibraryAgentPreset.from_db(preset)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error getting preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to fetch preset") from e
+        raise DatabaseError("Failed to fetch preset") from e
 
 
 async def create_preset(
@@ -709,10 +896,7 @@ async def create_preset(
                         )
                         for name, data in {
                             **preset.inputs,
-                            **{
-                                key: creds_meta.model_dump(exclude_none=True)
-                                for key, creds_meta in preset.credentials.items()
-                            },
+                            **preset.credentials,
                         }.items()
                     ]
                 },
@@ -722,7 +906,7 @@ async def create_preset(
         return library_model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to create preset") from e
+        raise DatabaseError("Failed to create preset") from e
 
 
 async def create_preset_from_graph_execution(
@@ -860,7 +1044,7 @@ async def update_preset(
         return library_model.LibraryAgentPreset.from_db(updated)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to update preset") from e
+        raise DatabaseError("Failed to update preset") from e
 
 
 async def set_preset_webhook(
@@ -906,7 +1090,7 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error deleting preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to delete preset") from e
+        raise DatabaseError("Failed to delete preset") from e
 
 
 async def fork_library_agent(
@@ -934,7 +1118,7 @@ async def fork_library_agent(
         # TODO: once we have open/closed sourced agents this needs to be enabled ~kcze
         # + update library/agents/[id]/page.tsx agent actions
         # if not original_agent.can_access_graph:
-        #     raise store_exceptions.DatabaseError(
+        #     raise DatabaseError(
         #         f"User {user_id} cannot access library agent graph {library_agent_id}"
         #     )
 
@@ -948,4 +1132,4 @@ async def fork_library_agent(
         return (await create_library_agent(new_graph, user_id))[0]
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error cloning library agent: {e}")
-        raise store_exceptions.DatabaseError("Failed to fork library agent") from e
+        raise DatabaseError("Failed to fork library agent") from e

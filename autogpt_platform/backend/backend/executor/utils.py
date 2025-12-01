@@ -4,7 +4,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Any, Mapping, Optional, cast
+from typing import Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -20,30 +20,40 @@ from backend.data.block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import prisma
+
+# Import dynamic field utilities from centralized location
+from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
     ExecutionStatus,
+    GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
     UserContext,
+    get_graph_execution,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import get_user_by_id
+from backend.util.cache import cached
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
-from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.logging import TruncatedLogger
-from backend.util.mock import MockObject
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    GraphValidationError,
+    NotFoundError,
+)
+from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
 
 
+@cached(maxsize=1000, ttl_seconds=3600)
 async def get_user_context(user_id: str) -> UserContext:
     """
     Get UserContext for a user, always returns a valid context with timezone.
@@ -51,7 +61,11 @@ async def get_user_context(user_id: str) -> UserContext:
     """
     user_context = UserContext(timezone="UTC")  # Default to UTC
     try:
-        user = await get_user_by_id(user_id)
+        if prisma.is_connected():
+            user = await get_user_by_id(user_id)
+        else:
+            user = await get_database_manager_async_client().get_user_by_id(user_id)
+
         if user and user.timezone and user.timezone != "not-set":
             user_context.timezone = user.timezone
             logger.debug(f"Retrieved user context: timezone={user.timezone}")
@@ -91,7 +105,11 @@ class LogMetadata(TruncatedLogger):
             "node_id": node_id,
             "block_name": block_name,
         }
-        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        prefix = (
+            "[ExecutionManager]"
+            if is_structured_logging_enabled()
+            else f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"  # noqa
+        )
         super().__init__(
             logger,
             max_length=max_length,
@@ -186,195 +204,7 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 
 # ============ Execution Input Helpers ============ #
 
-# --------------------------------------------------------------------------- #
-#  Delimiters
-# --------------------------------------------------------------------------- #
-
-LIST_SPLIT = "_$_"
-DICT_SPLIT = "_#_"
-OBJC_SPLIT = "_@_"
-
-_DELIMS = (LIST_SPLIT, DICT_SPLIT, OBJC_SPLIT)
-
-# --------------------------------------------------------------------------- #
-#  Tokenisation utilities
-# --------------------------------------------------------------------------- #
-
-
-def _next_delim(s: str) -> tuple[str | None, int]:
-    """
-    Return the *earliest* delimiter appearing in `s` and its index.
-
-    If none present → (None, -1).
-    """
-    first: str | None = None
-    pos = len(s)  # sentinel: larger than any real index
-    for d in _DELIMS:
-        i = s.find(d)
-        if 0 <= i < pos:
-            first, pos = d, i
-    return first, (pos if first else -1)
-
-
-def _tokenise(path: str) -> list[tuple[str, str]] | None:
-    """
-    Convert the raw path string (starting with a delimiter) into
-    [ (delimiter, identifier), … ] or None if the syntax is malformed.
-    """
-    tokens: list[tuple[str, str]] = []
-    while path:
-        # 1. Which delimiter starts this chunk?
-        delim = next((d for d in _DELIMS if path.startswith(d)), None)
-        if delim is None:
-            return None  # invalid syntax
-
-        # 2. Slice off the delimiter, then up to the next delimiter (or EOS)
-        path = path[len(delim) :]
-        nxt_delim, pos = _next_delim(path)
-        token, path = (
-            path[: pos if pos != -1 else len(path)],
-            path[pos if pos != -1 else len(path) :],
-        )
-        if token == "":
-            return None  # empty identifier is invalid
-        tokens.append((delim, token))
-    return tokens
-
-
-# --------------------------------------------------------------------------- #
-#  Public API – parsing (flattened ➜ concrete)
-# --------------------------------------------------------------------------- #
-
-
-def parse_execution_output(output: BlockOutputEntry, name: str) -> JsonValue | None:
-    """
-    Retrieve a nested value out of `output` using the flattened *name*.
-
-    On any failure (wrong name, wrong type, out-of-range, bad path)
-    returns **None**.
-    """
-    base_name, data = output
-
-    # Exact match → whole object
-    if name == base_name:
-        return data
-
-    # Must start with the expected name
-    if not name.startswith(base_name):
-        return None
-    path = name[len(base_name) :]
-    if not path:
-        return None  # nothing left to parse
-
-    tokens = _tokenise(path)
-    if tokens is None:
-        return None
-
-    cur: JsonValue = data
-    for delim, ident in tokens:
-        if delim == LIST_SPLIT:
-            # list[index]
-            try:
-                idx = int(ident)
-            except ValueError:
-                return None
-            if not isinstance(cur, list) or idx >= len(cur):
-                return None
-            cur = cur[idx]
-
-        elif delim == DICT_SPLIT:
-            if not isinstance(cur, dict) or ident not in cur:
-                return None
-            cur = cur[ident]
-
-        elif delim == OBJC_SPLIT:
-            if not hasattr(cur, ident):
-                return None
-            cur = getattr(cur, ident)
-
-        else:
-            return None  # unreachable
-
-    return cur
-
-
-def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
-    """
-    Recursive helper that *returns* the (possibly new) container with
-    `value` assigned along the remaining `tokens` path.
-    """
-    if not tokens:
-        return value  # leaf reached
-
-    delim, ident = tokens[0]
-    rest = tokens[1:]
-
-    # ---------- list ----------
-    if delim == LIST_SPLIT:
-        try:
-            idx = int(ident)
-        except ValueError:
-            raise ValueError("index must be an integer")
-
-        if container is None:
-            container = []
-        elif not isinstance(container, list):
-            container = list(container) if hasattr(container, "__iter__") else []
-
-        while len(container) <= idx:
-            container.append(None)
-        container[idx] = _assign(container[idx], rest, value)
-        return container
-
-    # ---------- dict ----------
-    if delim == DICT_SPLIT:
-        if container is None:
-            container = {}
-        elif not isinstance(container, dict):
-            container = dict(container) if hasattr(container, "items") else {}
-        container[ident] = _assign(container.get(ident), rest, value)
-        return container
-
-    # ---------- object ----------
-    if delim == OBJC_SPLIT:
-        if container is None or not isinstance(container, MockObject):
-            container = MockObject()
-        setattr(
-            container,
-            ident,
-            _assign(getattr(container, ident, None), rest, value),
-        )
-        return container
-
-    return value  # unreachable
-
-
-def merge_execution_input(data: BlockInput) -> BlockInput:
-    """
-    Reconstruct nested objects from a *flattened* dict of key → value.
-
-    Raises ValueError on syntactically invalid list indices.
-    """
-    merged: BlockInput = {}
-
-    for key, value in data.items():
-        # Split off the base name (before the first delimiter, if any)
-        delim, pos = _next_delim(key)
-        if delim is None:
-            merged[key] = value
-            continue
-
-        base, path = key[:pos], key[pos:]
-        tokens = _tokenise(path)
-        if tokens is None:
-            # Invalid key; treat as scalar under the raw name
-            merged[key] = value
-            continue
-
-        merged[base] = _assign(merged.get(base), tokens, value)
-
-    data.update(merged)
-    return data
+# Dynamic field utilities are now imported from backend.data.dynamic_fields
 
 
 def validate_exec(
@@ -652,6 +482,7 @@ async def validate_and_construct_node_execution_input(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    is_sub_graph: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -664,6 +495,7 @@ async def validate_and_construct_node_execution_input(
         graph_version: The version of the graph to use.
         graph_credentials_inputs: Credentials inputs to use.
         nodes_input_masks: Node inputs to use.
+        is_sub_graph: Whether this is a sub-graph execution.
 
     Returns:
         GraphModel: Full graph object for the given `graph_id`.
@@ -685,9 +517,21 @@ async def validate_and_construct_node_execution_input(
         user_id=user_id,
         version=graph_version,
         include_subgraphs=True,
+        # Execution/access permission is checked by validate_graph_execution_permissions
+        skip_access_check=True,
     )
     if not graph:
-        raise NotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
+
+    # Validate that the user has permission to execute this graph
+    # This checks both library membership and execution permissions,
+    # raising specific exceptions for appropriate error handling.
+    await gdb.validate_graph_execution_permissions(
+        user_id=user_id,
+        graph_id=graph.id,
+        graph_version=graph.version,
+        is_sub_graph=is_sub_graph,
+    )
 
     nodes_input_masks = _merge_nodes_input_masks(
         (
@@ -788,20 +632,74 @@ class CancelExecutionEvent(BaseModel):
     graph_exec_id: str
 
 
+async def _get_child_executions(parent_exec_id: str) -> list["GraphExecutionMeta"]:
+    """
+    Get all child executions of a parent execution using the execution_db pattern.
+
+    Args:
+        parent_exec_id: Parent graph execution ID
+
+    Returns:
+        List of child graph executions
+    """
+    from backend.data.db import prisma
+
+    if prisma.is_connected():
+        edb = execution_db
+    else:
+        edb = get_database_manager_async_client()
+
+    return await edb.get_child_graph_executions(parent_exec_id)
+
+
 async def stop_graph_execution(
     user_id: str,
     graph_exec_id: str,
     wait_timeout: float = 15.0,
+    cascade: bool = True,
 ):
     """
+    Stop a graph execution and optionally all its child executions.
+
     Mechanism:
-    1. Set the cancel event
-    2. Graph executor's cancel handler thread detects the event, terminates workers,
+    1. Set the cancel event for this execution
+    2. If cascade=True, recursively stop all child executions
+    3. Graph executor's cancel handler thread detects the event, terminates workers,
        reinitializes worker pool, and returns.
-    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+    4. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+
+    Args:
+        user_id: User ID who owns the execution
+        graph_exec_id: Graph execution ID to stop
+        wait_timeout: Maximum time to wait for execution to stop (seconds)
+        cascade: If True, recursively stop all child executions
     """
     queue_client = await get_async_execution_queue()
     db = execution_db if prisma.is_connected() else get_database_manager_async_client()
+
+    # First, find and stop all child executions if cascading
+    if cascade:
+        children = await _get_child_executions(graph_exec_id)
+        logger.info(
+            f"Stopping {len(children)} child executions of execution {graph_exec_id}"
+        )
+
+        # Stop all children in parallel (recursively, with cascading enabled)
+        if children:
+            await asyncio.gather(
+                *[
+                    stop_graph_execution(
+                        user_id=user_id,
+                        graph_exec_id=child.id,
+                        wait_timeout=wait_timeout,
+                        cascade=True,  # Recursively cascade to grandchildren
+                    )
+                    for child in children
+                ],
+                return_exceptions=True,  # Don't fail parent stop if child stop fails
+            )
+
+    # Now stop this execution
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
@@ -865,6 +763,9 @@ async def add_graph_execution(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    parent_graph_exec_id: Optional[str] = None,
+    is_sub_graph: bool = False,
+    graph_exec_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -878,31 +779,50 @@ async def add_graph_execution(
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
         nodes_input_masks: Node inputs to use in the execution.
+        parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
+        is_sub_graph: Whether this is a sub-graph execution.
+        graph_exec_id: If provided, resume this existing execution instead of creating a new one.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
+        NotFoundError: If graph_exec_id is provided but execution is not found.
     """
     if prisma.is_connected():
         edb = execution_db
     else:
         edb = get_database_manager_async_client()
 
-    graph, starting_nodes_input, compiled_nodes_input_masks = (
-        await validate_and_construct_node_execution_input(
-            graph_id=graph_id,
+    # Get or create the graph execution
+    if graph_exec_id:
+        # Resume existing execution
+        graph_exec = await get_graph_execution(
             user_id=user_id,
-            graph_inputs=inputs or {},
-            graph_version=graph_version,
-            graph_credentials_inputs=graph_credentials_inputs,
-            nodes_input_masks=nodes_input_masks,
+            execution_id=graph_exec_id,
+            include_node_executions=True,
         )
-    )
-    graph_exec = None
 
-    try:
-        # Sanity check: running add_graph_execution with the properties of
-        # the graph_exec created here should create the same execution again.
+        if not graph_exec:
+            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # Use existing execution's compiled input masks
+        compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+
+        logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
+    else:
+        # Create new execution
+        graph, starting_nodes_input, compiled_nodes_input_masks = (
+            await validate_and_construct_node_execution_input(
+                graph_id=graph_id,
+                user_id=user_id,
+                graph_inputs=inputs or {},
+                graph_version=graph_version,
+                graph_credentials_inputs=graph_credentials_inputs,
+                nodes_input_masks=nodes_input_masks,
+                is_sub_graph=is_sub_graph,
+            )
+        )
+
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
@@ -912,31 +832,38 @@ async def add_graph_execution(
             nodes_input_masks=nodes_input_masks,
             starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
-        )
-
-        # Fetch user context for the graph execution
-        user_context = await get_user_context(user_id)
-
-        queue = await get_async_execution_queue()
-        graph_exec_entry = graph_exec.to_graph_execution_entry(
-            user_context, compiled_nodes_input_masks
+            parent_graph_exec_id=parent_graph_exec_id,
         )
 
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "
-            f"#{graph_id} with {len(starting_nodes_input)} starting nodes. "
-            f"Now publishing to execution queue."
+            f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
 
-        await queue.publish_message(
+    # Common path: publish to queue and update status
+    try:
+        graph_exec_entry = graph_exec.to_graph_execution_entry(
+            user_context=await get_user_context(user_id),
+            compiled_nodes_input_masks=compiled_nodes_input_masks,
+            parent_graph_exec_id=parent_graph_exec_id,
+        )
+
+        logger.info(f"Publishing execution {graph_exec.id} to execution queue")
+
+        exec_queue = await get_async_execution_queue()
+        await exec_queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         logger.info(f"Published execution {graph_exec.id} to RabbitMQ queue")
 
-        bus = get_async_execution_event_bus()
-        await bus.publish(graph_exec)
+        graph_exec.status = ExecutionStatus.QUEUED
+        await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=graph_exec.status,
+        )
+        await get_async_execution_event_bus().publish(graph_exec)
 
         return graph_exec
     except BaseException as e:

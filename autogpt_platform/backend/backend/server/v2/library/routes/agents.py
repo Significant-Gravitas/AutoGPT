@@ -8,7 +8,7 @@ from fastapi.responses import Response
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,9 @@ router = APIRouter(
 @router.get(
     "",
     summary="List Library Agents",
+    response_model=library_model.LibraryAgentResponse,
     responses={
+        200: {"description": "List of library agents"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
@@ -79,6 +81,54 @@ async def list_library_agents(
         ) from e
 
 
+@router.get(
+    "/favorites",
+    summary="List Favorite Library Agents",
+    responses={
+        500: {"description": "Server error", "content": {"application/json": {}}},
+    },
+)
+async def list_favorite_library_agents(
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+    page: int = Query(
+        1,
+        ge=1,
+        description="Page number to retrieve (must be >= 1)",
+    ),
+    page_size: int = Query(
+        15,
+        ge=1,
+        description="Number of agents per page (must be >= 1)",
+    ),
+) -> library_model.LibraryAgentResponse:
+    """
+    Get all favorite agents in the user's library.
+
+    Args:
+        user_id: ID of the authenticated user.
+        page: Page number to retrieve.
+        page_size: Number of agents per page.
+
+    Returns:
+        A LibraryAgentResponse containing favorite agents and pagination metadata.
+
+    Raises:
+        HTTPException: If a server/database error occurs.
+    """
+    try:
+        return await library_db.list_favorite_library_agents(
+            user_id=user_id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as e:
+        logger.error(f"Could not list favorite library agents for user #{user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        ) from e
+
+
 @router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
@@ -107,7 +157,12 @@ async def get_library_agent_by_graph_id(
 @router.get(
     "/marketplace/{store_listing_version_id}",
     summary="Get Agent By Store ID",
-    tags=["store, library"],
+    tags=["store", "library"],
+    response_model=library_model.LibraryAgent | None,
+    responses={
+        200: {"description": "Library agent found"},
+        404: {"description": "Agent not found"},
+    },
 )
 async def get_library_agent_by_store_listing_version_id(
     store_listing_version_id: str,
@@ -173,7 +228,7 @@ async def add_marketplace_agent_to_library(
             "to add to library"
         )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except store_exceptions.DatabaseError as e:
+    except DatabaseError as e:
         logger.error(f"Database error while adding agent to library: {e}", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -227,7 +282,7 @@ async def update_library_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         ) from e
-    except store_exceptions.DatabaseError as e:
+    except DatabaseError as e:
         logger.error(f"Database error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

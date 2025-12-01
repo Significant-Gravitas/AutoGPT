@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/__legacy__/ui/badge";
 import { useFilterChips } from "./useFilterChips";
 
 interface FilterChipsProps {

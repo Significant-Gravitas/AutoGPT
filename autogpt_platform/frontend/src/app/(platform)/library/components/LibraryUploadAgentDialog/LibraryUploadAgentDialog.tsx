@@ -1,13 +1,14 @@
 "use client";
 import { Upload, X } from "lucide-react";
-import { Button } from "@/components/agptui/Button";
+import { Button } from "@/components/__legacy__/Button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@/components/__legacy__/ui/dialog";
 import { z } from "zod";
 import { FileUploader } from "react-drag-drop-files";
 import {
@@ -17,9 +18,9 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/__legacy__/ui/form";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Textarea } from "@/components/__legacy__/ui/textarea";
 import { useLibraryUploadAgentDialog } from "./useLibraryUploadAgentDialog";
 
 const fileTypes = ["JSON"];
@@ -64,6 +65,9 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="mb-8 text-center">Upload Agent</DialogTitle>
+          <DialogDescription>
+            Upload your agent by providing a name, description, and JSON file.
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>

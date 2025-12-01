@@ -1,4 +1,4 @@
-import { InputProps } from "@/components/ui/input";
+import { InputProps } from "@/components/__legacy__/ui/input";
 import {
   filterNumberInput,
   filterPhoneInput,
@@ -65,6 +65,20 @@ export function useInput(args: ExtendedInputProps) {
     }
   }
 
+  function handleAmountValueChange(value?: string) {
+    if (!args.onChange) return;
+    const processedValue = value ?? "";
+
+    const syntheticEvent = {
+      // We only need target.value for our consumers
+      target: {
+        value: processedValue,
+      },
+    } as unknown as React.ChangeEvent<HTMLInputElement>;
+
+    args.onChange(syntheticEvent);
+  }
+
   function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     if (args.onChange) {
       // Create synthetic event with HTMLInputElement-like target for compatibility
@@ -80,5 +94,5 @@ export function useInput(args: ExtendedInputProps) {
     }
   }
 
-  return { handleInputChange, handleTextareaChange };
+  return { handleInputChange, handleTextareaChange, handleAmountValueChange };
 }

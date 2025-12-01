@@ -45,6 +45,7 @@ export function useAgentInfoStep({
       category: "",
       description: "",
       recommendedScheduleCron: "",
+      instructions: "",
     },
   });
 
@@ -66,6 +67,7 @@ export function useAgentInfoStep({
         category: initialData.category,
         description: initialData.description,
         recommendedScheduleCron: initialData.recommendedScheduleCron || "",
+        instructions: initialData.instructions || "",
       });
     }
   }, [initialData, form]);
@@ -94,6 +96,7 @@ export function useAgentInfoStep({
         name: data.title,
         sub_heading: data.subheader,
         description: data.description,
+        instructions: data.instructions || null,
         image_urls: images,
         video_url: data.youtubeLink || "",
         agent_id: selectedAgentId || "",
@@ -113,6 +116,7 @@ export function useAgentInfoStep({
       toast({
         title: "Submit Agent Error",
         description:
+          (error instanceof Error ? error.message : undefined) ||
           "An error occurred while submitting the agent. Please try again.",
         duration: 3000,
         variant: "destructive",
