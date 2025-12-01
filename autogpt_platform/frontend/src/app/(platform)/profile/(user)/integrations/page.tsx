@@ -1,5 +1,5 @@
 "use client";
-import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
+import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import {

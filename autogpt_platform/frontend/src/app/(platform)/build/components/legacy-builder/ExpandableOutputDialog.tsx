@@ -1,27 +1,27 @@
+import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import {
+  globalRegistry,
+  OutputActions,
+  OutputItem,
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import { beautifyString } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Clipboard, Maximize2 } from "lucide-react";
 import React, { FC, useMemo, useState } from "react";
 import { Button } from "../../../../../components/__legacy__/ui/button";
-import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
-import { beautifyString } from "@/lib/utils";
-import { Clipboard, Maximize2 } from "lucide-react";
-import { useToast } from "../../../../../components/molecules/Toast/use-toast";
-import { Switch } from "../../../../../components/atoms/Switch/Switch";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "../../../../../components/__legacy__/ui/dialog";
+import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
 import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
 import { Separator } from "../../../../../components/__legacy__/ui/separator";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import {
-  globalRegistry,
-  OutputItem,
-  OutputActions,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
-import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
+import { Switch } from "../../../../../components/atoms/Switch/Switch";
+import { useToast } from "../../../../../components/molecules/Toast/use-toast";
 
 interface ExpandableOutputDialogProps {
   isOpen: boolean;
