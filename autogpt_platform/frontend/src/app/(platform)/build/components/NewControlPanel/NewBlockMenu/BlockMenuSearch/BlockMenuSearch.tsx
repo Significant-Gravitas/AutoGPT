@@ -19,6 +19,10 @@ export const BlockMenuSearch = () => {
     fetchNextPage,
     hasNextPage,
     searchLoading,
+    handleAddLibraryAgent,
+    handleAddMarketplaceAgent,
+    addingLibraryAgentId,
+    addingMarketplaceAgentSlug,
   } = useBlockMenuSearch();
   const { searchQuery } = useBlockMenuStore();
 
@@ -63,7 +67,13 @@ export const BlockMenuSearch = () => {
                   image_url={data.agent_image}
                   creator_name={data.creator}
                   number_of_runs={data.runs}
-                  loading={false}
+                  loading={addingMarketplaceAgentSlug === data.slug}
+                  onClick={() =>
+                    handleAddMarketplaceAgent({
+                      creator_name: data.creator,
+                      slug: data.slug,
+                    })
+                  }
                 />
               );
             case "block":
@@ -86,6 +96,8 @@ export const BlockMenuSearch = () => {
                   image_url={data.image_url}
                   version={data.graph_version}
                   edited_time={data.updated_at}
+                  isLoading={addingLibraryAgentId === data.id}
+                  onClick={() => handleAddLibraryAgent(data)}
                 />
               );
 

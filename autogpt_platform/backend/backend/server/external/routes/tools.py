@@ -1,4 +1,11 @@
-"""External API routes for chat tools - stateless HTTP endpoints."""
+"""External API routes for chat tools - stateless HTTP endpoints.
+
+Note: These endpoints use ephemeral sessions that are not persisted to Redis.
+As a result, session-based rate limiting (max_agent_runs, max_agent_schedules)
+is not enforced for external API calls. Each request creates a fresh session
+with zeroed counters. Rate limiting for external API consumers should be
+handled separately (e.g., via API key quotas).
+"""
 
 import logging
 from typing import Any
@@ -16,6 +23,10 @@ from backend.server.v2.chat.tools.models import ToolResponseBase
 logger = logging.getLogger(__name__)
 
 tools_router = APIRouter(prefix="/tools", tags=["tools"])
+
+# Note: We use Security() as a function parameter dependency (api_key: APIKeyInfo = Security(...))
+# rather than in the decorator's dependencies= list. This avoids duplicate permission checks
+# while still enforcing auth AND giving us access to the api_key for extracting user_id.
 
 
 # Request models
@@ -66,7 +77,6 @@ def _create_ephemeral_session(user_id: str | None) -> ChatSession:
 
 @tools_router.post(
     path="/find-agent",
-    dependencies=[Security(require_permission(APIKeyPermission.USE_TOOLS))],
 )
 async def find_agent(
     request: FindAgentRequest,
@@ -92,7 +102,6 @@ async def find_agent(
 
 @tools_router.post(
     path="/run-agent",
-    dependencies=[Security(require_permission(APIKeyPermission.USE_TOOLS))],
 )
 async def run_agent(
     request: RunAgentRequest,

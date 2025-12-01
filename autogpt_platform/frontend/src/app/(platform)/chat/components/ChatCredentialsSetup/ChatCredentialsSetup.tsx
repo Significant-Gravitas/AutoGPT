@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
-import { KeyIcon, CheckIcon, WarningIcon } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
-import { useChatCredentialsSetup } from "./useChatCredentialsSetup";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import { cn } from "@/lib/utils";
+import { CheckIcon, KeyIcon, WarningIcon } from "@phosphor-icons/react";
+import { useEffect, useRef } from "react";
+import { useChatCredentialsSetup } from "./useChatCredentialsSetup";
 
 export interface CredentialInfo {
   provider: string;
