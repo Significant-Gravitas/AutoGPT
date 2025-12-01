@@ -79,17 +79,43 @@ export default function useAgentGraph(
 
   // Load available blocks & flows (stable - only loads once)
   useEffect(() => {
-    api
-      .getBlocks()
-      .then((blocks) => {
-        setAllBlocks(blocks);
-      })
-      .catch();
+    const loadBlocks = () => {
+      api
+        .getBlocks()
+        .then((blocks) => {
+          setAllBlocks(blocks);
+        })
+        .catch();
+    };
 
-    api
-      .listGraphs()
-      .then((flows) => setAvailableFlows(flows))
-      .catch();
+    const loadFlows = () => {
+      api
+        .listGraphs()
+        .then((flows) => setAvailableFlows(flows))
+        .catch();
+    };
+
+    // Initial load
+    loadBlocks();
+    loadFlows();
+
+    // Listen for LLM registry refresh notifications to reload blocks
+    const deregisterRegistryRefresh = api.onWebSocketMessage(
+      "notification",
+      (notification) => {
+        if (
+          notification?.type === "LLM_REGISTRY_REFRESH" ||
+          notification?.event === "registry_updated"
+        ) {
+          console.log("Received LLM registry refresh notification, reloading blocks...");
+          loadBlocks();
+        }
+      },
+    );
+
+    return () => {
+      deregisterRegistryRefresh();
+    };
   }, [api]);
 
   // Subscribe to execution events

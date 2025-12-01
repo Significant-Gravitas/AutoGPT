@@ -9,6 +9,7 @@ from backend.blocks.llm import (
     LlmModel,
     LLMResponse,
     llm_call,
+    llm_model_schema_extra,
 )
 from backend.data.block import (
     BlockCategory,
@@ -52,6 +53,7 @@ class AIConditionBlock(AIBlockBase):
             default=LlmModel.GPT4O,
             description="The language model to use for evaluating the condition.",
             advanced=False,
+            json_schema_extra=llm_model_schema_extra(),
         )
         credentials: AICredentials = AICredentialsField()
 

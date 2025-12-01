@@ -531,6 +531,61 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
             else:
                 schema["credentials_provider"] = allowed_providers
             schema["credentials_types"] = model_class.allowed_cred_types()
+        
+        # For LLM credentials fields, ensure discriminator and discriminator_mapping are populated
+        # This handles the case where the mapping was empty at field definition time
+        # Check all properties for credentials fields
+        properties = schema.get("properties", {})
+        for field_name, field_schema in properties.items():
+            if not isinstance(field_schema, dict):
+                continue
+                
+            # Check if this is a credentials field (has credentials_provider)
+            if "credentials_provider" in field_schema:
+                # Check if this field should have a discriminator (multiple providers)
+                providers = field_schema.get("credentials_provider", [])
+                if isinstance(providers, list) and len(providers) > 1:
+                    # This is a multi-provider credentials field - ensure discriminator is set
+                    if "discriminator" not in field_schema:
+                        # Try to get discriminator from the field definition
+                        # Check if this is an LLM credentials field by looking at the model fields
+                        discriminator_found = False
+                        try:
+                            if hasattr(model_class, "model_fields") and field_name in model_class.model_fields:
+                                field_info = model_class.model_fields[field_name]
+                                # Check json_schema_extra on the FieldInfo
+                                if hasattr(field_info, "json_schema_extra"):
+                                    if isinstance(field_info.json_schema_extra, dict):
+                                        discriminator = field_info.json_schema_extra.get("discriminator")
+                                        if discriminator:
+                                            field_schema["discriminator"] = discriminator
+                                            discriminator_found = True
+                        except Exception:
+                            pass
+                        
+                        # If still not found and this looks like an LLM field (has multiple AI providers),
+                        # default to "model" discriminator
+                        if not discriminator_found:
+                            # Check if providers include common LLM providers
+                            llm_providers = {"openai", "anthropic", "groq", "open_router", "llama_api", "aiml_api", "v0"}
+                            if any(p in llm_providers for p in providers):
+                                field_schema["discriminator"] = "model"
+                    
+                    # If discriminator is "model", ensure discriminator_mapping is populated
+                    if field_schema.get("discriminator") == "model":
+                        mapping = field_schema.get("discriminator_mapping")
+                        # If mapping is empty, missing, or None, refresh from registry
+                        if not mapping or (isinstance(mapping, dict) and len(mapping) == 0):
+                            try:
+                                from backend.data import llm_registry
+                                refreshed_mapping = llm_registry.get_llm_discriminator_mapping()
+                                if refreshed_mapping:
+                                    field_schema["discriminator_mapping"] = refreshed_mapping
+                            except Exception:
+                                # If registry isn't available, ensure at least an empty dict is present
+                                if "discriminator_mapping" not in field_schema:
+                                    field_schema["discriminator_mapping"] = {}
+        
         # Do not return anything, just mutate schema in place
 
     model_config = ConfigDict(
@@ -680,16 +735,20 @@ def CredentialsField(
     This is enforced by the `BlockSchema` base class.
     """
 
-    field_schema_extra = {
-        k: v
-        for k, v in {
-            "credentials_scopes": list(required_scopes) or None,
-            "discriminator": discriminator,
-            "discriminator_mapping": discriminator_mapping,
-            "discriminator_values": discriminator_values,
-        }.items()
-        if v is not None
-    }
+    # Build field_schema_extra - always include discriminator and mapping if discriminator is set
+    field_schema_extra: dict[str, Any] = {}
+    
+    # Always include discriminator if provided
+    if discriminator is not None:
+        field_schema_extra["discriminator"] = discriminator
+        # Always include discriminator_mapping when discriminator is set (even if empty initially)
+        field_schema_extra["discriminator_mapping"] = discriminator_mapping or {}
+    
+    # Include other optional fields (only if not None)
+    if required_scopes:
+        field_schema_extra["credentials_scopes"] = list(required_scopes)
+    if discriminator_values:
+        field_schema_extra["discriminator_values"] = discriminator_values
 
     # Merge any json_schema_extra passed in kwargs
     if "json_schema_extra" in kwargs:

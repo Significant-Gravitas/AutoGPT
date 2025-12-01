@@ -43,6 +43,7 @@ import type {
   LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
+  LlmModel,
   MyAgentsResponse,
   NodeExecutionResult,
   NotificationPreference,
@@ -52,6 +53,13 @@ import type {
   ProfileDetails,
   RefundRequest,
   ReviewSubmissionRequest,
+  CreateLlmModelRequest,
+  UpdateLlmModelRequest,
+  ToggleLlmModelRequest,
+  UpsertLlmProviderRequest,
+  LlmModelsResponse,
+  LlmProvider,
+  LlmProvidersResponse,
   Schedule,
   ScheduleCreatable,
   ScheduleID,
@@ -392,6 +400,74 @@ export default class BackendAPI {
       "DELETE",
       `/integrations/${provider}/credentials/${id}`,
       force ? { force: true } : undefined,
+    );
+  }
+
+  ////////////////////////////////////////
+  /////////////// LLM MODELS /////////////
+  ////////////////////////////////////////
+
+  listLlmModels(): Promise<LlmModelsResponse> {
+    return this._get("/llm/models");
+  }
+
+  listLlmProviders(includeModels = true): Promise<LlmProvidersResponse> {
+    const query = includeModels ? { include_models: true } : undefined;
+    return this._get("/llm/providers", query);
+  }
+
+  listAdminLlmProviders(
+    includeModels = true,
+  ): Promise<LlmProvidersResponse> {
+    const query = includeModels ? { include_models: true } : undefined;
+    return this._get("/llm/admin/llm/providers", query);
+  }
+
+  createAdminLlmProvider(
+    payload: UpsertLlmProviderRequest,
+  ): Promise<LlmProvider> {
+    return this._request("POST", "/llm/admin/llm/providers", payload);
+  }
+
+  updateAdminLlmProvider(
+    providerId: string,
+    payload: UpsertLlmProviderRequest,
+  ): Promise<LlmProvider> {
+    return this._request(
+      "PATCH",
+      `/llm/admin/llm/providers/${providerId}`,
+      payload,
+    );
+  }
+
+  listAdminLlmModels(providerId?: string): Promise<LlmModelsResponse> {
+    const query = providerId ? { provider_id: providerId } : undefined;
+    return this._get("/llm/admin/llm/models", query);
+  }
+
+  createAdminLlmModel(payload: CreateLlmModelRequest): Promise<LlmModel> {
+    return this._request("POST", "/llm/admin/llm/models", payload);
+  }
+
+  updateAdminLlmModel(
+    modelId: string,
+    payload: UpdateLlmModelRequest,
+  ): Promise<LlmModel> {
+    return this._request(
+      "PATCH",
+      `/llm/admin/llm/models/${modelId}`,
+      payload,
+    );
+  }
+
+  toggleAdminLlmModel(
+    modelId: string,
+    payload: ToggleLlmModelRequest,
+  ): Promise<LlmModel> {
+    return this._request(
+      "PATCH",
+      `/llm/admin/llm/models/${modelId}/toggle`,
+      payload,
     );
   }
 

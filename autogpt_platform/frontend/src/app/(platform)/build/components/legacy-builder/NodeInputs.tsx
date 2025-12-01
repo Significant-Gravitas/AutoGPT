@@ -610,8 +610,11 @@ const NodeOneOfDiscriminatorField: FC<{
 
     return oneOfVariants
       .map((variant) => {
-        const variantDiscValue = variant.properties?.[discriminatorProperty]
-          ?.const as string; // NOTE: can discriminators only be strings?
+        const discProperty = variant.properties?.[discriminatorProperty];
+        const variantDiscValue =
+          discProperty && "const" in discProperty
+            ? (discProperty.const as string)
+            : undefined; // NOTE: can discriminators only be strings?
 
         return {
           value: variantDiscValue,

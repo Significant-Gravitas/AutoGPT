@@ -234,10 +234,8 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & {
-  type: never;
-  const: never;
-} & (
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
+  (
     | {
         allOf: [BlockIOSimpleTypeSubSchema];
         secret?: boolean;
@@ -251,6 +249,107 @@ type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & {
     | BlockIOOneOfSubSchema
     | BlockIODiscriminatedOneOfSubSchema
   );
+
+////////////////////////////////////////
+///////////// LLM REGISTRY /////////////
+////////////////////////////////////////
+
+export type LlmCostUnit = "RUN" | "TOKENS";
+
+export type LlmModelCostInput = {
+  unit?: LlmCostUnit;
+  credit_cost: number;
+  credential_provider: string;
+  credential_id?: string | null;
+  credential_type?: string | null;
+  currency?: string | null;
+  metadata?: Record<string, any>;
+};
+
+export type LlmModelCost = LlmModelCostInput & {
+  id: string;
+};
+
+export type LlmModel = {
+  id: string;
+  slug: string;
+  display_name: string;
+  description?: string | null;
+  provider_id: string;
+  context_window: number;
+  max_output_tokens?: number | null;
+  is_enabled: boolean;
+  capabilities: Record<string, any>;
+  metadata: Record<string, any>;
+  costs: LlmModelCost[];
+};
+
+export type LlmProvider = {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string | null;
+  default_credential_provider?: string | null;
+  default_credential_id?: string | null;
+  default_credential_type?: string | null;
+  supports_tools: boolean;
+  supports_json_output: boolean;
+  supports_reasoning: boolean;
+  supports_parallel_tool: boolean;
+  metadata: Record<string, any>;
+  models?: LlmModel[];
+};
+
+export type LlmProvidersResponse = {
+  providers: LlmProvider[];
+};
+
+export type LlmModelsResponse = {
+  models: LlmModel[];
+};
+
+export type UpsertLlmProviderRequest = {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  default_credential_provider?: string | null;
+  default_credential_id?: string | null;
+  default_credential_type?: string | null;
+  supports_tools?: boolean;
+  supports_json_output?: boolean;
+  supports_reasoning?: boolean;
+  supports_parallel_tool?: boolean;
+  metadata?: Record<string, any>;
+};
+
+export type CreateLlmModelRequest = {
+  slug: string;
+  display_name: string;
+  description?: string | null;
+  provider_id: string;
+  context_window: number;
+  max_output_tokens?: number | null;
+  is_enabled?: boolean;
+  capabilities?: Record<string, any>;
+  metadata?: Record<string, any>;
+  costs: LlmModelCostInput[];
+};
+
+export type UpdateLlmModelRequest = {
+  display_name?: string;
+  description?: string | null;
+  provider_id?: string;
+  context_window?: number;
+  max_output_tokens?: number | null;
+  is_enabled?: boolean;
+  capabilities?: Record<string, any>;
+  metadata?: Record<string, any>;
+  costs?: LlmModelCostInput[];
+};
+
+export type ToggleLlmModelRequest = {
+  is_enabled: boolean;
+};
 
 export type BlockIOOneOfSubSchema = {
   oneOf: BlockIOSimpleTypeSubSchema[];
@@ -1135,16 +1234,21 @@ function _handleStringSchema(strSchema: BlockIOStringSubSchema): DataType {
 }
 
 function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
-  if (subSchema.type === "string") {
+  const schemaType =
+    "type" in subSchema && typeof subSchema.type === "string"
+      ? subSchema.type
+      : undefined;
+
+  if (schemaType === "string") {
     return _handleStringSchema(subSchema as BlockIOStringSubSchema);
   }
-  if (subSchema.type === "boolean") {
+  if (schemaType === "boolean") {
     return DataType.BOOLEAN;
   }
-  if (subSchema.type === "number" || subSchema.type === "integer") {
+  if (schemaType === "number" || schemaType === "integer") {
     return DataType.NUMBER;
   }
-  if (subSchema.type === "array") {
+  if (schemaType === "array") {
     // Check for table format first
     if ("format" in subSchema && subSchema.format === "table") {
       return DataType.TABLE;
@@ -1155,7 +1259,7 @@ function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
     // }
     return DataType.ARRAY;
   }
-  if (subSchema.type === "object") {
+  if (schemaType === "object") {
     if (
       ("additionalProperties" in subSchema && subSchema.additionalProperties) ||
       !("properties" in subSchema)
@@ -1164,7 +1268,7 @@ function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
     }
     if (
       Object.values(subSchema.properties).every(
-        (prop) => prop.type === "boolean",
+        (prop) => "type" in prop && prop.type === "boolean",
       )
     ) {
       return DataType.MULTI_SELECT; // if all props are boolean => multi-select

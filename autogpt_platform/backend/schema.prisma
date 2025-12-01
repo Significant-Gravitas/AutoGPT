@@ -954,3 +954,84 @@ enum APIKeyStatus {
   REVOKED
   SUSPENDED
 }
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+/////////////   LLM REGISTRY AND BILLING DATA   /////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+enum LlmCostUnit {
+  RUN
+  TOKENS
+}
+
+model LlmProvider {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String @unique
+  displayName String
+  description String?
+
+  defaultCredentialProvider String?
+  defaultCredentialId       String?
+  defaultCredentialType     String?
+
+  supportsTools        Boolean @default(true)
+  supportsJsonOutput   Boolean @default(true)
+  supportsReasoning    Boolean @default(false)
+  supportsParallelTool Boolean @default(false)
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+}
+
+model LlmModel {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slug        String @unique
+  displayName String
+  description String?
+
+  providerId String
+  Provider   LlmProvider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  contextWindow   Int
+  maxOutputTokens Int?
+  isEnabled       Boolean @default(true)
+
+  capabilities Json @default("{}")
+  metadata     Json @default("{}")
+
+  Costs LlmModelCost[]
+
+  @@index([providerId, isEnabled])
+  @@index([slug])
+}
+
+model LlmModelCost {
+  id        String     @id @default(uuid())
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  unit      LlmCostUnit @default(RUN)
+
+  creditCost Int
+
+  credentialProvider String
+  credentialId       String?
+  credentialType     String?
+  currency           String?
+
+  metadata Json @default("{}")
+
+  llmModelId String
+  Model      LlmModel @relation(fields: [llmModelId], references: [id], onDelete: Cascade)
+
+  @@index([llmModelId])
+  @@index([credentialProvider])
+}

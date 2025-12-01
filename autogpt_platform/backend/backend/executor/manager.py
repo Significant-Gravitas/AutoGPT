@@ -621,6 +621,72 @@ class ExecutionProcessor:
         )
         self.node_execution_thread.start()
         self.node_evaluation_thread.start()
+        
+        # Initialize blocks and refresh LLM registry in the execution loop
+        async def init_registry():
+            try:
+                from backend.data import db, llm_registry
+                from backend.data.block_cost_config import refresh_llm_costs
+                from backend.data.block import initialize_blocks
+                
+                # Connect to database for registry refresh
+                if not db.is_connected():
+                    await db.connect()
+                    logger.info("[GraphExecutor] Connected to database for registry refresh")
+                
+                # Refresh LLM registry before initializing blocks
+                await llm_registry.refresh_llm_registry()
+                refresh_llm_costs()
+                logger.info("[GraphExecutor] LLM registry refreshed")
+                
+                # Initialize blocks (this also refreshes registry, but we do it explicitly above)
+                await initialize_blocks()
+                logger.info("[GraphExecutor] Blocks initialized")
+            except Exception as exc:
+                logger.warning(
+                    "[GraphExecutor] Failed to refresh LLM registry on startup: %s",
+                    exc,
+                    exc_info=True,
+                )
+        
+        # Refresh registry function for notifications
+        async def refresh_registry_from_notification():
+            """Refresh LLM registry when notified via Redis pub/sub"""
+            try:
+                from backend.data import db, llm_registry
+                from backend.data.block_cost_config import refresh_llm_costs
+                from backend.data.block import BlockSchema
+                
+                # Ensure DB is connected
+                if not db.is_connected():
+                    await db.connect()
+                
+                # Refresh registry and costs
+                await llm_registry.refresh_llm_registry()
+                refresh_llm_costs()
+                
+                # Clear block schema caches so they regenerate with new model options
+                BlockSchema.clear_all_schema_caches()
+                
+                logger.info("[GraphExecutor] LLM registry refreshed from notification")
+            except Exception as exc:
+                logger.error(
+                    "[GraphExecutor] Failed to refresh LLM registry from notification: %s",
+                    exc,
+                    exc_info=True,
+                )
+        
+        # Schedule registry refresh in the execution loop
+        asyncio.run_coroutine_threadsafe(init_registry(), self.node_execution_loop)
+        
+        # Subscribe to registry refresh notifications
+        async def subscribe_to_refresh():
+            from backend.data.llm_registry_notifications import subscribe_to_registry_refresh
+            await subscribe_to_registry_refresh(refresh_registry_from_notification)
+        
+        # Start subscription in a background task
+        asyncio.run_coroutine_threadsafe(subscribe_to_refresh(), self.node_execution_loop)
+        
         logger.info(f"[GraphExecutor] {self.tid} started")
 
     @error_logged(swallow=False)

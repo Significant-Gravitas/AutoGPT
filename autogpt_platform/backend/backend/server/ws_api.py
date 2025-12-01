@@ -77,7 +77,32 @@ async def event_broadcaster(manager: ConnectionManager):
                 payload=notification.payload,
             )
 
-    await asyncio.gather(execution_worker(), notification_worker())
+    async def registry_refresh_worker():
+        """Listen for LLM registry refresh notifications and broadcast to all clients."""
+        from backend.data.llm_registry_notifications import REGISTRY_REFRESH_CHANNEL
+        from backend.data.redis_client import connect_async
+
+        redis = await connect_async()
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(REGISTRY_REFRESH_CHANNEL)
+        logger.info("Subscribed to LLM registry refresh notifications for WebSocket broadcast")
+
+        async for message in pubsub.listen():
+            if message["type"] == "message" and message["channel"] == REGISTRY_REFRESH_CHANNEL:
+                logger.info("Broadcasting LLM registry refresh to all WebSocket clients")
+                await manager.broadcast_to_all(
+                    method=WSMethod.NOTIFICATION,
+                    data={
+                        "type": "LLM_REGISTRY_REFRESH",
+                        "event": "registry_updated",
+                    },
+                )
+
+    await asyncio.gather(
+        execution_worker(),
+        notification_worker(),
+        registry_refresh_worker(),
+    )
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:

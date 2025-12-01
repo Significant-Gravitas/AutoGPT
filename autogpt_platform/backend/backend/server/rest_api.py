@@ -20,11 +20,14 @@ import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
+from backend.data import llm_registry
+from backend.data.block_cost_config import refresh_llm_costs
 import backend.integrations.webhooks.utils
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.execution_analytics_routes
+import backend.server.v2.admin.llm_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
@@ -36,6 +39,7 @@ import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
+import backend.server.v2.llm.routes as public_llm_routes
 import backend.util.service
 import backend.util.settings
 from backend.blocks.llm import LlmModel
@@ -104,11 +108,20 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    # Refresh LLM registry before initializing blocks so blocks can use registry data
+    await llm_registry.refresh_llm_registry()
+    refresh_llm_costs()
+    
+    # Clear block schema caches so they're regenerated with updated discriminator_mapping
+    from backend.data.block import BlockSchema
+    BlockSchema.clear_all_schema_caches()
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
+    # Note: migrate_llm_models may need updating if it references LlmModel enum
+    # await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():
@@ -279,6 +292,16 @@ app.include_router(
     backend.server.v2.executions.review.routes.router,
     tags=["v2", "executions", "review"],
     prefix="/api/review",
+)
+app.include_router(
+    backend.server.v2.admin.llm_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/llm",
+)
+app.include_router(
+    public_llm_routes.router,
+    tags=["v2", "llm"],
+    prefix="/api",
 )
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
