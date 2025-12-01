@@ -38,6 +38,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Config
 
+from .llm_schema_utils import update_schema_with_llm_registry
 from .model import (
     ContributorDetails,
     Credentials,
@@ -187,187 +188,11 @@ class BlockSchema(BaseModel):
 
             cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
         
-        # Always post-process to ensure discriminator is present for multi-provider credentials fields
-        # and refresh LLM model options to get latest enabled/disabled status
-        # This handles cases where the schema was generated before the registry was loaded or updated
-        # Note: We mutate the cached schema directly, which is safe since post-processing is idempotent
-        # IMPORTANT: We always refresh options even if schema was cached, to ensure disabled models are excluded
-        cls._ensure_discriminator_in_schema(cls.cached_jsonschema, cls)
-        
+        # Always post-process to ensure LLM registry data is up-to-date
+        # This refreshes model options and discriminator mappings even if schema was cached
+        update_schema_with_llm_registry(cls.cached_jsonschema, cls)
+
         return cls.cached_jsonschema
-    
-    @staticmethod
-    def _ensure_discriminator_in_schema(schema: dict[str, Any], model_class: type | None = None) -> None:
-        """Ensure discriminator is present in multi-provider credentials fields and refresh LLM model options."""
-        properties = schema.get("properties", {})
-        for field_name, field_schema in properties.items():
-            if not isinstance(field_schema, dict):
-                continue
-            
-            # Check if this is an LLM model field by checking the field definition
-            is_llm_model_field = False
-            if model_class and hasattr(model_class, "model_fields") and field_name in model_class.model_fields:
-                try:
-                    field_info = model_class.model_fields[field_name]
-                    # Check if json_schema_extra has "options" (set by llm_model_schema_extra)
-                    if hasattr(field_info, "json_schema_extra") and isinstance(field_info.json_schema_extra, dict):
-                        if "options" in field_info.json_schema_extra:
-                            is_llm_model_field = True
-                    # Also check if the field type is LlmModel
-                    if not is_llm_model_field and hasattr(field_info, "annotation"):
-                        from backend.blocks.llm import LlmModel
-                        from typing import get_origin, get_args
-                        annotation = field_info.annotation
-                        if annotation == LlmModel:
-                            is_llm_model_field = True
-                        else:
-                            # Check for Optional[LlmModel] or Union types
-                            origin = get_origin(annotation)
-                            if origin:
-                                args = get_args(annotation)
-                                if LlmModel in args:
-                                    is_llm_model_field = True
-                except Exception:
-                    pass
-            
-            # Only refresh LLM model options for LLM model fields
-            # This prevents filtering other enum fields that aren't LLM models
-            if is_llm_model_field:
-                def refresh_options_in_schema(schema_part: dict[str, Any], path: str = "") -> bool:
-                    """Recursively refresh options in schema part. Returns True if options were found and refreshed."""
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    
-                    # Check for "options" key (used by frontend for select dropdowns)
-                    has_options = "options" in schema_part and isinstance(schema_part.get("options"), list)
-                    # Check for "enum" key (Pydantic generates this for Enum fields)
-                    has_enum = "enum" in schema_part and isinstance(schema_part.get("enum"), list)
-                    
-                    if has_options or has_enum:
-                        try:
-                            from backend.data import llm_registry
-                            # Always refresh options from registry to get latest enabled/disabled status
-                            fresh_options = llm_registry.get_llm_model_schema_options()
-                            if fresh_options:
-                                # Get enabled model slugs from fresh options
-                                enabled_slugs = {opt.get("value") for opt in fresh_options if isinstance(opt, dict) and "value" in opt}
-                                
-                                # Update "options" if present
-                                if has_options:
-                                    old_count = len(schema_part["options"])
-                                    old_slugs = {opt.get("value") for opt in schema_part["options"] if isinstance(opt, dict) and "value" in opt}
-                                    schema_part["options"] = fresh_options
-                                    new_count = len(fresh_options)
-                                    new_slugs = enabled_slugs
-                                    
-                                    # Log if there's a difference (models added/removed)
-                                    if old_count != new_count or old_slugs != new_slugs:
-                                        removed = old_slugs - new_slugs
-                                        added = new_slugs - old_slugs
-                                        if removed or added:
-                                            logger.info(
-                                                "Refreshed LLM model options for field %s%s: %d -> %d models. "
-                                                "Removed: %s, Added: %s",
-                                                field_name, f".{path}" if path else "", old_count, new_count, removed, added
-                                            )
-                                
-                                # Update "enum" if present - filter to only enabled models
-                                if has_enum:
-                                    old_enum = schema_part.get("enum", [])
-                                    # Filter enum values to only include enabled models
-                                    filtered_enum = [val for val in old_enum if val in enabled_slugs]
-                                    schema_part["enum"] = filtered_enum
-                                    
-                                    if len(old_enum) != len(filtered_enum):
-                                        removed_enum = set(old_enum) - enabled_slugs
-                                        logger.info(
-                                            "Filtered LLM model enum for field %s%s: %d -> %d models. "
-                                            "Removed disabled: %s",
-                                            field_name, f".{path}" if path else "", len(old_enum), len(filtered_enum), removed_enum
-                                        )
-                                
-                                return True
-                        except Exception as e:
-                            logger.warning("Failed to refresh LLM model options for field %s%s: %s", field_name, f".{path}" if path else "", e)
-                    
-                    # Check nested structures
-                    for key in ["anyOf", "oneOf", "allOf"]:
-                        if key in schema_part and isinstance(schema_part[key], list):
-                            for idx, item in enumerate(schema_part[key]):
-                                if isinstance(item, dict) and refresh_options_in_schema(item, f"{path}.{key}[{idx}]" if path else f"{key}[{idx}]"):
-                                    return True
-                    
-                    return False
-                
-                refresh_options_in_schema(field_schema)
-            
-            # Check if this is a credentials field - look for credentials_provider or credentials_types
-            has_credentials_provider = "credentials_provider" in field_schema
-            has_credentials_types = "credentials_types" in field_schema
-            
-            if not (has_credentials_provider or has_credentials_types):
-                continue
-            
-            # This is a credentials field
-            providers = field_schema.get("credentials_provider", [])
-            
-            # If providers not in field schema yet, try to get from model class
-            if not providers and model_class and hasattr(model_class, "model_fields"):
-                try:
-                    if field_name in model_class.model_fields:
-                        field_info = model_class.model_fields[field_name]
-                        # Check if this is a CredentialsMetaInput field
-                        from backend.data.model import CredentialsMetaInput
-                        if (hasattr(field_info, "annotation") and 
-                            inspect.isclass(field_info.annotation) and
-                            issubclass(get_origin(field_info.annotation) or field_info.annotation, CredentialsMetaInput)):
-                            # Get providers from the annotation
-                            providers_list = CredentialsMetaInput.allowed_providers.__func__(field_info.annotation)
-                            if providers_list:
-                                providers = list(providers_list)
-                                field_schema["credentials_provider"] = providers
-                except Exception:
-                    pass
-            
-            # Check if this is a multi-provider field
-            if isinstance(providers, list) and len(providers) > 1:
-                # Multi-provider field - ensure discriminator is set
-                if "discriminator" not in field_schema:
-                    # Try to get discriminator from model field definition
-                    discriminator_found = False
-                    if model_class and hasattr(model_class, "model_fields") and field_name in model_class.model_fields:
-                        try:
-                            field_info = model_class.model_fields[field_name]
-                            if hasattr(field_info, "json_schema_extra") and isinstance(field_info.json_schema_extra, dict):
-                                discriminator = field_info.json_schema_extra.get("discriminator")
-                                if discriminator:
-                                    field_schema["discriminator"] = discriminator
-                                    discriminator_found = True
-                        except Exception:
-                            pass
-                    
-                    # If not found, check if this looks like an LLM field and default to "model"
-                    if not discriminator_found:
-                        llm_providers = {"openai", "anthropic", "groq", "open_router", "llama_api", "aiml_api", "v0", "ollama"}
-                        if any(p in llm_providers for p in providers):
-                            field_schema["discriminator"] = "model"
-                
-                # If discriminator is "model", ensure discriminator_mapping is populated
-                if field_schema.get("discriminator") == "model":
-                    mapping = field_schema.get("discriminator_mapping")
-                    # If mapping is empty, missing, or None, refresh from registry
-                    if not mapping or (isinstance(mapping, dict) and len(mapping) == 0):
-                        try:
-                            from backend.data import llm_registry
-                            refreshed_mapping = llm_registry.get_llm_discriminator_mapping()
-                            if refreshed_mapping:
-                                field_schema["discriminator_mapping"] = refreshed_mapping
-                            else:
-                                # Ensure at least an empty dict is present
-                                field_schema["discriminator_mapping"] = {}
-                        except Exception:
-                            if "discriminator_mapping" not in field_schema:
-                                field_schema["discriminator_mapping"] = {}
 
     @classmethod
     def validate_data(cls, data: BlockInput) -> str | None:
