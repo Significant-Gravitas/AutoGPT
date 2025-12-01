@@ -20,6 +20,7 @@ import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeT
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { okData } from "@/app/api/helpers";
+import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -41,6 +42,9 @@ export const Flow = () => {
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
+  );
+  const hasWebhookNodes = useNodeStore(
+    useShallow((state) => state.hasWebhookNodes()),
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
@@ -91,7 +95,7 @@ export const Flow = () => {
           <Background />
           <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
           <NewControlPanel />
-          <BuilderActions />
+          {hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />}
           {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
           {graph && (
