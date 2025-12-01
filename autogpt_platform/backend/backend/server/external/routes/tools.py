@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 
 tools_router = APIRouter(prefix="/tools", tags=["tools"])
 
+# Note: We use Security() as a function parameter dependency (api_key: APIKeyInfo = Security(...))
+# rather than in the decorator's dependencies= list. This avoids duplicate permission checks
+# while still enforcing auth AND giving us access to the api_key for extracting user_id.
+
 
 # Request models
 class FindAgentRequest(BaseModel):
@@ -92,10 +96,7 @@ def _create_ephemeral_session(user_id: str | None) -> ChatSession:
     return ChatSession.new(user_id)
 
 
-@tools_router.post(
-    path="/find-agent",
-    dependencies=[Security(require_permission(APIKeyPermission.USE_TOOLS))],
-)
+@tools_router.post(path="/find-agent")
 async def find_agent(
     request: FindAgentRequest,
     api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
@@ -118,10 +119,7 @@ async def find_agent(
     return _response_to_dict(result)
 
 
-@tools_router.post(
-    path="/get-agent-details",
-    dependencies=[Security(require_permission(APIKeyPermission.USE_TOOLS))],
-)
+@tools_router.post(path="/get-agent-details")
 async def get_agent_details(
     request: AgentSlugRequest,
     api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
@@ -145,10 +143,7 @@ async def get_agent_details(
     return _response_to_dict(result)
 
 
-@tools_router.post(
-    path="/get-required-setup-info",
-    dependencies=[Security(require_permission(APIKeyPermission.USE_TOOLS))],
-)
+@tools_router.post(path="/get-required-setup-info")
 async def get_required_setup_info(
     request: GetRequiredSetupInfoRequest,
     api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
@@ -173,10 +168,7 @@ async def get_required_setup_info(
     return _response_to_dict(result)
 
 
-@tools_router.post(
-    path="/run-agent",
-    dependencies=[Security(require_permission(APIKeyPermission.USE_TOOLS))],
-)
+@tools_router.post(path="/run-agent")
 async def run_agent(
     request: RunAgentRequest,
     api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
@@ -203,10 +195,7 @@ async def run_agent(
     return _response_to_dict(result)
 
 
-@tools_router.post(
-    path="/setup-agent",
-    dependencies=[Security(require_permission(APIKeyPermission.USE_TOOLS))],
-)
+@tools_router.post(path="/setup-agent")
 async def setup_agent(
     request: SetupAgentRequest,
     api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
