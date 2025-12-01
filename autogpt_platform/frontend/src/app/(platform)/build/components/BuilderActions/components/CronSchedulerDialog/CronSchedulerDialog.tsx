@@ -1,10 +1,10 @@
+import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/ScheduleAgentModal/components/CronScheduler/CronScheduler";
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { InfoIcon } from "lucide-react";
-import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/ScheduleAgentModal/components/CronScheduler/CronScheduler";
-import { Text } from "@/components/atoms/Text/Text";
 import { useCronSchedulerDialog } from "./useCronSchedulerDialog";
-import { Input } from "@/components/atoms/Input/Input";
 
 type CronSchedulerDialogProps = {
   open: boolean;

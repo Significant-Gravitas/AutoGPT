@@ -1,25 +1,25 @@
-import React, { FC } from "react";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import {
+  OutputActions,
+  OutputItem,
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { beautifyString } from "@/lib/utils";
 import {
   ArrowsOutSimpleIcon,
+  CheckIcon,
   CopyIcon,
   DownloadIcon,
-  CheckIcon,
 } from "@phosphor-icons/react";
-import { Text } from "@/components/atoms/Text/Text";
-import { beautifyString } from "@/lib/utils";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
-import {
-  OutputItem,
-  OutputActions,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
+import { FC } from "react";
 import { useNodeDataViewer } from "./useNodeDataViewer";
 
 interface NodeDataViewerProps {
