@@ -13,12 +13,23 @@ import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useCopyPaste } from "./useCopyPaste";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
+import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 
 export const Flow = () => {
+  const [{ flowExecutionID }] = useQueryStates({
+    flowID: parseAsString,
+    flowExecutionID: parseAsString,
+  });
+
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
+  );
+  const hasWebhookNodes = useNodeStore(
+    useShallow((state) => state.hasWebhookNodes()),
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
@@ -44,7 +55,9 @@ export const Flow = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleCopyPaste]);
-  const { isGraphRunning } = useGraphStore();
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
@@ -67,11 +80,12 @@ export const Flow = () => {
           <Background />
           <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
           <NewControlPanel />
-          <BuilderActions />
+          {hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />}
           {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
+      <FloatingReviewsPanel executionId={flowExecutionID || undefined} />
     </div>
   );
 };

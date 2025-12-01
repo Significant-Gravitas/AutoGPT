@@ -12,7 +12,7 @@ import prisma.types
 
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
-from backend.data.db import transaction
+from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphMeta,
     GraphModel,
@@ -120,7 +120,7 @@ async def get_store_agents(
                     is_available,
                     updated_at,
                     ts_rank_cd(search, query) AS rank
-                FROM "StoreAgent",
+                FROM {{schema_prefix}}"StoreAgent",
                     plainto_tsquery('english', $1) AS query
                 WHERE {sql_where_clause}
                     AND search @@ query
@@ -131,22 +131,18 @@ async def get_store_agents(
             # Count query for pagination - only uses search term parameter
             count_query = f"""
                 SELECT COUNT(*) as count
-                FROM "StoreAgent",
+                FROM {{schema_prefix}}"StoreAgent",
                     plainto_tsquery('english', $1) AS query
                 WHERE {sql_where_clause}
                     AND search @@ query
             """
 
             # Execute both queries with parameters
-            agents = await prisma.client.get_client().query_raw(
-                typing.cast(typing.LiteralString, sql_query), *params
-            )
+            agents = await query_raw_with_schema(sql_query, *params)
 
             # For count, use params without pagination (last 2 params)
             count_params = params[:-2]
-            count_result = await prisma.client.get_client().query_raw(
-                typing.cast(typing.LiteralString, count_query), *count_params
-            )
+            count_result = await query_raw_with_schema(count_query, *count_params)
 
             total = count_result[0]["count"] if count_result else 0
             total_pages = (total + page_size - 1) // page_size

@@ -19,8 +19,8 @@ export const useFlowRealtime = () => {
   const updateStatus = useNodeStore(
     useShallow((state) => state.updateNodeStatus),
   );
-  const setIsGraphRunning = useGraphStore(
-    useShallow((state) => state.setIsGraphRunning),
+  const setGraphExecutionStatus = useGraphStore(
+    useShallow((state) => state.setGraphExecutionStatus),
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
@@ -57,11 +57,7 @@ export const useFlowRealtime = () => {
           return;
         }
 
-        const isRunning =
-          graphExecution.status === AgentExecutionStatus.RUNNING ||
-          graphExecution.status === AgentExecutionStatus.QUEUED;
-
-        setIsGraphRunning(isRunning);
+        setGraphExecutionStatus(graphExecution.status as AgentExecutionStatus);
       },
     );
 
