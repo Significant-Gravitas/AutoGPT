@@ -9,7 +9,13 @@ from backend.blocks.twitter._auth import (
     TwitterCredentialsInput,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -18,7 +24,7 @@ class TwitterHideReplyBlock(Block):
     Hides a reply of one of your tweets
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "tweet.moderate.write", "users.read", "offline.access"]
         )
@@ -28,9 +34,8 @@ class TwitterHideReplyBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the operation was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -90,7 +95,7 @@ class TwitterUnhideReplyBlock(Block):
     Unhides a reply to a tweet
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
             ["tweet.read", "tweet.moderate.write", "users.read", "offline.access"]
         )
@@ -100,9 +105,8 @@ class TwitterUnhideReplyBlock(Block):
             placeholder="Enter tweet ID",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the operation was successful")
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

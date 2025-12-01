@@ -5,13 +5,22 @@ import pytest
 from backend.data.block import Block, get_blocks
 from backend.util.test import execute_block_test
 
+SKIP_BLOCK_TESTS = {
+    "HumanInTheLoopBlock",
+}
 
-@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b.name)
+
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
 async def test_available_blocks(block: Type[Block]):
-    await execute_block_test(block())
+    block_instance = block()
+    if block_instance.__class__.__name__ in SKIP_BLOCK_TESTS:
+        pytest.skip(
+            f"Skipping {block_instance.__class__.__name__} - requires external service"
+        )
+    await execute_block_test(block_instance)
 
 
-@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b.name)
+@pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
 async def test_block_ids_valid(block: Type[Block]):
     # add the tests here to check they are uuid4
     import uuid
@@ -19,7 +28,7 @@ async def test_block_ids_valid(block: Type[Block]):
     # Skip list for blocks with known invalid UUIDs
     skip_blocks = {
         "GetWeatherInformationBlock",
-        "CodeExecutionBlock",
+        "ExecuteCodeBlock",
         "CountdownTimerBlock",
         "TwitterGetListTweetsBlock",
         "TwitterRemoveListMemberBlock",

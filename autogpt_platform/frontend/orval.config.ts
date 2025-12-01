@@ -67,6 +67,12 @@ export default defineConfig({
               useQuery: true,
             },
           },
+          "getV2Builder search": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
         },
       },
     },

@@ -3,7 +3,7 @@ from typing import Any, Literal, Optional, Union
 from mem0 import MemoryClient
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import Block, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -55,7 +55,7 @@ class AddMemoryBlock(Block, Mem0Base):
 
     Always limited by user_id and optional graph_id and graph_exec_id"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
@@ -74,13 +74,12 @@ class AddMemoryBlock(Block, Mem0Base):
             description="Limit the memory to the agent", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         action: str = SchemaField(description="Action of the operation")
         memory: str = SchemaField(description="Memory created")
         results: list[dict[str, str]] = SchemaField(
             description="List of all results from the operation"
         )
-        error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
         super().__init__(
@@ -172,7 +171,7 @@ class AddMemoryBlock(Block, Mem0Base):
 class SearchMemoryBlock(Block, Mem0Base):
     """Block for searching memories in Mem0"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
@@ -201,9 +200,8 @@ class SearchMemoryBlock(Block, Mem0Base):
             description="Limit the memory to the agent", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         memories: Any = SchemaField(description="List of matching memories")
-        error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
         super().__init__(
@@ -266,7 +264,7 @@ class SearchMemoryBlock(Block, Mem0Base):
 class GetAllMemoriesBlock(Block, Mem0Base):
     """Block for retrieving all memories from Mem0"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
@@ -289,9 +287,8 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             description="Limit the memory to the agent", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         memories: Any = SchemaField(description="List of memories")
-        error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
         super().__init__(
@@ -353,7 +350,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
 class GetLatestMemoryBlock(Block, Mem0Base):
     """Block for retrieving the latest memory from Mem0"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
@@ -380,12 +377,11 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             description="Limit the memory to the agent", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         memory: Optional[dict[str, Any]] = SchemaField(
             description="Latest memory if found"
         )
         found: bool = SchemaField(description="Whether a memory was found")
-        error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
         super().__init__(

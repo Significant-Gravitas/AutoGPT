@@ -156,7 +156,7 @@ export function AvatarImage({
       sizes={sizes}
       priority={priority}
       unoptimized={unoptimized}
-      onLoadingComplete={handleLoadingComplete}
+      onLoad={handleLoadingComplete}
       onError={handleErrorNext as ImageProps["onError"]}
     />
   );

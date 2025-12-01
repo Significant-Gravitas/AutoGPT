@@ -1,35 +1,25 @@
-from enum import Enum
 from typing import Any
 
 from firecrawl import FirecrawlApp
 
+from backend.blocks.firecrawl._api import ScrapeFormat
 from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
 
 from ._config import firecrawl
-
-
-class ScrapeFormat(Enum):
-    MARKDOWN = "markdown"
-    HTML = "html"
-    RAW_HTML = "rawHtml"
-    LINKS = "links"
-    SCREENSHOT = "screenshot"
-    SCREENSHOT_FULL_PAGE = "screenshot@fullPage"
-    JSON = "json"
-    CHANGE_TRACKING = "changeTracking"
+from ._format_utils import convert_to_format_options
 
 
 class FirecrawlScrapeBlock(Block):
-
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = firecrawl.credentials_field()
         url: str = SchemaField(description="The URL to crawl")
         limit: int = SchemaField(description="The number of pages to crawl", default=10)
@@ -49,7 +39,7 @@ class FirecrawlScrapeBlock(Block):
             description="The format of the crawl", default=[ScrapeFormat.MARKDOWN]
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         data: dict[str, Any] = SchemaField(description="The result of the crawl")
         markdown: str = SchemaField(description="The markdown of the crawl")
         html: str = SchemaField(description="The html of the crawl")
@@ -65,6 +55,10 @@ class FirecrawlScrapeBlock(Block):
         change_tracking: dict[str, Any] = SchemaField(
             description="The change tracking of the crawl"
         )
+        error: str = SchemaField(
+            description="Error message if the scrape failed",
+            default="",
+        )
 
     def __init__(self):
         super().__init__(
@@ -78,12 +72,11 @@ class FirecrawlScrapeBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        scrape_result = app.scrape_url(
+        scrape_result = app.scrape(
             input_data.url,
-            formats=[format.value for format in input_data.formats],
+            formats=convert_to_format_options(input_data.formats),
             only_main_content=input_data.only_main_content,
             max_age=input_data.max_age,
             wait_for=input_data.wait_for,
@@ -96,7 +89,7 @@ class FirecrawlScrapeBlock(Block):
             elif f == ScrapeFormat.HTML:
                 yield "html", scrape_result.html
             elif f == ScrapeFormat.RAW_HTML:
-                yield "raw_html", scrape_result.rawHtml
+                yield "raw_html", scrape_result.raw_html
             elif f == ScrapeFormat.LINKS:
                 yield "links", scrape_result.links
             elif f == ScrapeFormat.SCREENSHOT:
@@ -104,6 +97,6 @@ class FirecrawlScrapeBlock(Block):
             elif f == ScrapeFormat.SCREENSHOT_FULL_PAGE:
                 yield "screenshot_full_page", scrape_result.screenshot
             elif f == ScrapeFormat.CHANGE_TRACKING:
-                yield "change_tracking", scrape_result.changeTracking
+                yield "change_tracking", scrape_result.change_tracking
             elif f == ScrapeFormat.JSON:
                 yield "json", scrape_result.json

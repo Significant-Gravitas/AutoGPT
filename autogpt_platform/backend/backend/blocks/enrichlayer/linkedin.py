@@ -8,7 +8,13 @@ which provides access to LinkedIn profile data and related information.
 import logging
 from typing import Optional
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 from backend.util.type import MediaFileType
 
@@ -29,7 +35,7 @@ logger = logging.getLogger(__name__)
 class GetLinkedinProfileBlock(Block):
     """Block to fetch LinkedIn profile data using Enrichlayer API."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         """Input schema for GetLinkedinProfileBlock."""
 
         linkedin_url: str = SchemaField(
@@ -80,13 +86,12 @@ class GetLinkedinProfileBlock(Block):
             description="Enrichlayer API credentials"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         """Output schema for GetLinkedinProfileBlock."""
 
         profile: PersonProfileResponse = SchemaField(
             description="LinkedIn profile data"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize GetLinkedinProfileBlock."""
@@ -199,7 +204,7 @@ class GetLinkedinProfileBlock(Block):
 class LinkedinPersonLookupBlock(Block):
     """Block to look up LinkedIn profiles by person's information using Enrichlayer API."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         """Input schema for LinkedinPersonLookupBlock."""
 
         first_name: str = SchemaField(
@@ -242,13 +247,12 @@ class LinkedinPersonLookupBlock(Block):
             description="Enrichlayer API credentials"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         """Output schema for LinkedinPersonLookupBlock."""
 
         lookup_result: PersonLookupResponse = SchemaField(
             description="LinkedIn profile lookup result"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize LinkedinPersonLookupBlock."""
@@ -346,7 +350,7 @@ class LinkedinPersonLookupBlock(Block):
 class LinkedinRoleLookupBlock(Block):
     """Block to look up LinkedIn profiles by role in a company using Enrichlayer API."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         """Input schema for LinkedinRoleLookupBlock."""
 
         role: str = SchemaField(
@@ -366,13 +370,12 @@ class LinkedinRoleLookupBlock(Block):
             description="Enrichlayer API credentials"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         """Output schema for LinkedinRoleLookupBlock."""
 
         role_lookup_result: RoleLookupResponse = SchemaField(
             description="LinkedIn role lookup result"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize LinkedinRoleLookupBlock."""
@@ -449,7 +452,7 @@ class LinkedinRoleLookupBlock(Block):
 class GetLinkedinProfilePictureBlock(Block):
     """Block to get LinkedIn profile pictures using Enrichlayer API."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         """Input schema for GetLinkedinProfilePictureBlock."""
 
         linkedin_profile_url: str = SchemaField(
@@ -460,13 +463,12 @@ class GetLinkedinProfilePictureBlock(Block):
             description="Enrichlayer API credentials"
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         """Output schema for GetLinkedinProfilePictureBlock."""
 
         profile_picture_url: MediaFileType = SchemaField(
             description="LinkedIn profile picture URL"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize GetLinkedinProfilePictureBlock."""

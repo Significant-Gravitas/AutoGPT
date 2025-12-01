@@ -46,7 +46,6 @@ export function mapJsonSchemaTypeToInputType(
     ) {
       return InputType.MULTI_SELECT;
     }
-    console.log("schema", schema);
     return InputType.ARRAY_EDITOR;
   }
 
