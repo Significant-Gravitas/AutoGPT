@@ -53,8 +53,8 @@ export function NewAgentLibraryView() {
     <div
       className={
         showSidebarLayout
-          ? "grid h-screen grid-cols-1 gap-0 pt-3 md:gap-4 lg:grid-cols-[25%_70%]"
-          : "grid h-screen grid-cols-1 gap-0 pt-3 md:gap-4"
+          ? "grid h-full grid-cols-1 gap-0 pt-3 md:gap-4 lg:grid-cols-[25%_70%]"
+          : "grid h-full grid-cols-1 gap-0 pt-3 md:gap-4"
       }
     >
       <div className={showSidebarLayout ? "p-4 pl-5" : "hidden p-4 pl-5"}>
@@ -83,7 +83,7 @@ export function NewAgentLibraryView() {
       </div>
 
       {/* Main Content - 70% */}
-      <div className="p-4">
+      <div className="flex min-h-0 flex-col gap-4 p-4">
         <div className={!showSidebarLayout ? "px-2" : ""}>
           <Breadcrumbs
             items={[
@@ -92,7 +92,7 @@ export function NewAgentLibraryView() {
             ]}
           />
         </div>
-        <div className="mt-1">
+        <div className="flex min-h-0 flex-1 flex-col">
           {selectedRun ? (
             selectedRun.startsWith("schedule:") ? (
               <SelectedScheduleView
@@ -116,12 +116,7 @@ export function NewAgentLibraryView() {
               Select a run to view its details
             </div>
           ) : (
-            <EmptyAgentRuns
-              agentName={agent.name}
-              creatorName={agent.creator_name || "Unknown"}
-              description={agent.description}
-              agent={agent}
-            />
+            <EmptyAgentRuns agent={agent} />
           )}
         </div>
       </div>
