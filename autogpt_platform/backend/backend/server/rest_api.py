@@ -29,13 +29,13 @@ import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
 import backend.server.v2.chat.routes as chat_routes
+import backend.server.v2.executions.review.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
-import backend.server.v2.turnstile.routes
 import backend.util.service
 import backend.util.settings
 from backend.blocks.llm import LlmModel
@@ -276,15 +276,15 @@ app.include_router(
     prefix="/api/executions",
 )
 app.include_router(
+    backend.server.v2.executions.review.routes.router,
+    tags=["v2", "executions", "review"],
+    prefix="/api/review",
+)
+app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
     backend.server.v2.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
-)
-app.include_router(
-    backend.server.v2.turnstile.routes.router,
-    tags=["v2", "turnstile"],
-    prefix="/api/turnstile",
 )
 
 app.include_router(

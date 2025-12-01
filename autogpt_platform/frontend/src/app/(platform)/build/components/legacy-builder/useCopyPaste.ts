@@ -10,7 +10,6 @@ interface CopyableData {
 export function useCopyPaste(getNextNodeId: () => string) {
   const { setNodes, addEdges, getNodes, getEdges, getViewport } =
     useReactFlow();
-  const { x, y, zoom } = getViewport();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
@@ -46,6 +45,8 @@ export function useCopyPaste(getNextNodeId: () => string) {
             const copiedData = JSON.parse(copiedDataString) as CopyableData;
             const oldToNewIdMap: Record<string, string> = {};
 
+            // Get fresh viewport values at paste time to ensure correct positioning
+            const { x, y, zoom } = getViewport();
             const viewportCenter = {
               x: (window.innerWidth / 2 - x) / zoom,
               y: (window.innerHeight / 2 - y) / zoom,
@@ -70,13 +71,15 @@ export function useCopyPaste(getNextNodeId: () => string) {
               oldToNewIdMap[node.id] = newNodeId;
               return {
                 ...node,
-                id: newNodeId,
+                id: newNodeId, // Generate unique ID for the pasted node
+                selected: true, // Select the pasted nodes so they're visible
                 position: {
                   x: node.position.x + offsetX,
                   y: node.position.y + offsetY,
                 },
                 data: {
                   ...node.data,
+                  backend_id: undefined, // Clear backend_id so the new node.id is used when saving
                   connections: node.data.connections || [], // Preserve connections
                   status: undefined,
                   executionResults: undefined,
@@ -129,7 +132,7 @@ export function useCopyPaste(getNextNodeId: () => string) {
         }
       }
     },
-    [setNodes, addEdges, getNodes, getEdges, getNextNodeId, x, y, zoom],
+    [setNodes, addEdges, getNodes, getEdges, getNextNodeId, getViewport],
   );
 
   return handleCopyPaste;

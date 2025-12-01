@@ -30,6 +30,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
     NodesInputMasks,
     UserContext,
+    get_graph_execution,
 )
 from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
@@ -42,7 +43,11 @@ from backend.util.clients import (
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    GraphValidationError,
+    NotFoundError,
+)
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
@@ -516,7 +521,7 @@ async def validate_and_construct_node_execution_input(
         skip_access_check=True,
     )
     if not graph:
-        raise NotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
 
     # Validate that the user has permission to execute this graph
     # This checks both library membership and execution permissions,
@@ -760,6 +765,7 @@ async def add_graph_execution(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
     is_sub_graph: bool = False,
+    graph_exec_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -775,32 +781,48 @@ async def add_graph_execution(
         nodes_input_masks: Node inputs to use in the execution.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         is_sub_graph: Whether this is a sub-graph execution.
+        graph_exec_id: If provided, resume this existing execution instead of creating a new one.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
+        NotFoundError: If graph_exec_id is provided but execution is not found.
     """
     if prisma.is_connected():
         edb = execution_db
     else:
         edb = get_database_manager_async_client()
 
-    graph, starting_nodes_input, compiled_nodes_input_masks = (
-        await validate_and_construct_node_execution_input(
-            graph_id=graph_id,
+    # Get or create the graph execution
+    if graph_exec_id:
+        # Resume existing execution
+        graph_exec = await get_graph_execution(
             user_id=user_id,
-            graph_inputs=inputs or {},
-            graph_version=graph_version,
-            graph_credentials_inputs=graph_credentials_inputs,
-            nodes_input_masks=nodes_input_masks,
-            is_sub_graph=is_sub_graph,
+            execution_id=graph_exec_id,
+            include_node_executions=True,
         )
-    )
-    graph_exec = None
 
-    try:
-        # Sanity check: running add_graph_execution with the properties of
-        # the graph_exec created here should create the same execution again.
+        if not graph_exec:
+            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # Use existing execution's compiled input masks
+        compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+
+        logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
+    else:
+        # Create new execution
+        graph, starting_nodes_input, compiled_nodes_input_masks = (
+            await validate_and_construct_node_execution_input(
+                graph_id=graph_id,
+                user_id=user_id,
+                graph_inputs=inputs or {},
+                graph_version=graph_version,
+                graph_credentials_inputs=graph_credentials_inputs,
+                nodes_input_masks=nodes_input_masks,
+                is_sub_graph=is_sub_graph,
+            )
+        )
+
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
@@ -813,16 +835,20 @@ async def add_graph_execution(
             parent_graph_exec_id=parent_graph_exec_id,
         )
 
+        logger.info(
+            f"Created graph execution #{graph_exec.id} for graph "
+            f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
+        )
+
+    # Common path: publish to queue and update status
+    try:
         graph_exec_entry = graph_exec.to_graph_execution_entry(
             user_context=await get_user_context(user_id),
             compiled_nodes_input_masks=compiled_nodes_input_masks,
             parent_graph_exec_id=parent_graph_exec_id,
         )
-        logger.info(
-            f"Created graph execution #{graph_exec.id} for graph "
-            f"#{graph_id} with {len(starting_nodes_input)} starting nodes. "
-            f"Now publishing to execution queue."
-        )
+
+        logger.info(f"Publishing execution {graph_exec.id} to execution queue")
 
         exec_queue = await get_async_execution_queue()
         await exec_queue.publish_message(

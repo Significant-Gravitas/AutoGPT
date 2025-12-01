@@ -17,7 +17,6 @@ import {
   LinkCreatable,
   NodeCreatable,
   NodeExecutionResult,
-  SpecialBlockID,
   Node,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -63,6 +62,9 @@ export default function useAgentGraph(
   const [graphExecutionError, setGraphExecutionError] = useState<string | null>(
     null,
   );
+  const [graphExecutionStatus, setGraphExecutionStatus] = useState<
+    string | null
+  >(null);
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
   const { state, completeStep, incrementRuns } = useOnboarding();
@@ -276,28 +278,6 @@ export default function useAgentGraph(
   const cleanupSourceName = (sourceName: string) =>
     isToolSourceName(sourceName) ? "tools" : sourceName;
 
-  const getToolFuncName = useCallback(
-    (nodeID: string) => {
-      const sinkNode = xyNodes.find((node) => node.id === nodeID);
-      if (!sinkNode) return "";
-
-      const sinkNodeName =
-        sinkNode.data.block_id === SpecialBlockID.AGENT
-          ? sinkNode.data.hardcodedValues?.agent_name ||
-            availableFlows.find(
-              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-            )?.name ||
-            "agentexecutorblock"
-          : sinkNode.data.title.split(" ")[0];
-
-      return sinkNodeName;
-    },
-    [xyNodes, availableFlows],
-  );
-
-  const normalizeToolName = (str: string) =>
-    str.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase(); // This normalization rule has to match with the one on smart_decision_maker.py
-
   /** ------------------------------ */
 
   const updateEdgeBeads = useCallback(
@@ -381,11 +361,12 @@ export default function useAgentGraph(
 
       const statusRank = {
         RUNNING: 0,
-        QUEUED: 1,
-        INCOMPLETE: 2,
-        TERMINATED: 3,
-        COMPLETED: 4,
-        FAILED: 5,
+        REVIEW: 1,
+        QUEUED: 2,
+        INCOMPLETE: 3,
+        TERMINATED: 4,
+        COMPLETED: 5,
+        FAILED: 6,
       };
       const status = executionResults
         .map((v) => v.status)
@@ -499,7 +480,8 @@ export default function useAgentGraph(
         flowExecutionID,
       );
 
-      // Set graph execution error from the initial fetch
+      // Set graph execution status and error from the initial fetch
+      setGraphExecutionStatus(execution.status);
       if (execution.status === "FAILED") {
         setGraphExecutionError(
           execution.stats?.error ||
@@ -568,10 +550,14 @@ export default function useAgentGraph(
               });
             }
           }
+          // Update the execution status
+          setGraphExecutionStatus(graphExec.status);
+
           if (
             graphExec.status === "COMPLETED" ||
             graphExec.status === "TERMINATED" ||
-            graphExec.status === "FAILED"
+            graphExec.status === "FAILED" ||
+            graphExec.status === "REVIEW"
           ) {
             cancelGraphExecListener();
             setIsRunning(false);
@@ -607,17 +593,10 @@ export default function useAgentGraph(
 
   const prepareSaveableGraph = useCallback((): GraphCreatable => {
     const links = xyEdges.map((edge): LinkCreatable => {
-      let sourceName = edge.sourceHandle || "";
+      const sourceName = edge.sourceHandle || "";
       const sourceNode = xyNodes.find((node) => node.id === edge.source);
       const sinkNode = xyNodes.find((node) => node.id === edge.target);
 
-      // Special case for SmartDecisionMakerBlock
-      if (
-        sourceNode?.data.block_id === SpecialBlockID.SMART_DECISION &&
-        sourceName.toLowerCase() === "tools"
-      ) {
-        sourceName = `tools_^_${normalizeToolName(getToolFuncName(edge.target))}_~_${normalizeToolName(edge.targetHandle || "")}`;
-      }
       return {
         source_id: sourceNode?.data.backend_id ?? edge.source,
         sink_id: sinkNode?.data.backend_id ?? edge.target,
@@ -650,7 +629,6 @@ export default function useAgentGraph(
     agentDescription,
     agentRecommendedScheduleCron,
     prepareNodeInputData,
-    getToolFuncName,
   ]);
 
   const resetEdgeBeads = useCallback(() => {
@@ -998,6 +976,7 @@ export default function useAgentGraph(
     isStopping,
     isScheduling,
     graphExecutionError,
+    graphExecutionStatus,
     nodes: xyNodes,
     setNodes: setXYNodes,
     edges: xyEdges,

@@ -11,6 +11,11 @@ from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 from backend.data.block import get_blocks
 from backend.data.credit import get_user_credit_model
 from backend.data.model import CredentialsMetaInput
+from backend.data.notification_bus import (
+    AsyncRedisNotificationEventBus,
+    NotificationEvent,
+)
+from backend.server.model import OnboardingNotificationPayload
 from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.json import SafeJson
@@ -82,22 +87,10 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["completedSteps"] = list(
             set(data.completedSteps + onboarding.completedSteps)
         )
-        for step in (
-            OnboardingStep.AGENT_NEW_RUN,
-            OnboardingStep.MARKETPLACE_VISIT,
-            OnboardingStep.MARKETPLACE_ADD_AGENT,
-            OnboardingStep.MARKETPLACE_RUN_AGENT,
-            OnboardingStep.BUILDER_SAVE_AGENT,
-            OnboardingStep.RE_RUN_AGENT,
-            OnboardingStep.SCHEDULE_AGENT,
-            OnboardingStep.RUN_AGENTS,
-            OnboardingStep.RUN_3_DAYS,
-            OnboardingStep.TRIGGER_WEBHOOK,
-            OnboardingStep.RUN_14_DAYS,
-            OnboardingStep.RUN_AGENTS_100,
-        ):
-            if step in data.completedSteps:
-                await reward_user(user_id, step, onboarding)
+        for step in data.completedSteps:
+            if step not in onboarding.completedSteps:
+                await _reward_user(user_id, onboarding, step)
+                await _send_onboarding_notification(user_id, step)
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
@@ -130,7 +123,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     )
 
 
-async def reward_user(user_id: str, step: OnboardingStep, onboarding: UserOnboarding):
+async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
     reward = 0
     match step:
         # Reward user when they clicked New Run during onboarding
@@ -180,20 +173,32 @@ async def reward_user(user_id: str, step: OnboardingStep, onboarding: UserOnboar
     )
 
 
-async def complete_webhook_trigger_step(user_id: str):
+async def complete_onboarding_step(user_id: str, step: OnboardingStep):
     """
-    Completes the TRIGGER_WEBHOOK onboarding step for the user if not already completed.
+    Completes the specified onboarding step for the user if not already completed.
     """
 
     onboarding = await get_user_onboarding(user_id)
-    if OnboardingStep.TRIGGER_WEBHOOK not in onboarding.completedSteps:
+    if step not in onboarding.completedSteps:
         await update_user_onboarding(
             user_id,
-            UserOnboardingUpdate(
-                completedSteps=onboarding.completedSteps
-                + [OnboardingStep.TRIGGER_WEBHOOK]
-            ),
+            UserOnboardingUpdate(completedSteps=onboarding.completedSteps + [step]),
         )
+        await _send_onboarding_notification(user_id, step)
+
+
+async def _send_onboarding_notification(user_id: str, step: OnboardingStep):
+    """
+    Sends an onboarding notification to the user for the specified step.
+    """
+    payload = OnboardingNotificationPayload(
+        type="onboarding",
+        event="step_completed",
+        step=step.value,
+    )
+    await AsyncRedisNotificationEventBus().publish(
+        NotificationEvent(user_id=user_id, payload=payload)
+    )
 
 
 def clean_and_split(text: str) -> list[str]:

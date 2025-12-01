@@ -58,7 +58,7 @@ export const CredentialsField = (props: FieldProps) => {
         />
       )}
 
-      <div>
+      <div className="flex flex-wrap gap-2">
         {supportsApiKey && (
           <APIKeyCredentialsModal
             schema={schema as BlockIOCredentialsSubSchema}

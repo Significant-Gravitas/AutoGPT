@@ -44,7 +44,6 @@ export function useSupabase() {
     return logOut({
       options,
       api,
-      router,
     });
   }
 

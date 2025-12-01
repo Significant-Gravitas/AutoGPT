@@ -1,10 +1,10 @@
-import { ReactFlow, Background, Controls } from "@xyflow/react";
+import { ReactFlow, Background } from "@xyflow/react";
 import NewControlPanel from "../../NewControlPanel/NewControlPanel";
 import CustomEdge from "../edges/CustomEdge";
 import { useFlow } from "./useFlow";
 import { useShallow } from "zustand/react/shallow";
 import { useNodeStore } from "../../../stores/nodeStore";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { CustomNode } from "../nodes/CustomNode/CustomNode";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { useFlowRealtime } from "./useFlowRealtime";
@@ -12,26 +12,52 @@ import { GraphLoadingBox } from "./components/GraphLoadingBox";
 import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
-import { useCopyPasteKeyboard } from "../../../hooks/useCopyPasteKeyboard";
+import { useCopyPaste } from "./useCopyPaste";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { parseAsString, useQueryStates } from "nuqs";
+import { CustomControls } from "./components/CustomControl";
+import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 
 export const Flow = () => {
+  const [{ flowExecutionID }] = useQueryStates({
+    flowID: parseAsString,
+    flowExecutionID: parseAsString,
+  });
+
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
   );
+  const hasWebhookNodes = useNodeStore(
+    useShallow((state) => state.hasWebhookNodes()),
+  );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
+  const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
-  const { onDragOver, onDrop } = useFlow();
+  const { onDragOver, onDrop, isFlowContentLoading, isLocked, setIsLocked } =
+    useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
 
-  useCopyPasteKeyboard();
+  // Copy/paste functionality
+  const handleCopyPaste = useCopyPaste();
 
-  const { isFlowContentLoading } = useFlow();
-  const { isGraphRunning } = useGraphStore();
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleCopyPaste(event);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleCopyPaste]);
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
@@ -39,23 +65,27 @@ export const Flow = () => {
           nodes={nodes}
           onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           edges={edges}
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
-          edgeTypes={{ custom: CustomEdge }}
           maxZoom={2}
           minZoom={0.1}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          nodesDraggable={!isLocked}
+          nodesConnectable={!isLocked}
+          elementsSelectable={!isLocked}
         >
           <Background />
-          <Controls />
+          <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
           <NewControlPanel />
-          <BuilderActions />
-          {isFlowContentLoading && <GraphLoadingBox />}
+          {hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />}
+          {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
         </ReactFlow>
       </div>
+      <FloatingReviewsPanel executionId={flowExecutionID || undefined} />
     </div>
   );
 };

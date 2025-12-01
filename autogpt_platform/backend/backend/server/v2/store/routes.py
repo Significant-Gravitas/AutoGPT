@@ -542,7 +542,9 @@ async def generate_image(
     Returns:
         JSONResponse: JSON containing the URL of the generated image
     """
-    agent = await backend.data.graph.get_graph(agent_id, user_id=user_id)
+    agent = await backend.data.graph.get_graph(
+        graph_id=agent_id, version=None, user_id=user_id
+    )
 
     if not agent:
         raise fastapi.HTTPException(
