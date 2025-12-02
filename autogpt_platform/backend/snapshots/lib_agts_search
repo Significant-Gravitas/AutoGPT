@@ -32,6 +32,9 @@
       "is_latest_version": true,
       "is_favorite": false,
       "recommended_schedule_cron": null,
+      "settings": {
+        "human_in_the_loop_safe_mode": null
+      },
       "marketplace_listing": null
     },
     {
@@ -66,6 +69,9 @@
       "is_latest_version": true,
       "is_favorite": false,
       "recommended_schedule_cron": null,
+      "settings": {
+        "human_in_the_loop_safe_mode": null
+      },
       "marketplace_listing": null
     }
   ],
