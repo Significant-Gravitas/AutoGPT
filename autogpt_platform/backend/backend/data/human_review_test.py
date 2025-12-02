@@ -13,10 +13,6 @@ from backend.data.human_review import (
     process_all_reviews_for_execution,
 )
 
-pytestmark = pytest.mark.skip(
-    reason="Tests failing in CI due to mocking issues - skipping until refactored"
-)
-
 
 @pytest.fixture
 def sample_db_review():
