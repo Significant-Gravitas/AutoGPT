@@ -85,7 +85,7 @@ async def run_replicate_with_retry(
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
-                wait_time = retry_delay * (2 ** attempt)
+                wait_time = retry_delay * (2**attempt)
                 logger.warning(
                     f"Replicate attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s..."
                 )
