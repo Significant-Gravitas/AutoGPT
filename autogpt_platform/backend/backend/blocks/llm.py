@@ -1811,7 +1811,7 @@ class AIListGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
-        
+
         # Check for API key
         api_key_check = credentials.api_key.get_secret_value()
         if not api_key_check:
