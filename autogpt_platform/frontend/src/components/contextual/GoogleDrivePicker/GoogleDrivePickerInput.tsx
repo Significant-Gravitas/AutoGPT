@@ -1,9 +1,9 @@
 import { Button } from "@/components/atoms/Button/Button";
+import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import React, { useCallback } from "react";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
-import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 
 export interface GoogleDrivePickerInputProps {
   config: GoogleDrivePickerConfig;
@@ -101,6 +101,7 @@ export function GoogleDrivePickerInput({
             >
               <div className="flex items-center gap-2 overflow-hidden">
                 {file.iconUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={file.iconUrl}
                     alt=""

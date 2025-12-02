@@ -54,7 +54,7 @@ export function AccountMenu({
 
       <PopoverContent
         id={popupId}
-        className="flex flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-4 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
+        className="flex flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/65 p-4 shadow backdrop-blur-[10px] dark:bg-zinc-800/70"
         data-testid="account-menu-popover"
       >
         {/* Header with avatar and user info */}
@@ -102,7 +102,7 @@ export function AccountMenu({
                       href={item.href}
                       className="inline-flex w-full items-center justify-start gap-2.5"
                     >
-                      <div className="relative h-6 w-6">
+                      <div className="relative">
                         {getAccountMenuOptionIcon(item.icon)}
                       </div>
                       <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
@@ -118,7 +118,7 @@ export function AccountMenu({
                       key={itemIndex}
                       trigger={
                         <div className="inline-flex w-full flex-row flex-nowrap items-center justify-start gap-2.5">
-                          <div className="relative h-6 w-6">
+                          <div className="relative">
                             {getAccountMenuOptionIcon(item.icon)}
                           </div>
                           <div className="font-sans text-base font-medium leading-normal text-neutral-800">
@@ -137,7 +137,7 @@ export function AccountMenu({
                       role="button"
                       tabIndex={0}
                     >
-                      <div className="relative h-6 w-6">
+                      <div className="relative">
                         {getAccountMenuOptionIcon(item.icon)}
                       </div>
                       <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">

@@ -1702,6 +1702,52 @@
         }
       }
     },
+    "/api/graphs/{graph_id}/settings": {
+      "patch": {
+        "tags": ["v1", "graphs"],
+        "summary": "Update graph settings",
+        "description": "Update graph settings for the user's library agent.",
+        "operationId": "patchV1Update graph settings",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GraphSettings" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GraphSettings" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/graphs/{graph_id}/execute/{graph_version}": {
       "post": {
         "tags": ["v1", "graphs"],
@@ -5291,7 +5337,14 @@
       },
       "APIKeyPermission": {
         "type": "string",
-        "enum": ["EXECUTE_GRAPH", "READ_GRAPH", "EXECUTE_BLOCK", "READ_BLOCK"],
+        "enum": [
+          "EXECUTE_GRAPH",
+          "READ_GRAPH",
+          "EXECUTE_BLOCK",
+          "READ_BLOCK",
+          "READ_STORE",
+          "USE_TOOLS"
+        ],
         "title": "APIKeyPermission"
       },
       "APIKeyStatus": {
@@ -5462,6 +5515,11 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "has_human_in_the_loop": {
+            "type": "boolean",
+            "title": "Has Human In The Loop",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -5477,6 +5535,7 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "has_human_in_the_loop",
           "trigger_setup_info"
         ],
         "title": "BaseGraph"
@@ -6561,6 +6620,11 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "has_human_in_the_loop": {
+            "type": "boolean",
+            "title": "Has Human In The Loop",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -6583,6 +6647,7 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "has_human_in_the_loop",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
@@ -6656,6 +6721,11 @@
             "title": "Has External Trigger",
             "readOnly": true
           },
+          "has_human_in_the_loop": {
+            "type": "boolean",
+            "title": "Has Human In The Loop",
+            "readOnly": true
+          },
           "trigger_setup_info": {
             "anyOf": [
               { "$ref": "#/components/schemas/GraphTriggerInfo" },
@@ -6679,10 +6749,21 @@
           "input_schema",
           "output_schema",
           "has_external_trigger",
+          "has_human_in_the_loop",
           "trigger_setup_info",
           "credentials_input_schema"
         ],
         "title": "GraphModel"
+      },
+      "GraphSettings": {
+        "properties": {
+          "human_in_the_loop_safe_mode": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Human In The Loop Safe Mode"
+          }
+        },
+        "type": "object",
+        "title": "GraphSettings"
       },
       "GraphTriggerInfo": {
         "properties": {
@@ -6796,6 +6877,11 @@
             "title": "Creator Image Url"
           },
           "status": { "$ref": "#/components/schemas/LibraryAgentStatus" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -6849,6 +6935,13 @@
           "recommended_schedule_cron": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
+          },
+          "settings": { "$ref": "#/components/schemas/GraphSettings" },
+          "marketplace_listing": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/MarketplaceListing" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -6860,6 +6953,7 @@
           "creator_name",
           "creator_image_url",
           "status",
+          "created_at",
           "updated_at",
           "name",
           "description",
@@ -7090,6 +7184,13 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Archived",
             "description": "Archive the agent"
+          },
+          "settings": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/GraphSettings" },
+              { "type": "null" }
+            ],
+            "description": "User-specific settings for this library agent"
           }
         },
         "type": "object",
@@ -7139,6 +7240,31 @@
         "type": "object",
         "required": ["login_url", "state_token"],
         "title": "LoginResponse"
+      },
+      "MarketplaceListing": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "slug": { "type": "string", "title": "Slug" },
+          "creator": {
+            "$ref": "#/components/schemas/MarketplaceListingCreator"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "slug", "creator"],
+        "title": "MarketplaceListing",
+        "description": "Marketplace listing information for a library agent."
+      },
+      "MarketplaceListingCreator": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "id": { "type": "string", "title": "Id" },
+          "slug": { "type": "string", "title": "Slug" }
+        },
+        "type": "object",
+        "required": ["name", "id", "slug"],
+        "title": "MarketplaceListingCreator",
+        "description": "Creator information for a marketplace listing."
       },
       "Message": {
         "properties": {
