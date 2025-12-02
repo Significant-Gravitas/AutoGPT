@@ -133,7 +133,7 @@ export const resolveCollisions: CollisionAlgorithm = (
       }
     }
 
-    numIterations++;
+    numIterations = numIterations + 1;
 
     // Early exit if no overlaps were found
     if (!moved) {
