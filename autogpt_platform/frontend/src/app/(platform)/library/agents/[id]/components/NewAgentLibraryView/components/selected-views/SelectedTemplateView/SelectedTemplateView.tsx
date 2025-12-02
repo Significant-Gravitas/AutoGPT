@@ -27,7 +27,6 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
-import { EditTemplateModal } from "../../modals/EditTemplateModal";
 import { RunAgentModal } from "../../modals/RunAgentModal/RunAgentModal";
 import { okData } from "@/app/api/helpers";
 
@@ -192,7 +191,6 @@ export function SelectedTemplateView({
                     </Button>
                   }
                   agent={agent}
-                  agentId={agent.id}
                   initialInputValues={preset.inputs || {}}
                   initialInputCredentials={preset.credentials || {}}
                   initialPresetName={preset.name}
@@ -201,7 +199,7 @@ export function SelectedTemplateView({
                   onScheduleCreated={onCreateSchedule}
                 />
               ) : null}
-              <EditTemplateModal
+              <RunAgentModal
                 triggerSlot={
                   <Button
                     variant="secondary"
@@ -212,8 +210,10 @@ export function SelectedTemplateView({
                   </Button>
                 }
                 agent={agent}
-                preset={preset}
-                onSaved={onSave}
+                editMode={{
+                  preset,
+                  onSaved: onSave,
+                }}
               />
               <Button
                 // TODO: add confirmation modal before deleting

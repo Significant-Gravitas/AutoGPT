@@ -46,7 +46,6 @@ export function EmptyAgentRuns({ agent }: Props) {
                 </Button>
               }
               agent={agent}
-              agentId={agent.id.toString()}
             />
           </div>
         </div>

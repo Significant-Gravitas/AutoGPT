@@ -5,6 +5,7 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { AlarmIcon } from "@phosphor-icons/react";
 import { useState } from "react";
@@ -21,7 +22,6 @@ import { useAgentRunModal } from "./useAgentRunModal";
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
-  agentId: string;
   agentVersion?: number;
   initialInputValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
@@ -30,6 +30,10 @@ interface Props {
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
+  editMode?: {
+    preset: LibraryAgentPreset;
+    onSaved?: (updatedPreset: LibraryAgentPreset) => void;
+  };
 }
 
 export function RunAgentModal({
@@ -42,6 +46,7 @@ export function RunAgentModal({
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
+  editMode,
 }: Props) {
   const {
     // UI state
@@ -65,6 +70,11 @@ export function RunAgentModal({
     setPresetName,
     setPresetDescription,
 
+    // Edit mode
+    hasChanges,
+    isUpdatingPreset,
+    handleSave,
+
     // Validation/readiness
     allRequiredInputsAreSet,
 
@@ -81,10 +91,12 @@ export function RunAgentModal({
   } = useAgentRunModal(agent, {
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
+    onScheduleCreated,
     initialInputValues,
     initialInputCredentials,
     initialPresetName,
     initialPresetDescription,
+    editMode,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -130,6 +142,8 @@ export function RunAgentModal({
     onScheduleCreated?.(schedule);
   }
 
+  const templateOrTrigger = agent.trigger_setup_info ? "Trigger" : "Template";
+
   return (
     <>
       <Dialog
@@ -147,23 +161,64 @@ export function RunAgentModal({
 
             {/* Scrollable content */}
             <div className="flex-1 pr-1" style={{ scrollbarGutter: "stable" }}>
+              {/* Template Info Section (Edit Mode Only) */}
+              {editMode && (
+                <div className="mt-10">
+                  <AgentSectionHeader
+                    title={`${templateOrTrigger} Information`}
+                  />
+                  <div className="mb-10 mt-4 space-y-4">
+                    <div className="flex flex-col space-y-2">
+                      <label className="text-sm font-medium">
+                        {templateOrTrigger} Name
+                      </label>
+                      <Input
+                        id="template_name"
+                        label="Template Name"
+                        size="small"
+                        hideLabel
+                        value={presetName}
+                        placeholder="Enter template name"
+                        onChange={(e) => setPresetName(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col space-y-2">
+                      <label className="text-sm font-medium">
+                        {templateOrTrigger} Description
+                      </label>
+                      <Input
+                        id="template_description"
+                        label="Template Description"
+                        size="small"
+                        hideLabel
+                        value={presetDescription}
+                        placeholder="Enter template description"
+                        onChange={(e) => setPresetDescription(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Setup Section */}
-              <div className="mt-10">
+              <div className={editMode ? "mt-8" : "mt-10"}>
                 {hasAnySetupFields ? (
                   <RunAgentModalContextProvider
                     value={{
                       agent,
                       defaultRunType,
-                      presetName,
-                      setPresetName,
-                      presetDescription,
-                      setPresetDescription,
                       inputValues,
                       setInputValue: handleInputChange,
                       agentInputFields,
                       inputCredentials,
                       setInputCredentialsValue: handleCredentialsChange,
                       agentCredentialsInputFields,
+                      presetEditMode: Boolean(
+                        editMode || agent.trigger_setup_info,
+                      ),
+                      presetName,
+                      setPresetName,
+                      presetDescription,
+                      setPresetDescription,
                     }}
                   >
                     <>
@@ -192,27 +247,51 @@ export function RunAgentModal({
             style={{ boxShadow: "0px -8px 10px white" }}
           >
             <div className="flex items-center justify-end gap-3">
-              {(defaultRunType == "manual" || defaultRunType == "schedule") && (
-                <Button
-                  variant="secondary"
-                  onClick={handleOpenScheduleModal}
-                  disabled={
-                    isExecuting ||
-                    isSettingUpTrigger ||
-                    !allRequiredInputsAreSet
-                  }
-                >
-                  <AlarmIcon size={16} />
-                  Schedule Agent
-                </Button>
+              {editMode ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setIsOpen(false)}
+                    disabled={isUpdatingPreset}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleSave}
+                    disabled={
+                      !hasChanges || isUpdatingPreset || !presetName.trim()
+                    }
+                  >
+                    {isUpdatingPreset ? "Saving..." : "Save Changes"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {(defaultRunType == "manual" ||
+                    defaultRunType == "schedule") && (
+                    <Button
+                      variant="secondary"
+                      onClick={handleOpenScheduleModal}
+                      disabled={
+                        isExecuting ||
+                        isSettingUpTrigger ||
+                        !allRequiredInputsAreSet
+                      }
+                    >
+                      <AlarmIcon size={16} />
+                      Schedule Agent
+                    </Button>
+                  )}
+                  <RunActions
+                    defaultRunType={defaultRunType}
+                    onRun={handleRun}
+                    isExecuting={isExecuting}
+                    isSettingUpTrigger={isSettingUpTrigger}
+                    isRunReady={allRequiredInputsAreSet}
+                  />
+                </>
               )}
-              <RunActions
-                defaultRunType={defaultRunType}
-                onRun={handleRun}
-                isExecuting={isExecuting}
-                isSettingUpTrigger={isSettingUpTrigger}
-                isRunReady={allRequiredInputsAreSet}
-              />
             </div>
             {(defaultRunType == "manual" || defaultRunType == "schedule") && (
               <ScheduleAgentModal

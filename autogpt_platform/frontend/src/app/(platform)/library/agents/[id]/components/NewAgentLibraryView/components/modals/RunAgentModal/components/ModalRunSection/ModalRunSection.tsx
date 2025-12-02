@@ -13,16 +13,17 @@ export function ModalRunSection() {
   const {
     agent,
     defaultRunType,
-    presetName,
-    setPresetName,
-    presetDescription,
-    setPresetDescription,
     inputValues,
     setInputValue,
     agentInputFields,
     inputCredentials,
     setInputCredentialsValue,
     agentCredentialsInputFields,
+    presetEditMode,
+    presetName,
+    setPresetName,
+    presetDescription,
+    setPresetDescription,
   } = useRunAgentModalContext();
 
   return (
@@ -30,7 +31,7 @@ export function ModalRunSection() {
       {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
 
       {/* Preset/Trigger fields */}
-      {defaultRunType === "automatic-trigger" && (
+      {presetEditMode && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col space-y-2">
             <label className="flex items-center gap-1 text-sm font-medium">

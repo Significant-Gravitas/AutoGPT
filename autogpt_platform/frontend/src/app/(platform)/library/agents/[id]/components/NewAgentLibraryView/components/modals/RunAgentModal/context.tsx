@@ -4,14 +4,9 @@ import React, { createContext, useContext } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { RunVariant } from "./useAgentRunModal";
 
-export interface RunAgentModalContextValue {
+export type RunAgentModalContextValue = {
   agent: LibraryAgent;
   defaultRunType: RunVariant;
-  // Preset / Trigger
-  presetName: string;
-  setPresetName: (value: string) => void;
-  presetDescription: string;
-  setPresetDescription: (value: string) => void;
   // Inputs
   inputValues: Record<string, any>;
   setInputValue: (key: string, value: any) => void;
@@ -20,7 +15,14 @@ export interface RunAgentModalContextValue {
   inputCredentials: Record<string, any>;
   setInputCredentialsValue: (key: string, value: any | undefined) => void;
   agentCredentialsInputFields: Record<string, any>;
-}
+
+  // Trigger / Preset fields
+  presetEditMode: boolean; // determines whether to show the name and description fields
+  presetName: string;
+  setPresetName: (value: string) => void;
+  presetDescription: string;
+  setPresetDescription: (value: string) => void;
+};
 
 const RunAgentModalContext = createContext<RunAgentModalContextValue | null>(
   null,
