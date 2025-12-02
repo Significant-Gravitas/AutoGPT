@@ -34,7 +34,6 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
       disabled = false,
       className,
       nodeId,
-      fieldKey,
     },
     ref,
   ) => {
@@ -101,12 +100,12 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
         id={parentFieldId}
       >
         {Object.entries(value).map(([key, propertyValue], idx) => {
-          const isDynamicPropertyConnected = isInputConnected(nodeId, fieldKey);
           const handleId = generateHandleId(
             parentFieldId,
             [key],
             HandleIdType.KEY_VALUE,
           );
+          const isDynamicPropertyConnected = isInputConnected(nodeId, handleId);
 
           return (
             <div key={idx} className="flex flex-col gap-2">
