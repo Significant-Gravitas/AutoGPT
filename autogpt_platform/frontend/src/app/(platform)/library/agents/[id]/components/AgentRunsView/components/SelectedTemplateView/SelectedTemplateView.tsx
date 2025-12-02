@@ -1,17 +1,12 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  PlayIcon,
-  PencilIcon,
-  TrashIcon,
-  CalendarIcon,
-} from "@phosphor-icons/react";
+import { PlayIcon, PencilIcon, TrashIcon } from "@phosphor-icons/react";
 import {
   TabsLine,
   TabsLineContent,
@@ -21,37 +16,39 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   useDeleteV2DeleteAPreset,
-  usePostV2ExecuteAPreset,
   getGetV2ListPresetsQueryKey,
   useGetV2GetASpecificPreset,
   getGetV2GetASpecificPresetQueryKey,
 } from "@/app/api/__generated__/endpoints/presets/presets";
-import { getGetV1ListGraphExecutionsInfiniteQueryOptions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getGetV1ListExecutionSchedulesForAGraphQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { AgentInputsReadOnly } from "../AgentInputsReadOnly/AgentInputsReadOnly";
 import { EditTemplateModal } from "./components/EditTemplateModal";
+import { RunAgentModal } from "../RunAgentModal/RunAgentModal";
 import { okData } from "@/app/api/helpers";
 
-interface Props {
+interface SelectedTemplateViewProps {
   agent: LibraryAgent;
   presetID: string;
   onDelete?: (presetID: string) => void;
-  onRun?: (presetID: string) => void;
-  onCreateSchedule?: (presetID: string) => void;
+  onCreateRun?: (runId: string) => void;
+  onCreateSchedule?: (scheduleId: string) => void;
 }
 
 export function SelectedTemplateView({
   agent,
   presetID,
   onDelete,
-  onRun,
-  onCreateSchedule,
-}: Props) {
+  onCreateRun: _onCreateRun,
+  onCreateSchedule: _onCreateSchedule,
+}: SelectedTemplateViewProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isRunning, setIsRunning] = useState(false);
 
   const templateOrTrigger = agent.trigger_setup_info ? "Trigger" : "Template";
 
@@ -88,70 +85,44 @@ export function SelectedTemplateView({
     },
   });
 
-  // Execute preset mutation
-  const executeTemplateMutation = usePostV2ExecuteAPreset({
-    mutation: {
-      onSuccess: (response) => {
-        if (response.status === 200) {
-          toast({
-            title: `${templateOrTrigger} execution started`,
-            variant: "default",
-          });
-          // Invalidate runs list for this graph
-          queryClient.invalidateQueries({
-            queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
-              agent.graph_id,
-            ).queryKey,
-          });
-        }
-        setIsRunning(false);
-      },
-      onError: (error) => {
-        toast({
-          title: `Failed to run ${templateOrTrigger.toLowerCase()}`,
-          description: String(error),
-          variant: "destructive",
-        });
-        setIsRunning(false);
-      },
-    },
-  });
-
-  const handleDeleteTemplate = async () => {
+  const doDeleteTemplate = async () => {
     setIsDeleting(true);
     deleteTemplateMutation.mutate({ presetId: presetID });
   };
 
-  const handleRunTemplate = async () => {
-    setIsRunning(true);
-    executeTemplateMutation.mutate({
-      presetId: presetID,
-      data: {
-        // inputs: {},
-        // credential_inputs: {},
-      },
-    });
-  };
-
-  const handleTemplateSaved = () => {
-    // Invalidate presets list to refresh data
+  const onSave = useCallback(() => {
+    // Invalidate preset queries to refresh data
     queryClient.invalidateQueries({
       queryKey: getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
     });
     queryClient.invalidateQueries({
       queryKey: getGetV2GetASpecificPresetQueryKey(presetID),
     });
-  };
+  }, [queryClient, agent.graph_id, presetID]);
 
-  const handleCreateSchedule = () => {
-    // TODO: Implement schedule creation from preset
-    toast({
-      title: "Schedule creation",
-      description:
-        "Schedule creation from template will be implemented in the next phase",
-      variant: "default",
-    });
-  };
+  const onCreateRun = useCallback(
+    (execution: GraphExecutionMeta) => {
+      // Invalidate runs list
+      queryClient.invalidateQueries({
+        queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+      });
+      _onCreateRun?.(execution.id);
+    },
+    [queryClient, agent.graph_id, _onCreateRun],
+  );
+
+  const onCreateSchedule = useCallback(
+    (schedule: GraphExecutionJobInfo) => {
+      // Invalidate schedules list
+      queryClient.invalidateQueries({
+        queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(
+          agent.graph_id,
+        ),
+      });
+      _onCreateSchedule?.(schedule.id);
+    },
+    [queryClient, agent.graph_id, _onCreateSchedule],
+  );
 
   const isLoading = presetQuery.isLoading;
   const error = presetQuery.error;
@@ -210,18 +181,25 @@ export function SelectedTemplateView({
           {preset ? (
             <div className="flex gap-2">
               {!agent.has_external_trigger ? (
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={() => {
-                    handleRunTemplate();
-                    onRun?.(presetID);
-                  }}
-                  disabled={isRunning || isDeleting}
-                  leftIcon={<PlayIcon size={16} />}
-                >
-                  {isRunning ? "Running..." : `Run ${templateOrTrigger}`}
-                </Button>
+                <RunAgentModal
+                  triggerSlot={
+                    <Button
+                      variant="primary"
+                      size="small"
+                      leftIcon={<PlayIcon size={16} />}
+                    >
+                      Run {templateOrTrigger}
+                    </Button>
+                  }
+                  agent={agent}
+                  agentId={agent.id}
+                  initialInputValues={preset.inputs || {}}
+                  initialInputCredentials={preset.credentials || {}}
+                  initialPresetName={preset.name}
+                  initialPresetDescription={preset.description}
+                  onRunCreated={onCreateRun}
+                  onScheduleCreated={onCreateSchedule}
+                />
               ) : null}
               <EditTemplateModal
                 triggerSlot={
@@ -235,27 +213,17 @@ export function SelectedTemplateView({
                 }
                 agent={agent}
                 preset={preset}
-                onSaved={handleTemplateSaved}
+                onSaved={onSave}
               />
               <Button
-                variant="secondary"
-                size="small"
-                onClick={() => {
-                  handleCreateSchedule();
-                  onCreateSchedule?.(presetID);
-                }}
-                leftIcon={<CalendarIcon size={16} />}
-              >
-                Schedule
-              </Button>
-              <Button
+                // TODO: add confirmation modal before deleting
                 variant="destructive"
                 size="small"
                 onClick={() => {
-                  handleDeleteTemplate();
+                  doDeleteTemplate();
                   onDelete?.(presetID);
                 }}
-                disabled={isRunning || isDeleting}
+                disabled={isDeleting}
                 leftIcon={<TrashIcon size={16} />}
               >
                 {isDeleting ? "Deleting..." : "Delete"}

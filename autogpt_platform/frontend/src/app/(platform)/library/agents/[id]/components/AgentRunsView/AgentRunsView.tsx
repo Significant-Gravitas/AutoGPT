@@ -91,7 +91,6 @@ export function AgentRunsView() {
             items={[
               { name: "My Library", link: "/library" },
               { name: agent.name, link: `/library/agents/${agentId}` },
-              // TODO: show breadcrumb for selected template/trigger/schedule
             ]}
           />
         </div>
@@ -107,18 +106,11 @@ export function AgentRunsView() {
               <SelectedTemplateView
                 agent={agent}
                 presetID={selectedRun.replace("preset:", "")}
-                onDelete={(templateId) => {
-                  // TODO: Implement template deletion
-                  console.log("Delete template:", templateId);
+                onCreateRun={handleSelectRun}
+                onCreateSchedule={(scheduleId) => {
+                  handleSelectRun(`schedule:${scheduleId}`);
                 }}
-                onRun={(templateId) => {
-                  // TODO: Implement template execution
-                  console.log("Run template:", templateId);
-                }}
-                onCreateSchedule={(templateId) => {
-                  // TODO: Implement schedule creation from template
-                  console.log("Create schedule from template:", templateId);
-                }}
+                onDelete={handleClearSelectedRun}
               />
             ) : (
               <SelectedRunView

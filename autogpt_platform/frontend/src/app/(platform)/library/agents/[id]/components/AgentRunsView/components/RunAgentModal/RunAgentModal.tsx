@@ -4,6 +4,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
 import { useState } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useAgentRunModal } from "./useAgentRunModal";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
@@ -22,14 +23,24 @@ interface Props {
   agent: LibraryAgent;
   agentId: string;
   agentVersion?: number;
+  initialInputValues?: Record<string, any>;
+  initialInputCredentials?: Record<string, any>;
+  initialPresetName?: string;
+  initialPresetDescription?: string;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
+  onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
 export function RunAgentModal({
   triggerSlot,
   agent,
+  initialInputValues,
+  initialInputCredentials,
+  initialPresetName,
+  initialPresetDescription,
   onRunCreated,
+  onTriggerSetup,
   onScheduleCreated,
 }: Props) {
   const {
@@ -69,6 +80,11 @@ export function RunAgentModal({
     handleRun,
   } = useAgentRunModal(agent, {
     onRun: onRunCreated,
+    onSetupTrigger: onTriggerSetup,
+    initialInputValues,
+    initialInputCredentials,
+    initialPresetName,
+    initialPresetDescription,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -176,16 +192,20 @@ export function RunAgentModal({
             style={{ boxShadow: "0px -8px 10px white" }}
           >
             <div className="flex items-center justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={handleOpenScheduleModal}
-                disabled={
-                  isExecuting || isSettingUpTrigger || !allRequiredInputsAreSet
-                }
-              >
-                <AlarmIcon size={16} />
-                Schedule Agent
-              </Button>
+              {(defaultRunType == "manual" || defaultRunType == "schedule") && (
+                <Button
+                  variant="secondary"
+                  onClick={handleOpenScheduleModal}
+                  disabled={
+                    isExecuting ||
+                    isSettingUpTrigger ||
+                    !allRequiredInputsAreSet
+                  }
+                >
+                  <AlarmIcon size={16} />
+                  Schedule Agent
+                </Button>
+              )}
               <RunActions
                 defaultRunType={defaultRunType}
                 onRun={handleRun}
@@ -194,14 +214,16 @@ export function RunAgentModal({
                 isRunReady={allRequiredInputsAreSet}
               />
             </div>
-            <ScheduleAgentModal
-              isOpen={isScheduleModalOpen}
-              onClose={handleCloseScheduleModal}
-              agent={agent}
-              inputValues={inputValues}
-              inputCredentials={inputCredentials}
-              onScheduleCreated={handleScheduleCreated}
-            />
+            {(defaultRunType == "manual" || defaultRunType == "schedule") && (
+              <ScheduleAgentModal
+                isOpen={isScheduleModalOpen}
+                onClose={handleCloseScheduleModal}
+                agent={agent}
+                inputValues={inputValues}
+                inputCredentials={inputCredentials}
+                onScheduleCreated={handleScheduleCreated}
+              />
+            )}
           </Dialog.Footer>
         </Dialog.Content>
       </Dialog>

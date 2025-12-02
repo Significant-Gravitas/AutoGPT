@@ -11,7 +11,10 @@ import {
   usePostV1CreateExecutionSchedule as useCreateSchedule,
   getGetV1ListExecutionSchedulesForAGraphQueryKey,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
+import {
+  getGetV2ListPresetsQueryKey,
+  usePostV2SetupTrigger,
+} from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
@@ -27,8 +30,12 @@ export type RunVariant =
 
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;
-  onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
   onSetupTrigger?: (preset: LibraryAgentPreset) => void;
+  onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
+  initialInputValues?: Record<string, any>;
+  initialInputCredentials?: Record<string, any>;
+  initialPresetName?: string;
+  initialPresetDescription?: string;
 }
 
 export function useAgentRunModal(
@@ -39,12 +46,18 @@ export function useAgentRunModal(
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [showScheduleView, setShowScheduleView] = useState(false);
-  const [inputValues, setInputValues] = useState<Record<string, any>>({});
-  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
-    {},
+  const [inputValues, setInputValues] = useState<Record<string, any>>(
+    callbacks?.initialInputValues || {},
   );
-  const [presetName, setPresetName] = useState<string>("");
-  const [presetDescription, setPresetDescription] = useState<string>("");
+  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
+    callbacks?.initialInputCredentials || {},
+  );
+  const [presetName, setPresetName] = useState<string>(
+    callbacks?.initialPresetName || "",
+  );
+  const [presetDescription, setPresetDescription] = useState<string>(
+    callbacks?.initialPresetDescription || "",
+  );
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
   const [cronExpression, setCronExpression] = useState(
@@ -72,7 +85,7 @@ export function useAgentRunModal(
           toast({
             title: "Agent execution started",
           });
-          callbacks?.onRun?.(response.data as unknown as GraphExecutionMeta);
+          callbacks?.onRun?.(response.data);
           // Invalidate runs list for this graph
           queryClient.invalidateQueries({
             queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
@@ -130,19 +143,29 @@ export function useAgentRunModal(
 
   const setupTriggerMutation = usePostV2SetupTrigger({
     mutation: {
-      onSuccess: (response: any) => {
+      onSuccess: (response) => {
         if (response.status === 200) {
           toast({
             title: "Trigger setup complete",
           });
           callbacks?.onSetupTrigger?.(response.data);
+          // Invalidate preset queries to show the newly created trigger
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListPresetsQueryKey({
+              graph_id: response.data.graph_id,
+            }),
+          });
+          analytics.sendDatafastEvent("setup_trigger", {
+            name: agent.name,
+            id: agent.graph_id,
+          });
           setIsOpen(false);
         }
       },
-      onError: (error: any) => {
+      onError: (error) => {
         toast({
           title: "❌ Failed to setup trigger",
-          description: error.message || "An unexpected error occurred.",
+          description: String(error) || "An unexpected error occurred.",
           variant: "destructive",
         });
       },
@@ -257,9 +280,10 @@ export function useAgentRunModal(
       return;
     }
 
+    // FIXME: add support for "manual-trigger"
     if (defaultRunType === "automatic-trigger") {
       // Setup trigger
-      if (!scheduleName.trim()) {
+      if (!presetName.trim()) {
         toast({
           title: "⚠️ Trigger name required",
           description: "Please provide a name for your trigger.",
@@ -270,7 +294,7 @@ export function useAgentRunModal(
 
       setupTriggerMutation.mutate({
         data: {
-          name: presetName || scheduleName,
+          name: presetName,
           description: presetDescription || `Trigger for ${agent.name}`,
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
@@ -292,11 +316,10 @@ export function useAgentRunModal(
   }, [
     allRequiredInputsAreSet,
     defaultRunType,
-    scheduleName,
+    presetName,
     inputValues,
     inputCredentials,
     agent,
-    presetName,
     presetDescription,
     notifyMissingRequirements,
     setupTriggerMutation,
@@ -381,7 +404,7 @@ export function useAgentRunModal(
     showScheduleView,
 
     // Run mode
-    defaultRunType,
+    defaultRunType: defaultRunType as RunVariant,
 
     // Form: regular inputs
     inputValues,

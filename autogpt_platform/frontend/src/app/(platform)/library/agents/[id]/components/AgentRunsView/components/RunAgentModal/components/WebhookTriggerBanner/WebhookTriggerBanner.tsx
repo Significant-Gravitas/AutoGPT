@@ -1,6 +1,13 @@
-export function WebhookTriggerBanner() {
+import { cn } from "@/lib/utils";
+
+export function WebhookTriggerBanner({ className }: { className?: string }) {
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+    <div
+      className={cn(
+        "rounded-lg border border-blue-200 bg-blue-50 p-4",
+        className,
+      )}
+    >
       <div className="flex items-start">
         <div className="flex-shrink-0">
           <svg
