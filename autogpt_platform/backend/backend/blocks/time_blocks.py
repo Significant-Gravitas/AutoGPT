@@ -14,7 +14,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.execution import UserContext
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 
 # Shared timezone literal type for all time/date blocks
@@ -188,10 +188,9 @@ class GetCurrentTimeBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, user_context: UserContext, **kwargs
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
     ) -> BlockOutput:
-        # Extract timezone from user_context (always present)
-        effective_timezone = user_context.timezone
+        effective_timezone = execution_context.user_timezone
 
         # Get the appropriate timezone
         tz = _get_timezone(input_data.format_type, effective_timezone)
@@ -298,10 +297,10 @@ class GetCurrentDateBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Extract timezone from user_context (required keyword argument)
-        user_context: UserContext = kwargs["user_context"]
-        effective_timezone = user_context.timezone
+    async def run(
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
+    ) -> BlockOutput:
+        effective_timezone = execution_context.user_timezone
 
         try:
             offset = int(input_data.offset)
@@ -404,10 +403,10 @@ class GetCurrentDateAndTimeBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Extract timezone from user_context (required keyword argument)
-        user_context: UserContext = kwargs["user_context"]
-        effective_timezone = user_context.timezone
+    async def run(
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
+    ) -> BlockOutput:
+        effective_timezone = execution_context.user_timezone
 
         # Get the appropriate timezone
         tz = _get_timezone(input_data.format_type, effective_timezone)

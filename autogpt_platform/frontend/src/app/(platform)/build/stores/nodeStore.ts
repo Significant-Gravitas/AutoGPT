@@ -12,6 +12,7 @@ import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutio
 import { useHistoryStore } from "./historyStore";
 import { useEdgeStore } from "./edgeStore";
 import { BlockUIType } from "../components/types";
+import { pruneEmptyValues } from "@/lib/utils";
 
 // Minimum movement (in pixels) required before logging position change to history
 // Prevents spamming history with small movements when clicking on inputs inside blocks
@@ -201,7 +202,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return {
       id: node.id,
       block_id: node.data.block_id,
-      input_default: node.data.hardcodedValues,
+      input_default: pruneEmptyValues(node.data.hardcodedValues),
       metadata: {
         position: node.position,
         ...(node.data.metadata?.customized_name !== undefined && {
