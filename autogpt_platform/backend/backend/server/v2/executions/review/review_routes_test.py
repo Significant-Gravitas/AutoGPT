@@ -7,6 +7,7 @@ import pytest_mock
 from prisma.enums import ReviewStatus
 from pytest_snapshot.plugin import Snapshot
 
+from backend.server.rest_api import handle_internal_http_error
 from backend.server.v2.executions.review.model import PendingHumanReviewModel
 from backend.server.v2.executions.review.routes import router
 
@@ -15,6 +16,7 @@ FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
 
 app = fastapi.FastAPI()
 app.include_router(router, prefix="/api/review")
+app.add_exception_handler(ValueError, handle_internal_http_error(400))
 
 client = fastapi.testclient.TestClient(app)
 
@@ -34,11 +36,11 @@ def setup_app_auth(mock_jwt_user):
 
 
 @pytest.fixture
-def sample_pending_review() -> PendingHumanReviewModel:
+def sample_pending_review(test_user_id: str) -> PendingHumanReviewModel:
     """Create a sample pending review for testing"""
     return PendingHumanReviewModel(
         node_exec_id="test_node_123",
-        user_id="test_user",
+        user_id=test_user_id,
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
@@ -58,6 +60,7 @@ def sample_pending_review() -> PendingHumanReviewModel:
 def test_get_pending_reviews_empty(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test getting pending reviews when none exist"""
     mock_get_reviews = mocker.patch(
@@ -69,13 +72,14 @@ def test_get_pending_reviews_empty(
 
     assert response.status_code == 200
     assert response.json() == []
-    mock_get_reviews.assert_called_once_with("test_user", 1, 25)
+    mock_get_reviews.assert_called_once_with(test_user_id, 1, 25)
 
 
 def test_get_pending_reviews_with_data(
     mocker: pytest_mock.MockFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test getting pending reviews with data"""
     mock_get_reviews = mocker.patch(
@@ -90,13 +94,14 @@ def test_get_pending_reviews_with_data(
     assert len(data) == 1
     assert data[0]["node_exec_id"] == "test_node_123"
     assert data[0]["status"] == "WAITING"
-    mock_get_reviews.assert_called_once_with("test_user", 2, 10)
+    mock_get_reviews.assert_called_once_with(test_user_id, 2, 10)
 
 
 def test_get_pending_reviews_for_execution_success(
     mocker: pytest_mock.MockFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
+    test_user_id: str,
 ) -> None:
     """Test getting pending reviews for specific execution"""
     mock_get_graph_execution = mocker.patch(
@@ -104,7 +109,7 @@ def test_get_pending_reviews_for_execution_success(
     )
     mock_get_graph_execution.return_value = {
         "id": "test_graph_exec_456",
-        "user_id": "test_user",
+        "user_id": test_user_id,
     }
 
     mock_get_reviews = mocker.patch(
@@ -122,6 +127,7 @@ def test_get_pending_reviews_for_execution_success(
 
 def test_get_pending_reviews_for_execution_access_denied(
     mocker: pytest_mock.MockFixture,
+    test_user_id: str,
 ) -> None:
     """Test access denied when user doesn't own the execution"""
     mock_get_graph_execution = mocker.patch(
@@ -138,13 +144,10 @@ def test_get_pending_reviews_for_execution_access_denied(
 def test_process_review_action_approve_success(
     mocker: pytest_mock.MockFixture,
     sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
 ) -> None:
     """Test successful review approval"""
-    # Mock the validation functions
-    mock_get_pending_review = mocker.patch(
-        "backend.data.human_review.get_pending_review_by_node_exec_id"
-    )
-    mock_get_pending_review.return_value = sample_pending_review
+    # Mock the route functions
 
     mock_get_reviews_for_execution = mocker.patch(
         "backend.server.v2.executions.review.routes.get_pending_reviews_for_execution"
@@ -154,24 +157,42 @@ def test_process_review_action_approve_success(
     mock_process_all_reviews = mocker.patch(
         "backend.server.v2.executions.review.routes.process_all_reviews_for_execution"
     )
-    mock_process_all_reviews.return_value = {"test_node_123": sample_pending_review}
+    # Create approved review for return
+    approved_review = PendingHumanReviewModel(
+        node_exec_id="test_node_123",
+        user_id=test_user_id,
+        graph_exec_id="test_graph_exec_456",
+        graph_id="test_graph_789",
+        graph_version=1,
+        payload={"data": "modified payload", "value": 50},
+        instructions="Please review this data",
+        editable=True,
+        status=ReviewStatus.APPROVED,
+        review_message="Looks good",
+        was_edited=True,
+        processed=False,
+        created_at=FIXED_NOW,
+        updated_at=FIXED_NOW,
+        reviewed_at=FIXED_NOW,
+    )
+    mock_process_all_reviews.return_value = {"test_node_123": approved_review}
 
     mock_has_pending = mocker.patch(
-        "backend.data.human_review.has_pending_reviews_for_graph_exec"
+        "backend.server.v2.executions.review.routes.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
-    mocker.patch("backend.executor.utils.add_graph_execution")
+    mocker.patch("backend.server.v2.executions.review.routes.add_graph_execution")
 
     request_data = {
-        "approved_reviews": [
+        "reviews": [
             {
                 "node_exec_id": "test_node_123",
+                "approved": True,
                 "message": "Looks good",
                 "reviewed_data": {"data": "modified payload", "value": 50},
             }
-        ],
-        "rejected_review_ids": [],
+        ]
     }
 
     response = client.post("/api/review/action", json=request_data)
@@ -187,13 +208,10 @@ def test_process_review_action_approve_success(
 def test_process_review_action_reject_success(
     mocker: pytest_mock.MockFixture,
     sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
 ) -> None:
     """Test successful review rejection"""
-    # Mock the validation functions
-    mock_get_pending_review = mocker.patch(
-        "backend.data.human_review.get_pending_review_by_node_exec_id"
-    )
-    mock_get_pending_review.return_value = sample_pending_review
+    # Mock the route functions
 
     mock_get_reviews_for_execution = mocker.patch(
         "backend.server.v2.executions.review.routes.get_pending_reviews_for_execution"
@@ -205,7 +223,7 @@ def test_process_review_action_reject_success(
     )
     rejected_review = PendingHumanReviewModel(
         node_exec_id="test_node_123",
-        user_id="test_user",
+        user_id=test_user_id,
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
@@ -223,11 +241,19 @@ def test_process_review_action_reject_success(
     mock_process_all_reviews.return_value = {"test_node_123": rejected_review}
 
     mock_has_pending = mocker.patch(
-        "backend.data.human_review.has_pending_reviews_for_graph_exec"
+        "backend.server.v2.executions.review.routes.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
-    request_data = {"approved_reviews": [], "rejected_review_ids": ["test_node_123"]}
+    request_data = {
+        "reviews": [
+            {
+                "node_exec_id": "test_node_123",
+                "approved": False,
+                "message": None,
+            }
+        ]
+    }
 
     response = client.post("/api/review/action", json=request_data)
 
@@ -242,12 +268,13 @@ def test_process_review_action_reject_success(
 def test_process_review_action_mixed_success(
     mocker: pytest_mock.MockFixture,
     sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
 ) -> None:
     """Test mixed approve/reject operations"""
     # Create a second review
     second_review = PendingHumanReviewModel(
         node_exec_id="test_node_456",
-        user_id="test_user",
+        user_id=test_user_id,
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
@@ -263,13 +290,7 @@ def test_process_review_action_mixed_success(
         reviewed_at=None,
     )
 
-    # Mock the validation functions
-    mock_get_pending_review = mocker.patch(
-        "backend.data.human_review.get_pending_review_by_node_exec_id"
-    )
-    mock_get_pending_review.side_effect = lambda node_id, user_id: (
-        sample_pending_review if node_id == "test_node_123" else second_review
-    )
+    # Mock the route functions
 
     mock_get_reviews_for_execution = mocker.patch(
         "backend.server.v2.executions.review.routes.get_pending_reviews_for_execution"
@@ -282,7 +303,7 @@ def test_process_review_action_mixed_success(
     # Create approved version of first review
     approved_review = PendingHumanReviewModel(
         node_exec_id="test_node_123",
-        user_id="test_user",
+        user_id=test_user_id,
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
@@ -300,7 +321,7 @@ def test_process_review_action_mixed_success(
     # Create rejected version of second review
     rejected_review = PendingHumanReviewModel(
         node_exec_id="test_node_456",
-        user_id="test_user",
+        user_id=test_user_id,
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
         graph_version=1,
@@ -321,19 +342,24 @@ def test_process_review_action_mixed_success(
     }
 
     mock_has_pending = mocker.patch(
-        "backend.data.human_review.has_pending_reviews_for_graph_exec"
+        "backend.server.v2.executions.review.routes.has_pending_reviews_for_graph_exec"
     )
     mock_has_pending.return_value = False
 
     request_data = {
-        "approved_reviews": [
+        "reviews": [
             {
                 "node_exec_id": "test_node_123",
+                "approved": True,
                 "message": "Approved",
                 "reviewed_data": {"data": "modified"},
-            }
-        ],
-        "rejected_review_ids": ["test_node_456"],
+            },
+            {
+                "node_exec_id": "test_node_456",
+                "approved": False,
+                "message": None,
+            },
+        ]
     }
 
     response = client.post("/api/review/action", json=request_data)
@@ -348,52 +374,64 @@ def test_process_review_action_mixed_success(
 
 def test_process_review_action_empty_request(
     mocker: pytest_mock.MockFixture,
+    test_user_id: str,
 ) -> None:
     """Test error when no reviews provided"""
-    request_data = {"approved_reviews": [], "rejected_review_ids": []}
+    request_data = {"reviews": []}
 
     response = client.post("/api/review/action", json=request_data)
 
-    assert response.status_code == 400
-    assert "At least one review must be provided" in response.json()["detail"]
+    assert response.status_code == 422
+    response_data = response.json()
+    # Pydantic validation error format
+    assert isinstance(response_data["detail"], list)
+    assert len(response_data["detail"]) > 0
+    assert "At least one review must be provided" in response_data["detail"][0]["msg"]
 
 
 def test_process_review_action_review_not_found(
     mocker: pytest_mock.MockFixture,
+    test_user_id: str,
 ) -> None:
     """Test error when review is not found"""
-    mock_get_pending_review = mocker.patch(
-        "backend.data.human_review.get_pending_review_by_node_exec_id"
+    # Mock the functions that extract graph execution ID from the request
+    mock_get_reviews_for_execution = mocker.patch(
+        "backend.server.v2.executions.review.routes.get_pending_reviews_for_execution"
     )
-    mock_get_pending_review.return_value = None
+    mock_get_reviews_for_execution.return_value = []  # No reviews found
+
+    # Mock process_all_reviews to simulate not finding reviews
+    mock_process_all_reviews = mocker.patch(
+        "backend.server.v2.executions.review.routes.process_all_reviews_for_execution"
+    )
+    # This should raise a ValueError with "Reviews not found" message based on the data/human_review.py logic
+    mock_process_all_reviews.side_effect = ValueError(
+        "Reviews not found or access denied for IDs: nonexistent_node"
+    )
 
     request_data = {
-        "approved_reviews": [
+        "reviews": [
             {
                 "node_exec_id": "nonexistent_node",
+                "approved": True,
                 "message": "Test",
             }
-        ],
-        "rejected_review_ids": [],
+        ]
     }
 
     response = client.post("/api/review/action", json=request_data)
 
-    assert response.status_code == 403
-    assert "not found or access denied" in response.json()["detail"]
+    assert response.status_code == 400
+    assert "Reviews not found" in response.json()["detail"]
 
 
 def test_process_review_action_partial_failure(
     mocker: pytest_mock.MockFixture,
     sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
 ) -> None:
     """Test handling of partial failures in review processing"""
-    # Mock successful validation
-    mock_get_pending_review = mocker.patch(
-        "backend.data.human_review.get_pending_review_by_node_exec_id"
-    )
-    mock_get_pending_review.return_value = sample_pending_review
-
+    # Mock the route functions
     mock_get_reviews_for_execution = mocker.patch(
         "backend.server.v2.executions.review.routes.get_pending_reviews_for_execution"
     )
@@ -406,58 +444,53 @@ def test_process_review_action_partial_failure(
     mock_process_all_reviews.side_effect = ValueError("Some reviews failed validation")
 
     request_data = {
-        "approved_reviews": [
+        "reviews": [
             {
                 "node_exec_id": "test_node_123",
+                "approved": True,
                 "message": "Test",
             }
-        ],
-        "rejected_review_ids": [],
+        ]
     }
 
     response = client.post("/api/review/action", json=request_data)
 
-    assert response.status_code == 200
-    data = response.json()
-    assert data["approved_count"] == 0
-    assert data["rejected_count"] == 0
-    assert data["failed_count"] == 1
-    assert "Failed to process reviews" in data["error"]
+    assert response.status_code == 400
+    assert "Some reviews failed validation" in response.json()["detail"]
 
 
-def test_process_review_action_complete_failure(
+def test_process_review_action_invalid_node_exec_id(
     mocker: pytest_mock.MockFixture,
     sample_pending_review: PendingHumanReviewModel,
+    test_user_id: str,
 ) -> None:
-    """Test complete failure scenario"""
-    # Mock successful validation
-    mock_get_pending_review = mocker.patch(
-        "backend.data.human_review.get_pending_review_by_node_exec_id"
-    )
-    mock_get_pending_review.return_value = sample_pending_review
-
+    """Test failure when trying to process review with invalid node execution ID"""
+    # Mock the route functions
     mock_get_reviews_for_execution = mocker.patch(
         "backend.server.v2.executions.review.routes.get_pending_reviews_for_execution"
     )
     mock_get_reviews_for_execution.return_value = [sample_pending_review]
 
-    # Mock complete failure in processing
+    # Mock validation failure - this should return 400, not 500
     mock_process_all_reviews = mocker.patch(
         "backend.server.v2.executions.review.routes.process_all_reviews_for_execution"
     )
-    mock_process_all_reviews.side_effect = Exception("Database error")
+    mock_process_all_reviews.side_effect = ValueError(
+        "Invalid node execution ID format"
+    )
 
     request_data = {
-        "approved_reviews": [
+        "reviews": [
             {
-                "node_exec_id": "test_node_123",
+                "node_exec_id": "invalid-node-format",
+                "approved": True,
                 "message": "Test",
             }
-        ],
-        "rejected_review_ids": [],
+        ]
     }
 
     response = client.post("/api/review/action", json=request_data)
 
-    assert response.status_code == 500
-    assert "error" in response.json()["detail"].lower()
+    # Should be a 400 Bad Request, not 500 Internal Server Error
+    assert response.status_code == 400
+    assert "Invalid node execution ID format" in response.json()["detail"]
