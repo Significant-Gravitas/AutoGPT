@@ -394,7 +394,7 @@ async def complete_oauth(
     )
 
     if not valid_state:
-        logger.warning(f"Invalid or expired state token for user {api_key.user_id}")
+        logger.warning(f"Invalid or expired state token for provider {provider}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
@@ -439,10 +439,7 @@ async def complete_oauth(
     # Store credentials
     await creds_manager.create(api_key.user_id, credentials)
 
-    logger.info(
-        f"Successfully completed external OAuth for user {api_key.user_id} "
-        f"and provider {provider}"
-    )
+    logger.info(f"Successfully completed external OAuth for provider {provider}")
 
     return OAuthCompleteResponse(
         credentials_id=credentials.id,
@@ -586,10 +583,7 @@ async def create_credential(
             detail=f"Failed to store credentials: {str(e)}",
         )
 
-    logger.info(
-        f"Created {request.type} credentials for user {api_key.user_id} "
-        f"and provider {provider}"
-    )
+    logger.info(f"Created {request.type} credentials for provider {provider}")
 
     return CreateCredentialResponse(
         id=credentials.id,
