@@ -12,7 +12,7 @@ import logging
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional, Union
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Body, HTTPException, Path, Query, Security, status
+from fastapi import APIRouter, Body, HTTPException, Path, Security, status
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, SecretStr
 
@@ -179,9 +179,13 @@ def validate_callback_url(callback_url: str) -> bool:
             # Simple origin matching
             if callback_origin == allowed:
                 return True
-            # Allow localhost with any port in development
-            if "localhost" in allowed and "localhost" in callback_origin:
-                return True
+
+        # Allow localhost with any port in development (proper hostname check)
+        if parsed.hostname == "localhost":
+            for allowed in allowed_origins:
+                allowed_parsed = urlparse(allowed)
+                if allowed_parsed.hostname == "localhost":
+                    return True
 
         return False
     except Exception:
@@ -224,7 +228,9 @@ def _get_oauth_handler_for_external(
         )
     else:
         client_id = getattr(settings.secrets, f"{provider_name}_client_id", None)
-        client_secret = getattr(settings.secrets, f"{provider_name}_client_secret", None)
+        client_secret = getattr(
+            settings.secrets, f"{provider_name}_client_secret", None
+        )
 
     if not (client_id and client_secret):
         logger.error(f"Attempt to use unconfigured {provider_name} OAuth integration")
@@ -249,7 +255,9 @@ def _get_oauth_handler_for_external(
 
 @integrations_router.get("/providers", response_model=list[ProviderInfo])
 async def list_providers(
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.READ_INTEGRATIONS)),
+    api_key: APIKeyInfo = Security(
+        require_permission(APIKeyPermission.READ_INTEGRATIONS)
+    ),
 ) -> list[ProviderInfo]:
     """
     List all available integration providers.
@@ -269,7 +277,9 @@ async def list_providers(
     for name in get_all_provider_names():
         supports_oauth = name in HANDLERS_BY_NAME
         handler_class = HANDLERS_BY_NAME.get(name)
-        default_scopes = getattr(handler_class, "DEFAULT_SCOPES", []) if handler_class else []
+        default_scopes = (
+            getattr(handler_class, "DEFAULT_SCOPES", []) if handler_class else []
+        )
 
         providers.append(
             ProviderInfo(
@@ -391,7 +401,7 @@ async def complete_oauth(
         )
 
     # Verify this is an external flow
-    if not valid_state.is_external:
+    if not valid_state.is_external or not valid_state.callback_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="State token was not created for external OAuth flow",
@@ -447,7 +457,9 @@ async def complete_oauth(
 
 @integrations_router.get("/credentials", response_model=list[CredentialSummary])
 async def list_credentials(
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.READ_INTEGRATIONS)),
+    api_key: APIKeyInfo = Security(
+        require_permission(APIKeyPermission.READ_INTEGRATIONS)
+    ),
 ) -> list[CredentialSummary]:
     """
     List all credentials for the authenticated user.
@@ -474,7 +486,9 @@ async def list_credentials(
 )
 async def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.READ_INTEGRATIONS)),
+    api_key: APIKeyInfo = Security(
+        require_permission(APIKeyPermission.READ_INTEGRATIONS)
+    ),
 ) -> list[CredentialSummary]:
     """
     List credentials for a specific provider.

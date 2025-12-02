@@ -442,9 +442,6 @@ class IntegrationCredentialsStore:
             is_external=callback_url is not None,
         )
 
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.oauth_states.append(state)
-
         async with await self.locked_user_integrations(user_id):
 
             user_integrations = await self._get_user_integrations(user_id)
