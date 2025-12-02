@@ -6,7 +6,12 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import { PlayIcon, PencilIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  PencilIcon,
+  PlayIcon,
+  StopIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import {
   TabsLine,
   TabsLineContent,
@@ -19,6 +24,7 @@ import {
   getGetV2ListPresetsQueryKey,
   useGetV2GetASpecificPreset,
   getGetV2GetASpecificPresetQueryKey,
+  usePatchV2UpdateAnExistingPreset,
 } from "@/app/api/__generated__/endpoints/presets/presets";
 import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { getGetV1ListExecutionSchedulesForAGraphQueryKey } from "@/app/api/__generated__/endpoints/schedules/schedules";
@@ -87,6 +93,44 @@ export function SelectedTemplateView({
   const doDeleteTemplate = async () => {
     setIsDeleting(true);
     deleteTemplateMutation.mutate({ presetId: presetID });
+  };
+
+  // Toggle trigger active status mutation
+  const toggleTriggerStatusMutation = usePatchV2UpdateAnExistingPreset({
+    mutation: {
+      onSuccess: (response) => {
+        if (response.status === 200) {
+          toast({
+            title: `Trigger ${preset?.is_active ? "disabled" : "enabled"} successfully`,
+            variant: "default",
+          });
+          // Invalidate preset queries to refresh data
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
+          });
+          queryClient.invalidateQueries({
+            queryKey: getGetV2GetASpecificPresetQueryKey(presetID),
+          });
+        }
+      },
+      onError: (error) => {
+        toast({
+          title: `Failed to ${preset?.is_active ? "disable" : "enable"} trigger`,
+          description: String(error),
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const doToggleTriggerStatus = () => {
+    if (!preset) return;
+    toggleTriggerStatusMutation.mutate({
+      presetId: presetID,
+      data: {
+        is_active: !preset.is_active,
+      },
+    });
   };
 
   const onSave = useCallback(() => {
@@ -215,6 +259,30 @@ export function SelectedTemplateView({
                   onSaved: onSave,
                 }}
               />
+              {/* Enable/Disable Trigger Button - only for triggered presets */}
+              {preset.webhook && (
+                <Button
+                  variant={preset.is_active ? "destructive" : "primary"}
+                  size="small"
+                  onClick={doToggleTriggerStatus}
+                  disabled={toggleTriggerStatusMutation.isPending}
+                  leftIcon={
+                    preset.is_active ? (
+                      <StopIcon size={16} />
+                    ) : (
+                      <PlayIcon size={16} />
+                    )
+                  }
+                >
+                  {toggleTriggerStatusMutation.isPending
+                    ? preset.is_active
+                      ? "Disabling..."
+                      : "Enabling..."
+                    : preset.is_active
+                      ? "Disable Trigger"
+                      : "Enable Trigger"}
+                </Button>
+              )}
               <Button
                 // TODO: add confirmation modal before deleting
                 variant="destructive"
