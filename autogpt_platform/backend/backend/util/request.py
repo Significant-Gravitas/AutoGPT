@@ -319,7 +319,7 @@ class Requests:
         extra_url_validator: Callable[[URL], URL] | None = None,
         extra_headers: dict[str, str] | None = None,
         retry_max_wait: float = 300.0,
-        retry_max_attempts: int | None = 5,
+        retry_max_attempts: int | None = None,
     ):
         self.trusted_origins = []
         for url in trusted_origins or []:
@@ -351,9 +351,7 @@ class Requests:
     ) -> Response:
         retry_kwargs: dict[str, Any] = {
             "wait": wait_exponential_jitter(max=self.retry_max_wait),
-            "retry": retry_if_result(
-                lambda r: r.status in THROTTLE_RETRY_STATUS_CODES
-            ),
+            "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
             "reraise": True,
         }
 
