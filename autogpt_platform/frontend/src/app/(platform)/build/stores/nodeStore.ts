@@ -12,6 +12,14 @@ import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutio
 import { useHistoryStore } from "./historyStore";
 import { useEdgeStore } from "./edgeStore";
 import { BlockUIType } from "../components/types";
+import { pruneEmptyValues } from "@/lib/utils";
+
+// Minimum movement (in pixels) required before logging position change to history
+// Prevents spamming history with small movements when clicking on inputs inside blocks
+const MINIMUM_MOVE_BEFORE_LOG = 50;
+
+// Track initial positions when drag starts (outside store to avoid re-renders)
+const dragStartPositions: Record<string, XYPosition> = {};
 
 type NodeStore = {
   nodes: CustomNode[];
@@ -44,6 +52,7 @@ type NodeStore = {
   ) => void;
   getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
   getNodeBlockUIType: (nodeId: string) => BlockUIType;
+  hasWebhookNodes: () => boolean;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -60,12 +69,44 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       nodes: get().nodes,
       edges: useEdgeStore.getState().edges,
     };
-    const shouldTrack = changes.some(
-      (change) =>
-        change.type === "remove" ||
-        change.type === "add" ||
-        (change.type === "position" && change.dragging === false),
+
+    // Track initial positions when drag starts
+    changes.forEach((change) => {
+      if (change.type === "position" && change.dragging === true) {
+        if (!dragStartPositions[change.id]) {
+          const node = get().nodes.find((n) => n.id === change.id);
+          if (node) {
+            dragStartPositions[change.id] = { ...node.position };
+          }
+        }
+      }
+    });
+
+    // Check if we should track this change in history
+    let shouldTrack = changes.some(
+      (change) => change.type === "remove" || change.type === "add",
     );
+
+    // For position changes, only track if movement exceeds threshold
+    if (!shouldTrack) {
+      changes.forEach((change) => {
+        if (change.type === "position" && change.dragging === false) {
+          const startPos = dragStartPositions[change.id];
+          if (startPos && change.position) {
+            const distanceMoved = Math.sqrt(
+              Math.pow(change.position.x - startPos.x, 2) +
+                Math.pow(change.position.y - startPos.y, 2),
+            );
+            if (distanceMoved > MINIMUM_MOVE_BEFORE_LOG) {
+              shouldTrack = true;
+            }
+          }
+          // Clean up tracked position after drag ends
+          delete dragStartPositions[change.id];
+        }
+      });
+    }
+
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
     }));
@@ -161,11 +202,12 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return {
       id: node.id,
       block_id: node.data.block_id,
-      input_default: node.data.hardcodedValues,
+      input_default: pruneEmptyValues(node.data.hardcodedValues),
       metadata: {
-        // TODO: Add more metadata
         position: node.position,
-        customized_name: node.data.metadata?.customized_name,
+        ...(node.data.metadata?.customized_name !== undefined && {
+          customized_name: node.data.metadata.customized_name,
+        }),
       },
     };
   },
@@ -201,6 +243,11 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return (
       get().nodes.find((n) => n.id === nodeId)?.data?.uiType ??
       BlockUIType.STANDARD
+    );
+  },
+  hasWebhookNodes: () => {
+    return get().nodes.some((n) =>
+      [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(n.data.uiType),
     );
   },
 }));

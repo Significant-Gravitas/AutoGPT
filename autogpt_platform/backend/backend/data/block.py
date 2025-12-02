@@ -71,6 +71,7 @@ class BlockType(Enum):
     AGENT = "Agent"
     AI = "AI"
     AYRSHARE = "Ayrshare"
+    HUMAN_IN_THE_LOOP = "Human In The Loop"
 
 
 class BlockCategory(Enum):
@@ -795,4 +796,13 @@ def get_io_block_ids() -> Sequence[str]:
         id
         for id, B in get_blocks().items()
         if B().block_type in (BlockType.INPUT, BlockType.OUTPUT)
+    ]
+
+
+@cached(ttl_seconds=3600)
+def get_human_in_the_loop_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type == BlockType.HUMAN_IN_THE_LOOP
     ]

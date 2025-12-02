@@ -266,6 +266,8 @@ model LibraryAgent {
   isArchived      Boolean @default(false)
   isDeleted       Boolean @default(false)
 
+  settings Json @default("{}")
+
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
@@ -478,26 +480,26 @@ enum ReviewStatus {
 
 // Pending human reviews for Human-in-the-loop blocks
 model PendingHumanReview {
-  nodeExecId       String       @id
-  userId           String
-  graphExecId      String
-  graphId          String
-  graphVersion     Int
-  payload          Json         // The actual payload data to be reviewed
-  instructions     String?      // Instructions/message for the reviewer
-  editable         Boolean      @default(true) // Whether the reviewer can edit the data
-  status           ReviewStatus @default(WAITING)
-  reviewMessage    String?      // Optional message from the reviewer
-  wasEdited        Boolean?     // Whether the data was modified during review
-  processed        Boolean      @default(false) // Whether the review result has been processed by the execution engine
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime?    @updatedAt
-  reviewedAt       DateTime?
-  
-  User             User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  NodeExecution    AgentNodeExecution @relation(fields: [nodeExecId], references: [id], onDelete: Cascade)
-  GraphExecution   AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
-  
+  nodeExecId    String       @id
+  userId        String
+  graphExecId   String
+  graphId       String
+  graphVersion  Int
+  payload       Json // The actual payload data to be reviewed
+  instructions  String? // Instructions/message for the reviewer
+  editable      Boolean      @default(true) // Whether the reviewer can edit the data
+  status        ReviewStatus @default(WAITING)
+  reviewMessage String? // Optional message from the reviewer
+  wasEdited     Boolean? // Whether the data was modified during review
+  processed     Boolean      @default(false) // Whether the review result has been processed by the execution engine
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime?    @updatedAt
+  reviewedAt    DateTime?
+
+  User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  NodeExecution  AgentNodeExecution  @relation(fields: [nodeExecId], references: [id], onDelete: Cascade)
+  GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
+
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])
   @@index([graphExecId, status])
@@ -704,7 +706,7 @@ view StoreAgent {
   agent_video String?
   agent_image String[]
 
-  featured         Boolean  @default(false)
+  featured         Boolean                  @default(false)
   creator_username String?
   creator_avatar   String?
   sub_heading      String
@@ -714,8 +716,8 @@ view StoreAgent {
   runs             Int
   rating           Float
   versions         String[]
-  is_available     Boolean  @default(true)
-  useForOnboarding Boolean  @default(false)
+  is_available     Boolean                  @default(true)
+  useForOnboarding Boolean                  @default(false)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -910,6 +912,8 @@ enum APIKeyPermission {
   READ_GRAPH // Can get graph versions and details
   EXECUTE_BLOCK // Can execute individual blocks
   READ_BLOCK // Can get block information
+  READ_STORE // Can read store agents and creators
+  USE_TOOLS // Can use chat tools via external API
 }
 
 model APIKey {
