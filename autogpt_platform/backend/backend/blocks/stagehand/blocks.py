@@ -15,8 +15,8 @@ from backend.blocks.llm import (
     LlmModel,
     ModelMetadata,
 )
-from backend.data import llm_registry
 from backend.blocks.stagehand._config import stagehand as stagehand_provider
+from backend.data import llm_registry
 from backend.sdk import (
     APIKeyCredentials,
     Block,

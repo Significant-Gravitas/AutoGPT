@@ -21,4 +21,3 @@ async def list_models():
 async def list_providers():
     providers = await llm_db.list_providers(include_models=True)
     return llm_model.LlmProvidersResponse(providers=providers)
-

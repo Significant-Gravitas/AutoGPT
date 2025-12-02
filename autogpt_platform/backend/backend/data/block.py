@@ -152,13 +152,14 @@ class BlockSchema(BaseModel):
     @staticmethod
     def clear_all_schema_caches() -> None:
         """Clear cached JSON schemas for all BlockSchema subclasses."""
+
         def clear_recursive(cls: type) -> None:
             """Recursively clear cache for class and all subclasses."""
-            if hasattr(cls, 'clear_schema_cache'):
+            if hasattr(cls, "clear_schema_cache"):
                 cls.clear_schema_cache()
             for subclass in cls.__subclasses__():
                 clear_recursive(subclass)
-        
+
         clear_recursive(BlockSchema)
 
     @classmethod
@@ -172,7 +173,9 @@ class BlockSchema(BaseModel):
                     # OpenAPI <3.1 does not support sibling fields that has a $ref key
                     # So sometimes, the schema has an "allOf"/"anyOf"/"oneOf" with 1 item.
                     keys = {"allOf", "anyOf", "oneOf"}
-                    one_key = next((k for k in keys if k in obj and len(obj[k]) == 1), None)
+                    one_key = next(
+                        (k for k in keys if k in obj and len(obj[k]) == 1), None
+                    )
                     if one_key:
                         obj.update(obj[one_key][0])
 
@@ -187,7 +190,7 @@ class BlockSchema(BaseModel):
                 return obj
 
             cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
-        
+
         # Always post-process to ensure LLM registry data is up-to-date
         # This refreshes model options and discriminator mappings even if schema was cached
         update_schema_with_llm_registry(cls.cached_jsonschema, cls)
@@ -760,18 +763,23 @@ async def initialize_blocks() -> None:
     try:
         from backend.data import llm_registry
         from backend.data.block_cost_config import refresh_llm_costs
-        
+
         # Only refresh if we have DB access (check if Prisma is connected)
         from backend.data.db import is_connected
+
         if is_connected():
             await llm_registry.refresh_llm_registry()
             refresh_llm_costs()
             logger.info("LLM registry refreshed during block initialization")
         else:
-            logger.warning("Prisma not connected, skipping LLM registry refresh during block initialization")
+            logger.warning(
+                "Prisma not connected, skipping LLM registry refresh during block initialization"
+            )
     except Exception as exc:
-        logger.warning("Failed to refresh LLM registry during block initialization: %s", exc)
-    
+        logger.warning(
+            "Failed to refresh LLM registry during block initialization: %s", exc
+        )
+
     # First, sync all provider costs to blocks
     # Imported here to avoid circular import
     from backend.sdk.cost_integration import sync_all_provider_costs

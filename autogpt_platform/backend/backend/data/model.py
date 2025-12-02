@@ -533,7 +533,7 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
             else:
                 schema["credentials_provider"] = allowed_providers
             schema["credentials_types"] = model_class.allowed_cred_types()
-        
+
         # Ensure LLM discriminators are populated (delegates to shared helper)
         update_schema_with_llm_registry(schema, model_class)
 
@@ -686,13 +686,13 @@ def CredentialsField(
 
     # Build field_schema_extra - always include discriminator and mapping if discriminator is set
     field_schema_extra: dict[str, Any] = {}
-    
+
     # Always include discriminator if provided
     if discriminator is not None:
         field_schema_extra["discriminator"] = discriminator
         # Always include discriminator_mapping when discriminator is set (even if empty initially)
         field_schema_extra["discriminator_mapping"] = discriminator_mapping or {}
-    
+
     # Include other optional fields (only if not None)
     if required_scopes:
         field_schema_extra["credentials_scopes"] = list(required_scopes)

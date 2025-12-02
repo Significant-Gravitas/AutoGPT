@@ -71,11 +71,7 @@ def _map_provider(record: prisma.models.LlmProvider) -> llm_model.LlmProvider:
 
 
 async def list_providers(include_models: bool = True) -> list[llm_model.LlmProvider]:
-    include = (
-        {"Models": {"include": {"Costs": True}}}
-        if include_models
-        else None
-    )
+    include = {"Models": {"include": {"Costs": True}}} if include_models else None
     records = await prisma.models.LlmProvider.prisma().find_many(include=include)
     return [_map_provider(record) for record in records]
 
@@ -208,9 +204,7 @@ async def get_model_usage(model_id: str) -> llm_model.LlmModelUsageResponse:
     """Get usage count for a model."""
     import prisma as prisma_module
 
-    model = await prisma.models.LlmModel.prisma().find_unique(
-        where={"id": model_id}
-    )
+    model = await prisma.models.LlmModel.prisma().find_unique(where={"id": model_id})
     if not model:
         raise ValueError(f"Model with id '{model_id}' not found")
 
@@ -220,19 +214,15 @@ async def get_model_usage(model_id: str) -> llm_model.LlmModelUsageResponse:
         FROM "AgentNode"
         WHERE "constantInput"::jsonb->>'model' = $1
         """,
-        model.slug
+        model.slug,
     )
     node_count = int(count_result[0]["count"]) if count_result else 0
 
-    return llm_model.LlmModelUsageResponse(
-        model_slug=model.slug,
-        node_count=node_count
-    )
+    return llm_model.LlmModelUsageResponse(model_slug=model.slug, node_count=node_count)
 
 
 async def delete_model(
-    model_id: str,
-    replacement_model_slug: str
+    model_id: str, replacement_model_slug: str
 ) -> llm_model.DeleteLlmModelResponse:
     """
     Delete a model and migrate all AgentNodes using it to a replacement model.
@@ -258,8 +248,7 @@ async def delete_model(
 
     # 1. Get the model being deleted
     model = await prisma.models.LlmModel.prisma().find_unique(
-        where={"id": model_id},
-        include={"Costs": True}
+        where={"id": model_id}, include={"Costs": True}
     )
     if not model:
         raise ValueError(f"Model with id '{model_id}' not found")
@@ -286,7 +275,7 @@ async def delete_model(
         FROM "AgentNode"
         WHERE "constantInput"::jsonb->>'model' = $1
         """,
-        deleted_slug
+        deleted_slug,
     )
     nodes_affected = int(count_result[0]["count"]) if count_result else 0
 
@@ -303,7 +292,7 @@ async def delete_model(
             WHERE "constantInput"::jsonb->>'model' = $2
             """,
             replacement_model_slug,
-            deleted_slug
+            deleted_slug,
         )
 
     # 5. Delete the model (CASCADE will delete costs automatically)
@@ -317,6 +306,5 @@ async def delete_model(
         message=(
             f"Successfully deleted model '{deleted_display_name}' ({deleted_slug}) "
             f"and migrated {nodes_affected} workflow node(s) to '{replacement_model_slug}'."
-        )
+        ),
     )
-

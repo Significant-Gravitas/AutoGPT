@@ -119,4 +119,3 @@ class DeleteLlmModelResponse(pydantic.BaseModel):
 class LlmModelUsageResponse(pydantic.BaseModel):
     model_slug: str
     node_count: int
-

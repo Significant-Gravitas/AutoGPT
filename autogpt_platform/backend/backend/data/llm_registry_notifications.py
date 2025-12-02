@@ -5,6 +5,7 @@ When models are added/updated/removed via the admin UI, this module
 publishes notifications to Redis that all executor services subscribe to,
 ensuring they refresh their registry cache in real-time.
 """
+
 import asyncio
 import logging
 from typing import Any
@@ -28,7 +29,9 @@ def publish_registry_refresh_notification() -> None:
         logger.info("Published LLM registry refresh notification to Redis")
     except Exception as exc:
         logger.warning(
-            "Failed to publish LLM registry refresh notification: %s", exc, exc_info=True
+            "Failed to publish LLM registry refresh notification: %s",
+            exc,
+            exc_info=True,
         )
 
 
@@ -38,23 +41,32 @@ async def subscribe_to_registry_refresh(
     """
     Subscribe to Redis notifications for LLM registry updates.
     This runs in a loop and processes messages as they arrive.
-    
+
     Args:
         on_refresh: Async callable to execute when a refresh notification is received
     """
     from backend.data.redis_client import connect_async
-    
+
     try:
         redis = await connect_async()
         pubsub = redis.pubsub()
         await pubsub.subscribe(REGISTRY_REFRESH_CHANNEL)
-        logger.info("Subscribed to LLM registry refresh notifications on channel: %s", REGISTRY_REFRESH_CHANNEL)
-        
+        logger.info(
+            "Subscribed to LLM registry refresh notifications on channel: %s",
+            REGISTRY_REFRESH_CHANNEL,
+        )
+
         # Process messages in a loop
         while True:
             try:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if message and message["type"] == "message" and message["channel"] == REGISTRY_REFRESH_CHANNEL:
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True, timeout=1.0
+                )
+                if (
+                    message
+                    and message["type"] == "message"
+                    and message["channel"] == REGISTRY_REFRESH_CHANNEL
+                ):
                     logger.info("Received LLM registry refresh notification")
                     try:
                         await on_refresh()
@@ -77,4 +89,3 @@ async def subscribe_to_registry_refresh(
             exc_info=True,
         )
         raise
-

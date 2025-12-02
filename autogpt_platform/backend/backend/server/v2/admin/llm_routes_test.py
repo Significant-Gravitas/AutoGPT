@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import fastapi
 import fastapi.testclient
@@ -166,9 +166,7 @@ def test_create_llm_provider_success(
     mock_notify.assert_called_once()
 
     # Snapshot test the response
-    configured_snapshot.assert_match(
-        response_data, "create_llm_provider_success.json"
-    )
+    configured_snapshot.assert_match(response_data, "create_llm_provider_success.json")
 
 
 def test_create_llm_model_success(
@@ -352,12 +350,12 @@ def test_delete_llm_model_success(
         "replacement_model_slug": "gpt-4o-mini",
         "nodes_migrated": 42,
         "message": "Successfully deleted model 'GPT-3.5 Turbo' (gpt-3.5-turbo) "
-                   "and migrated 42 workflow node(s) to 'gpt-4o-mini'."
+        "and migrated 42 workflow node(s) to 'gpt-4o-mini'.",
     }
 
     mocker.patch(
         "backend.server.v2.admin.llm_routes.llm_db.delete_model",
-        new=AsyncMock(return_value=type('obj', (object,), mock_response)()),
+        new=AsyncMock(return_value=type("obj", (object,), mock_response)()),
     )
 
     mock_refresh = mocker.patch(
@@ -391,9 +389,7 @@ def test_delete_llm_model_validation_error(
         new=AsyncMock(side_effect=ValueError("Replacement model 'invalid' not found")),
     )
 
-    response = client.delete(
-        "/admin/llm/models/model-1?replacement_model_slug=invalid"
-    )
+    response = client.delete("/admin/llm/models/model-1?replacement_model_slug=invalid")
 
     assert response.status_code == 400
     assert "Replacement model 'invalid' not found" in response.json()["detail"]

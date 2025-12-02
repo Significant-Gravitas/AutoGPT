@@ -85,11 +85,18 @@ async def event_broadcaster(manager: ConnectionManager):
         redis = await connect_async()
         pubsub = redis.pubsub()
         await pubsub.subscribe(REGISTRY_REFRESH_CHANNEL)
-        logger.info("Subscribed to LLM registry refresh notifications for WebSocket broadcast")
+        logger.info(
+            "Subscribed to LLM registry refresh notifications for WebSocket broadcast"
+        )
 
         async for message in pubsub.listen():
-            if message["type"] == "message" and message["channel"] == REGISTRY_REFRESH_CHANNEL:
-                logger.info("Broadcasting LLM registry refresh to all WebSocket clients")
+            if (
+                message["type"] == "message"
+                and message["channel"] == REGISTRY_REFRESH_CHANNEL
+            ):
+                logger.info(
+                    "Broadcasting LLM registry refresh to all WebSocket clients"
+                )
                 await manager.broadcast_to_all(
                     method=WSMethod.NOTIFICATION,
                     data={

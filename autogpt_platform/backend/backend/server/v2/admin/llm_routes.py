@@ -20,35 +20,41 @@ router = fastapi.APIRouter(
 async def _refresh_runtime_state() -> None:
     """Refresh the LLM registry and clear all related caches to ensure real-time updates."""
     logger.info("Refreshing LLM registry runtime state...")
-    
+
     # Refresh registry from database
     await llm_registry.refresh_llm_registry()
     refresh_llm_costs()
-    
+
     # Clear block schema caches so they're regenerated with updated model options
     from backend.data.block import BlockSchema
+
     BlockSchema.clear_all_schema_caches()
     logger.info("Cleared all block schema caches")
-    
+
     # Clear the /blocks endpoint cache so frontend gets updated schemas
     try:
         from backend.server.routers.v1 import _get_cached_blocks
+
         _get_cached_blocks.cache_clear()
         logger.info("Cleared /blocks endpoint cache")
     except Exception as e:
         logger.warning("Failed to clear /blocks cache: %s", e)
-    
+
     # Clear the v2 builder providers cache (if it exists)
     try:
         from backend.server.v2.builder import db as builder_db
-        if hasattr(builder_db, '_get_all_providers'):
+
+        if hasattr(builder_db, "_get_all_providers"):
             builder_db._get_all_providers.cache_clear()
             logger.info("Cleared v2 builder providers cache")
     except Exception as e:
         logger.debug("Could not clear v2 builder cache: %s", e)
-    
+
     # Notify all executor services to refresh their registry cache
-    from backend.data.llm_registry_notifications import publish_registry_refresh_notification
+    from backend.data.llm_registry_notifications import (
+        publish_registry_refresh_notification,
+    )
+
     publish_registry_refresh_notification()
     logger.info("Published registry refresh notification")
 
@@ -133,7 +139,9 @@ async def toggle_llm_model(
     request: llm_model.ToggleLlmModelRequest,
 ):
     try:
-        model = await llm_db.toggle_model(model_id=model_id, is_enabled=request.is_enabled)
+        model = await llm_db.toggle_model(
+            model_id=model_id, is_enabled=request.is_enabled
+        )
         await _refresh_runtime_state()
         return model
     except Exception as exc:
@@ -171,8 +179,7 @@ async def get_llm_model_usage(model_id: str):
 async def delete_llm_model(
     model_id: str,
     replacement_model_slug: str = fastapi.Query(
-        ...,
-        description="Slug of the model to migrate existing workflows to"
+        ..., description="Slug of the model to migrate existing workflows to"
     ),
 ):
     """
@@ -189,15 +196,14 @@ async def delete_llm_model(
     """
     try:
         result = await llm_db.delete_model(
-            model_id=model_id,
-            replacement_model_slug=replacement_model_slug
+            model_id=model_id, replacement_model_slug=replacement_model_slug
         )
         await _refresh_runtime_state()
         logger.info(
             "Deleted model '%s' and migrated %d nodes to '%s'",
             result.deleted_model_slug,
             result.nodes_migrated,
-            result.replacement_model_slug
+            result.replacement_model_slug,
         )
         return result
     except ValueError as exc:
@@ -210,4 +216,3 @@ async def delete_llm_model(
             status_code=500,
             detail="Failed to delete model and migrate workflows",
         ) from exc
-

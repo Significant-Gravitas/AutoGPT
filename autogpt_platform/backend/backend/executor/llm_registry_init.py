@@ -4,6 +4,7 @@ Helper functions for LLM registry initialization in executor context.
 These functions handle refreshing the LLM registry when the executor starts
 and subscribing to real-time updates via Redis pub/sub.
 """
+
 import logging
 
 from backend.data import db, llm_registry

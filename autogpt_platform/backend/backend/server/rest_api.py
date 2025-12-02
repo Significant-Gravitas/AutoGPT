@@ -20,8 +20,6 @@ import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
-from backend.data import llm_registry
-from backend.data.block_cost_config import refresh_llm_costs
 import backend.integrations.webhooks.utils
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
@@ -36,13 +34,14 @@ import backend.server.v2.executions.review.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
+import backend.server.v2.llm.routes as public_llm_routes
 import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
-import backend.server.v2.llm.routes as public_llm_routes
 import backend.util.service
 import backend.util.settings
-from backend.blocks.llm import LlmModel
+from backend.data import llm_registry
+from backend.data.block_cost_config import refresh_llm_costs
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -111,9 +110,10 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Refresh LLM registry before initializing blocks so blocks can use registry data
     await llm_registry.refresh_llm_registry()
     refresh_llm_costs()
-    
+
     # Clear block schema caches so they're regenerated with updated discriminator_mapping
     from backend.data.block import BlockSchema
+
     BlockSchema.clear_all_schema_caches()
 
     await backend.data.block.initialize_blocks()

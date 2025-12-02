@@ -4,6 +4,7 @@ Helper utilities for LLM registry integration with block schemas.
 This module handles the dynamic injection of discriminator mappings
 and model options from the LLM registry into block schemas.
 """
+
 import logging
 from typing import Any
 
@@ -69,8 +70,7 @@ def refresh_llm_discriminator_mapping(field_schema: dict[str, Any]) -> None:
 
 
 def update_schema_with_llm_registry(
-    schema: dict[str, Any],
-    model_class: type | None = None
+    schema: dict[str, Any], model_class: type | None = None
 ) -> None:
     """
     Update a JSON schema with current LLM registry data.
@@ -98,7 +98,8 @@ def update_schema_with_llm_registry(
                 except Exception as exc:
                     logger.warning(
                         "Failed to refresh LLM options for field %s: %s",
-                        field_name, exc
+                        field_name,
+                        exc,
                     )
 
         # Refresh discriminator mapping for fields that use model discrimination
@@ -107,5 +108,6 @@ def update_schema_with_llm_registry(
         except Exception as exc:
             logger.warning(
                 "Failed to refresh discriminator mapping for field %s: %s",
-                field_name, exc
+                field_name,
+                exc,
             )

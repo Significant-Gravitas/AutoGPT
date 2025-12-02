@@ -15,6 +15,7 @@ from anthropic.types import ToolParam
 from groq import AsyncGroq
 from pydantic import BaseModel, SecretStr
 
+from backend.data import llm_registry
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -23,7 +24,6 @@ from backend.data.block import (
     BlockSchemaOutput,
 )
 from backend.data.llm_model_types import ModelMetadata
-from backend.data import llm_registry
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -76,7 +76,7 @@ def AICredentialsField() -> AICredentials:
     # Get the mapping now - it may be empty initially, but will be refreshed
     # when the schema is generated via CredentialsMetaInput._add_json_schema_extra
     mapping = llm_registry.get_llm_discriminator_mapping()
-    
+
     return CredentialsField(
         description="API key for the LLM provider.",
         discriminator="model",
@@ -191,7 +191,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
         metadata = llm_registry.get_llm_model_metadata(self.value)
         if metadata:
             return metadata
-        raise ValueError(f"Missing metadata for model: {self.value}. Model not found in LLM registry.")
+        raise ValueError(
+            f"Missing metadata for model: {self.value}. Model not found in LLM registry."
+        )
 
     @property
     def provider(self) -> str:
@@ -341,41 +343,46 @@ async def llm_call(
         provider = llm_model.metadata.provider
         context_window = llm_model.context_window
         model_max_output = llm_model.max_output_tokens or int(2**15)
-        
+
         # Check if model is enabled - get from registry
         from backend.data.llm_registry import _dynamic_models
+
         if llm_model.value in _dynamic_models:
             model_info = _dynamic_models[llm_model.value]
             if not model_info.is_enabled:
-                raise ValueError(
-                    f"LLM model '{llm_model.value}' is disabled."
-                )
+                raise ValueError(f"LLM model '{llm_model.value}' is disabled.")
     except ValueError as e:
         # Re-raise if it's our disabled model error
         if "is disabled" in str(e):
             raise
         # Model not in cache - try refreshing the registry once if we have DB access
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(
             "Model %s not found in registry cache",
             llm_model.value,
         )
-        
+
         # Try refreshing the registry if we have database access
         from backend.data.db import is_connected
+
         if is_connected():
             try:
-                logger.info("Refreshing LLM registry and retrying lookup for %s", llm_model.value)
+                logger.info(
+                    "Refreshing LLM registry and retrying lookup for %s",
+                    llm_model.value,
+                )
                 await llm_registry.refresh_llm_registry()
                 # Try again after refresh
                 try:
                     provider = llm_model.metadata.provider
                     context_window = llm_model.context_window
                     model_max_output = llm_model.max_output_tokens or int(2**15)
-                    
+
                     # Check if model is enabled after refresh
                     from backend.data.llm_registry import _dynamic_models
+
                     if llm_model.value in _dynamic_models:
                         model_info = _dynamic_models[llm_model.value]
                         if not model_info.is_enabled:
@@ -383,7 +390,7 @@ async def llm_call(
                                 f"LLM model '{llm_model.value}' is disabled. "
                                 "Please enable it in the LLM registry via the admin UI to use this model."
                             )
-                    
+
                     logger.info(
                         "Successfully loaded model %s metadata after registry refresh",
                         llm_model.value,
@@ -398,7 +405,9 @@ async def llm_call(
                         "Please ensure the model is added and enabled in the LLM registry via the admin UI."
                     )
             except Exception as refresh_exc:
-                logger.error("Failed to refresh LLM registry: %s", refresh_exc, exc_info=True)
+                logger.error(
+                    "Failed to refresh LLM registry: %s", refresh_exc, exc_info=True
+                )
                 raise ValueError(
                     f"LLM model '{llm_model.value}' not found in registry and failed to refresh. "
                     "Please ensure the model is added to the LLM registry via the admin UI."

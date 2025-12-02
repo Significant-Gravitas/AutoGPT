@@ -93,7 +93,9 @@ async def refresh_llm_registry() -> None:
             )
             logger.debug("Found %d LLM model records in database", len(records))
         except Exception as exc:
-            logger.error("Failed to refresh LLM registry from DB: %s", exc, exc_info=True)
+            logger.error(
+                "Failed to refresh LLM registry from DB: %s", exc, exc_info=True
+            )
             return
 
         dynamic: dict[str, RegistryModel] = {}
@@ -125,9 +127,11 @@ async def refresh_llm_registry() -> None:
                 metadata=metadata,
                 capabilities=record.capabilities or {},
                 extra_metadata=record.metadata or {},
-                provider_display_name=record.Provider.displayName
-                if record.Provider
-                else record.providerId,
+                provider_display_name=(
+                    record.Provider.displayName
+                    if record.Provider
+                    else record.providerId
+                ),
                 is_enabled=record.isEnabled,
                 costs=costs,
             )
@@ -211,4 +215,3 @@ def get_dynamic_model_slugs() -> set[str]:
 
 def iter_dynamic_models() -> Iterable[RegistryModel]:
     return tuple(_dynamic_models.values())
-
