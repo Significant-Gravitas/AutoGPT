@@ -349,7 +349,7 @@ async def initiate_oauth(
         scopes=request.scopes,
         callback_url=request.callback_url,
         state_metadata=request.state_metadata,
-        api_key_id=api_key.id,
+        initiated_by_api_key_id=api_key.id,
     )
 
     # Build login URL
@@ -400,8 +400,8 @@ async def complete_oauth(
             detail="Invalid or expired state token",
         )
 
-    # Verify this is an external flow
-    if not valid_state.is_external or not valid_state.callback_url:
+    # Verify this is an external flow (callback_url must be set)
+    if not valid_state.callback_url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="State token was not created for external OAuth flow",
@@ -593,14 +593,24 @@ async def create_credential(
     )
 
 
-@integrations_router.delete("/{provider}/credentials/{cred_id}")
+class DeleteCredentialResponse(BaseModel):
+    """Response model for deleting a credential."""
+
+    deleted: bool = Field(..., description="Whether the credential was deleted")
+    credentials_id: str = Field(..., description="ID of the deleted credential")
+
+
+@integrations_router.delete(
+    "/{provider}/credentials/{cred_id}",
+    response_model=DeleteCredentialResponse,
+)
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider")],
     cred_id: Annotated[str, Path(title="The credential ID to delete")],
     api_key: APIKeyInfo = Security(
         require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
     ),
-) -> dict:
+) -> DeleteCredentialResponse:
     """
     Delete a credential.
 
@@ -621,4 +631,4 @@ async def delete_credential(
 
     await creds_manager.delete(api_key.user_id, cred_id)
 
-    return {"deleted": True, "credentials_id": cred_id}
+    return DeleteCredentialResponse(deleted=True, credentials_id=cred_id)

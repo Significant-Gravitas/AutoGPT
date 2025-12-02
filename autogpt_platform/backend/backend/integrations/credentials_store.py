@@ -422,7 +422,7 @@ class IntegrationCredentialsStore:
         # New parameters for external API OAuth flows
         callback_url: Optional[str] = None,
         state_metadata: Optional[dict] = None,
-        api_key_id: Optional[str] = None,
+        initiated_by_api_key_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -438,8 +438,7 @@ class IntegrationCredentialsStore:
             # External API OAuth flow fields
             callback_url=callback_url,
             state_metadata=state_metadata or {},
-            api_key_id=api_key_id,
-            is_external=callback_url is not None,
+            initiated_by_api_key_id=initiated_by_api_key_id,
         )
 
         async with self.edit_user_integrations(user_id) as user_integrations:
