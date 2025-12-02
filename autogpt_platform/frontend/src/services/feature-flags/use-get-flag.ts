@@ -39,7 +39,7 @@ const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 const mockFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.NEW_BLOCK_MENU]: false,
-  [Flag.NEW_AGENT_RUNS]: true,
+  [Flag.NEW_AGENT_RUNS]: false,
   [Flag.GRAPH_SEARCH]: true,
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: false,
   [Flag.NEW_FLOW_EDITOR]: false,
