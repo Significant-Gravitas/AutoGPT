@@ -5,6 +5,7 @@ interface GraphStore {
   graphExecutionStatus: AgentExecutionStatus | undefined;
   isGraphRunning: boolean;
   setGraphExecutionStatus: (status: AgentExecutionStatus | undefined) => void;
+  setIsGraphRunning: (isRunning: boolean) => void;
 
   inputSchema: Record<string, any> | null;
   credentialsInputSchema: Record<string, any> | null;
@@ -36,6 +37,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         status === AgentExecutionStatus.RUNNING ||
         status === AgentExecutionStatus.QUEUED,
     });
+  },
+
+  setIsGraphRunning: (isRunning: boolean) => {
+    set({ isGraphRunning: isRunning });
   },
 
   setGraphSchemas: (inputSchema, credentialsInputSchema, outputSchema) =>
