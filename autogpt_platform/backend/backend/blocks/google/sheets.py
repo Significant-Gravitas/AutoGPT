@@ -5,7 +5,7 @@ from typing import Any
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-from backend.blocks.google._drive import GoogleDriveFile, GoogleDrivePickerField
+from backend.blocks.google._drive import GoogleDriveFile, GoogleDriveFileField
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -272,10 +272,10 @@ class BatchOperation(BlockSchemaInput):
 
 class GoogleSheetsReadBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -304,7 +304,6 @@ class GoogleSheetsReadBlock(Block):
             output_schema=GoogleSheetsReadBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -330,6 +329,7 @@ class GoogleSheetsReadBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -360,7 +360,7 @@ class GoogleSheetsReadBlock(Block):
                 self._read_sheet, service, spreadsheet_id, input_data.range
             )
             yield "result", data
-            # Output the GoogleDriveFile for chaining
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=spreadsheet_id,
                 name=input_data.spreadsheet.name,
@@ -368,6 +368,7 @@ class GoogleSheetsReadBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "read")
@@ -395,10 +396,10 @@ class GoogleSheetsReadBlock(Block):
 
 class GoogleSheetsWriteBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -430,7 +431,6 @@ class GoogleSheetsWriteBlock(Block):
             output_schema=GoogleSheetsWriteBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -457,6 +457,7 @@ class GoogleSheetsWriteBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -499,7 +500,7 @@ class GoogleSheetsWriteBlock(Block):
                 input_data.values,
             )
             yield "result", result
-            # Output the GoogleDriveFile for chaining
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -507,6 +508,7 @@ class GoogleSheetsWriteBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "write")
@@ -531,10 +533,10 @@ class GoogleSheetsWriteBlock(Block):
 
 class GoogleSheetsAppendBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -588,7 +590,6 @@ class GoogleSheetsAppendBlock(Block):
             output_schema=GoogleSheetsAppendBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -608,6 +609,7 @@ class GoogleSheetsAppendBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -664,7 +666,7 @@ class GoogleSheetsAppendBlock(Block):
                 input_data.insert_data_option,
             )
             yield "result", result
-            # Output the GoogleDriveFile for chaining
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -672,6 +674,7 @@ class GoogleSheetsAppendBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to append to Google Sheet: {str(e)}"
@@ -712,10 +715,10 @@ class GoogleSheetsAppendBlock(Block):
 
 class GoogleSheetsClearBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -744,7 +747,6 @@ class GoogleSheetsClearBlock(Block):
             output_schema=GoogleSheetsClearBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -764,6 +766,7 @@ class GoogleSheetsClearBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -796,7 +799,7 @@ class GoogleSheetsClearBlock(Block):
                 input_data.range,
             )
             yield "result", result
-            # Output the GoogleDriveFile for chaining
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -804,6 +807,7 @@ class GoogleSheetsClearBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to clear Google Sheet range: {str(e)}"
@@ -820,10 +824,10 @@ class GoogleSheetsClearBlock(Block):
 
 class GoogleSheetsMetadataBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -848,7 +852,6 @@ class GoogleSheetsMetadataBlock(Block):
             output_schema=GoogleSheetsMetadataBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -873,6 +876,7 @@ class GoogleSheetsMetadataBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -905,7 +909,7 @@ class GoogleSheetsMetadataBlock(Block):
                 input_data.spreadsheet.id,
             )
             yield "result", result
-            # Output the GoogleDriveFile for chaining
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -913,6 +917,7 @@ class GoogleSheetsMetadataBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to get spreadsheet metadata: {str(e)}"
@@ -940,10 +945,10 @@ class GoogleSheetsMetadataBlock(Block):
 
 class GoogleSheetsManageSheetBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -977,7 +982,6 @@ class GoogleSheetsManageSheetBlock(Block):
             output_schema=GoogleSheetsManageSheetBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -998,6 +1002,7 @@ class GoogleSheetsManageSheetBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -1034,7 +1039,7 @@ class GoogleSheetsManageSheetBlock(Block):
                 input_data.destination_sheet_name,
             )
             yield "result", result
-            # Output the GoogleDriveFile for chaining
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -1042,6 +1047,7 @@ class GoogleSheetsManageSheetBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to manage sheet: {str(e)}"
@@ -1095,10 +1101,10 @@ class GoogleSheetsManageSheetBlock(Block):
 
 class GoogleSheetsBatchOperationsBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -1126,7 +1132,6 @@ class GoogleSheetsBatchOperationsBlock(Block):
             output_schema=GoogleSheetsBatchOperationsBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -1157,6 +1162,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -1190,6 +1196,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
                 input_data.operations,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -1197,6 +1204,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to perform batch operations: {str(e)}"
@@ -1250,10 +1258,10 @@ class GoogleSheetsBatchOperationsBlock(Block):
 
 class GoogleSheetsFindReplaceBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -1296,7 +1304,6 @@ class GoogleSheetsFindReplaceBlock(Block):
             output_schema=GoogleSheetsFindReplaceBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -1319,6 +1326,7 @@ class GoogleSheetsFindReplaceBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -1353,6 +1361,7 @@ class GoogleSheetsFindReplaceBlock(Block):
                 input_data.match_entire_cell,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -1360,6 +1369,7 @@ class GoogleSheetsFindReplaceBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to find/replace in Google Sheet: {str(e)}"
@@ -1398,10 +1408,10 @@ class GoogleSheetsFindReplaceBlock(Block):
 
 class GoogleSheetsFindBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -1456,7 +1466,6 @@ class GoogleSheetsFindBlock(Block):
             output_schema=GoogleSheetsFindBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -1489,6 +1498,7 @@ class GoogleSheetsFindBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -1533,6 +1543,7 @@ class GoogleSheetsFindBlock(Block):
             yield "count", result["count"]
             yield "locations", result["locations"]
             yield "result", {"success": True}
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -1540,6 +1551,7 @@ class GoogleSheetsFindBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", f"Failed to find text in Google Sheet: {str(e)}"
@@ -1704,10 +1716,10 @@ class GoogleSheetsFindBlock(Block):
 
 class GoogleSheetsFormatBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -1739,7 +1751,6 @@ class GoogleSheetsFormatBlock(Block):
             output_schema=GoogleSheetsFormatBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -1761,6 +1772,7 @@ class GoogleSheetsFormatBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -1797,6 +1809,7 @@ class GoogleSheetsFormatBlock(Block):
                 yield "error", result["error"]
             else:
                 yield "result", result
+                # Output the GoogleDriveFile for chaining (preserves credentials_id)
                 yield "spreadsheet", GoogleDriveFile(
                     id=input_data.spreadsheet.id,
                     name=input_data.spreadsheet.name,
@@ -1804,6 +1817,7 @@ class GoogleSheetsFormatBlock(Block):
                     url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                     iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                     isFolder=False,
+                    _credentials_id=input_data.spreadsheet.credentials_id,
                 )
         except Exception as e:
             yield "error", f"Failed to format Google Sheet cells: {str(e)}"
@@ -1877,7 +1891,10 @@ class GoogleSheetsFormatBlock(Block):
 
 class GoogleSheetsCreateSpreadsheetBlock(Block):
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
+        # Explicit credentials since this block creates a file (no file picker)
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            ["https://www.googleapis.com/auth/drive.file"]
+        )
         title: str = SchemaField(
             description="The title of the new spreadsheet",
         )
@@ -1912,9 +1929,9 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             output_schema=GoogleSheetsCreateSpreadsheetBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "title": "Test Spreadsheet",
                 "sheet_names": ["Sheet1", "Data", "Summary"],
-                "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -1927,6 +1944,9 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=TEST_CREDENTIALS_INPUT[
+                            "id"
+                        ],  # Preserves credential ID for chaining
                     ),
                 ),
                 ("spreadsheet_id", "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"),
@@ -1963,7 +1983,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
         else:
             spreadsheet_id = result["spreadsheetId"]
             spreadsheet_url = result["spreadsheetUrl"]
-            # Output the full GoogleDriveFile object for easy chaining
+            # Output the GoogleDriveFile for chaining (includes credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=spreadsheet_id,
                 name=result.get("title", input_data.title),
@@ -1971,6 +1991,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
                 url=spreadsheet_url,
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.credentials.id,  # Preserve credentials for chaining
             )
             yield "spreadsheet_id", spreadsheet_id
             yield "spreadsheet_url", spreadsheet_url
@@ -2047,10 +2068,10 @@ class GoogleSheetsUpdateCellBlock(Block):
     """Update a single cell in a Google Sheets spreadsheet."""
 
     class Input(BlockSchemaInput):
-        credentials: GoogleCredentialsInput = GoogleCredentialsField([])
-        spreadsheet: GoogleDriveFile = GoogleDrivePickerField(
+        spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="Select a Google Sheets spreadsheet",
+            credentials_kwarg="credentials",
             allowed_views=["SPREADSHEETS"],
             allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
@@ -2087,7 +2108,6 @@ class GoogleSheetsUpdateCellBlock(Block):
             output_schema=GoogleSheetsUpdateCellBlock.Output,
             disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     "name": "Test Spreadsheet",
@@ -2111,6 +2131,7 @@ class GoogleSheetsUpdateCellBlock(Block):
                         url="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                         isFolder=False,
+                        _credentials_id=None,
                     ),
                 ),
             ],
@@ -2148,6 +2169,7 @@ class GoogleSheetsUpdateCellBlock(Block):
             )
 
             yield "result", result
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
@@ -2155,6 +2177,7 @@ class GoogleSheetsUpdateCellBlock(Block):
                 url=f"https://docs.google.com/spreadsheets/d/{input_data.spreadsheet.id}/edit",
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/sheets_48dp.png",
                 isFolder=False,
+                _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
             yield "error", _handle_sheets_api_error(str(e), "update")

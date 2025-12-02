@@ -220,12 +220,25 @@ async def execute_node(
     # credentials is not supported.
     creds_lock = None
     input_model = cast(type[BlockSchema], node_block.input_schema)
+
+    # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         credentials_meta = input_type(**input_data[field_name])
         credentials, creds_lock = await creds_manager.acquire(
             user_id, credentials_meta.id
         )
         extra_exec_kwargs[field_name] = credentials
+
+    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
+        field_name = info["field_name"]
+        field_data = input_data.get(field_name)
+        if field_data and isinstance(field_data, dict):
+            # Extract credential ID from _credentials_id field
+            cred_id = field_data.get("_credentials_id")
+            if cred_id:
+                credentials, creds_lock = await creds_manager.acquire(user_id, cred_id)
+                extra_exec_kwargs[kwarg_name] = credentials
 
     output_size = 0
 

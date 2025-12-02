@@ -3,7 +3,13 @@
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Button } from "@/components/atoms/Button/Button";
 import { CircleNotchIcon, FolderOpenIcon } from "@phosphor-icons/react";
-import { Props, useGoogleDrivePicker } from "./useGoogleDrivePicker";
+import { NormalizedPickedFile } from "./helpers";
+import {
+  Props as BaseProps,
+  useGoogleDrivePicker,
+} from "./useGoogleDrivePicker";
+
+export type Props = BaseProps;
 
 export function GoogleDrivePicker(props: Props) {
   const {
