@@ -1,14 +1,15 @@
 "use client";
 
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import FlowEditor from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 // import LoadingBox from "@/components/__legacy__/ui/loading";
 import { GraphID } from "@/lib/autogpt-server-api/types";
+import { ReactFlowProvider } from "@xyflow/react";
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
-import { Flow } from "./components/FlowEditor/Flow/Flow";
 import { BuilderViewTabs } from "./components/BuilderViewTabs/BuilderViewTabs";
 import { useBuilderView } from "./components/BuilderViewTabs/useBuilderViewTabs";
+import { Flow } from "./components/FlowEditor/Flow/Flow";
 
 function BuilderContent() {
   const query = useSearchParams();
@@ -42,10 +43,22 @@ export default function BuilderPage() {
     return (
       <div className="relative h-full w-full">
         <BuilderViewTabs value={selectedView} onChange={setSelectedView} />
-        {selectedView === "new" ? <Flow /> : <BuilderContent />}
+        {selectedView === "new" ? (
+          <ReactFlowProvider>
+            <Flow />
+          </ReactFlowProvider>
+        ) : (
+          <BuilderContent />
+        )}
       </div>
     );
   }
 
-  return isNewFlowEditorEnabled ? <Flow /> : <BuilderContent />;
+  return isNewFlowEditorEnabled ? (
+    <ReactFlowProvider>
+      <Flow />
+    </ReactFlowProvider>
+  ) : (
+    <BuilderContent />
+  );
 }

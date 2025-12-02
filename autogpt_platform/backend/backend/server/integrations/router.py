@@ -33,7 +33,7 @@ from backend.data.model import (
     OAuth2Credentials,
     UserIntegrations,
 )
-from backend.data.onboarding import complete_webhook_trigger_step
+from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
@@ -376,7 +376,7 @@ async def webhook_ingress_generic(
     if not (webhook.triggered_nodes or webhook.triggered_presets):
         return
 
-    await complete_webhook_trigger_step(user_id)
+    await complete_onboarding_step(user_id, OnboardingStep.TRIGGER_WEBHOOK)
 
     # Execute all triggers concurrently for better performance
     tasks = []
@@ -470,7 +470,9 @@ async def _execute_webhook_preset_trigger(
         logger.debug(f"Preset #{preset.id} is inactive")
         return
 
-    graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
+    graph = await get_graph(
+        preset.graph_id, preset.graph_version, user_id=webhook.user_id
+    )
     if not graph:
         logger.error(
             f"User #{webhook.user_id} has preset #{preset.id} for graph "
@@ -562,8 +564,9 @@ async def _cleanup_orphaned_webhook_for_graph(
     graph_id: str, user_id: str, webhook_id: str
 ) -> None:
     """
-    Clean up orphaned webhook connections for a specific graph when execution fails with GraphNotInLibraryError.
-    This happens when an agent is deleted but webhook triggers still exist.
+    Clean up orphaned webhook connections for a specific graph when execution fails with GraphNotAccessibleError.
+    This happens when an agent is pulled from the Marketplace or deleted
+    but webhook triggers still exist.
     """
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)

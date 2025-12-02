@@ -36,11 +36,7 @@ import {
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
 import { Key, storage } from "@/services/storage/local-storage";
-import {
-  getTypeColor,
-  findNewlyAddedBlockCoordinates,
-  beautifyString,
-} from "@/lib/utils";
+import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
 import { history } from "../history";
 import { CustomEdge } from "../CustomEdge/CustomEdge";
 import ConnectionLine from "../ConnectionLine";
@@ -68,6 +64,8 @@ import { useCopyPaste } from "../useCopyPaste";
 import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -78,6 +76,7 @@ type BuilderContextType = {
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
   getNextNodeId: () => string;
+  getNodeTitle: (nodeID: string) => string | null;
 };
 
 export type NodeDimension = {
@@ -148,6 +147,9 @@ const FlowEditor: React.FC<{
     flowExecutionID,
     visualizeBeads !== "no",
   );
+  const [immediateNodePositions, setImmediateNodePositions] = useState<
+    Record<string, { x: number; y: number }>
+  >(Object.fromEntries(nodes.map((node) => [node.id, node.position])));
 
   const router = useRouter();
   const pathname = usePathname();
@@ -241,6 +243,13 @@ const FlowEditor: React.FC<{
     const oldPosition = initialPositionRef.current[node.id];
     const newPosition = node.position;
 
+    // Clear immediate position, because on drag end it is no longer needed
+    setImmediateNodePositions((prevPositions) => {
+      const updatedPositions = { ...prevPositions };
+      delete updatedPositions[node.id];
+      return updatedPositions;
+    });
+
     // Calculate the movement distance
     if (!oldPosition || !newPosition) return;
 
@@ -278,6 +287,26 @@ const FlowEditor: React.FC<{
 
   const onNodesChange = useCallback(
     (nodeChanges: NodeChange<CustomNode>[]) => {
+      // Intercept position changes to update immediate positions & prevent excessive node re-renders
+      const draggingPosChanges = nodeChanges
+        .filter((c) => c.type === "position")
+        .filter((c) => c.dragging === true);
+      if (draggingPosChanges.length > 0) {
+        setImmediateNodePositions((prevPositions) => {
+          const newPositions = { ...prevPositions };
+          draggingPosChanges.forEach((change) => {
+            if (change.position) newPositions[change.id] = change.position;
+          });
+          return newPositions;
+        });
+
+        // Don't further process ongoing position changes
+        nodeChanges = nodeChanges.filter(
+          (change) => change.type !== "position" || change.dragging !== true,
+        );
+        if (nodeChanges.length === 0) return;
+      }
+
       // Persist the changes
       setNodes((prev) => applyNodeChanges(nodeChanges, prev));
 
@@ -675,6 +704,21 @@ const FlowEditor: React.FC<{
     findNodeDimensions();
   }, [nodes, findNodeDimensions]);
 
+  const getNodeTitle = useCallback(
+    (nodeID: string) => {
+      const node = nodes.find((n) => n.data.backend_id === nodeID);
+      if (!node) return null;
+
+      return (
+        node.data.metadata?.customized_name ||
+        (node.data.uiType == BlockUIType.AGENT &&
+          node.data.hardcodedValues.agent_name) ||
+        node.data.blockType.replace(/Block$/, "")
+      );
+    },
+    [nodes],
+  );
+
   const handleCopyPaste = useCopyPaste(getNextNodeId);
 
   const handleKeyDown = useCallback(
@@ -720,6 +764,22 @@ const FlowEditor: React.FC<{
     [],
   );
 
+  // Track when we should run or schedule after save completes
+  const [shouldRunAfterSave, setShouldRunAfterSave] = useState(false);
+  const [shouldScheduleAfterSave, setShouldScheduleAfterSave] = useState(false);
+
+  // Effect to trigger runOrOpenInput or openRunInputDialog after saving completes
+  useEffect(() => {
+    if (!isSaving && shouldRunAfterSave) {
+      runnerUIRef.current?.runOrOpenInput();
+      setShouldRunAfterSave(false);
+    }
+    if (!isSaving && shouldScheduleAfterSave) {
+      runnerUIRef.current?.openRunInputDialog();
+      setShouldScheduleAfterSave(false);
+    }
+  }, [isSaving, shouldRunAfterSave, shouldScheduleAfterSave]);
+
   const handleRunButton = useCallback(async () => {
     if (isRunning) return;
     if (!savedAgent) {
@@ -729,7 +789,7 @@ const FlowEditor: React.FC<{
       return;
     }
     await saveAgent();
-    runnerUIRef.current?.runOrOpenInput();
+    setShouldRunAfterSave(true);
   }, [isRunning, savedAgent, toast, saveAgent]);
 
   const handleScheduleButton = useCallback(async () => {
@@ -741,7 +801,7 @@ const FlowEditor: React.FC<{
       return;
     }
     await saveAgent();
-    runnerUIRef.current?.openRunInputDialog();
+    setShouldScheduleAfterSave(true);
   }, [isScheduling, savedAgent, toast, saveAgent]);
 
   const isNewBlockEnabled = useGetFlag(Flag.NEW_BLOCK_MENU);
@@ -783,7 +843,7 @@ const FlowEditor: React.FC<{
           data: {
             blockType: blockName,
             blockCosts: nodeSchema.costs || [],
-            title: `${beautifyString(blockName)} ${nodeId}`,
+            title: `${blockName} ${nodeId}`,
             description: nodeSchema.description,
             categories: nodeSchema.categories,
             inputSchema: nodeSchema.inputSchema,
@@ -826,13 +886,29 @@ const FlowEditor: React.FC<{
     ],
   );
 
+  const buildContextValue: BuilderContextType = useMemo(
+    () => ({
+      libraryAgent,
+      visualizeBeads,
+      setIsAnyModalOpen,
+      getNextNodeId,
+      getNodeTitle,
+    }),
+    [libraryAgent, visualizeBeads, getNextNodeId, getNodeTitle],
+  );
+
   return (
-    <BuilderContext.Provider
-      value={{ libraryAgent, visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
-    >
+    <BuilderContext.Provider value={buildContextValue}>
       <div className={className}>
         <ReactFlow
-          nodes={nodes}
+          nodes={nodes.map((node) =>
+            node.id in immediateNodePositions
+              ? {
+                  ...node,
+                  position: immediateNodePositions[node.id] || node.position,
+                }
+              : node,
+          )}
           edges={edges}
           nodeTypes={{ custom: CustomNode }}
           edgeTypes={{ custom: CustomEdge }}
@@ -852,6 +928,13 @@ const FlowEditor: React.FC<{
         >
           <Controls />
           <Background className="dark:bg-slate-800" />
+          {savedAgent && (
+            <FloatingSafeModeToggle
+              graph={savedAgent}
+              className="right-4 top-32 p-2"
+              variant="black"
+            />
+          )}
           {isNewBlockEnabled ? (
             <NewControlPanel
               flowExecutionID={flowExecutionID}
@@ -950,6 +1033,11 @@ const FlowEditor: React.FC<{
           saveAndRun={saveAndRun}
         />
       )}
+      <FloatingReviewsPanel
+        executionId={flowExecutionID || undefined}
+        graphId={flowID || undefined}
+        className="fixed bottom-24 right-4"
+      />
       <Suspense fallback={null}>
         <OttoChatWidget
           graphID={flowID}

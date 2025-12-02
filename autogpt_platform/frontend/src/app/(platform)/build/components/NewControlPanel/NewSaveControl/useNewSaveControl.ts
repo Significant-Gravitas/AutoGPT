@@ -1,22 +1,12 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import {
-  getGetV1GetSpecificGraphQueryKey,
-  useGetV1GetSpecificGraph,
-  usePostV1CreateNewGraph,
-  usePutV1UpdateGraphVersion,
-} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
-import { useNodeStore } from "../../../stores/nodeStore";
-import { useEdgeStore } from "../../../stores/edgeStore";
-import { Graph } from "@/app/api/__generated__/models/graph";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
-import { graphsEquivalent } from "./helpers";
+import { useSaveGraph } from "../../../hooks/useSaveGraph";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -25,16 +15,23 @@ const formSchema = z.object({
 
 type SaveableGraphFormValues = z.infer<typeof formSchema>;
 
-export const useNewSaveControl = ({
-  showToast = true,
-}: {
-  showToast?: boolean;
-}) => {
+export const useNewSaveControl = () => {
   const { setSaveControlOpen } = useControlPanelStore();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
 
-  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
+  const onSuccess = (graph: GraphModel) => {
+    setSaveControlOpen(false);
+    form.reset({
+      name: graph.name,
+      description: graph.description,
+    });
+  };
+
+  const { saveGraph, isSaving } = useSaveGraph({
+    showToast: true,
+    onSuccess,
+  });
+
+  const [{ flowID, flowVersion }] = useQueryStates({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
   });
@@ -50,69 +47,6 @@ export const useNewSaveControl = ({
     },
   );
 
-  const { mutateAsync: createNewGraph, isPending: isCreating } =
-    usePostV1CreateNewGraph({
-      mutation: {
-        onSuccess: (response) => {
-          const data = response.data as GraphModel;
-          form.reset({
-            name: data.name,
-            description: data.description,
-          });
-          setSaveControlOpen(false);
-          setQueryStates({
-            flowID: data.id,
-            flowVersion: data.version,
-          });
-          if (showToast) {
-            toast({
-              title: "All changes saved successfully!",
-            });
-          }
-        },
-        onError: (error) => {
-          toast({
-            title: (error.detail as string) ?? "An unexpected error occurred.",
-            description: "An unexpected error occurred.",
-            variant: "destructive",
-          });
-        },
-      },
-    });
-
-  const { mutateAsync: updateGraph, isPending: isUpdating } =
-    usePutV1UpdateGraphVersion({
-      mutation: {
-        onSuccess: (response) => {
-          const data = response.data as GraphModel;
-          form.reset({
-            name: data.name,
-            description: data.description,
-          });
-          setSaveControlOpen(false);
-          setQueryStates({
-            flowID: data.id,
-            flowVersion: data.version,
-          });
-          if (showToast) {
-            toast({
-              title: "All changes saved successfully!",
-            });
-          }
-          queryClient.invalidateQueries({
-            queryKey: getGetV1GetSpecificGraphQueryKey(data.id),
-          });
-        },
-        onError: (error) => {
-          toast({
-            title: (error.detail as string) ?? "An unexpected error occurred.",
-            description: "An unexpected error occurred.",
-            variant: "destructive",
-          });
-        },
-      },
-    });
-
   const form = useForm<SaveableGraphFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -121,47 +55,18 @@ export const useNewSaveControl = ({
     },
   });
 
-  const onSubmit = async (values: SaveableGraphFormValues | undefined) => {
-    const graphNodes = useNodeStore.getState().getBackendNodes();
-    const graphLinks = useEdgeStore.getState().getBackendLinks();
+  const handleSave = useCallback(
+    (values: SaveableGraphFormValues) => {
+      saveGraph(values);
+    },
+    [saveGraph],
+  );
 
-    if (graph && graph.id) {
-      const data: Graph = {
-        id: graph.id,
-        name:
-          values?.name || graph.name || `New Agent ${new Date().toISOString()}`,
-        description: values?.description ?? graph.description ?? "",
-        nodes: graphNodes,
-        links: graphLinks,
-      };
-      if (graphsEquivalent(graph, data)) {
-        if (showToast) {
-          toast({
-            title: "No changes to save",
-            description: "The graph is the same as the saved version.",
-            variant: "default",
-          });
-        }
-        return;
-      }
-      await updateGraph({ graphId: graph.id, data: data });
-    } else {
-      const data: Graph = {
-        name: values?.name || `New Agent ${new Date().toISOString()}`,
-        description: values?.description || "",
-        nodes: graphNodes,
-        links: graphLinks,
-      };
-      await createNewGraph({ data: { graph: data } });
-    }
-  };
-
-  // Handle Ctrl+S / Cmd+S keyboard shortcut
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
         event.preventDefault();
-        await onSubmit(form.getValues());
+        handleSave(form.getValues());
       }
     };
 
@@ -170,7 +75,7 @@ export const useNewSaveControl = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onSubmit]);
+  }, [handleSave]);
 
   useEffect(() => {
     if (graph) {
@@ -183,8 +88,8 @@ export const useNewSaveControl = ({
 
   return {
     form,
-    isLoading: isCreating || isUpdating,
+    isSaving: isSaving,
     graphVersion: graph?.version,
-    onSubmit,
+    handleSave,
   };
 };

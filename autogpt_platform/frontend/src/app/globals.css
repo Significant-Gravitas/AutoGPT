@@ -62,7 +62,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background font-sans text-foreground antialiased transition-colors;
+    @apply bg-[#F6F7F8] font-sans text-foreground antialiased transition-colors;
   }
 }
 

@@ -27,7 +27,9 @@ class OttoService:
             return None
 
         try:
-            graph = await graph_db.get_graph(request.graph_id, user_id=user_id)
+            graph = await graph_db.get_graph(
+                graph_id=request.graph_id, version=None, user_id=user_id
+            )
             if not graph:
                 return None
 

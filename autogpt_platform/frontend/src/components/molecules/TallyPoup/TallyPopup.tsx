@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 import { useTallyPopup } from "./useTallyPopup";
 import { Button } from "@/components/atoms/Button/Button";
 
@@ -13,7 +12,7 @@ export function TallyPopupSimple() {
   }
 
   return (
-    <div className="fixed bottom-1 right-24 z-20 hidden select-none items-center gap-4 p-3 transition-all duration-300 ease-in-out md:flex">
+    <div className="fixed bottom-1 right-0 z-20 hidden select-none items-center gap-4 p-3 transition-all duration-300 ease-in-out md:flex">
       {state.showTutorial && (
         <Button
           variant="primary"
@@ -38,9 +37,9 @@ export function TallyPopupSimple() {
             : String(state.isAuthenticated)
         }
         data-email={state.userEmail || "not-authenticated"}
+        className="mb-0 h-14 rounded-2xl bg-[rgba(65,65,64,1)] text-center font-sans text-lg font-medium leading-6"
       >
-        <QuestionMarkCircledIcon className="h-6 w-6" />
-        <span className="">Give Feedback</span>
+        Give Feedback
       </Button>
     </div>
   );

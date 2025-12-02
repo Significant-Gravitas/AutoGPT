@@ -402,7 +402,9 @@ class TestDataCreator:
                     from backend.data.graph import get_graph
 
                     graph = await get_graph(
-                        graph_data["id"], graph_data.get("version", 1), user["id"]
+                        graph_data["id"],
+                        graph_data.get("version", 1),
+                        user_id=user["id"],
                     )
                     if graph:
                         # Use the API function to create library agent

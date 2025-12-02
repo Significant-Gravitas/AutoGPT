@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
 from backend.data.execution import AsyncRedisExecutionEventBus
+from backend.data.notification_bus import AsyncRedisNotificationEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
@@ -22,6 +23,7 @@ from backend.server.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
+from backend.server.utils.cors import build_cors_params
 from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
@@ -61,9 +63,21 @@ def get_connection_manager():
 
 @continuous_retry()
 async def event_broadcaster(manager: ConnectionManager):
-    event_queue = AsyncRedisExecutionEventBus()
-    async for event in event_queue.listen("*"):
-        await manager.send_execution_update(event)
+    execution_bus = AsyncRedisExecutionEventBus()
+    notification_bus = AsyncRedisNotificationEventBus()
+
+    async def execution_worker():
+        async for event in execution_bus.listen("*"):
+            await manager.send_execution_update(event)
+
+    async def notification_worker():
+        async for notification in notification_bus.listen("*"):
+            await manager.send_notification(
+                user_id=notification.user_id,
+                payload=notification.payload,
+            )
+
+    await asyncio.gather(execution_worker(), notification_worker())
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
@@ -228,7 +242,7 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect_socket(websocket)
+    await manager.connect_socket(websocket, user_id=user_id)
 
     # Track WebSocket connection
     update_websocket_connections(user_id, 1)
@@ -301,7 +315,7 @@ async def websocket_router(
                 )
 
     except WebSocketDisconnect:
-        manager.disconnect_socket(websocket)
+        manager.disconnect_socket(websocket, user_id=user_id)
         logger.debug("WebSocket client disconnected")
     finally:
         update_websocket_connections(user_id, -1)
@@ -315,9 +329,13 @@ async def health():
 class WebsocketServer(AppProcess):
     def run(self):
         logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
+        cors_params = build_cors_params(
+            settings.config.backend_cors_allow_origins,
+            settings.config.app_env,
+        )
         server_app = CORSMiddleware(
             app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
+            **cors_params,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

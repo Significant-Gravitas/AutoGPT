@@ -8,11 +8,13 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
+from backend.server.test_helpers import override_config
+from backend.server.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
+from backend.server.ws_api import app as websocket_app
 from backend.server.ws_api import (
-    WSMessage,
-    WSMethod,
     handle_subscribe,
     handle_unsubscribe,
+    settings,
     websocket_router,
 )
 
@@ -27,6 +29,47 @@ def mock_websocket() -> AsyncMock:
 @pytest.fixture
 def mock_manager() -> AsyncMock:
     return AsyncMock(spec=ConnectionManager)
+
+
+def test_websocket_server_uses_cors_helper(mocker) -> None:
+    cors_params = {
+        "allow_origins": ["https://app.example.com"],
+        "allow_origin_regex": None,
+    }
+    mocker.patch("backend.server.ws_api.uvicorn.run")
+    cors_middleware = mocker.patch(
+        "backend.server.ws_api.CORSMiddleware", return_value=object()
+    )
+    build_cors = mocker.patch(
+        "backend.server.ws_api.build_cors_params", return_value=cors_params
+    )
+
+    with override_config(
+        settings, "backend_cors_allow_origins", cors_params["allow_origins"]
+    ), override_config(settings, "app_env", AppEnvironment.LOCAL):
+        WebsocketServer().run()
+
+    build_cors.assert_called_once_with(
+        cors_params["allow_origins"], AppEnvironment.LOCAL
+    )
+    cors_middleware.assert_called_once_with(
+        app=websocket_app,
+        allow_origins=cors_params["allow_origins"],
+        allow_origin_regex=cors_params["allow_origin_regex"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def test_websocket_server_blocks_localhost_in_production(mocker) -> None:
+    mocker.patch("backend.server.ws_api.uvicorn.run")
+
+    with override_config(
+        settings, "backend_cors_allow_origins", ["http://localhost:3000"]
+    ), override_config(settings, "app_env", AppEnvironment.PRODUCTION):
+        with pytest.raises(ValueError):
+            WebsocketServer().run()
 
 
 @pytest.mark.asyncio
@@ -53,7 +96,9 @@ async def test_websocket_router_subscribe(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
     mock_manager.subscribe_graph_exec.assert_called_once_with(
         user_id=DEFAULT_USER_ID,
         graph_exec_id="test-graph-exec-1",
@@ -72,7 +117,9 @@ async def test_websocket_router_subscribe(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(parsed_message, indent=2, sort_keys=True), "sub")
 
-    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio
@@ -99,7 +146,9 @@ async def test_websocket_router_unsubscribe(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
     mock_manager.unsubscribe_graph_exec.assert_called_once_with(
         user_id=DEFAULT_USER_ID,
         graph_exec_id="test-graph-exec-1",
@@ -115,7 +164,9 @@ async def test_websocket_router_unsubscribe(
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(parsed_message, indent=2, sort_keys=True), "unsub")
 
-    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio
@@ -136,11 +187,15 @@ async def test_websocket_router_invalid_method(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":false' in mock_websocket.send_text.call_args[0][0]
-    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(
+        mock_websocket, user_id=DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio

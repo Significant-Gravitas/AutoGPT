@@ -1,9 +1,12 @@
+import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { createBrowserClient } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -66,8 +69,8 @@ import type {
   UserOnboarding,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
+  WebSocketNotification,
 } from "./types";
-import { environment } from "@/services/environment";
 
 const isClient = environment.isClientSide();
 
@@ -1003,8 +1006,13 @@ export default class BackendAPI {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
-    const { buildClientUrl, buildUrlWithQuery, handleFetchError } =
-      await import("./helpers");
+    const {
+      buildClientUrl,
+      buildUrlWithQuery,
+      handleFetchError,
+      isLogoutInProgress,
+      isAuthenticationError,
+    } = await import("./helpers");
 
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
     let url = buildClientUrl(path);
@@ -1013,17 +1021,36 @@ export default class BackendAPI {
       url = buildUrlWithQuery(url, payload);
     }
 
+    // Prepare headers with admin impersonation support
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    const impersonatedUserId = ImpersonationState.get();
+    if (impersonatedUserId) {
+      headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+    }
+
     const response = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
       credentials: "include",
     });
 
     if (!response.ok) {
-      throw await handleFetchError(response);
+      const error = await handleFetchError(response);
+      if (
+        isAuthenticationError(response, error.message) &&
+        isLogoutInProgress()
+      ) {
+        console.debug(
+          "Authentication request failed during logout, ignoring:",
+          error.message,
+        );
+        return null;
+      }
+      throw error;
     }
 
     return await response.json();
@@ -1038,7 +1065,22 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
-    return await makeAuthenticatedRequest(method, url, payload);
+
+    // For server-side requests, try to read impersonation from cookies
+    const impersonationUserId = await ImpersonationState.getServerSide();
+    const fakeRequest = impersonationUserId
+      ? new Request(url, {
+          headers: { "X-Act-As-User-Id": impersonationUserId },
+        })
+      : undefined;
+
+    return await makeAuthenticatedRequest(
+      method,
+      url,
+      payload,
+      "application/json",
+      fakeRequest,
+    );
   }
 
   ////////////////////////////////////////
@@ -1323,6 +1365,7 @@ type WebsocketMessageTypeMap = {
   subscribe_graph_executions: { graph_id: GraphID };
   graph_execution_event: GraphExecution;
   node_execution_event: NodeExecutionResult;
+  notification: WebSocketNotification;
   heartbeat: "ping" | "pong";
 };
 

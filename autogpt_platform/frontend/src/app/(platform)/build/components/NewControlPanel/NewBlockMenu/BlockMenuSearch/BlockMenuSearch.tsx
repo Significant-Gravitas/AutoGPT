@@ -11,7 +11,6 @@ import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { blockMenuContainerStyle } from "../style";
 import { cn } from "@/lib/utils";
 import { NoSearchResult } from "../NoSearchResult";
-import { useNodeStore } from "../../../../stores/nodeStore";
 
 export const BlockMenuSearch = () => {
   const {
@@ -20,9 +19,12 @@ export const BlockMenuSearch = () => {
     fetchNextPage,
     hasNextPage,
     searchLoading,
+    handleAddLibraryAgent,
+    handleAddMarketplaceAgent,
+    addingLibraryAgentId,
+    addingMarketplaceAgentSlug,
   } = useBlockMenuSearch();
   const { searchQuery } = useBlockMenuStore();
-  const addBlock = useNodeStore((state) => state.addBlock);
 
   if (searchLoading) {
     return (
@@ -65,7 +67,13 @@ export const BlockMenuSearch = () => {
                   image_url={data.agent_image}
                   creator_name={data.creator}
                   number_of_runs={data.runs}
-                  loading={false}
+                  loading={addingMarketplaceAgentSlug === data.slug}
+                  onClick={() =>
+                    handleAddMarketplaceAgent({
+                      creator_name: data.creator,
+                      slug: data.slug,
+                    })
+                  }
                 />
               );
             case "block":
@@ -75,7 +83,7 @@ export const BlockMenuSearch = () => {
                   title={data.name}
                   highlightedText={searchQuery}
                   description={data.description}
-                  onClick={() => addBlock(data)}
+                  blockData={data}
                 />
               );
 
@@ -88,6 +96,8 @@ export const BlockMenuSearch = () => {
                   image_url={data.image_url}
                   version={data.graph_version}
                   edited_time={data.updated_at}
+                  isLoading={addingLibraryAgentId === data.id}
+                  onClick={() => handleAddLibraryAgent(data)}
                 />
               );
 

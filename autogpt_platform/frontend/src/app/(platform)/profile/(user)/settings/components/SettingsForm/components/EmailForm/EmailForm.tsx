@@ -6,9 +6,9 @@ import {
   FormField,
   FormItem,
 } from "@/components/__legacy__/ui/form";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { Button } from "@/components/atoms/Button/Button";
 import { User } from "@supabase/supabase-js";
 import { useEmailForm } from "./useEmailForm";
 
@@ -30,7 +30,7 @@ export function EmailForm({ user }: EmailFormProps) {
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="mt-6 flex flex-col gap-4"
+          className="mt-4 flex flex-col gap-0"
         >
           <FormField
             control={form.control}
@@ -45,6 +45,7 @@ export function EmailForm({ user }: EmailFormProps) {
                     type="text"
                     autoComplete="off"
                     className="w-full"
+                    size="small"
                     error={fieldState.error?.message}
                     {...field}
                   />
@@ -58,6 +59,7 @@ export function EmailForm({ user }: EmailFormProps) {
               as="NextLink"
               href="/reset-password"
               className="min-w-[10rem]"
+              size="small"
             >
               Reset password
             </Button>
@@ -66,6 +68,7 @@ export function EmailForm({ user }: EmailFormProps) {
               disabled={hasError || isSameEmail}
               loading={isLoading}
               className="min-w-[10rem]"
+              size="small"
             >
               {isLoading ? "Saving..." : "Update email"}
             </Button>

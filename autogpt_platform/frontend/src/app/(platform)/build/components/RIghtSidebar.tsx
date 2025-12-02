@@ -5,20 +5,15 @@ import { useEdgeStore } from "../stores/edgeStore";
 import { useNodeStore } from "../stores/nodeStore";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
+import { customEdgeToLink } from "./helper";
 
 export const RightSidebar = () => {
-  const connections = useEdgeStore((s) => s.connections);
+  const edges = useEdgeStore((s) => s.edges);
   const nodes = useNodeStore((s) => s.nodes);
 
   const backendLinks: Link[] = useMemo(
-    () =>
-      connections.map((c) => ({
-        source_id: c.source,
-        sink_id: c.target,
-        source_name: c.sourceHandle,
-        sink_name: c.targetHandle,
-      })),
-    [connections],
+    () => edges.map(customEdgeToLink),
+    [edges],
   );
 
   return (
@@ -61,16 +56,16 @@ export const RightSidebar = () => {
           Links ({backendLinks.length})
         </h3>
         <div className="mb-6 space-y-3">
-          {connections.map((c) => (
+          {backendLinks.map((l) => (
             <div
-              key={c.edge_id}
+              key={l.id}
               className="rounded border p-2 text-xs dark:border-slate-700"
             >
               <div className="font-medium">
-                {c.source}[{c.sourceHandle}] → {c.target}[{c.targetHandle}]
+                {l.source_id}[{l.source_name}] → {l.sink_id}[{l.sink_name}]
               </div>
               <div className="mt-1 text-slate-500 dark:text-slate-400">
-                edge_id: {c.edge_id}
+                edge_id: {l.id}
               </div>
             </div>
           ))}

@@ -75,6 +75,7 @@ export const AllBlocksContent = () => {
                   title={block.name as string}
                   description={block.name as string}
                   onClick={() => addBlock(block)}
+                  blockData={block}
                 />
               ))}
 

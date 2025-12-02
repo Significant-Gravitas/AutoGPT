@@ -1,10 +1,9 @@
 "use client";
 
-import React from "react";
-import { cn } from "@/lib/utils";
-import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { getIconSize, ShowMoreTextVariant } from "./helpers";
+import { cn } from "@/lib/utils";
+import React from "react";
+import { ShowMoreTextVariant } from "./helpers";
 
 interface Props {
   children: string;
@@ -30,7 +29,6 @@ export function ShowMoreText({
     ? children.slice(0, previewLimit)
     : children;
   const displayText = isExpanded ? children : previewText;
-  const iconSize = getIconSize(variant);
 
   if (!shouldTruncate) {
     return (
@@ -55,22 +53,12 @@ export function ShowMoreText({
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "ml-1 inline-flex items-center gap-1 font-medium text-black",
+          "mt-2 flex h-[1rem] w-[1.75rem] items-center justify-center rounded-full bg-zinc-100 pb-2 font-medium text-black",
           toggleClassName,
         )}
         type="button"
       >
-        {isExpanded ? (
-          <>
-            <CaretUpIcon size={iconSize} weight="bold" />
-            <span>less</span>
-          </>
-        ) : (
-          <>
-            <CaretDownIcon size={iconSize} weight="bold" />
-            <span>more</span>
-          </>
-        )}
+        ...
       </button>
     </Text>
   );

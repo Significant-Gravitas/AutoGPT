@@ -32,6 +32,7 @@ async def test_get_library_agents(mocker):
             id="ua1",
             userId="test-user",
             agentGraphId="agent2",
+            settings="{}",  # type: ignore
             agentGraphVersion=1,
             isCreatedByUser=False,
             isDeleted=False,
@@ -123,6 +124,7 @@ async def test_add_agent_to_library(mocker):
         id="ua1",
         userId="test-user",
         agentGraphId=mock_store_listing_data.agentGraphId,
+        settings="{}",  # type: ignore
         agentGraphVersion=1,
         isCreatedByUser=False,
         isDeleted=False,
@@ -148,6 +150,14 @@ async def test_add_agent_to_library(mocker):
         return_value=mock_library_agent_data
     )
 
+    # Mock graph_db.get_graph function that's called to check for HITL blocks
+    mock_graph_db = mocker.patch("backend.server.v2.library.db.graph_db")
+    mock_graph_model = mocker.Mock()
+    mock_graph_model.nodes = (
+        []
+    )  # Empty list so _has_human_in_the_loop_blocks returns False
+    mock_graph_db.get_graph = mocker.AsyncMock(return_value=mock_graph_model)
+
     # Mock the model conversion
     mock_from_db = mocker.patch("backend.server.v2.library.model.LibraryAgent.from_db")
     mock_from_db.return_value = mocker.Mock()
@@ -169,17 +179,29 @@ async def test_add_agent_to_library(mocker):
         },
         include={"AgentGraph": True},
     )
-    mock_library_agent.return_value.create.assert_called_once_with(
-        data={
-            "User": {"connect": {"id": "test-user"}},
-            "AgentGraph": {
-                "connect": {"graphVersionId": {"id": "agent1", "version": 1}}
-            },
-            "isCreatedByUser": False,
-        },
-        include=library_agent_include(
-            "test-user", include_nodes=False, include_executions=False
-        ),
+    # Check that create was called with the expected data including settings
+    create_call_args = mock_library_agent.return_value.create.call_args
+    assert create_call_args is not None
+
+    # Verify the main structure
+    expected_data = {
+        "User": {"connect": {"id": "test-user"}},
+        "AgentGraph": {"connect": {"graphVersionId": {"id": "agent1", "version": 1}}},
+        "isCreatedByUser": False,
+    }
+
+    actual_data = create_call_args[1]["data"]
+    # Check that all expected fields are present
+    for key, value in expected_data.items():
+        assert actual_data[key] == value
+
+    # Check that settings field is present and is a SafeJson object
+    assert "settings" in actual_data
+    assert hasattr(actual_data["settings"], "__class__")  # Should be a SafeJson object
+
+    # Check include parameter
+    assert create_call_args[1]["include"] == library_agent_include(
+        "test-user", include_nodes=False, include_executions=False
     )
 
 

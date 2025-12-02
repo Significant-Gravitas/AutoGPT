@@ -614,6 +614,18 @@ custom_requests = Requests(
 )
 ```
 
+### Error Handling
+
+All blocks should have an error output that catches all reasonable errors that a user can handle, wrap them in a ValueError, and re-raise. Don't catch things the system admin would need to fix like being out of money or unreachable addresses.  
+
+### Data Models
+
+Use pydantic base models over dict and typeddict where possible. Avoid untyped models for block inputs and outputs as much as possible
+
+### File Input
+
+You can use MediaFileType to handle the importing and exporting of files out of the system. Explore how its used through the system before using it in a block schema.
+
 ## Tips for Effective Block Testing
 
 1. **Provide realistic test_input**: Ensure your test input covers typical use cases.
@@ -633,77 +645,3 @@ custom_requests = Requests(
 6. **Update tests when changing block behavior**: If you modify your block, ensure the tests are updated accordingly.
 
 By following these steps, you can create new blocks that extend the functionality of the AutoGPT Agent Server.
-
-## Blocks we want to see
-
-Below is a list of blocks that we would like to see implemented in the AutoGPT Agent Server. If you're interested in contributing, feel free to pick one of these blocks or chose your own.
-
-If you would like to implement one of these blocks, open a pull request and we will start the review process.
-
-### Consumer Services/Platforms
-
-- Google sheets - [~~Read/Append~~](https://github.com/Significant-Gravitas/AutoGPT/pull/8236)
-- Email - Read/Send with [~~Gmail~~](https://github.com/Significant-Gravitas/AutoGPT/pull/8236), Outlook, Yahoo, Proton, etc
-- Calendar - Read/Write with Google Calendar, Outlook Calendar, etc
-- Home Assistant - Call Service, Get Status
-- Dominos - Order Pizza, Track Order
-- Uber - Book Ride, Track Ride
-- Notion - Create/Read Page, Create/Append/Read DB
-- Google drive - read/write/overwrite file/folder
-
-### Social Media
-
-- Twitter - Post, Reply, Get Replies, Get Comments, Get Followers, Get Following, Get Tweets, Get Mentions
-- Instagram - Post, Reply, Get Comments, Get Followers, Get Following, Get Posts, Get Mentions, Get Trending Posts
-- TikTok - Post, Reply, Get Comments, Get Followers, Get Following, Get Videos, Get Mentions, Get Trending Videos
-- LinkedIn - Post, Reply, Get Comments, Get Followers, Get Following, Get Posts, Get Mentions, Get Trending Posts
-- YouTube - Transcribe Videos/Shorts, Post Videos/Shorts, Read/Reply/React to Comments, Update Thumbnails, Update Description, Update Tags, Update Titles, Get Views, Get Likes, Get Dislikes, Get Subscribers, Get Comments, Get Shares, Get Watch Time, Get Revenue, Get Trending Videos, Get Top Videos, Get Top Channels
-- Reddit - Post, Reply, Get Comments, Get Followers, Get Following, Get Posts, Get Mentions, Get Trending Posts
-- Treatwell (and related Platforms) - Book, Cancel, Review, Get Recommendations
-- Substack - Read/Subscribe/Unsubscribe, Post/Reply, Get Recommendations
-- Discord - Read/Post/Reply, Moderation actions
-- GoodReads - Read/Post/Reply, Get Recommendations
-
-### E-commerce
-
-- Airbnb - Book, Cancel, Review, Get Recommendations
-- Amazon - Order, Track Order, Return, Review, Get Recommendations
-- eBay - Order, Track Order, Return, Review, Get Recommendations
-- Upwork - Post Jobs, Hire Freelancer, Review Freelancer, Fire Freelancer
-
-### Business Tools
-
-- External Agents - Call other agents similar to AutoGPT
-- Trello - Create/Read/Update/Delete Cards, Lists, Boards
-- Jira - Create/Read/Update/Delete Issues, Projects, Boards
-- Linear - Create/Read/Update/Delete Issues, Projects, Boards
-- Excel - Read/Write/Update/Delete Rows, Columns, Sheets
-- Slack - Read/Post/Reply to Messages, Create Channels, Invite Users
-- ERPNext - Create/Read/Update/Delete Invoices, Orders, Customers, Products
-- Salesforce - Create/Read/Update/Delete Leads, Opportunities, Accounts
-- HubSpot - Create/Read/Update/Delete Contacts, Deals, Companies
-- Zendesk - Create/Read/Update/Delete Tickets, Users, Organizations
-- Odoo - Create/Read/Update/Delete Sales Orders, Invoices, Customers
-- Shopify - Create/Read/Update/Delete Products, Orders, Customers
-- WooCommerce - Create/Read/Update/Delete Products, Orders, Customers
-- Squarespace - Create/Read/Update/Delete Pages, Products, Orders
-
-## Agent Templates we want to see
-
-### Data/Information
-
-- Summarize top news of today, of this week, this month via Apple News or other large media outlets BBC, TechCrunch, hackernews, etc
-- Create, read, and summarize substack newsletters or any newsletters (blog writer vs blog reader)
-- Get/read/summarize the most viral Twitter, Instagram, TikTok (general social media accounts) of the day, week, month
-- Get/Read any LinkedIn posts or profile that mention AI Agents
-- Read/Summarize discord (might not be able to do this because you need access)
-- Read / Get most read books in a given month, year, etc from GoodReads or Amazon Books, etc
-- Get dates for specific shows across all streaming services
-  - Suggest/Recommend/Get most watched shows in a given month, year, etc across all streaming platforms
-- Data analysis from xlsx data set
-  - Gather via Excel or Google Sheets data > Sample the data randomly (sample block takes top X, bottom X, randomly, etc) > pass that to LLM Block to generate a script for analysis of the full data > Python block to run the script> making a loop back through LLM Fix Block on error > create chart/visualization (potentially in the code block?) > show the image as output (this may require frontend changes to show)
-- Tiktok video search and download
-
-### Marketing
-
-- Portfolio site design and enhancements

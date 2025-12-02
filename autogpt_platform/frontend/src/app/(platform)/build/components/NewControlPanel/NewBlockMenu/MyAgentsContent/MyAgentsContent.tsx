@@ -16,6 +16,9 @@ export const MyAgentsContent = () => {
     error,
     status,
     refetch,
+    handleAddBlock,
+    isGettingAgentDetails,
+    selectedAgentId,
   } = useMyAgentsContent();
 
   if (agentLoading) {
@@ -59,7 +62,9 @@ export const MyAgentsContent = () => {
           title={agent.name}
           edited_time={agent.updated_at}
           version={agent.graph_version}
+          isLoading={isGettingAgentDetails && selectedAgentId === agent.id}
           image_url={agent.image_url}
+          onClick={() => handleAddBlock(agent)}
         />
       ))}
     </InfiniteScroll>

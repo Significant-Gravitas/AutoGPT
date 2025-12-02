@@ -365,37 +365,22 @@ class TestLLMStatsTracking:
         assert outputs["response"] == "AI response to conversation"
 
     @pytest.mark.asyncio
-    async def test_ai_list_generator_with_retries(self):
-        """Test that AIListGeneratorBlock correctly tracks stats with retries."""
+    async def test_ai_list_generator_basic_functionality(self):
+        """Test that AIListGeneratorBlock correctly works with structured responses."""
         import backend.blocks.llm as llm
 
         block = llm.AIListGeneratorBlock()
 
-        # Counter to track calls
-        call_count = 0
-
+        # Mock the llm_call to return a structured response
         async def mock_llm_call(input_data, credentials):
-            nonlocal call_count
-            call_count += 1
-
-            # Update stats
-            if hasattr(block, "execution_stats") and block.execution_stats:
-                block.execution_stats.input_token_count += 40
-                block.execution_stats.output_token_count += 20
-                block.execution_stats.llm_call_count += 1
-            else:
-                block.execution_stats = NodeExecutionStats(
-                    input_token_count=40,
-                    output_token_count=20,
-                    llm_call_count=1,
-                )
-
-            if call_count == 1:
-                # First call returns invalid format
-                return {"response": "not a valid list"}
-            else:
-                # Second call returns valid list
-                return {"response": "['item1', 'item2', 'item3']"}
+            # Update stats to simulate LLM call
+            block.execution_stats = NodeExecutionStats(
+                input_token_count=50,
+                output_token_count=30,
+                llm_call_count=1,
+            )
+            # Return a structured response with the expected format
+            return {"list": ["item1", "item2", "item3"]}
 
         block.llm_call = mock_llm_call  # type: ignore
 
@@ -413,14 +398,20 @@ class TestLLMStatsTracking:
         ):
             outputs[output_name] = output_data
 
-        # Check stats - should have 2 calls
-        assert call_count == 2
-        assert block.execution_stats.input_token_count == 80  # 40 * 2
-        assert block.execution_stats.output_token_count == 40  # 20 * 2
-        assert block.execution_stats.llm_call_count == 2
+        # Check stats
+        assert block.execution_stats.input_token_count == 50
+        assert block.execution_stats.output_token_count == 30
+        assert block.execution_stats.llm_call_count == 1
 
         # Check output
         assert outputs["generated_list"] == ["item1", "item2", "item3"]
+        # Check that individual items were yielded
+        # Note: outputs dict will only contain the last value for each key
+        # So we need to check that the list_item output exists
+        assert "list_item" in outputs
+        # The list_item output should be the last item in the list
+        assert outputs["list_item"] == "item3"
+        assert "prompt" in outputs
 
     @pytest.mark.asyncio
     async def test_merge_llm_stats(self):

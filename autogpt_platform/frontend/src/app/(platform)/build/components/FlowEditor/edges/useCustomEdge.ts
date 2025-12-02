@@ -1,34 +1,12 @@
-import {
-  Connection as RFConnection,
-  Edge as RFEdge,
-  MarkerType,
-  EdgeChange,
-} from "@xyflow/react";
+import { Connection as RFConnection, EdgeChange } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
+import { useNodeStore } from "../../../stores/nodeStore";
 
 export const useCustomEdge = () => {
-  const connections = useEdgeStore((s) => s.connections);
-  const addConnection = useEdgeStore((s) => s.addConnection);
-  const removeConnection = useEdgeStore((s) => s.removeConnection);
-
-  const edges: RFEdge[] = useMemo(
-    () =>
-      connections.map((c) => ({
-        id: c.edge_id,
-        type: "custom",
-        source: c.source,
-        target: c.target,
-        sourceHandle: c.sourceHandle,
-        targetHandle: c.targetHandle,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          strokeWidth: 2,
-          color: "#555",
-        },
-      })),
-    [connections],
-  );
+  const edges = useEdgeStore((s) => s.edges);
+  const addEdge = useEdgeStore((s) => s.addEdge);
+  const removeEdge = useEdgeStore((s) => s.removeEdge);
 
   const onConnect = useCallback(
     (conn: RFConnection) => {
@@ -39,31 +17,42 @@ export const useCustomEdge = () => {
         !conn.targetHandle
       )
         return;
-      const exists = connections.some(
-        (c) =>
-          c.source === conn.source &&
-          c.target === conn.target &&
-          c.sourceHandle === conn.sourceHandle &&
-          c.targetHandle === conn.targetHandle,
+
+      const exists = edges.some(
+        (e) =>
+          e.source === conn.source &&
+          e.target === conn.target &&
+          e.sourceHandle === conn.sourceHandle &&
+          e.targetHandle === conn.targetHandle,
       );
       if (exists) return;
-      addConnection({
+
+      const nodes = useNodeStore.getState().nodes;
+      const isStatic = nodes.find((n) => n.id === conn.source)?.data
+        ?.staticOutput;
+
+      addEdge({
         source: conn.source,
         target: conn.target,
         sourceHandle: conn.sourceHandle,
         targetHandle: conn.targetHandle,
+        data: {
+          isStatic,
+        },
       });
     },
-    [connections, addConnection],
+    [edges, addEdge],
   );
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      changes.forEach((ch) => {
-        if (ch.type === "remove") removeConnection(ch.id);
+      changes.forEach((change) => {
+        if (change.type === "remove") {
+          removeEdge(change.id);
+        }
       });
     },
-    [removeConnection],
+    [removeEdge],
   );
 
   return { edges, onConnect, onEdgesChange };

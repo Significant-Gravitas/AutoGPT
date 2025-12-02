@@ -132,45 +132,33 @@ class ExaWebsetWebhookBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         """Process incoming Exa webhook payload."""
-        try:
-            payload = input_data.payload
+        payload = input_data.payload
 
-            # Extract event details
-            event_type = payload.get("eventType", "unknown")
-            event_id = payload.get("eventId", "")
+        # Extract event details
+        event_type = payload.get("eventType", "unknown")
+        event_id = payload.get("eventId", "")
 
-            # Get webset ID from payload or input
-            webset_id = payload.get("websetId", input_data.webset_id)
+        # Get webset ID from payload or input
+        webset_id = payload.get("websetId", input_data.webset_id)
 
-            # Check if we should process this event based on filter
-            should_process = self._should_process_event(
-                event_type, input_data.event_filter
-            )
+        # Check if we should process this event based on filter
+        should_process = self._should_process_event(event_type, input_data.event_filter)
 
-            if not should_process:
-                # Skip events that don't match our filter
-                return
+        if not should_process:
+            # Skip events that don't match our filter
+            return
 
-            # Extract event data
-            event_data = payload.get("data", {})
-            timestamp = payload.get("occurredAt", payload.get("createdAt", ""))
-            metadata = payload.get("metadata", {})
+        # Extract event data
+        event_data = payload.get("data", {})
+        timestamp = payload.get("occurredAt", payload.get("createdAt", ""))
+        metadata = payload.get("metadata", {})
 
-            yield "event_type", event_type
-            yield "event_id", event_id
-            yield "webset_id", webset_id
-            yield "data", event_data
-            yield "timestamp", timestamp
-            yield "metadata", metadata
-
-        except Exception as e:
-            # Handle errors gracefully
-            yield "event_type", "error"
-            yield "event_id", ""
-            yield "webset_id", input_data.webset_id
-            yield "data", {"error": str(e)}
-            yield "timestamp", ""
-            yield "metadata", {}
+        yield "event_type", event_type
+        yield "event_id", event_id
+        yield "webset_id", webset_id
+        yield "data", event_data
+        yield "timestamp", timestamp
+        yield "metadata", metadata
 
     def _should_process_event(
         self, event_type: str, event_filter: WebsetEventFilter

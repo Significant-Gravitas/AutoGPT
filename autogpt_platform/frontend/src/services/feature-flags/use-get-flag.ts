@@ -16,6 +16,7 @@ export enum Flag {
   AGENT_FAVORITING = "agent-favoriting",
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
+  CHAT = "chat",
 }
 
 export type FlagValues = {
@@ -30,6 +31,7 @@ export type FlagValues = {
   [Flag.AGENT_FAVORITING]: boolean;
   [Flag.MARKETPLACE_SEARCH_TERMS]: string[];
   [Flag.ENABLE_PLATFORM_PAYMENT]: boolean;
+  [Flag.CHAT]: boolean;
 };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -46,6 +48,7 @@ const mockFlags = {
   [Flag.AGENT_FAVORITING]: false,
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
+  [Flag.CHAT]: true,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {

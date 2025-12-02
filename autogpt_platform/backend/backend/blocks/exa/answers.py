@@ -1,52 +1,55 @@
+from typing import Optional
+
+from exa_py import AsyncExa
+from exa_py.api import AnswerResponse
+from pydantic import BaseModel
+
 from backend.sdk import (
     APIKeyCredentials,
-    BaseModel,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
     CredentialsMetaInput,
-    Requests,
+    MediaFileType,
     SchemaField,
 )
 
 from ._config import exa
 
 
-class CostBreakdown(BaseModel):
-    keywordSearch: float
-    neuralSearch: float
-    contentText: float
-    contentHighlight: float
-    contentSummary: float
+class AnswerCitation(BaseModel):
+    """Citation model for answer endpoint."""
 
+    id: str = SchemaField(description="The temporary ID for the document")
+    url: str = SchemaField(description="The URL of the search result")
+    title: Optional[str] = SchemaField(description="The title of the search result")
+    author: Optional[str] = SchemaField(description="The author of the content")
+    publishedDate: Optional[str] = SchemaField(
+        description="An estimate of the creation date"
+    )
+    text: Optional[str] = SchemaField(description="The full text content of the source")
+    image: Optional[MediaFileType] = SchemaField(
+        description="The URL of the image associated with the result"
+    )
+    favicon: Optional[MediaFileType] = SchemaField(
+        description="The URL of the favicon for the domain"
+    )
 
-class SearchBreakdown(BaseModel):
-    search: float
-    contents: float
-    breakdown: CostBreakdown
-
-
-class PerRequestPrices(BaseModel):
-    neuralSearch_1_25_results: float
-    neuralSearch_26_100_results: float
-    neuralSearch_100_plus_results: float
-    keywordSearch_1_100_results: float
-    keywordSearch_100_plus_results: float
-
-
-class PerPagePrices(BaseModel):
-    contentText: float
-    contentHighlight: float
-    contentSummary: float
-
-
-class CostDollars(BaseModel):
-    total: float
-    breakDown: list[SearchBreakdown]
-    perRequestPrices: PerRequestPrices
-    perPagePrices: PerPagePrices
+    @classmethod
+    def from_sdk(cls, sdk_citation) -> "AnswerCitation":
+        """Convert SDK AnswerResult (dataclass) to our Pydantic model."""
+        return cls(
+            id=getattr(sdk_citation, "id", ""),
+            url=getattr(sdk_citation, "url", ""),
+            title=getattr(sdk_citation, "title", None),
+            author=getattr(sdk_citation, "author", None),
+            publishedDate=getattr(sdk_citation, "published_date", None),
+            text=getattr(sdk_citation, "text", None),
+            image=getattr(sdk_citation, "image", None),
+            favicon=getattr(sdk_citation, "favicon", None),
+        )
 
 
 class ExaAnswerBlock(Block):
@@ -59,31 +62,21 @@ class ExaAnswerBlock(Block):
             placeholder="What is the latest valuation of SpaceX?",
         )
         text: bool = SchemaField(
-            default=False,
-            description="If true, the response includes full text content in the search results",
-            advanced=True,
-        )
-        model: str = SchemaField(
-            default="exa",
-            description="The search model to use (exa or exa-pro)",
-            placeholder="exa",
-            advanced=True,
+            description="Include full text content in the search results used for the answer",
+            default=True,
         )
 
     class Output(BlockSchemaOutput):
         answer: str = SchemaField(
             description="The generated answer based on search results"
         )
-        citations: list[dict] = SchemaField(
-            description="Search results used to generate the answer",
-            default_factory=list,
+        citations: list[AnswerCitation] = SchemaField(
+            description="Search results used to generate the answer"
         )
-        cost_dollars: CostDollars = SchemaField(
-            description="Cost breakdown of the request"
+        citation: AnswerCitation = SchemaField(
+            description="Individual citation from the answer"
         )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -97,26 +90,24 @@ class ExaAnswerBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/answer"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Build the payload
-        payload = {
-            "query": input_data.query,
-            "text": input_data.text,
-            "model": input_data.model,
-        }
+        # Get answer using SDK (stream=False for blocks) - this IS async, needs await
+        response = await aexa.answer(
+            query=input_data.query, text=input_data.text, stream=False
+        )
 
-        try:
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        # this should remain true as long as they don't start defaulting to streaming only.
+        # provides a bit of safety for sdk updates.
+        assert type(response) is AnswerResponse
 
-            yield "answer", data.get("answer", "")
-            yield "citations", data.get("citations", [])
-            yield "cost_dollars", data.get("costDollars", {})
+        yield "answer", response.answer
 
-        except Exception as e:
-            yield "error", str(e)
+        citations = [
+            AnswerCitation.from_sdk(sdk_citation)
+            for sdk_citation in response.citations or []
+        ]
+
+        yield "citations", citations
+        for citation in citations:
+            yield "citation", citation

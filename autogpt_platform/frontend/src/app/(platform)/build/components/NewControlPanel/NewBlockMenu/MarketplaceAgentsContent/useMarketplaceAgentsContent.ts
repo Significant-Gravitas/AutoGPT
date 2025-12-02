@@ -12,10 +12,13 @@ import { StoreAgentsResponse } from "@/lib/autogpt-server-api";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import * as Sentry from "@sentry/nextjs";
 import { useState } from "react";
+import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 export const useMarketplaceAgentsContent = () => {
   const { toast } = useToast();
   const [addingAgent, setAddingAgent] = useState<string | null>(null);
+  const { addAgentToBuilder } = useAddAgentToBuilder();
 
   const {
     data: listStoreAgents,
@@ -53,7 +56,7 @@ export const useMarketplaceAgentsContent = () => {
 
   const status = listStoreAgents?.pages[0]?.status;
 
-  const { mutate: addMarketplaceAgent } = usePostV2AddMarketplaceAgent({
+  const { mutateAsync: addMarketplaceAgent } = usePostV2AddMarketplaceAgent({
     mutation: {
       onSuccess: () => {
         const queryClient = getQueryClient();
@@ -63,6 +66,16 @@ export const useMarketplaceAgentsContent = () => {
 
         queryClient.refetchQueries({
           queryKey: getGetV2GetBuilderItemCountsQueryKey(),
+        });
+      },
+      onError: (error) => {
+        Sentry.captureException(error);
+        toast({
+          title: "Failed to add agent to library",
+          description:
+            ((error as any).message as string) ||
+            "An unexpected error occurred.",
+          variant: "destructive",
         });
       },
     },
@@ -86,19 +99,26 @@ export const useMarketplaceAgentsContent = () => {
         throw new Error("Store listing version not found");
       }
 
-      addMarketplaceAgent({
+      const response = await addMarketplaceAgent({
         data: {
           store_listing_version_id: agent?.store_listing_version_id,
         },
       });
 
-      // Need a way to convert the library agent into block
-      // then add the block in builder
+      const libraryAgent = response.data as LibraryAgent;
+      addAgentToBuilder(libraryAgent);
+
+      toast({
+        title: "Agent Added",
+        description: "Agent has been added to your library and builder",
+      });
     } catch (error) {
       Sentry.captureException(error);
       toast({
-        title: "Error",
-        description: "Failed to add agent to library",
+        title: "Failed to add agent to library",
+        description:
+          ((error as any).message as string) || "An unexpected error occurred.",
+        variant: "destructive",
       });
     } finally {
       setAddingAgent(null);

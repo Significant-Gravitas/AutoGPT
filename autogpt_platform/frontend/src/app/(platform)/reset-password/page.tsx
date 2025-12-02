@@ -2,11 +2,9 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
-import Turnstile from "@/components/auth/Turnstile";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,8 +21,6 @@ function ResetPasswordContent() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [disabled, setDisabled] = useState(false);
-  const [sendEmailCaptchaKey, setSendEmailCaptchaKey] = useState(0);
-  const [changePasswordCaptchaKey, setChangePasswordCaptchaKey] = useState(0);
 
   useEffect(() => {
     const error = searchParams.get("error");
@@ -41,18 +37,6 @@ function ResetPasswordContent() {
     }
   }, [searchParams, toast, router]);
 
-  const sendEmailTurnstile = useTurnstile({
-    action: "reset_password",
-    autoVerify: false,
-    resetOnError: true,
-  });
-
-  const changePasswordTurnstile = useTurnstile({
-    action: "change_password",
-    autoVerify: false,
-    resetOnError: true,
-  });
-
   const sendEmailForm = useForm<z.infer<typeof sendEmailFormSchema>>({
     resolver: zodResolver(sendEmailFormSchema),
     defaultValues: {
@@ -68,16 +52,6 @@ function ResetPasswordContent() {
     },
   });
 
-  const resetSendEmailCaptcha = useCallback(() => {
-    setSendEmailCaptchaKey((k) => k + 1);
-    sendEmailTurnstile.reset();
-  }, [sendEmailTurnstile]);
-
-  const resetChangePasswordCaptcha = useCallback(() => {
-    setChangePasswordCaptchaKey((k) => k + 1);
-    changePasswordTurnstile.reset();
-  }, [changePasswordTurnstile]);
-
   const onSendEmail = useCallback(
     async (data: z.infer<typeof sendEmailFormSchema>) => {
       setIsLoading(true);
@@ -87,21 +61,7 @@ function ResetPasswordContent() {
         return;
       }
 
-      if (!sendEmailTurnstile.verified) {
-        toast({
-          title: "CAPTCHA Required",
-          description: "Please complete the CAPTCHA challenge.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        resetSendEmailCaptcha();
-        return;
-      }
-
-      const error = await sendResetEmail(
-        data.email,
-        sendEmailTurnstile.token as string,
-      );
+      const error = await sendResetEmail(data.email);
       setIsLoading(false);
       if (error) {
         toast({
@@ -109,7 +69,6 @@ function ResetPasswordContent() {
           description: error,
           variant: "destructive",
         });
-        resetSendEmailCaptcha();
         return;
       }
       setDisabled(true);
@@ -120,7 +79,7 @@ function ResetPasswordContent() {
         variant: "default",
       });
     },
-    [sendEmailForm, sendEmailTurnstile, resetSendEmailCaptcha, toast],
+    [sendEmailForm, toast],
   );
 
   const onChangePassword = useCallback(
@@ -132,21 +91,7 @@ function ResetPasswordContent() {
         return;
       }
 
-      if (!changePasswordTurnstile.verified) {
-        toast({
-          title: "CAPTCHA Required",
-          description: "Please complete the CAPTCHA challenge.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        resetChangePasswordCaptcha();
-        return;
-      }
-
-      const error = await changePassword(
-        data.password,
-        changePasswordTurnstile.token as string,
-      );
+      const error = await changePassword(data.password);
       setIsLoading(false);
       if (error) {
         toast({
@@ -154,7 +99,6 @@ function ResetPasswordContent() {
           description: error,
           variant: "destructive",
         });
-        resetChangePasswordCaptcha();
         return;
       }
       toast({
@@ -163,12 +107,7 @@ function ResetPasswordContent() {
         variant: "default",
       });
     },
-    [
-      changePasswordForm,
-      changePasswordTurnstile,
-      resetChangePasswordCaptcha,
-      toast,
-    ],
+    [changePasswordForm, toast],
   );
 
   if (isUserLoading) {
@@ -226,18 +165,6 @@ function ResetPasswordContent() {
                 )}
               />
 
-              {/* Turnstile CAPTCHA Component for password change */}
-              <Turnstile
-                key={changePasswordCaptchaKey}
-                siteKey={changePasswordTurnstile.siteKey}
-                onVerify={changePasswordTurnstile.handleVerify}
-                onExpire={changePasswordTurnstile.handleExpire}
-                onError={changePasswordTurnstile.handleError}
-                setWidgetId={changePasswordTurnstile.setWidgetId}
-                action="change_password"
-                shouldRender={changePasswordTurnstile.shouldRender}
-              />
-
               <Button
                 variant="primary"
                 loading={isLoading}
@@ -269,20 +196,6 @@ function ResetPasswordContent() {
                   />
                 )}
               />
-
-              {/* Turnstile CAPTCHA Component for reset email */}
-              {!sendEmailTurnstile.verified ? (
-                <Turnstile
-                  key={sendEmailCaptchaKey}
-                  siteKey={sendEmailTurnstile.siteKey}
-                  onVerify={sendEmailTurnstile.handleVerify}
-                  onExpire={sendEmailTurnstile.handleExpire}
-                  onError={sendEmailTurnstile.handleError}
-                  setWidgetId={sendEmailTurnstile.setWidgetId}
-                  action="reset_password"
-                  shouldRender={sendEmailTurnstile.shouldRender}
-                />
-              ) : null}
 
               <Button
                 variant="primary"

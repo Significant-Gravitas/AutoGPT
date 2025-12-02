@@ -22,7 +22,9 @@ router = APIRouter(
 @router.get(
     "",
     summary="List Library Agents",
+    response_model=library_model.LibraryAgentResponse,
     responses={
+        200: {"description": "List of library agents"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
@@ -155,7 +157,12 @@ async def get_library_agent_by_graph_id(
 @router.get(
     "/marketplace/{store_listing_version_id}",
     summary="Get Agent By Store ID",
-    tags=["store, library"],
+    tags=["store", "library"],
+    response_model=library_model.LibraryAgent | None,
+    responses={
+        200: {"description": "Library agent found"},
+        404: {"description": "Agent not found"},
+    },
 )
 async def get_library_agent_by_store_listing_version_id(
     store_listing_version_id: str,
@@ -269,6 +276,7 @@ async def update_library_agent(
             auto_update_version=payload.auto_update_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
+            settings=payload.settings,
         )
     except NotFoundError as e:
         raise HTTPException(

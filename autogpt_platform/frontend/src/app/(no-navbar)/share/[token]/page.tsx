@@ -1,8 +1,7 @@
 "use client";
 
-import React from "react";
-import { useParams } from "next/navigation";
-import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/SelectedRunView/components/RunOutputs";
+import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/RunOutputs";
+import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
 import {
   Card,
   CardContent,
@@ -11,7 +10,7 @@ import {
 } from "@/components/__legacy__/ui/card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { InfoIcon } from "lucide-react";
-import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
+import { useParams } from "next/navigation";
 
 export default function SharePage() {
   const params = useParams();

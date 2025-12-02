@@ -55,19 +55,39 @@ export function AllVariants() {
         <Text variant="h2">Heading 2</Text>
         <Text variant="h3">Heading 3</Text>
         <Text variant="h4">Heading 4</Text>
+        <Text variant="h5">Heading 5</Text>
         <StoryCode
           code={`<Text variant="h1">Heading 1</Text>
 <Text variant="h2">Heading 2</Text>
 <Text variant="h3">Heading 3</Text>
-<Text variant="h4">Heading 4</Text>`}
+<Text variant="h4">Heading 4</Text>
+<Text variant="h5">Heading 5</Text>`}
         />
       </div>
       {/* Body Text */}
       <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
         Body Text
       </h2>
-      <Text variant="lead">Lead</Text>
-      <StoryCode code={`<Text variant="lead">Lead</Text>`} />
+      <div className="flex flex-row gap-8">
+        <Text variant="lead">Lead</Text>
+        <Text variant="lead-medium">Lead Medium</Text>
+        <Text variant="lead-semibold">Lead Semibold</Text>
+      </div>
+      <StoryCode
+        code={`<Text variant="lead">Lead</Text>
+<Text variant="lead-medium">Lead Medium</Text>
+<Text variant="lead-semibold">Lead Semibold</Text>`}
+      />
+      <div className="flex flex-row gap-8">
+        <Text variant="large">Large</Text>
+        <Text variant="large-medium">Large Medium</Text>
+        <Text variant="large-semibold">Large Semibold</Text>
+      </div>
+      <StoryCode
+        code={`<Text variant="large">Large</Text>
+<Text variant="large-medium">Large Medium</Text>
+<Text variant="large-semibold">Large Semibold</Text>`}
+      />
       <div className="flex flex-row gap-8">
         <Text variant="large">Large</Text>
         <Text variant="large-medium">Large Medium</Text>
@@ -108,6 +128,7 @@ export function Headings() {
       <Text variant="h2">Heading 2</Text>
       <Text variant="h3">Heading 3</Text>
       <Text variant="h4">Heading 4</Text>
+      <Text variant="h5">Heading 5</Text>
     </div>
   );
 }
@@ -119,6 +140,8 @@ export function BodyText() {
   return (
     <div className="space-y-8">
       <Text variant="lead">Lead</Text>
+      <Text variant="lead-medium">Lead Medium</Text>
+      <Text variant="lead-semibold">Lead Semibold</Text>
       <Text variant="large">Large</Text>
       <Text variant="large-medium">Large Medium</Text>
       <Text variant="large-semibold">Large Semibold</Text>

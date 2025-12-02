@@ -192,7 +192,7 @@ async def test_create_block_function_signature_with_object_fields():
 
 
 @pytest.mark.asyncio
-async def test_create_function_signature():
+async def test_create_tool_node_signatures():
     """Test that the mapping between sanitized and original field names is built correctly."""
     block = SmartDecisionMakerBlock()
 
@@ -241,7 +241,7 @@ async def test_create_function_signature():
         ]
 
         # Call the method that builds signatures
-        tool_functions = await block._create_function_signature("test_node_id")
+        tool_functions = await block._create_tool_node_signatures("test_node_id")
 
         # Verify we got 2 tool functions (one for dict, one for list)
         assert len(tool_functions) == 2
@@ -310,7 +310,7 @@ async def test_output_yielding_with_dynamic_fields():
 
         # Mock the function signature creation
         with patch.object(
-            block, "_create_function_signature", new_callable=AsyncMock
+            block, "_create_tool_node_signatures", new_callable=AsyncMock
         ) as mock_sig:
             mock_sig.return_value = [
                 {
@@ -325,6 +325,7 @@ async def test_output_yielding_with_dynamic_fields():
                                 "values___email": {"type": "string"},
                             },
                         },
+                        "_sink_node_id": "test-sink-node-id",
                     },
                 }
             ]
@@ -351,16 +352,16 @@ async def test_output_yielding_with_dynamic_fields():
             ):
                 outputs[output_name] = output_value
 
-            # Verify the outputs use sanitized field names (matching frontend normalizeToolName)
-            assert "tools_^_createdictionaryblock_~_values___name" in outputs
-            assert outputs["tools_^_createdictionaryblock_~_values___name"] == "Alice"
+            # Verify the outputs use sink node ID in output keys
+            assert "tools_^_test-sink-node-id_~_values___name" in outputs
+            assert outputs["tools_^_test-sink-node-id_~_values___name"] == "Alice"
 
-            assert "tools_^_createdictionaryblock_~_values___age" in outputs
-            assert outputs["tools_^_createdictionaryblock_~_values___age"] == 30
+            assert "tools_^_test-sink-node-id_~_values___age" in outputs
+            assert outputs["tools_^_test-sink-node-id_~_values___age"] == 30
 
-            assert "tools_^_createdictionaryblock_~_values___email" in outputs
+            assert "tools_^_test-sink-node-id_~_values___email" in outputs
             assert (
-                outputs["tools_^_createdictionaryblock_~_values___email"]
+                outputs["tools_^_test-sink-node-id_~_values___email"]
                 == "alice@example.com"
             )
 
@@ -488,7 +489,7 @@ async def test_validation_errors_dont_pollute_conversation():
 
         # Mock the function signature creation
         with patch.object(
-            block, "_create_function_signature", new_callable=AsyncMock
+            block, "_create_tool_node_signatures", new_callable=AsyncMock
         ) as mock_sig:
             mock_sig.return_value = [
                 {
@@ -505,6 +506,7 @@ async def test_validation_errors_dont_pollute_conversation():
                             },
                             "required": ["correct_param"],
                         },
+                        "_sink_node_id": "test-sink-node-id",
                     },
                 }
             ]

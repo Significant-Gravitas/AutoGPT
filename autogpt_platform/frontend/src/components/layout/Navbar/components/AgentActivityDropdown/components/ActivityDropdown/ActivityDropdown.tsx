@@ -1,17 +1,17 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { FixedSizeList as List } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
+import styles from "./styles.module.css";
 import {
   EXECUTION_DISPLAY_WITH_SEARCH,
   useActivityDropdown,
 } from "./useActivityDropdown";
-import styles from "./styles.module.css";
-import { Button } from "@/components/atoms/Button/Button";
 
 interface Props {
   activeExecutions: AgentExecutionWithInfo[];
@@ -139,7 +139,7 @@ export function ActivityDropdown({
           </List>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
-            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-lightGrey p-6">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
               <Bell className="h-6 w-6 text-zinc-300" />
             </div>
             <div className="flex flex-col items-center justify-center">

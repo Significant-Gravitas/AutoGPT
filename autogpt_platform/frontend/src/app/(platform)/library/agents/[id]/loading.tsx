@@ -1,3 +1,3 @@
-import { AgentRunsLoading } from "./components/AgentRunsView/components/AgentRunsLoading";
+import { AgentRunsLoading } from "./components/NewAgentLibraryView/components/other/AgentRunsLoading";
 
 export default AgentRunsLoading;

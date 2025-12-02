@@ -6,8 +6,9 @@
 "use client";
 
 import type { GAParams } from "@/types/google";
+import { consent } from "@/services/consent/cookies";
 import Script from "next/script";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { environment } from "../environment";
 
 declare global {
@@ -29,10 +30,20 @@ export function SetupAnalytics(props: SetupProps) {
   const { gaId, debugMode, dataLayerName = "dataLayer", nonce } = ga;
   const isProductionDomain = host.includes("platform.agpt.co");
 
-  // Datafa.st journey analytics only on production
-  const dataFastEnabled = isProductionDomain;
+  // Check for user consent
+  const [hasAnalyticsConsent, setHasAnalyticsConsent] = useState(false);
+
+  useEffect(() => {
+    // Check consent on mount
+    setHasAnalyticsConsent(consent.hasConsentFor("analytics"));
+  }, []);
+
+  // Datafa.st journey analytics only on production AND with consent
+  const dataFastEnabled = isProductionDomain && hasAnalyticsConsent;
   // We collect analytics too for open source developers running the platform locally
-  const googleAnalyticsEnabled = environment.isLocal() || isProductionDomain;
+  // BUT only with consent
+  const googleAnalyticsEnabled =
+    (environment.isLocal() || isProductionDomain) && hasAnalyticsConsent;
 
   if (currDataLayerName === undefined) {
     currDataLayerName = dataLayerName;

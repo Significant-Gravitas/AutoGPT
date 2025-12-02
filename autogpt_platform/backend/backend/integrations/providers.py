@@ -49,6 +49,7 @@ class ProviderName(str, Enum):
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
     V0 = "v0"
+    WEBSHARE_PROXY = "webshare_proxy"
     ZEROBOUNCE = "zerobounce"
 
     @classmethod

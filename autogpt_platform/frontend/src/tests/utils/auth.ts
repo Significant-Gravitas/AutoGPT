@@ -30,6 +30,19 @@ export async function createTestUser(
     const context = await browser.newContext();
     const page = await context.newPage();
 
+    // Auto-accept cookies in test environment to prevent banner from appearing
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        "autogpt_cookie_consent",
+        JSON.stringify({
+          hasConsented: true,
+          timestamp: Date.now(),
+          analytics: true,
+          monitoring: true,
+        }),
+      );
+    });
+
     try {
       const testUser = await signupTestUser(
         page,

@@ -1,23 +1,58 @@
-import React from "react";
-import { Metadata } from "next/types";
-import { redirect } from "next/navigation";
-import BackendAPI from "@/lib/autogpt-server-api";
+"use client";
+
+import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { ProfileInfoForm } from "@/components/__legacy__/ProfileInfoForm";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { ProfileDetails } from "@/lib/autogpt-server-api/types";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { ProfileLoading } from "./ProfileLoading";
 
-// Force dynamic rendering to avoid static generation issues with cookies
-export const dynamic = "force-dynamic";
+export default function UserProfilePage() {
+  const { user } = useSupabase();
 
-export const metadata: Metadata = { title: "Profile - AutoGPT Platform" };
-
-export default async function UserProfilePage(): Promise<React.ReactElement> {
-  const api = new BackendAPI();
-  const profile = await api.getStoreProfile().catch((error) => {
-    console.error("Error fetching profile:", error);
-    return null;
+  const {
+    data: profile,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useGetV2GetUserProfile<ProfileDetails | null>({
+    query: {
+      enabled: !!user,
+      select: (res) => {
+        if (res.status === 200) {
+          return {
+            ...res.data,
+            avatar_url: res.data.avatar_url ?? "",
+          };
+        }
+        return null;
+      },
+    },
   });
 
-  if (!profile) {
-    redirect("/login");
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center px-4">
+        <ErrorCard
+          responseError={
+            error
+              ? {
+                  detail: error.detail,
+                }
+              : undefined
+          }
+          context="profile"
+          onRetry={() => {
+            void refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (isLoading || !user || !profile) {
+    return <ProfileLoading />;
   }
 
   return (

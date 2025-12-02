@@ -84,15 +84,20 @@ export function DialogWrap({
             </button>
           )}
         </div>
-        <div
-          ref={scrollRef}
-          className={cn("overflow-y-auto overflow-x-hidden", scrollbarStyles)}
-          style={{
-            scrollbarGutter: "stable",
-            marginRight: hasVerticalScrollbar ? "-14px" : "0px",
-          }}
-        >
-          {children}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div
+            ref={scrollRef}
+            className={cn(
+              "flex-1 overflow-y-auto overflow-x-hidden",
+              scrollbarStyles,
+            )}
+            style={{
+              scrollbarGutter: "stable",
+              marginRight: hasVerticalScrollbar ? "-14px" : "0px",
+            }}
+          >
+            {children}
+          </div>
         </div>
       </RXDialog.Content>
     </RXDialog.Portal>

@@ -28,8 +28,14 @@ from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
     get_graph_metadata,
+    get_graph_settings,
     get_node,
     validate_graph_execution_permissions,
+)
+from backend.data.human_review import (
+    get_or_create_human_review,
+    has_pending_reviews_for_graph_exec,
+    update_review_processed_status,
 )
 from backend.data.notifications import (
     clear_all_user_notification_batches,
@@ -145,6 +151,7 @@ class DatabaseManager(AppService):
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
     get_graph_metadata = _(get_graph_metadata)
+    get_graph_settings = _(get_graph_settings)
 
     # Credits
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -160,6 +167,11 @@ class DatabaseManager(AppService):
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
+
+    # Human In The Loop
+    get_or_create_human_review = _(get_or_create_human_review)
+    has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
+    update_review_processed_status = _(update_review_processed_status)
 
     # Notifications - async
     clear_all_user_notification_batches = _(clear_all_user_notification_batches)
@@ -215,6 +227,9 @@ class DatabaseManagerClient(AppServiceClient):
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
 
+    # Human In The Loop
+    has_pending_reviews_for_graph_exec = _(d.has_pending_reviews_for_graph_exec)
+
     # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
 
@@ -241,6 +256,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
+    get_graph_settings = d.get_graph_settings
     get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution
@@ -255,6 +271,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_user_integrations = d.update_user_integrations
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
+
+    # Human In The Loop
+    get_or_create_human_review = d.get_or_create_human_review
+    update_review_processed_status = d.update_review_processed_status
 
     # User Comms
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
