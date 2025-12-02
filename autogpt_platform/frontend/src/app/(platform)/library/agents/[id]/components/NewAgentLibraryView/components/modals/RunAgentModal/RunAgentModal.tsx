@@ -3,6 +3,7 @@
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -22,14 +23,21 @@ import { useAgentRunModal } from "./useAgentRunModal";
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
+  preset?: LibraryAgentPreset;
+  initialInputValues?: Record<string, any>;
+  initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
+  onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
 export function RunAgentModal({
   triggerSlot,
   agent,
+  initialInputValues,
+  initialInputCredentials,
   onRunCreated,
+  onTriggerSetup,
   onScheduleCreated,
 }: Props) {
   const {
@@ -69,6 +77,9 @@ export function RunAgentModal({
     handleRun,
   } = useAgentRunModal(agent, {
     onRun: onRunCreated,
+    onSetupTrigger: onTriggerSetup,
+    initialInputValues,
+    initialInputCredentials,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
@@ -151,7 +162,8 @@ export function RunAgentModal({
 
           <Dialog.Footer className="mt-6 bg-white pt-4">
             <div className="flex items-center justify-end gap-3">
-              {!allRequiredInputsAreSet ? (
+              {(defaultRunType == "manual" || defaultRunType == "schedule") &&
+              !allRequiredInputsAreSet ? (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -177,7 +189,7 @@ export function RunAgentModal({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-              ) : (
+              ) : defaultRunType == "manual" || defaultRunType == "schedule" ? (
                 <Button
                   variant="secondary"
                   onClick={handleOpenScheduleModal}
@@ -189,7 +201,7 @@ export function RunAgentModal({
                 >
                   Schedule Task
                 </Button>
-              )}
+              ) : null}
               <RunActions
                 defaultRunType={defaultRunType}
                 onRun={handleRun}

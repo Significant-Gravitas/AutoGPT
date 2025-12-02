@@ -24,11 +24,13 @@ import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
   const {
-    agent,
-    hasAnyItems,
-    ready,
-    error,
     agentId,
+    agent,
+    ready,
+    preset,
+    isPresetLoading,
+    error,
+    hasAnyItems,
     activeItem,
     sidebarLoading,
     activeTab,
@@ -82,7 +84,12 @@ export function NewAgentLibraryView() {
         >
           <RunAgentModal
             triggerSlot={
-              <Button variant="primary" size="large" className="w-full">
+              <Button
+                variant="primary"
+                size="large"
+                className="w-full"
+                disabled={isPresetLoading}
+              >
                 <PlusIcon size={20} /> New task
               </Button>
             }
@@ -91,6 +98,8 @@ export function NewAgentLibraryView() {
             onScheduleCreated={(schedule) =>
               handleSelectRun(schedule.id, "scheduled")
             }
+            initialInputValues={preset?.inputs}
+            initialInputCredentials={preset?.credentials}
           />
         </div>
 

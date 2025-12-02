@@ -25,8 +25,10 @@ export type RunVariant =
 
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;
-  onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
   onSetupTrigger?: (preset: LibraryAgentPreset) => void;
+  onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
+  initialInputValues?: Record<string, any>;
+  initialInputCredentials?: Record<string, any>;
 }
 
 export function useAgentRunModal(
@@ -36,16 +38,20 @@ export function useAgentRunModal(
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
-  const [inputValues, setInputValues] = useState<Record<string, any>>({});
+  const [inputValues, setInputValues] = useState<Record<string, any>>(
+    callbacks?.initialInputValues || {},
+  );
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
-    {},
+    callbacks?.initialInputCredentials || {},
   );
   const [presetName, setPresetName] = useState<string>("");
   const [presetDescription, setPresetDescription] = useState<string>("");
 
   // Determine the default run type based on agent capabilities
-  const defaultRunType: RunVariant = agent.has_external_trigger
-    ? "automatic-trigger"
+  const defaultRunType: RunVariant = agent.trigger_setup_info
+    ? agent.trigger_setup_info.credentials_input_name
+      ? "automatic-trigger"
+      : "manual-trigger"
     : "manual";
 
   // API mutations
@@ -105,11 +111,13 @@ export function useAgentRunModal(
     },
   });
 
-  // Input schema validation
-  const agentInputSchema = useMemo(
-    () => agent.input_schema || { properties: {}, required: [] },
-    [agent.input_schema],
-  );
+  // Input schema validation (use trigger schema for triggered agents)
+  const agentInputSchema = useMemo(() => {
+    if (agent.trigger_setup_info?.config_schema) {
+      return agent.trigger_setup_info.config_schema;
+    }
+    return agent.input_schema || { properties: {}, required: [] };
+  }, [agent.input_schema, agent.trigger_setup_info]);
 
   const agentInputFields = useMemo(() => {
     if (
@@ -205,7 +213,10 @@ export function useAgentRunModal(
       return;
     }
 
-    if (defaultRunType === "automatic-trigger") {
+    if (
+      defaultRunType === "automatic-trigger" ||
+      defaultRunType === "manual-trigger"
+    ) {
       // Setup trigger
       if (!presetName.trim()) {
         toast({
@@ -262,7 +273,7 @@ export function useAgentRunModal(
     setIsOpen,
 
     // Run mode
-    defaultRunType,
+    defaultRunType: defaultRunType as RunVariant,
 
     // Form: regular inputs
     inputValues,
