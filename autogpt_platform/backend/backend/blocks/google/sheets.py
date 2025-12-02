@@ -182,6 +182,28 @@ def _build_sheets_service(credentials: GoogleCredentials):
     return build("sheets", "v4", credentials=creds)
 
 
+def _build_drive_service(credentials: GoogleCredentials):
+    """Build Drive service from platform credentials (with refresh token)."""
+    settings = Settings()
+    creds = Credentials(
+        token=(
+            credentials.access_token.get_secret_value()
+            if credentials.access_token
+            else None
+        ),
+        refresh_token=(
+            credentials.refresh_token.get_secret_value()
+            if credentials.refresh_token
+            else None
+        ),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=settings.secrets.google_client_id,
+        client_secret=settings.secrets.google_client_secret,
+        scopes=credentials.scopes,
+    )
+    return build("drive", "v3", credentials=creds)
+
+
 def _validate_spreadsheet_file(spreadsheet_file: "GoogleDriveFile") -> str | None:
     """Validate that the selected file is a Google Sheets spreadsheet.
 
@@ -1926,10 +1948,12 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = _build_sheets_service(credentials)
+        drive_service = _build_drive_service(credentials)
+        sheets_service = _build_sheets_service(credentials)
         result = await asyncio.to_thread(
             self._create_spreadsheet,
-            service,
+            drive_service,
+            sheets_service,
             input_data.title,
             input_data.sheet_names,
         )
@@ -1952,35 +1976,63 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             yield "spreadsheet_url", spreadsheet_url
             yield "result", {"success": True}
 
-    def _create_spreadsheet(self, service, title: str, sheet_names: list[str]) -> dict:
+    def _create_spreadsheet(
+        self, drive_service, sheets_service, title: str, sheet_names: list[str]
+    ) -> dict:
         try:
-            # Create the initial spreadsheet
-            spreadsheet_body = {
-                "properties": {"title": title},
-                "sheets": [
-                    {
-                        "properties": {
-                            "title": sheet_names[0] if sheet_names else "Sheet1"
-                        }
-                    }
-                ],
+            # Create blank spreadsheet using Drive API
+            file_metadata = {
+                "name": title,
+                "mimeType": "application/vnd.google-apps.spreadsheet",
             }
+            result = (
+                drive_service.files()
+                .create(body=file_metadata, fields="id, webViewLink")
+                .execute()
+            )
 
-            result = service.spreadsheets().create(body=spreadsheet_body).execute()
-            spreadsheet_id = result["spreadsheetId"]
-            spreadsheet_url = result["spreadsheetUrl"]
+            spreadsheet_id = result["id"]
+            spreadsheet_url = result.get(
+                "webViewLink",
+                f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+            )
+
+            # Rename first sheet if custom name provided (default is "Sheet1")
+            first_sheet_name = sheet_names[0] if sheet_names else "Sheet1"
+            if first_sheet_name != "Sheet1":
+                # Get first sheet ID and rename it
+                meta = (
+                    sheets_service.spreadsheets()
+                    .get(spreadsheetId=spreadsheet_id)
+                    .execute()
+                )
+                first_sheet_id = meta["sheets"][0]["properties"]["sheetId"]
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {
+                                        "sheetId": first_sheet_id,
+                                        "title": first_sheet_name,
+                                    },
+                                    "fields": "title",
+                                }
+                            }
+                        ]
+                    },
+                ).execute()
 
             # Add additional sheets if requested
             if len(sheet_names) > 1:
-                requests = []
-                for sheet_name in sheet_names[1:]:
-                    requests.append({"addSheet": {"properties": {"title": sheet_name}}})
-
-                if requests:
-                    batch_body = {"requests": requests}
-                    service.spreadsheets().batchUpdate(
-                        spreadsheetId=spreadsheet_id, body=batch_body
-                    ).execute()
+                requests = [
+                    {"addSheet": {"properties": {"title": name}}}
+                    for name in sheet_names[1:]
+                ]
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id, body={"requests": requests}
+                ).execute()
 
             return {
                 "spreadsheetId": spreadsheet_id,
