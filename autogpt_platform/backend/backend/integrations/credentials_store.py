@@ -15,6 +15,7 @@ from backend.data.model import (
     OAuth2Credentials,
     OAuthState,
     UserIntegrations,
+    UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
@@ -207,6 +208,14 @@ v0_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+webshare_proxy_credentials = UserPasswordCredentials(
+    id="a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d",
+    provider="webshare_proxy",
+    username=SecretStr(settings.secrets.webshare_proxy_username),
+    password=SecretStr(settings.secrets.webshare_proxy_password),
+    title="Use Credits for Webshare Proxy",
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -233,6 +242,7 @@ DEFAULT_CREDENTIALS = [
     google_maps_credentials,
     llama_api_credentials,
     v0_credentials,
+    webshare_proxy_credentials,
 ]
 
 
@@ -321,6 +331,11 @@ class IntegrationCredentialsStore:
             all_credentials.append(zerobounce_credentials)
         if settings.secrets.google_maps_api_key:
             all_credentials.append(google_maps_credentials)
+        if (
+            settings.secrets.webshare_proxy_username
+            and settings.secrets.webshare_proxy_password
+        ):
+            all_credentials.append(webshare_proxy_credentials)
         return all_credentials
 
     async def get_creds_by_id(

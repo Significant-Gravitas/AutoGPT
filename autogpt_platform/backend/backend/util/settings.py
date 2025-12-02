@@ -577,6 +577,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     open_router_api_key: str = Field(default="", description="Open Router API Key")
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
+    webshare_proxy_username: str = Field(
+        default="", description="Webshare Proxy Username"
+    )
+    webshare_proxy_password: str = Field(
+        default="", description="Webshare Proxy Password"
+    )
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
