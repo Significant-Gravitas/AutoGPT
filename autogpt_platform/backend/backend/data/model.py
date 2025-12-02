@@ -439,7 +439,7 @@ class OAuthState(BaseModel):
     """External app's callback URL for OAuth redirect"""
     state_metadata: dict[str, Any] = Field(default_factory=dict)
     """Metadata to echo back to external app on completion"""
-    api_key_id: Optional[str] = None
+    initiated_by_api_key_id: Optional[str] = None
     """ID of the API key that initiated this OAuth flow"""
     is_external: bool = False
     """Whether this OAuth flow was initiated via external API"""
