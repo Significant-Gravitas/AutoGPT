@@ -276,6 +276,7 @@ async def update_library_agent(
             auto_update_version=payload.auto_update_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
+            settings=payload.settings,
         )
     except NotFoundError as e:
         raise HTTPException(

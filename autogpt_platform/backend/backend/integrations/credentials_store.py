@@ -414,7 +414,15 @@ class IntegrationCredentialsStore:
     # ===================== OAUTH STATES ===================== #
 
     async def store_state_token(
-        self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
+        self,
+        user_id: str,
+        provider: str,
+        scopes: list[str],
+        use_pkce: bool = False,
+        # New parameters for external API OAuth flows
+        callback_url: Optional[str] = None,
+        state_metadata: Optional[dict] = None,
+        initiated_by_api_key_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -427,6 +435,10 @@ class IntegrationCredentialsStore:
             code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
+            # External API OAuth flow fields
+            callback_url=callback_url,
+            state_metadata=state_metadata or {},
+            initiated_by_api_key_id=initiated_by_api_key_id,
         )
 
         async with self.edit_user_integrations(user_id) as user_integrations:
