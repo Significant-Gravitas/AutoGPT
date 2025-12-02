@@ -34,7 +34,6 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
       disabled = false,
       className,
       nodeId,
-      fieldKey,
     },
     ref,
   ) => {
