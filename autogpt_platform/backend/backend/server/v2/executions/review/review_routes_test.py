@@ -20,10 +20,6 @@ app.add_exception_handler(ValueError, handle_internal_http_error(400))
 
 client = fastapi.testclient.TestClient(app)
 
-pytestmark = pytest.mark.skip(
-    reason="Tests failing in CI due to mocking issues - skipping until refactored"
-)
-
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
