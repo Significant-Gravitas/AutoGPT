@@ -5,7 +5,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/atoms/Table/Table";
 import type { LlmProvider } from "@/lib/autogpt-server-api/types";
 
 export function ProviderList({ providers }: { providers: LlmProvider[] }) {

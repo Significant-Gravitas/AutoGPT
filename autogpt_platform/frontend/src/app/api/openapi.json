@@ -4130,6 +4130,391 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/llm/admin/llm/providers": {
+      "get": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "List LLM providers",
+        "operationId": "getV2List llm providers",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "include_models",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Models"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvidersResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "Create LLM provider",
+        "operationId": "postV2Create llm provider",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertLlmProviderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmProvider" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/llm/admin/llm/providers/{provider_id}": {
+      "patch": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "Update LLM provider",
+        "operationId": "patchV2Update llm provider",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Provider Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertLlmProviderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmProvider" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/llm/admin/llm/models": {
+      "get": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "List LLM models",
+        "operationId": "getV2List llm models",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmModelsResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "Create LLM model",
+        "operationId": "postV2Create llm model",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmModel" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/llm/admin/llm/models/{model_id}": {
+      "patch": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "Update LLM model",
+        "operationId": "patchV2Update llm model",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Model Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmModel" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "Delete LLM model and migrate workflows",
+        "description": "Delete a model and automatically migrate all workflows using it to a replacement model.\n\nThis endpoint:\n1. Validates the replacement model exists and is enabled\n2. Counts how many workflow nodes use the model being deleted\n3. Updates all AgentNode.constantInput->model fields to the replacement\n4. Deletes the model record\n5. Refreshes all caches and notifies executors\n\nExample: DELETE /admin/llm/models/{id}?replacement_model_slug=gpt-4o",
+        "operationId": "deleteV2Delete llm model and migrate workflows",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Model Id" }
+          },
+          {
+            "name": "replacement_model_slug",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Slug of the model to migrate existing workflows to",
+              "title": "Replacement Model Slug"
+            },
+            "description": "Slug of the model to migrate existing workflows to"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteLlmModelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/llm/admin/llm/models/{model_id}/toggle": {
+      "patch": {
+        "tags": ["v2", "admin", "llm", "admin"],
+        "summary": "Toggle LLM model availability",
+        "operationId": "patchV2Toggle llm model availability",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Model Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ToggleLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmModel" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/llm/models": {
+      "get": {
+        "tags": ["v2", "llm", "llm"],
+        "summary": "List Models",
+        "operationId": "getV2ListModels",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmModelsResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/llm/providers": {
+      "get": {
+        "tags": ["v2", "llm", "llm"],
+        "summary": "List Providers",
+        "operationId": "getV2ListProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/library/presets": {
       "get": {
         "tags": ["v2", "presets"],
@@ -5769,6 +6154,51 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateLlmModelRequest": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "provider_id": { "type": "string", "title": "Provider Id" },
+          "context_window": { "type": "integer", "title": "Context Window" },
+          "max_output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Output Tokens"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "costs": {
+            "items": { "$ref": "#/components/schemas/LlmModelCostInput" },
+            "type": "array",
+            "title": "Costs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name",
+          "provider_id",
+          "context_window",
+          "costs"
+        ],
+        "title": "CreateLlmModelRequest"
+      },
       "CreateSessionResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -5960,6 +6390,33 @@
         "type": "object",
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
+      },
+      "DeleteLlmModelResponse": {
+        "properties": {
+          "deleted_model_slug": {
+            "type": "string",
+            "title": "Deleted Model Slug"
+          },
+          "deleted_model_display_name": {
+            "type": "string",
+            "title": "Deleted Model Display Name"
+          },
+          "replacement_model_slug": {
+            "type": "string",
+            "title": "Replacement Model Slug"
+          },
+          "nodes_migrated": { "type": "integer", "title": "Nodes Migrated" },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": [
+          "deleted_model_slug",
+          "deleted_model_display_name",
+          "replacement_model_slug",
+          "nodes_migrated",
+          "message"
+        ],
+        "title": "DeleteLlmModelResponse"
       },
       "Document": {
         "properties": {
@@ -7131,6 +7588,205 @@
         "type": "object",
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
+      },
+      "LlmCostUnit": {
+        "type": "string",
+        "enum": ["RUN", "TOKENS"],
+        "title": "LlmCostUnit"
+      },
+      "LlmModel": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "provider_id": { "type": "string", "title": "Provider Id" },
+          "context_window": { "type": "integer", "title": "Context Window" },
+          "max_output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Output Tokens"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "costs": {
+            "items": { "$ref": "#/components/schemas/LlmModelCost" },
+            "type": "array",
+            "title": "Costs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "display_name",
+          "provider_id",
+          "context_window"
+        ],
+        "title": "LlmModel"
+      },
+      "LlmModelCost": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "unit": {
+            "$ref": "#/components/schemas/LlmCostUnit",
+            "default": "RUN"
+          },
+          "credit_cost": { "type": "integer", "title": "Credit Cost" },
+          "credential_provider": {
+            "type": "string",
+            "title": "Credential Provider"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Type"
+          },
+          "currency": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Currency"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["id", "credit_cost", "credential_provider"],
+        "title": "LlmModelCost"
+      },
+      "LlmModelCostInput": {
+        "properties": {
+          "unit": {
+            "$ref": "#/components/schemas/LlmCostUnit",
+            "default": "RUN"
+          },
+          "credit_cost": { "type": "integer", "title": "Credit Cost" },
+          "credential_provider": {
+            "type": "string",
+            "title": "Credential Provider"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Type",
+            "default": "api_key"
+          },
+          "currency": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Currency"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["credit_cost", "credential_provider"],
+        "title": "LlmModelCostInput"
+      },
+      "LlmModelsResponse": {
+        "properties": {
+          "models": {
+            "items": { "$ref": "#/components/schemas/LlmModel" },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": ["models"],
+        "title": "LlmModelsResponse"
+      },
+      "LlmProvider": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "default_credential_provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Provider"
+          },
+          "default_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Id"
+          },
+          "default_credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Type"
+          },
+          "supports_tools": {
+            "type": "boolean",
+            "title": "Supports Tools",
+            "default": true
+          },
+          "supports_json_output": {
+            "type": "boolean",
+            "title": "Supports Json Output",
+            "default": true
+          },
+          "supports_reasoning": {
+            "type": "boolean",
+            "title": "Supports Reasoning",
+            "default": false
+          },
+          "supports_parallel_tool": {
+            "type": "boolean",
+            "title": "Supports Parallel Tool",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "models": {
+            "items": { "$ref": "#/components/schemas/LlmModel" },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "display_name"],
+        "title": "LlmProvider"
+      },
+      "LlmProvidersResponse": {
+        "properties": {
+          "providers": {
+            "items": { "$ref": "#/components/schemas/LlmProvider" },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": ["providers"],
+        "title": "LlmProvidersResponse"
       },
       "LogRawMetricRequest": {
         "properties": {
@@ -9503,6 +10159,14 @@
         "required": ["timezone"],
         "title": "TimezoneResponse"
       },
+      "ToggleLlmModelRequest": {
+        "properties": {
+          "is_enabled": { "type": "boolean", "title": "Is Enabled" }
+        },
+        "type": "object",
+        "required": ["is_enabled"],
+        "title": "ToggleLlmModelRequest"
+      },
       "TransactionHistory": {
         "properties": {
           "transactions": {
@@ -9548,6 +10212,60 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "UpdateLlmModelRequest": {
+        "properties": {
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "context_window": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Context Window"
+          },
+          "max_output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Output Tokens"
+          },
+          "is_enabled": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Enabled"
+          },
+          "capabilities": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Capabilities"
+          },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata"
+          },
+          "provider_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider Id"
+          },
+          "costs": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/LlmModelCostInput" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Costs"
+          }
+        },
+        "type": "object",
+        "title": "UpdateLlmModelRequest"
       },
       "UpdatePermissionsRequest": {
         "properties": {
@@ -10189,6 +10907,57 @@
           "expires_in_hours"
         ],
         "title": "UploadFileResponse"
+      },
+      "UpsertLlmProviderRequest": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "default_credential_provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Provider"
+          },
+          "default_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Id"
+          },
+          "default_credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Type",
+            "default": "api_key"
+          },
+          "supports_tools": {
+            "type": "boolean",
+            "title": "Supports Tools",
+            "default": true
+          },
+          "supports_json_output": {
+            "type": "boolean",
+            "title": "Supports Json Output",
+            "default": true
+          },
+          "supports_reasoning": {
+            "type": "boolean",
+            "title": "Supports Reasoning",
+            "default": false
+          },
+          "supports_parallel_tool": {
+            "type": "boolean",
+            "title": "Supports Parallel Tool",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "UpsertLlmProviderRequest"
       },
       "UserHistoryResponse": {
         "properties": {

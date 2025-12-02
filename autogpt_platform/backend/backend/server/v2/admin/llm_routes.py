@@ -143,3 +143,71 @@ async def toggle_llm_model(
             detail="Failed to toggle model availability",
         ) from exc
 
+
+@router.get(
+    "/models/{model_id}/usage",
+    summary="Get model usage count",
+    response_model=llm_model.LlmModelUsageResponse,
+)
+async def get_llm_model_usage(model_id: str):
+    """Get the number of workflow nodes using this model."""
+    try:
+        return await llm_db.get_model_usage(model_id=model_id)
+    except ValueError as exc:
+        raise fastapi.HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to get model usage %s: %s", model_id, exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to get model usage",
+        ) from exc
+
+
+@router.delete(
+    "/models/{model_id}",
+    summary="Delete LLM model and migrate workflows",
+    response_model=llm_model.DeleteLlmModelResponse,
+)
+async def delete_llm_model(
+    model_id: str,
+    replacement_model_slug: str = fastapi.Query(
+        ...,
+        description="Slug of the model to migrate existing workflows to"
+    ),
+):
+    """
+    Delete a model and automatically migrate all workflows using it to a replacement model.
+
+    This endpoint:
+    1. Validates the replacement model exists and is enabled
+    2. Counts how many workflow nodes use the model being deleted
+    3. Updates all AgentNode.constantInput->model fields to the replacement
+    4. Deletes the model record
+    5. Refreshes all caches and notifies executors
+
+    Example: DELETE /admin/llm/models/{id}?replacement_model_slug=gpt-4o
+    """
+    try:
+        result = await llm_db.delete_model(
+            model_id=model_id,
+            replacement_model_slug=replacement_model_slug
+        )
+        await _refresh_runtime_state()
+        logger.info(
+            "Deleted model '%s' and migrated %d nodes to '%s'",
+            result.deleted_model_slug,
+            result.nodes_migrated,
+            result.replacement_model_slug
+        )
+        return result
+    except ValueError as exc:
+        # Validation errors (model not found, replacement invalid, etc.)
+        logger.warning("Model deletion validation failed: %s", exc)
+        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to delete LLM model %s: %s", model_id, exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to delete model and migrate workflows",
+        ) from exc
+

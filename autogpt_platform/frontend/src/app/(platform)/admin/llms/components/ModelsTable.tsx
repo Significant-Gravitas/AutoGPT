@@ -1,3 +1,5 @@
+import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
+
 import {
   Table,
   TableBody,
@@ -5,9 +7,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
-import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
+} from "@/components/atoms/Table/Table";
+
 import { toggleLlmModelAction } from "../actions";
+import { DeleteModelModal } from "./DeleteModelModal";
 import { EditModelModal } from "./EditModelModal";
 
 export function ModelsTable({
@@ -25,7 +28,9 @@ export function ModelsTable({
     );
   }
 
-  const providerLookup = new Map(providers.map((provider) => [provider.id, provider]));
+  const providerLookup = new Map(
+    providers.map((provider) => [provider.id, provider]),
+  );
 
   return (
     <div className="rounded-lg border">
@@ -52,7 +57,9 @@ export function ModelsTable({
               >
                 <TableCell>
                   <div className="font-medium">{model.display_name}</div>
-                  <div className="text-xs text-muted-foreground">{model.slug}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {model.slug}
+                  </div>
                 </TableCell>
                 <TableCell>
                   {provider ? (
@@ -75,7 +82,9 @@ export function ModelsTable({
                 <TableCell>
                   {cost ? (
                     <>
-                      <div className="font-medium">{cost.credit_cost} credits</div>
+                      <div className="font-medium">
+                        {cost.credit_cost} credits
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {cost.credential_provider}
                       </div>
@@ -97,8 +106,15 @@ export function ModelsTable({
                 </TableCell>
                 <TableCell className="text-right text-sm">
                   <div className="flex items-center justify-end gap-2">
-                    <ToggleModelButton modelId={model.id} isEnabled={model.is_enabled} />
+                    <ToggleModelButton
+                      modelId={model.id}
+                      isEnabled={model.is_enabled}
+                    />
                     <EditModelModal model={model} providers={providers} />
+                    <DeleteModelModal
+                      model={model}
+                      availableModels={models}
+                    />
                   </div>
                 </TableCell>
               </TableRow>

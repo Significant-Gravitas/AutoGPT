@@ -1,14 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/__legacy__/ui/dialog";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Button } from "@/components/atoms/Button/Button";
 import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
 import { updateLlmModelAction } from "../actions";
 
@@ -24,22 +18,23 @@ export function EditModelModal({
   const provider = providers.find((p) => p.id === model.provider_id);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <Dialog
+      title="Edit Model"
+      controlled={{ isOpen: open, set: setOpen }}
+      styling={{ maxWidth: "768px", maxHeight: "90vh", overflowY: "auto" }}
+    >
+      <Dialog.Trigger>
         <button
           type="button"
           className="inline-flex items-center rounded border border-input px-3 py-1 text-xs font-semibold hover:bg-muted"
         >
           Edit
         </button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Model</DialogTitle>
-          <DialogDescription>
-            Update model metadata and pricing information.
-          </DialogDescription>
-        </DialogHeader>
+      </Dialog.Trigger>
+      <Dialog.Content>
+        <div className="mb-4 text-sm text-muted-foreground">
+          Update model metadata and pricing information.
+        </div>
         <form
           action={async (formData) => {
             await updateLlmModelAction(formData);
@@ -161,23 +156,20 @@ export function EditModelModal({
             Enabled
           </label>
 
-          <div className="flex justify-end gap-2 pt-4">
-            <button
-              type="button"
+          <Dialog.Footer>
+            <Button
+              variant="ghost"
+              size="small"
               onClick={() => setOpen(false)}
-              className="inline-flex items-center rounded border border-input px-4 py-2 text-sm font-semibold hover:bg-muted"
             >
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="inline-flex items-center rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-            >
+            </Button>
+            <Button variant="primary" size="small" type="submit">
               Update Model
-            </button>
-          </div>
+            </Button>
+          </Dialog.Footer>
         </form>
-      </DialogContent>
+      </Dialog.Content>
     </Dialog>
   );
 }

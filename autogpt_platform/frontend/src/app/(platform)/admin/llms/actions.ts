@@ -144,3 +144,22 @@ export async function toggleLlmModelAction(formData: FormData) {
   revalidatePath(ADMIN_LLM_PATH);
 }
 
+export async function deleteLlmModelAction(formData: FormData) {
+  try {
+    const modelId = String(formData.get("model_id"));
+    const replacementModelSlug = String(formData.get("replacement_model_slug"));
+
+    if (!replacementModelSlug) {
+      throw new Error("Replacement model is required");
+    }
+
+    const api = new BackendApi();
+    const result = await api.deleteAdminLlmModel(modelId, replacementModelSlug);
+    revalidatePath(ADMIN_LLM_PATH);
+    return result;
+  } catch (error) {
+    console.error("Delete model error:", error);
+    throw error instanceof Error ? error : new Error("Failed to delete model");
+  }
+}
+

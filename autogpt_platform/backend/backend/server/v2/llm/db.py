@@ -203,3 +203,120 @@ async def toggle_model(model_id: str, is_enabled: bool) -> llm_model.LlmModel:
     )
     return _map_model(record)
 
+
+async def get_model_usage(model_id: str) -> llm_model.LlmModelUsageResponse:
+    """Get usage count for a model."""
+    import prisma as prisma_module
+
+    model = await prisma.models.LlmModel.prisma().find_unique(
+        where={"id": model_id}
+    )
+    if not model:
+        raise ValueError(f"Model with id '{model_id}' not found")
+
+    count_result = await prisma_module.get_client().query_raw(
+        """
+        SELECT COUNT(*) as count
+        FROM "AgentNode"
+        WHERE "constantInput"::jsonb->>'model' = $1
+        """,
+        model.slug
+    )
+    node_count = int(count_result[0]["count"]) if count_result else 0
+
+    return llm_model.LlmModelUsageResponse(
+        model_slug=model.slug,
+        node_count=node_count
+    )
+
+
+async def delete_model(
+    model_id: str,
+    replacement_model_slug: str
+) -> llm_model.DeleteLlmModelResponse:
+    """
+    Delete a model and migrate all AgentNodes using it to a replacement model.
+
+    This performs an atomic operation:
+    1. Validates the model exists
+    2. Validates the replacement model exists and is enabled
+    3. Counts affected nodes
+    4. Migrates all AgentNode.constantInput->model to replacement
+    5. Deletes the LlmModel record (CASCADE deletes costs)
+
+    Args:
+        model_id: UUID of the model to delete
+        replacement_model_slug: Slug of the model to migrate to
+
+    Returns:
+        DeleteLlmModelResponse with migration stats
+
+    Raises:
+        ValueError: If model not found, replacement not found, or replacement is disabled
+    """
+    import prisma as prisma_module
+
+    # 1. Get the model being deleted
+    model = await prisma.models.LlmModel.prisma().find_unique(
+        where={"id": model_id},
+        include={"Costs": True}
+    )
+    if not model:
+        raise ValueError(f"Model with id '{model_id}' not found")
+
+    deleted_slug = model.slug
+    deleted_display_name = model.displayName
+
+    # 2. Validate replacement model exists and is enabled
+    replacement = await prisma.models.LlmModel.prisma().find_unique(
+        where={"slug": replacement_model_slug}
+    )
+    if not replacement:
+        raise ValueError(f"Replacement model '{replacement_model_slug}' not found")
+    if not replacement.isEnabled:
+        raise ValueError(
+            f"Replacement model '{replacement_model_slug}' is disabled. "
+            f"Please enable it before using it as a replacement."
+        )
+
+    # 3. Count affected nodes
+    count_result = await prisma_module.get_client().query_raw(
+        """
+        SELECT COUNT(*) as count
+        FROM "AgentNode"
+        WHERE "constantInput"::jsonb->>'model' = $1
+        """,
+        deleted_slug
+    )
+    nodes_affected = int(count_result[0]["count"]) if count_result else 0
+
+    # 4. Perform migration
+    if nodes_affected > 0:
+        await prisma_module.get_client().execute_raw(
+            """
+            UPDATE "AgentNode"
+            SET "constantInput" = JSONB_SET(
+                "constantInput"::jsonb,
+                '{model}',
+                to_jsonb($1::text)
+            )
+            WHERE "constantInput"::jsonb->>'model' = $2
+            """,
+            replacement_model_slug,
+            deleted_slug
+        )
+
+    # 5. Delete the model (CASCADE will delete costs automatically)
+    await prisma.models.LlmModel.prisma().delete(where={"id": model_id})
+
+    return llm_model.DeleteLlmModelResponse(
+        deleted_model_slug=deleted_slug,
+        deleted_model_display_name=deleted_display_name,
+        replacement_model_slug=replacement_model_slug,
+        nodes_migrated=nodes_affected,
+        message=(
+            f"Successfully deleted model '{deleted_display_name}' ({deleted_slug}) "
+            f"and migrated {nodes_affected} workflow node(s) to '{replacement_model_slug}'."
+        )
+    )
+

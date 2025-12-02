@@ -471,6 +471,29 @@ export default class BackendAPI {
     );
   }
 
+  getAdminLlmModelUsage(
+    modelId: string,
+  ): Promise<{ model_slug: string; node_count: number }> {
+    return this._get(`/llm/admin/llm/models/${modelId}/usage`);
+  }
+
+  deleteAdminLlmModel(
+    modelId: string,
+    replacementModelSlug: string,
+  ): Promise<{
+    deleted_model_slug: string;
+    deleted_model_display_name: string;
+    replacement_model_slug: string;
+    nodes_migrated: number;
+    message: string;
+  }> {
+    return this._request(
+      "DELETE",
+      `/llm/admin/llm/models/${modelId}`,
+      { replacement_model_slug: replacementModelSlug },
+    );
+  }
+
   // API Key related requests
   async createAPIKey(
     name: string,
