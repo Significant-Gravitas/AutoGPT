@@ -523,6 +523,7 @@ async def update_agent_version_in_library(
                     },
                 },
             },
+            include={"AgentGraph": True},
         )
         if lib is None:
             raise NotFoundError(f"Library agent {library_agent.id} not found")

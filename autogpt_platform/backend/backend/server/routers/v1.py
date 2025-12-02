@@ -143,6 +143,28 @@ async def hide_activity_summary_if_disabled(
     return execution
 
 
+async def _update_library_agent_version_and_settings(
+    user_id: str, agent_graph: graph_db.GraphModel
+) -> library_db.library_model.LibraryAgent:
+    # Keep the library agent up to date with the new active version
+    library = await library_db.update_agent_version_in_library(
+        user_id, agent_graph.id, agent_graph.version
+    )
+    # If the graph has HITL node, initialize the setting if it's not already set.
+    if (
+        agent_graph.has_human_in_the_loop
+        and library.settings.human_in_the_loop_safe_mode is None
+    ):
+        await library_db.update_library_agent_settings(
+            user_id=user_id,
+            agent_id=library.id,
+            settings=library.settings.model_copy(
+                update={"human_in_the_loop_safe_mode": True}
+            ),
+        )
+    return library
+
+
 # Define the API routes
 v1_router = APIRouter()
 
@@ -838,18 +860,7 @@ async def update_graph(
 
     if new_graph_version.is_active:
         # Keep the library agent up to date with the new active version
-        library = await library_db.update_agent_version_in_library(
-            user_id, graph.id, graph.version
-        )
-        if (
-            new_graph_version.has_human_in_the_loop
-            and library.settings.human_in_the_loop_safe_mode is None
-        ):
-            await library_db.update_library_agent_settings(
-                user_id=user_id,
-                agent_id=library.id,
-                settings=GraphSettings(human_in_the_loop_safe_mode=True),
-            )
+        await _update_library_agent_version_and_settings(user_id, new_graph_version)
 
         # Handle activation of the new graph first to ensure continuity
         new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
@@ -906,18 +917,7 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    library = await library_db.update_agent_version_in_library(
-        user_id, new_active_graph.id, new_active_graph.version
-    )
-    if (
-        new_active_graph.has_human_in_the_loop
-        and library.settings.human_in_the_loop_safe_mode is None
-    ):
-        await library_db.update_library_agent_settings(
-            user_id=user_id,
-            agent_id=library.id,
-            settings=GraphSettings(human_in_the_loop_safe_mode=True),
-        )
+    await _update_library_agent_version_and_settings(user_id, new_active_graph)
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
