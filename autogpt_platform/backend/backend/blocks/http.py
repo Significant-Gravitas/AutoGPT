@@ -184,7 +184,10 @@ class SendWebRequestBlock(Block):
             )
 
         # ─── Execute request ─────────────────────────────────────────
-        response = await Requests().request(
+        # Use raise_for_status=False so HTTP errors (4xx, 5xx) are returned
+        # as response objects instead of raising exceptions, allowing proper
+        # handling via client_error and server_error outputs
+        response = await Requests(raise_for_status=False).request(
             input_data.method.value,
             input_data.url,
             headers=input_data.headers,
