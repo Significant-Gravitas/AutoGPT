@@ -1110,15 +1110,19 @@ async def get_latest_node_execution(
 
 
 class GraphExecutionEntry(BaseModel):
+    model_config = {"extra": "ignore"}
+
     user_id: str
     graph_exec_id: str
     graph_id: str
     graph_version: int
     nodes_input_masks: Optional[NodesInputMasks] = None
-    execution_context: ExecutionContext
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
 
 
 class NodeExecutionEntry(BaseModel):
+    model_config = {"extra": "ignore"}
+
     user_id: str
     graph_exec_id: str
     graph_id: str
@@ -1127,7 +1131,7 @@ class NodeExecutionEntry(BaseModel):
     node_id: str
     block_id: str
     inputs: BlockInput
-    execution_context: ExecutionContext
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
 
 
 class ExecutionQueue(Generic[T]):
