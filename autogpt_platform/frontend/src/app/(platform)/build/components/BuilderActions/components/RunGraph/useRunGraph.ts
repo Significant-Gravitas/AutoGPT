@@ -21,6 +21,9 @@ export const useRunGraph = () => {
   const hasCredentials = useGraphStore(
     useShallow((state) => state.hasCredentials),
   );
+  const setIsGraphRunning = useGraphStore(
+    useShallow((state) => state.setIsGraphRunning),
+  );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
 
   const setNodeErrorsForBackendId = useNodeStore(
@@ -48,6 +51,7 @@ export const useRunGraph = () => {
           });
         },
         onError: (error: any) => {
+          setIsGraphRunning(false);
           if (error instanceof ApiError && error.isGraphValidationError?.()) {
             const errorData = error.response?.detail;
 
@@ -107,6 +111,8 @@ export const useRunGraph = () => {
     if (hasInputs() || hasCredentials()) {
       setOpenRunInputDialog(true);
     } else {
+      // Optimistically set running state immediately for responsive UI
+      setIsGraphRunning(true);
       await executeGraph({
         graphId: flowID ?? "",
         graphVersion: flowVersion || null,
