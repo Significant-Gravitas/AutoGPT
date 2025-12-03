@@ -92,7 +92,7 @@ export function PendingReviewsList({
     setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
   }
 
-  function handleApprove() {
+  function processReviews(approved: boolean) {
     if (reviews.length === 0) {
       toast({
         title: "No reviews to process",
@@ -102,33 +102,45 @@ export function PendingReviewsList({
       return;
     }
 
-    setPendingAction("approve");
+    setPendingAction(approved ? "approve" : "reject");
     const reviewItems = [];
 
     for (const review of reviews) {
       const reviewData = reviewDataMap[review.node_exec_id];
       const reviewMessage = reviewMessageMap[review.node_exec_id];
 
-      let parsedData;
+      let parsedData: any = review.payload; // Default to original payload
+
       if (review.editable && reviewData) {
         try {
           parsedData = JSON.parse(reviewData);
-          if (JSON.stringify(parsedData) === JSON.stringify(review.payload)) {
+
+          // For approvals, only send data if it's different from original
+          if (
+            approved &&
+            JSON.stringify(parsedData) === JSON.stringify(review.payload)
+          ) {
             parsedData = undefined;
           }
         } catch (error) {
-          toast({
-            title: "Invalid JSON",
-            description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
-            variant: "destructive",
-          });
-          return;
+          if (approved) {
+            // For approvals, show error and stop processing
+            toast({
+              title: "Invalid JSON",
+              description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+              variant: "destructive",
+            });
+            return;
+          } else {
+            // For rejections, fall back to original payload
+            parsedData = review.payload;
+          }
         }
       }
 
       reviewItems.push({
         node_exec_id: review.node_exec_id,
-        approved: true,
+        approved,
         reviewed_data: parsedData,
         message: reviewMessage || undefined,
       });
@@ -141,45 +153,12 @@ export function PendingReviewsList({
     });
   }
 
+  function handleApprove() {
+    processReviews(true);
+  }
+
   function handleStopTask() {
-    if (reviews.length === 0) {
-      toast({
-        title: "No reviews to process",
-        description: "No reviews found to process.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setPendingAction("reject");
-    const reviewItems = reviews.map((review) => {
-      const reviewData = reviewDataMap[review.node_exec_id];
-      let parsedData = review.payload; // Default to original payload
-
-      // If user modified the data and it's valid JSON, use that instead
-      if (review.editable && reviewData) {
-        try {
-          const parsed = JSON.parse(reviewData);
-          parsedData = parsed;
-        } catch {
-          // If parsing fails, use original payload
-          parsedData = review.payload;
-        }
-      }
-
-      return {
-        node_exec_id: review.node_exec_id,
-        approved: false,
-        reviewed_data: parsedData,
-        message: reviewMessageMap[review.node_exec_id] || undefined,
-      };
-    });
-
-    reviewActionMutation.mutate({
-      data: {
-        reviews: reviewItems,
-      },
-    });
+    processReviews(false);
   }
 
   if (reviews.length === 0) {
