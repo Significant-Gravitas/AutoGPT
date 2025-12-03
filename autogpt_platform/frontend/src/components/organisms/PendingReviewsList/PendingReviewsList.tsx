@@ -152,12 +152,28 @@ export function PendingReviewsList({
     }
 
     setPendingAction("reject");
-    const reviewItems = reviews.map((review) => ({
-      node_exec_id: review.node_exec_id,
-      approved: false,
-      reviewed_data: undefined,
-      message: reviewMessageMap[review.node_exec_id] || undefined,
-    }));
+    const reviewItems = reviews.map((review) => {
+      const reviewData = reviewDataMap[review.node_exec_id];
+      let parsedData = review.payload; // Default to original payload
+
+      // If user modified the data and it's valid JSON, use that instead
+      if (review.editable && reviewData) {
+        try {
+          const parsed = JSON.parse(reviewData);
+          parsedData = parsed;
+        } catch {
+          // If parsing fails, use original payload
+          parsedData = review.payload;
+        }
+      }
+
+      return {
+        node_exec_id: review.node_exec_id,
+        approved: false,
+        reviewed_data: parsedData,
+        message: reviewMessageMap[review.node_exec_id] || undefined,
+      };
+    });
 
     reviewActionMutation.mutate({
       data: {
