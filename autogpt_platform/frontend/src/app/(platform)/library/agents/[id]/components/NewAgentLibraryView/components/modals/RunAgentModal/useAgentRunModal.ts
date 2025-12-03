@@ -89,7 +89,10 @@ export function useAgentRunModal(
       onError: (error: any) => {
         toast({
           title: "❌ Failed to execute agent",
-          description: error.message || "An unexpected error occurred.",
+          description:
+            error.response.detail.message ||
+            error.message ||
+            "An unexpected error occurred",
           variant: "destructive",
         });
       },
