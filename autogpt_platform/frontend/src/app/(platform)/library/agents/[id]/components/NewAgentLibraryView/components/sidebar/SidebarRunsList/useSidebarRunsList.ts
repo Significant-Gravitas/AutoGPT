@@ -6,12 +6,13 @@ import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/end
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { okData } from "@/app/api/helpers";
+import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 import {
   computeRunsCount,
   extractRunsFromPages,
   getNextRunsPageParam,
-  getRunsPollingInterval,
 } from "./helpers";
 
 function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
@@ -42,6 +43,7 @@ export function useSidebarRunsList({
   });
 
   const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
+  const queryClient = useQueryClient();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId || "",
@@ -49,9 +51,6 @@ export function useSidebarRunsList({
     {
       query: {
         enabled: !!graphId,
-        refetchInterval: (q) =>
-          getRunsPollingInterval(q.state.data?.pages, tabValue === "runs"),
-        refetchIntervalInBackground: true,
         refetchOnWindowFocus: false,
         getNextPageParam: getNextRunsPageParam,
       },
@@ -78,6 +77,19 @@ export function useSidebarRunsList({
   const runsCount = computeRunsCount(runsQuery.data, runs.length);
   const schedulesCount = schedules.length;
   const loading = !schedulesQuery.isSuccess || !runsQuery.isSuccess;
+
+  // Update query cache when execution events arrive via websocket
+  useExecutionEvents({
+    graphId: graphId || undefined,
+    enabled: !!graphId && tabValue === "runs",
+    onExecutionUpdate: (_execution) => {
+      // Invalidate and refetch the query to ensure we have the latest data
+      // This is simpler and more reliable than manually updating the cache
+      // The queryKey is stable and includes the graphId, so this only invalidates
+      // queries for this specific graph's executions
+      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+    },
+  });
 
   // Notify parent about counts and loading state
   useEffect(() => {

@@ -77,7 +77,7 @@ export function useNewAgentLibraryView() {
     });
   }
 
-  function handleSetActiveTab(tab: "runs" | "scheduled") {
+  function handleSetActiveTab(tab: "runs" | "scheduled" | "templates") {
     setQueryStates({
       activeTab: tab,
     });

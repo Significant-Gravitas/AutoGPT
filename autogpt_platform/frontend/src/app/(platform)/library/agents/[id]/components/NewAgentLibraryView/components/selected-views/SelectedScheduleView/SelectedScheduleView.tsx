@@ -13,6 +13,7 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
+import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
@@ -68,7 +69,7 @@ export function SelectedScheduleView({
 
   if (isLoading && !schedule) {
     return (
-      <div className="flex-1 space-y-4">
+      <div className="flex-1 space-y-4 px-4">
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-64 w-full" />
@@ -103,7 +104,7 @@ export function SelectedScheduleView({
       </div>
 
       <TabsLine defaultValue="input">
-        <TabsLineList>
+        <TabsLineList className={AGENT_LIBRARY_SECTION_PADDING_X}>
           <TabsLineTrigger value="input">Your input</TabsLineTrigger>
           <TabsLineTrigger value="schedule">Schedule</TabsLineTrigger>
         </TabsLineList>

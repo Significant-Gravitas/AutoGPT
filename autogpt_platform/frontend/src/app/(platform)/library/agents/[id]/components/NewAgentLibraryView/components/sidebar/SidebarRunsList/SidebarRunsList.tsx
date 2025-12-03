@@ -23,7 +23,7 @@ interface Props {
   selectedRunId?: string;
   onSelectRun: (id: string, tab?: "runs" | "scheduled") => void;
   onClearSelectedRun?: () => void;
-  onTabChange?: (tab: "runs" | "scheduled") => void;
+  onTabChange?: (tab: "runs" | "scheduled" | "templates") => void;
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
@@ -74,7 +74,7 @@ export function SidebarRunsList({
     <TabsLine
       value={tabValue}
       onValueChange={(v) => {
-        const value = v as "runs" | "scheduled";
+        const value = v as "runs" | "scheduled" | "templates";
         onTabChange?.(value);
         if (value === "runs") {
           if (runs && runs.length) {
@@ -82,12 +82,14 @@ export function SidebarRunsList({
           } else {
             onClearSelectedRun?.();
           }
-        } else {
+        } else if (value === "scheduled") {
           if (schedules && schedules.length) {
             onSelectRun(schedules[0].id, "scheduled");
           } else {
             onClearSelectedRun?.();
           }
+        } else if (value === "templates") {
+          onClearSelectedRun?.();
         }
       }}
       className="flex min-h-0 flex-col overflow-hidden"
@@ -134,7 +136,7 @@ export function SidebarRunsList({
         <TabsLineContent
           value="scheduled"
           className={cn(
-            "flex min-h-0 flex-1 flex-col",
+            "mt-0 flex min-h-0 flex-1 flex-col",
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
