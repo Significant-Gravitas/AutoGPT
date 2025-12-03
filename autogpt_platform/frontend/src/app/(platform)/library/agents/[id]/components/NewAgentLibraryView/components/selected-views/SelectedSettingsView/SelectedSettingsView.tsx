@@ -18,38 +18,39 @@ export function SelectedSettingsView({
     useAgentSafeMode(agent);
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="flex items-center gap-4">
+    <div className="flex h-full flex-col gap-4 pl-5">
+      <div className="flex items-center gap-3">
         <Button
           variant="ghost"
-          size="small"
+          size="icon"
           onClick={onClearSelectedRun}
-          leftIcon={<ArrowLeftIcon size={20} />}
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 p-3 hover:border-zinc-300"
         >
-          Back
+          <ArrowLeftIcon size={20} />
         </Button>
-        <Text variant="h1">Agent Settings</Text>
+        <Text
+          variant="h1"
+          className="text-[32px] font-medium leading-10 tracking-[-0.32px] text-neutral-900"
+          style={{ fontFamily: "Poppins" }}
+        >
+          Agent Settings
+        </Text>
       </div>
 
       <div className="flex-1">
         {!hasHITLBlocks ? (
-          <div className="rounded-lg border p-6">
+          <div className="rounded-xl border border-zinc-100 bg-white p-6">
             <Text variant="body" className="text-muted-foreground">
               This agent doesn&apos;t have any human-in-the-loop blocks, so
               there are no settings to configure.
             </Text>
           </div>
         ) : (
-          <div className="rounded-lg border p-6">
-            <div className="flex items-start justify-between gap-4">
+          <div className="flex w-full max-w-[690px] flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white px-7 pb-7 pt-6">
+            <div className="flex w-full items-start justify-between gap-4">
               <div className="flex-1">
-                <Text
-                  variant="body-medium"
-                  className="font-semibold text-black"
-                >
-                  Require human approval
-                </Text>
-                <Text variant="body" className="mt-1 text-gray-600">
+                <Text variant="lead-semibold">Require human approval</Text>
+                <Text variant="large" className="mt-1 text-zinc-900">
                   The agent will pause and wait for your review before
                   continuing
                 </Text>

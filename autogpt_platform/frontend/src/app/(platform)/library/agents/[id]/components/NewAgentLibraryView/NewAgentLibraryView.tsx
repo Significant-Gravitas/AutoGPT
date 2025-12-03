@@ -86,7 +86,7 @@ export function NewAgentLibraryView() {
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <RunAgentModal
               triggerSlot={
                 <Button variant="primary" size="large" className="flex-1">
