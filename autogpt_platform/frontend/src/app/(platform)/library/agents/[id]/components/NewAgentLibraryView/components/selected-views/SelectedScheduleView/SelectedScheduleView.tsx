@@ -78,7 +78,7 @@ export function SelectedScheduleView({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div>
         <div className="flex w-full items-center justify-between">
           <div className="flex w-full flex-col gap-0">
