@@ -237,8 +237,20 @@ async def execute_node(
             # Extract credential ID from _credentials_id field
             cred_id = field_data.get("_credentials_id")
             if cred_id:
-                credentials, creds_lock = await creds_manager.acquire(user_id, cred_id)
-                extra_exec_kwargs[kwarg_name] = credentials
+                provider = info.get("config", {}).get("provider", "external service")
+                file_name = field_data.get("name", "selected file")
+                try:
+                    credentials, creds_lock = await creds_manager.acquire(
+                        user_id, cred_id
+                    )
+                    extra_exec_kwargs[kwarg_name] = credentials
+                except ValueError:
+                    # Credential was deleted or doesn't exist
+                    raise ValueError(
+                        f"Authentication expired for '{file_name}' in field '{field_name}'. "
+                        f"The saved {provider.capitalize()} credentials no longer exist. "
+                        f"Please re-select the file to re-authenticate."
+                    )
             else:
                 # Credential ID is required but missing - provide clear error
                 provider = info.get("config", {}).get("provider", "external service")
