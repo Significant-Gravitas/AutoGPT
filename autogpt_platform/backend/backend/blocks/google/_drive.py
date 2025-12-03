@@ -69,7 +69,6 @@ def GoogleDriveFileField(
     credentials_scopes: list[str] | None = None,
     allowed_views: list[AttachmentView] | None = None,
     allowed_mime_types: list[str] | None = None,
-    allow_folder_selection: bool = False,
     placeholder: str | None = None,
     **kwargs: Any,
 ) -> Any:
@@ -91,7 +90,6 @@ def GoogleDriveFileField(
         credentials_scopes: OAuth scopes required (default: drive.file)
         allowed_views: List of view types to show in picker (default: ["DOCS"])
         allowed_mime_types: Filter by MIME types
-        allow_folder_selection: Allow selecting folders (not yet supported)
         placeholder: Placeholder text for the button
         **kwargs: Additional SchemaField arguments
 
@@ -113,12 +111,6 @@ def GoogleDriveFileField(
         ...         # creds is automatically populated
         ...         file = input_data.spreadsheet
     """
-    # Folder selection requires broader drive scope - not yet supported
-    if allow_folder_selection:
-        raise NotImplementedError(
-            "allow_folder_selection=True is not yet supported. "
-            "Only drive.file scope is currently approved for OAuth."
-        )
 
     # Determine scopes - drive.file is sufficient for picker-selected files
     scopes = credentials_scopes or ["https://www.googleapis.com/auth/drive.file"]
@@ -126,7 +118,7 @@ def GoogleDriveFileField(
     # Build picker configuration with auto_credentials embedded
     picker_config = {
         "multiselect": False,
-        "allow_folder_selection": allow_folder_selection,
+        "allow_folder_selection": False,
         "allowed_views": list(allowed_views) if allowed_views else ["DOCS"],
         "scopes": scopes,
         # Auto-credentials config tells frontend to include _credentials_id in output

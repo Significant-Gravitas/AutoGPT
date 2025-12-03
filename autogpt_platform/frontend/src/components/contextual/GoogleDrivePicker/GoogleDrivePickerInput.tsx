@@ -91,6 +91,7 @@ export function GoogleDrivePickerInput({
         views={config.allowed_views || ["DOCS"]}
         scopes={config.scopes || ["https://www.googleapis.com/auth/drive.file"]}
         disabled={false}
+        requirePlatformCredentials={hasAutoCredentials}
         onPicked={handlePicked}
         onCanceled={() => {
           // User canceled - no action needed

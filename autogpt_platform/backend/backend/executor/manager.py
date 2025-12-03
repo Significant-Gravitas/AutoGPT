@@ -239,6 +239,14 @@ async def execute_node(
             if cred_id:
                 credentials, creds_lock = await creds_manager.acquire(user_id, cred_id)
                 extra_exec_kwargs[kwarg_name] = credentials
+            else:
+                # Credential ID is required but missing - provide clear error
+                provider = info.get("config", {}).get("provider", "external service")
+                file_name = field_data.get("name", "selected file")
+                raise ValueError(
+                    f"Authentication missing for '{file_name}' in field '{field_name}'. "
+                    f"Please re-select the file to authenticate with {provider.capitalize()}."
+                )
 
     output_size = 0
 

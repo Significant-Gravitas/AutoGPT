@@ -2019,8 +2019,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             )
 
             # Rename first sheet if custom name provided (default is "Sheet1")
-            first_sheet_name = sheet_names[0] if sheet_names else "Sheet1"
-            if first_sheet_name != "Sheet1":
+            if sheet_names and sheet_names[0] != "Sheet1":
                 # Get first sheet ID and rename it
                 meta = (
                     sheets_service.spreadsheets()
@@ -2036,7 +2035,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
                                 "updateSheetProperties": {
                                     "properties": {
                                         "sheetId": first_sheet_id,
-                                        "title": first_sheet_name,
+                                        "title": sheet_names[0],
                                     },
                                     "fields": "title",
                                 }

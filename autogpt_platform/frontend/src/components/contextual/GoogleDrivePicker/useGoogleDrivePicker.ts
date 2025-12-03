@@ -34,11 +34,8 @@ export type Props = {
   disableThumbnails?: boolean;
   buttonText?: string;
   disabled?: boolean;
-  /**
-   * Called when files are picked.
-   * @param files - The picked files
-   * @param credentialId - The credential ID used to authenticate (for auto_credentials support)
-   */
+  /** When true, requires saved platform credentials (no consent flow fallback) */
+  requirePlatformCredentials?: boolean;
   onPicked: (files: NormalizedPickedFile[], credentialId?: string) => void;
   onCanceled: () => void;
   onError: (err: unknown) => void;
@@ -70,7 +67,6 @@ export function useGoogleDrivePicker(options: Props) {
   const accessTokenRef = useRef<string | null>(null);
   const tokenClientRef = useRef<TokenClient | null>(null);
   const pickerReadyRef = useRef(false);
-  // Track the credential ID used to open the picker
   const usedCredentialIdRef = useRef<string | undefined>(undefined);
   const credentials = useCredentials(getCredentialsSchema(requestedScopes));
   const queryClient = useQueryClient();
@@ -121,7 +117,6 @@ export function useGoogleDrivePicker(options: Props) {
       ) {
         const credentialId =
           selectedCredential?.id || credentials.savedCredentials[0].id;
-        // Track which credential was used for this picker session
         usedCredentialIdRef.current = credentialId;
 
         try {
@@ -185,6 +180,20 @@ export function useGoogleDrivePicker(options: Props) {
 
           return;
         }
+      }
+
+      // If platform credentials are required but none exist, show error
+      if (options?.requirePlatformCredentials) {
+        const error = new Error(
+          "Please connect your Google account in Settings before using this feature.",
+        );
+        toast({
+          title: "Google Account Required",
+          description: error.message,
+          variant: "destructive",
+        });
+        if (onError) onError(error);
+        return;
       }
 
       const token = accessTokenRef.current || (await requestAccessToken());
@@ -253,10 +262,19 @@ export function useGoogleDrivePicker(options: Props) {
   function buildAndShowPicker(accessToken: string): void {
     if (!developerKey) {
       const error = new Error(
-        "Google Drive Picker requires NEXT_PUBLIC_GOOGLE_API_KEY to be set",
+        "Missing Google Drive Picker Configuration: developer key is not set",
       );
       console.error("[useGoogleDrivePicker]", error.message);
-      if (onError) onError(error);
+      onError(error);
+      return;
+    }
+
+    if (!appId) {
+      const error = new Error(
+        "Missing Google Drive Picker Configuration: app ID is not set",
+      );
+      console.error("[useGoogleDrivePicker]", error.message);
+      onError(error);
       return;
     }
 
@@ -265,12 +283,8 @@ export function useGoogleDrivePicker(options: Props) {
     const builder = new gp.PickerBuilder()
       .setOAuthToken(accessToken)
       .setDeveloperKey(developerKey)
+      .setAppId(appId)
       .setCallback(handlePickerData);
-
-    // Only set appId if provided - some configurations work without it
-    if (appId) {
-      builder.setAppId(appId);
-    }
 
     if (navHidden) builder.enableFeature(gp.Feature.NAV_HIDDEN);
     if (multiselect) builder.enableFeature(gp.Feature.MULTISELECT_ENABLED);
@@ -304,7 +318,7 @@ export function useGoogleDrivePicker(options: Props) {
         onCanceled();
       }
     } catch (e) {
-      if (onError) onError(e);
+      onError(e);
     }
   }
 
@@ -330,7 +344,6 @@ export function useGoogleDrivePicker(options: Props) {
     accessToken: accessTokenRef.current,
     selectedCredential,
     setSelectedCredential,
-    /** The credential ID that was used to open the picker (for auto_credentials support) */
     usedCredentialId: usedCredentialIdRef.current,
   };
 }
