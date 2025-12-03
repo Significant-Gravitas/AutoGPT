@@ -195,8 +195,7 @@ export function PendingReviewsList({
         </div>
         <Text variant="large" className="text-textGrey">
           This task is paused until you approve the changes below. Please review
-          and edit if needed. If no action is taken within 24 hours, the agent
-          will automatically stop the task.
+          and edit if needed.
         </Text>
       </div>
 
