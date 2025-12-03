@@ -154,6 +154,12 @@ export function createRequestHeaders(
     if (impersonationHeader) {
       headers[IMPERSONATION_HEADER_NAME] = impersonationHeader;
     }
+
+    // Forward X-API-Key header if present
+    const apiKeyHeader = originalRequest.headers.get("X-API-Key");
+    if (apiKeyHeader) {
+      headers["X-API-Key"] = apiKeyHeader;
+    }
   }
 
   return headers;
