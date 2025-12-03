@@ -5343,7 +5343,10 @@
           "EXECUTE_BLOCK",
           "READ_BLOCK",
           "READ_STORE",
-          "USE_TOOLS"
+          "USE_TOOLS",
+          "MANAGE_INTEGRATIONS",
+          "READ_INTEGRATIONS",
+          "DELETE_INTEGRATIONS"
         ],
         "title": "APIKeyPermission"
       },
