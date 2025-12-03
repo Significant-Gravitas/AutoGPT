@@ -1,7 +1,6 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Text } from "@/components/atoms/Text/Text";
 import { Switch } from "@/components/atoms/Switch/Switch";
-import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { Button } from "@/components/atoms/Button/Button";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
@@ -36,8 +35,8 @@ export function SelectedSettingsView({
         {!hasHITLBlocks ? (
           <div className="rounded-lg border p-6">
             <Text variant="body" className="text-muted-foreground">
-              This agent doesn't have any human-in-the-loop blocks, so there are
-              no settings to configure.
+              This agent doesn&apos;t have any human-in-the-loop blocks, so
+              there are no settings to configure.
             </Text>
           </div>
         ) : (

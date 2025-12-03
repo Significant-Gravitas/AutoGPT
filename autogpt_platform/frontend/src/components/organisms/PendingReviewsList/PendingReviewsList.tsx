@@ -211,6 +211,8 @@ export function PendingReviewsList({
             key={review.node_exec_id}
             review={review}
             onReviewDataChange={handleReviewDataChange}
+            onReviewMessageChange={handleReviewMessageChange}
+            reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
           />
         ))}
       </div>

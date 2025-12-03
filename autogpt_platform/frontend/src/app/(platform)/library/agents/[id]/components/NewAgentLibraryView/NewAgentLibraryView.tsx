@@ -95,7 +95,9 @@ export function NewAgentLibraryView() {
               }
               agent={agent}
               agentId={agent.id.toString()}
-              onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
+              onRunCreated={(execution) =>
+                handleSelectRun(execution.id, "runs")
+              }
               onScheduleCreated={(schedule) =>
                 handleSelectRun(schedule.id, "scheduled")
               }
