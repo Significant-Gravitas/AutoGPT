@@ -69,7 +69,7 @@ export function SelectedRunView({
 
   if (isLoading && !run) {
     return (
-      <div className="flex-1 space-y-4">
+      <div className="flex-1 space-y-4 px-4">
         <Skeleton className="h-8 w-full" />
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-64 w-full" />
