@@ -14,6 +14,7 @@ import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/Pe
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect } from "react";
+import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
@@ -78,7 +79,7 @@ export function SelectedRunView({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <RunDetailHeader
         agent={agent}
         run={run}
@@ -88,7 +89,7 @@ export function SelectedRunView({
 
       {/* Content */}
       <TabsLine value={activeTab} onValueChange={setActiveTab}>
-        <TabsLineList>
+        <TabsLineList className={AGENT_LIBRARY_SECTION_PADDING_X}>
           <TabsLineTrigger value="output">Output</TabsLineTrigger>
           <TabsLineTrigger value="input">Your input</TabsLineTrigger>
           {run?.status === AgentExecutionStatus.REVIEW && (
