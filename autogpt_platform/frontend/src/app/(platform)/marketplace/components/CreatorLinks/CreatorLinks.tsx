@@ -5,6 +5,22 @@ interface CreatorLinksProps {
   links: string[];
 }
 
+function normalizeURL(url: string): string {
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    return `https://${url}`;
+  }
+  return url;
+}
+
+function getHostnameFromURL(url: string): string {
+  try {
+    const normalizedURL = normalizeURL(url);
+    return new URL(normalizedURL).hostname.replace("www.", "");
+  } catch {
+    return url.replace(/^(https?:\/\/)?(www\.)?/, "");
+  }
+}
+
 export const CreatorLinks = ({ links }: CreatorLinksProps) => {
   if (!links || links.length === 0) {
     return null;
@@ -12,13 +28,13 @@ export const CreatorLinks = ({ links }: CreatorLinksProps) => {
 
   const renderLinkButton = (url: string) => (
     <a
-      href={url}
+      href={normalizeURL(url)}
       target="_blank"
       rel="noopener noreferrer"
       className="flex min-w-[200px] flex-1 items-center justify-between rounded-[34px] border border-neutral-600 px-5 py-3 dark:border-neutral-400"
     >
       <div className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-        {new URL(url).hostname.replace("www.", "")}
+        {getHostnameFromURL(url)}
       </div>
       <div className="relative h-6 w-6">
         {getIconForSocial(url, {

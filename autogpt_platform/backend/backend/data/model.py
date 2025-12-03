@@ -434,6 +434,18 @@ class OAuthState(BaseModel):
     code_verifier: Optional[str] = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
     scopes: list[str]
+    # Fields for external API OAuth flows
+    callback_url: Optional[str] = None
+    """External app's callback URL for OAuth redirect"""
+    state_metadata: dict[str, Any] = Field(default_factory=dict)
+    """Metadata to echo back to external app on completion"""
+    initiated_by_api_key_id: Optional[str] = None
+    """ID of the API key that initiated this OAuth flow"""
+
+    @property
+    def is_external(self) -> bool:
+        """Whether this OAuth flow was initiated via external API."""
+        return self.callback_url is not None
 
 
 class UserMetadata(BaseModel):

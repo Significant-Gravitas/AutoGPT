@@ -3,6 +3,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   ArrowSquareOutIcon,
@@ -11,6 +12,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import moment from "moment";
+import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { AgentActionsDropdown } from "../AgentActionsDropdown";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { ShareRunButton } from "../ShareRunButton/ShareRunButton";
@@ -48,16 +50,13 @@ export function RunDetailHeader({
   } = useRunDetailHeader(agent.graph_id, run, onSelectRun, onClearSelectedRun);
 
   return (
-    <div>
+    <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
       <div className="flex w-full items-center justify-between">
         <div className="flex w-full flex-col gap-0">
-          <div className="flex w-full flex-col flex-wrap items-start justify-between gap-2 md:flex-row md:items-center">
-            <div className="flex min-w-0 flex-1 flex-col items-start gap-2 md:flex-row md:items-center">
+          <div className="flex w-full flex-col flex-wrap items-start justify-between gap-1 md:flex-row md:items-center">
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-3">
               {run?.status ? <RunStatusBadge status={run.status} /> : null}
-              <Text
-                variant="h3"
-                className="truncate text-ellipsis !font-normal"
-              >
+              <Text variant="h2" className="truncate text-ellipsis">
                 {agent.name}
               </Text>
             </div>
@@ -114,18 +113,18 @@ export function RunDetailHeader({
             ) : null}
           </div>
           {run ? (
-            <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-zinc-600">
-              <Text variant="small" className="!text-zinc-600">
+            <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-zinc-400">
+              <Text variant="small" className="text-zinc-500">
                 Started {moment(run.started_at).fromNow()}
               </Text>
               <span className="mx-1 inline-block text-zinc-200">|</span>
-              <Text variant="small" className="!text-zinc-600">
+              <Text variant="small" className="text-zinc-500">
                 Version: {run.graph_version}
               </Text>
               {run.stats?.node_exec_count !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text variant="small" className="text-zinc-500">
                     Steps: {run.stats.node_exec_count}
                   </Text>
                 </>
@@ -133,7 +132,7 @@ export function RunDetailHeader({
               {run.stats?.duration !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text variant="small" className="text-zinc-500">
                     Duration:{" "}
                     {moment.duration(run.stats.duration, "seconds").humanize()}
                   </Text>
@@ -142,7 +141,7 @@ export function RunDetailHeader({
               {run.stats?.cost !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text variant="small" className="text-zinc-500">
                     Cost: ${(run.stats.cost / 100).toFixed(2)}
                   </Text>
                 </>
@@ -150,7 +149,7 @@ export function RunDetailHeader({
               {run.stats?.activity_status && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text variant="small" className="text-zinc-500">
                     {String(run.stats.activity_status)}
                   </Text>
                 </>

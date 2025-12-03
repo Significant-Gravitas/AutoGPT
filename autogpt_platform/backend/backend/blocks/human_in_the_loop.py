@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from prisma.enums import ReviewStatus
 

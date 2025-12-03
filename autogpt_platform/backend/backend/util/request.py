@@ -11,7 +11,13 @@ from urllib.parse import quote, urljoin, urlparse
 import aiohttp
 import idna
 from aiohttp import FormData, abc
-from tenacity import retry, retry_if_result, wait_exponential_jitter
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_result,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from backend.util.json import loads
 
@@ -285,6 +291,20 @@ class Response:
         return 200 <= self.status < 300
 
 
+def _return_last_result(retry_state: RetryCallState) -> "Response":
+    """
+    Ensure the final attempt's response is returned when retrying stops.
+    """
+    if retry_state.outcome is None:
+        raise RuntimeError("Retry state is missing an outcome.")
+
+    exception = retry_state.outcome.exception()
+    if exception is not None:
+        raise exception
+
+    return retry_state.outcome.result()
+
+
 class Requests:
     """
     A wrapper around an aiohttp ClientSession that validates URLs before
@@ -299,6 +319,7 @@ class Requests:
         extra_url_validator: Callable[[URL], URL] | None = None,
         extra_headers: dict[str, str] | None = None,
         retry_max_wait: float = 300.0,
+        retry_max_attempts: int | None = None,
     ):
         self.trusted_origins = []
         for url in trusted_origins or []:
@@ -311,6 +332,9 @@ class Requests:
         self.extra_url_validator = extra_url_validator
         self.extra_headers = extra_headers
         self.retry_max_wait = retry_max_wait
+        if retry_max_attempts is not None and retry_max_attempts < 1:
+            raise ValueError("retry_max_attempts must be None or >= 1")
+        self.retry_max_attempts = retry_max_attempts
 
     async def request(
         self,
@@ -325,11 +349,17 @@ class Requests:
         max_redirects: int = 10,
         **kwargs,
     ) -> Response:
-        @retry(
-            wait=wait_exponential_jitter(max=self.retry_max_wait),
-            retry=retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
-            reraise=True,
-        )
+        retry_kwargs: dict[str, Any] = {
+            "wait": wait_exponential_jitter(max=self.retry_max_wait),
+            "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
+            "reraise": True,
+        }
+
+        if self.retry_max_attempts is not None:
+            retry_kwargs["stop"] = stop_after_attempt(self.retry_max_attempts)
+            retry_kwargs["retry_error_callback"] = _return_last_result
+
+        @retry(**retry_kwargs)
         async def _make_request() -> Response:
             return await self._request(
                 method=method,

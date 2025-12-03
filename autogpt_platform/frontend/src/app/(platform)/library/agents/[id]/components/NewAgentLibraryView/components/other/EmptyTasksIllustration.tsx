@@ -2,7 +2,7 @@ type Props = {
   className?: string;
 };
 
-export function EmptyRunsIllustration({ className }: Props) {
+export function EmptyTasksIllustration({ className }: Props) {
   return (
     <div className={className}>
       <svg

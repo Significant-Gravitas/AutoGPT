@@ -87,9 +87,13 @@ export function useAgentRunModal(
         }
       },
       onError: (error: any) => {
+        const errorMessage = error.isGraphValidationError()
+          ? error.response.detail.message
+          : error.message;
+
         toast({
           title: "❌ Failed to execute agent",
-          description: error.message || "An unexpected error occurred.",
+          description: errorMessage || "An unexpected error occurred.",
           variant: "destructive",
         });
       },

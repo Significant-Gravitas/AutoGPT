@@ -5,11 +5,11 @@ type Props = {
   className?: string;
 };
 
-export function RunDetailCard({ children, className }: Props) {
+export function SectionWrap({ children, className }: Props) {
   return (
     <div
       className={cn(
-        "mx-4 min-h-20 rounded-medium border border-zinc-100 bg-white p-6",
+        "flex min-h-0 flex-col gap-4 rounded-medium bg-[#FAFAFA] py-4",
         className,
       )}
     >

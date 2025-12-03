@@ -1,10 +1,7 @@
 "use client";
 
-import React from "react";
-import moment from "moment";
-import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { RunSidebarCard } from "./RunSidebarCard";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -13,7 +10,10 @@ import {
   WarningCircleIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
+import moment from "moment";
+import React from "react";
 import { IconWrapper } from "./RunIconWrapper";
+import { RunSidebarCard } from "./RunSidebarCard";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (

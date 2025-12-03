@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from pydantic import BaseModel, Field, field_validator
+
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
@@ -48,6 +50,25 @@ MSG_ASK_USER_FOR_VALUES = (
 MSG_WHAT_VALUES_TO_USE = (
     "What values would you like to use, or would you like to run with defaults?"
 )
+
+
+class RunAgentInput(BaseModel):
+    """Input parameters for the run_agent tool."""
+
+    username_agent_slug: str = ""
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    use_defaults: bool = False
+    schedule_name: str = ""
+    cron: str = ""
+    timezone: str = "UTC"
+
+    @field_validator(
+        "username_agent_slug", "schedule_name", "cron", "timezone", mode="before"
+    )
+    @classmethod
+    def strip_strings(cls, v: Any) -> Any:
+        """Strip whitespace from string fields."""
+        return v.strip() if isinstance(v, str) else v
 
 
 class RunAgentTool(BaseTool):
@@ -124,16 +145,11 @@ class RunAgentTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         """Execute the tool with automatic state detection."""
-        agent_slug = kwargs.get("username_agent_slug", "").strip()
-        inputs = kwargs.get("inputs", {})
-        use_defaults = kwargs.get("use_defaults", False)
-        schedule_name = kwargs.get("schedule_name", "").strip()
-        cron = kwargs.get("cron", "").strip()
-        timezone = kwargs.get("timezone", "UTC").strip()
+        params = RunAgentInput(**kwargs)
         session_id = session.session_id
 
         # Validate agent slug format
-        if not agent_slug or "/" not in agent_slug:
+        if not params.username_agent_slug or "/" not in params.username_agent_slug:
             return ErrorResponse(
                 message="Please provide an agent slug in format 'username/agent-name'",
                 session_id=session_id,
@@ -147,16 +163,16 @@ class RunAgentTool(BaseTool):
             )
 
         # Determine if this is a schedule request
-        is_schedule = bool(schedule_name or cron)
+        is_schedule = bool(params.schedule_name or params.cron)
 
         try:
             # Step 1: Fetch agent details (always happens first)
-            username, agent_name = agent_slug.split("/", 1)
+            username, agent_name = params.username_agent_slug.split("/", 1)
             graph, store_agent = await fetch_graph_from_store_slug(username, agent_name)
 
             if not graph:
                 return ErrorResponse(
-                    message=f"Agent '{agent_slug}' not found in marketplace",
+                    message=f"Agent '{params.username_agent_slug}' not found in marketplace",
                     session_id=session_id,
                 )
 
@@ -204,11 +220,11 @@ class RunAgentTool(BaseTool):
             # Get all available input fields from schema
             input_properties = graph.input_schema.get("properties", {})
             required_fields = set(graph.input_schema.get("required", []))
-            provided_inputs = set(inputs.keys())
+            provided_inputs = set(params.inputs.keys())
 
             # If agent has inputs but none were provided AND use_defaults is not set,
             # always show what's available first so user can decide
-            if input_properties and not provided_inputs and not use_defaults:
+            if input_properties and not provided_inputs and not params.use_defaults:
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
                 )
@@ -224,7 +240,7 @@ class RunAgentTool(BaseTool):
             # Check if required inputs are missing (and not using defaults)
             missing_inputs = required_fields - provided_inputs
 
-            if missing_inputs and not use_defaults:
+            if missing_inputs and not params.use_defaults:
                 # Return agent details with missing inputs info
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
@@ -249,10 +265,10 @@ class RunAgentTool(BaseTool):
                     session=session,
                     graph=graph,
                     graph_credentials=graph_credentials,
-                    inputs=inputs,
-                    schedule_name=schedule_name,
-                    cron=cron,
-                    timezone=timezone,
+                    inputs=params.inputs,
+                    schedule_name=params.schedule_name,
+                    cron=params.cron,
+                    timezone=params.timezone,
                 )
             else:
                 return await self._run_agent(
@@ -260,12 +276,12 @@ class RunAgentTool(BaseTool):
                     session=session,
                     graph=graph,
                     graph_credentials=graph_credentials,
-                    inputs=inputs,
+                    inputs=params.inputs,
                 )
 
         except NotFoundError as e:
             return ErrorResponse(
-                message=f"Agent '{agent_slug}' not found",
+                message=f"Agent '{params.username_agent_slug}' not found",
                 error=str(e) if str(e) else "not_found",
                 session_id=session_id,
             )

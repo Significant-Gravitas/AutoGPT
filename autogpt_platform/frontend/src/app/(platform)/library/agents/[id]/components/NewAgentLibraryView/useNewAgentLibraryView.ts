@@ -2,8 +2,15 @@ import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/libra
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useParams } from "next/navigation";
-import { parseAsString, useQueryState } from "nuqs";
-import { useCallback, useMemo, useState } from "react";
+import { parseAsString, useQueryStates } from "nuqs";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
+  if (value === "runs" || value === "scheduled" || value === "templates") {
+    return value;
+  }
+  return "runs";
+}
 
 export function useNewAgentLibraryView() {
   const { id } = useParams();
@@ -18,8 +25,21 @@ export function useNewAgentLibraryView() {
     },
   });
 
-  const [runParam, setRunParam] = useQueryState("executionId", parseAsString);
-  const selectedRun = runParam ?? undefined;
+  const [{ activeItem, activeTab: activeTabRaw }, setQueryStates] =
+    useQueryStates({
+      activeItem: parseAsString,
+      activeTab: parseAsString,
+    });
+
+  const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
+
+  useEffect(() => {
+    if (!activeTabRaw) {
+      setQueryStates({
+        activeTab: "runs",
+      });
+    }
+  }, [activeTabRaw, setQueryStates]);
 
   const [sidebarCounts, setSidebarCounts] = useState({
     runsCount: 0,
@@ -37,18 +57,38 @@ export function useNewAgentLibraryView() {
 
   // Show sidebar layout while loading or when there are items or settings is selected
   const showSidebarLayout =
-    sidebarLoading || hasAnyItems || selectedRun === "settings";
+    sidebarLoading || hasAnyItems || activeItem === "settings";
 
-  function handleSelectRun(id: string) {
-    setRunParam(id, { shallow: true });
+  useEffect(() => {
+    if (response) {
+      document.title = `${response.name} - Library - AutoGPT Platform`;
+    }
+  }, [response]);
+
+  function handleSelectRun(id: string, tab?: "runs" | "scheduled") {
+    setQueryStates({
+      activeItem: id,
+      activeTab: tab ?? "runs",
+    });
   }
 
   function handleClearSelectedRun() {
-    setRunParam(null, { shallow: true });
+    setQueryStates({
+      activeItem: null,
+    });
+  }
+
+  function handleSetActiveTab(tab: "runs" | "scheduled" | "templates") {
+    setQueryStates({
+      activeTab: tab,
+    });
   }
 
   function handleSelectSettings() {
-    setRunParam("settings", { shallow: true });
+    setQueryStates({
+      activeItem: "settings",
+      activeTab: "runs", // Reset to runs tab when going to settings
+    });
   }
 
   const handleCountsChange = useCallback(
@@ -75,8 +115,10 @@ export function useNewAgentLibraryView() {
     agent: response,
     hasAnyItems,
     showSidebarLayout,
-    selectedRun,
+    activeItem,
     sidebarLoading,
+    activeTab,
+    setActiveTab: handleSetActiveTab,
     handleClearSelectedRun,
     handleCountsChange,
     handleSelectRun,
