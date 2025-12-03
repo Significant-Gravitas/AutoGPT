@@ -12,6 +12,10 @@ on:
       - "autogpt_platform/**"
   merge_group:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.number || '' }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash
