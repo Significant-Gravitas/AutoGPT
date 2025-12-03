@@ -134,9 +134,11 @@ async def process_review_action(
     # Build review decisions map
     review_decisions = {}
     for review in request.reviews:
-        status = ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
+        review_status = (
+            ReviewStatus.APPROVED if review.approved else ReviewStatus.REJECTED
+        )
         review_decisions[review.node_exec_id] = (
-            status,
+            review_status,
             review.reviewed_data,
             review.message,
         )
