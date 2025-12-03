@@ -143,7 +143,7 @@ async def process_review_action(
         else:
             review_decisions[review.node_exec_id] = (
                 ReviewStatus.REJECTED,
-                None,
+                review.reviewed_data,
                 review.message,
             )
 
