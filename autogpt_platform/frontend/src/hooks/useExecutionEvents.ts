@@ -33,7 +33,6 @@ export function useExecutionEvents({
   const api = useBackendAPI();
   const onExecutionUpdateRef = useRef(onExecutionUpdate);
 
-  // Keep the callback ref up to date
   useEffect(() => {
     onExecutionUpdateRef.current = onExecutionUpdate;
   }, [onExecutionUpdate]);
@@ -44,17 +43,26 @@ export function useExecutionEvents({
     const idsToSubscribe = graphIds || (graphId ? [graphId] : []);
     if (idsToSubscribe.length === 0) return;
 
+    // Normalize IDs to strings for consistent comparison
+    const normalizedIds = idsToSubscribe.map((id) => String(id));
+    const subscribedIds = new Set<string>();
+
     const handleExecutionEvent = (execution: GraphExecution) => {
-      // Filter by graphIds if provided
-      if (idsToSubscribe.length > 0) {
-        if (!idsToSubscribe.includes(execution.graph_id)) return;
+      // Filter by graphIds if provided, using normalized string comparison
+      if (normalizedIds.length > 0) {
+        const executionGraphId = String(execution.graph_id);
+        if (!normalizedIds.includes(executionGraphId)) return;
       }
 
       onExecutionUpdateRef.current?.(execution);
     };
 
     const connectHandler = api.onWebSocketConnect(() => {
-      idsToSubscribe.forEach((id) => {
+      normalizedIds.forEach((id) => {
+        // Track subscriptions to avoid duplicate subscriptions
+        if (subscribedIds.has(id)) return;
+        subscribedIds.add(id);
+
         api
           .subscribeToGraphExecutions(id as GraphID)
           .then(() => {
@@ -68,6 +76,7 @@ export function useExecutionEvents({
             Sentry.captureException(error, {
               tags: { graphId: id },
             });
+            subscribedIds.delete(id);
           });
       });
     });
@@ -82,6 +91,9 @@ export function useExecutionEvents({
     return () => {
       connectHandler();
       messageHandler();
+      // Note: Backend automatically cleans up subscriptions on websocket disconnect
+      // If IDs change while connected, old subscriptions remain but are filtered client-side
+      subscribedIds.clear();
     };
   }, [api, graphId, graphIds, enabled]);
 }

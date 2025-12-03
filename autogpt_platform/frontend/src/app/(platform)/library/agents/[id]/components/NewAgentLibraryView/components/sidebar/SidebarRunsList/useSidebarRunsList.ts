@@ -85,6 +85,8 @@ export function useSidebarRunsList({
     onExecutionUpdate: (_execution) => {
       // Invalidate and refetch the query to ensure we have the latest data
       // This is simpler and more reliable than manually updating the cache
+      // The queryKey is stable and includes the graphId, so this only invalidates
+      // queries for this specific graph's executions
       queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
     },
   });
