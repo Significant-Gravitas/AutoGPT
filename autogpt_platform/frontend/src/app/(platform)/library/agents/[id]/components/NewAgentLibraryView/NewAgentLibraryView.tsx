@@ -9,6 +9,7 @@ import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptyAgentRuns } from "./components/other/EmptyAgentRuns";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
+import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
 import { AgentRunsLists } from "./components/sidebar/AgentRunsLists/AgentRunsLists";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
@@ -68,7 +69,6 @@ export function NewAgentLibraryView() {
                 </Button>
               }
               agent={agent}
-              agentId={agent.id.toString()}
               onRunCreated={(execution) => handleSelectRun(execution.id)}
               onScheduleCreated={(schedule) =>
                 handleSelectRun(`schedule:${schedule.id}`)
@@ -97,7 +97,17 @@ export function NewAgentLibraryView() {
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
           {selectedRun ? (
-            selectedRun.startsWith("schedule:") ? (
+            selectedRun.startsWith("preset:") ? (
+              <SelectedTemplateView
+                agent={agent}
+                presetID={selectedRun.replace("preset:", "")}
+                onCreateRun={handleSelectRun}
+                onCreateSchedule={(scheduleId) => {
+                  handleSelectRun(`schedule:${scheduleId}`);
+                }}
+                onDelete={handleClearSelectedRun}
+              />
+            ) : selectedRun.startsWith("schedule:") ? (
               <SelectedScheduleView
                 agent={agent}
                 scheduleId={selectedRun.replace("schedule:", "")}

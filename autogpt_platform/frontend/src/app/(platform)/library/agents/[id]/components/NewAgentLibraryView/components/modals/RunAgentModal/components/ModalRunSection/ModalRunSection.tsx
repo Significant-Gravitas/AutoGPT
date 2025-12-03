@@ -13,24 +13,25 @@ export function ModalRunSection() {
   const {
     agent,
     defaultRunType,
-    presetName,
-    setPresetName,
-    presetDescription,
-    setPresetDescription,
     inputValues,
     setInputValue,
     agentInputFields,
     inputCredentials,
     setInputCredentialsValue,
     agentCredentialsInputFields,
+    presetEditMode,
+    presetName,
+    setPresetName,
+    presetDescription,
+    setPresetDescription,
   } = useRunAgentModalContext();
 
   return (
-    <div className="mb-10 mt-4">
+    <div className="mb-10 mt-4 flex flex-col gap-4">
       {defaultRunType === "automatic-trigger" && <WebhookTriggerBanner />}
 
       {/* Preset/Trigger fields */}
-      {defaultRunType === "automatic-trigger" && (
+      {presetEditMode && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col space-y-2">
             <label className="flex items-center gap-1 text-sm font-medium">
@@ -119,7 +120,7 @@ export function ModalRunSection() {
 
       {/* Selected Credentials Preview */}
       {Object.keys(inputCredentials).length > 0 && (
-        <div className="mt-6 flex flex-col gap-6">
+        <div className="mt-2 flex flex-col gap-6">
           {Object.entries(agentCredentialsInputFields || {}).map(
             ([key, _sub]) => {
               const credential = inputCredentials[key];

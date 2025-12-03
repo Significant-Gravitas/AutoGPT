@@ -13,6 +13,7 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { RunListItem } from "./components/RunListItem";
 import { ScheduleListItem } from "./components/ScheduleListItem";
+import { TemplateListItem } from "./components/TemplateListItem";
 import { useAgentRunsLists } from "./useAgentRunsLists";
 
 interface Props {
@@ -22,6 +23,7 @@ interface Props {
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
+    presetsCount: number;
     loading?: boolean;
   }) => void;
 }
@@ -35,13 +37,18 @@ export function AgentRunsLists({
   const {
     runs,
     schedules,
+    presets,
     runsCount,
     schedulesCount,
+    presetsCount,
     error,
     loading,
-    fetchMoreRuns,
     hasMoreRuns,
+    fetchMoreRuns,
     isFetchingMoreRuns,
+    hasMorePresets,
+    fetchMorePresets,
+    isFetchingMorePresets,
     tabValue,
     setTabValue,
   } = useAgentRunsLists({
@@ -68,13 +75,15 @@ export function AgentRunsLists({
     <TabsLine
       value={tabValue}
       onValueChange={(v) => {
-        const value = v as "runs" | "scheduled";
+        const value = v as "runs" | "scheduled" | "templates";
         setTabValue(value);
         if (value === "runs") {
           if (runs && runs.length) onSelectRun(runs[0].id);
-        } else {
+        } else if (value === "scheduled") {
           if (schedules && schedules.length)
             onSelectRun(`schedule:${schedules[0].id}`);
+        } else if (value === "templates") {
+          if (presets && presets.length) onSelectRun(`preset:${presets[0].id}`);
         }
       }}
       className="min-w-0 overflow-hidden"
@@ -85,6 +94,10 @@ export function AgentRunsLists({
         </TabsLineTrigger>
         <TabsLineTrigger value="scheduled">
           Scheduled <span className="ml-3 inline-block">{schedulesCount}</span>
+        </TabsLineTrigger>
+        <TabsLineTrigger value="templates">
+          {agent.trigger_setup_info ? "Triggers" : "Templates"}{" "}
+          <span className="ml-3 inline-block">{presetsCount}</span>
         </TabsLineTrigger>
       </TabsLineList>
 
@@ -121,6 +134,27 @@ export function AgentRunsLists({
               </div>
             ))}
           </div>
+        </TabsLineContent>
+        <TabsLineContent value="templates">
+          <InfiniteList
+            items={presets}
+            hasMore={!!hasMorePresets}
+            isFetchingMore={isFetchingMorePresets}
+            onEndReached={fetchMorePresets}
+            className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden"
+            itemWrapperClassName="w-auto lg:w-full"
+            renderItem={(preset) => (
+              <div className="w-[15rem] lg:w-full">
+                <TemplateListItem
+                  preset={preset}
+                  selected={selectedRunId === `preset:${preset.id}`}
+                  onClick={() =>
+                    onSelectRun && onSelectRun(`preset:${preset.id}`)
+                  }
+                />
+              </div>
+            )}
+          />
         </TabsLineContent>
       </>
     </TabsLine>

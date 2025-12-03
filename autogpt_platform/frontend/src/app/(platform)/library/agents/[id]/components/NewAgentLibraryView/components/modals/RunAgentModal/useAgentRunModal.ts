@@ -11,7 +11,11 @@ import {
   usePostV1CreateExecutionSchedule as useCreateSchedule,
   getGetV1ListExecutionSchedulesForAGraphQueryKey,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
+import {
+  getGetV2ListPresetsQueryKey,
+  usePostV2SetupTrigger,
+  usePatchV2UpdateAnExistingPreset,
+} from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
@@ -27,8 +31,16 @@ export type RunVariant =
 
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;
-  onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
   onSetupTrigger?: (preset: LibraryAgentPreset) => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
+  initialInputValues?: Record<string, any>;
+  initialInputCredentials?: Record<string, any>;
+  initialPresetName?: string;
+  initialPresetDescription?: string;
+  editMode?: {
+    preset: LibraryAgentPreset;
+    onSaved?: (updatedPreset: LibraryAgentPreset) => void;
+  };
 }
 
 export function useAgentRunModal(
@@ -39,12 +51,22 @@ export function useAgentRunModal(
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [showScheduleView, setShowScheduleView] = useState(false);
-  const [inputValues, setInputValues] = useState<Record<string, any>>({});
-  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
-    {},
+  const [inputValues, setInputValues] = useState<Record<string, any>>(
+    callbacks?.initialInputValues || callbacks?.editMode?.preset?.inputs || {},
   );
-  const [presetName, setPresetName] = useState<string>("");
-  const [presetDescription, setPresetDescription] = useState<string>("");
+  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
+    callbacks?.initialInputCredentials ||
+      callbacks?.editMode?.preset?.credentials ||
+      {},
+  );
+  const [presetName, setPresetName] = useState<string>(
+    callbacks?.initialPresetName || callbacks?.editMode?.preset?.name || "",
+  );
+  const [presetDescription, setPresetDescription] = useState<string>(
+    callbacks?.initialPresetDescription ||
+      callbacks?.editMode?.preset?.description ||
+      "",
+  );
   const defaultScheduleName = useMemo(() => `Run ${agent.name}`, [agent.name]);
   const [scheduleName, setScheduleName] = useState(defaultScheduleName);
   const [cronExpression, setCronExpression] = useState(
@@ -72,7 +94,7 @@ export function useAgentRunModal(
           toast({
             title: "Agent execution started",
           });
-          callbacks?.onRun?.(response.data as unknown as GraphExecutionMeta);
+          callbacks?.onRun?.(response.data);
           // Invalidate runs list for this graph
           queryClient.invalidateQueries({
             queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
@@ -103,7 +125,7 @@ export function useAgentRunModal(
           toast({
             title: "Schedule created",
           });
-          callbacks?.onCreateSchedule?.(response.data);
+          callbacks?.onScheduleCreated?.(response.data);
           // Invalidate schedules list for this graph
           queryClient.invalidateQueries({
             queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey(
@@ -130,18 +152,51 @@ export function useAgentRunModal(
 
   const setupTriggerMutation = usePostV2SetupTrigger({
     mutation: {
-      onSuccess: (response: any) => {
+      onSuccess: (response) => {
         if (response.status === 200) {
           toast({
             title: "Trigger setup complete",
           });
           callbacks?.onSetupTrigger?.(response.data);
+          // Invalidate preset queries to show the newly created trigger
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListPresetsQueryKey({
+              graph_id: response.data.graph_id,
+            }),
+          });
+          analytics.sendDatafastEvent("setup_trigger", {
+            name: agent.name,
+            id: agent.graph_id,
+          });
           setIsOpen(false);
+        }
+      },
+      onError: (error) => {
+        toast({
+          title: "❌ Failed to setup trigger",
+          description: String(error) || "An unexpected error occurred.",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  // Edit mode mutation for updating presets
+  const updatePresetMutation = usePatchV2UpdateAnExistingPreset({
+    mutation: {
+      onSuccess: (response) => {
+        if (response.status === 200) {
+          toast({
+            title: "Template updated successfully",
+            variant: "default",
+          });
+          setIsOpen(false);
+          callbacks?.editMode?.onSaved?.(response.data);
         }
       },
       onError: (error: any) => {
         toast({
-          title: "❌ Failed to setup trigger",
+          title: "Failed to update template",
           description: error.message || "An unexpected error occurred.",
           variant: "destructive",
         });
@@ -149,11 +204,13 @@ export function useAgentRunModal(
     },
   });
 
-  // Input schema validation
-  const agentInputSchema = useMemo(
-    () => agent.input_schema || { properties: {}, required: [] },
-    [agent.input_schema],
-  );
+  // Input schema validation (use trigger schema for triggered agents)
+  const agentInputSchema = useMemo(() => {
+    if (agent.trigger_setup_info?.config_schema) {
+      return agent.trigger_setup_info.config_schema;
+    }
+    return agent.input_schema || { properties: {}, required: [] };
+  }, [agent.input_schema, agent.trigger_setup_info]);
 
   const agentInputFields = useMemo(() => {
     if (
@@ -257,9 +314,10 @@ export function useAgentRunModal(
       return;
     }
 
+    // FIXME: add support for "manual-trigger"
     if (defaultRunType === "automatic-trigger") {
       // Setup trigger
-      if (!scheduleName.trim()) {
+      if (!presetName.trim()) {
         toast({
           title: "⚠️ Trigger name required",
           description: "Please provide a name for your trigger.",
@@ -270,7 +328,7 @@ export function useAgentRunModal(
 
       setupTriggerMutation.mutate({
         data: {
-          name: presetName || scheduleName,
+          name: presetName,
           description: presetDescription || `Trigger for ${agent.name}`,
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
@@ -292,11 +350,10 @@ export function useAgentRunModal(
   }, [
     allRequiredInputsAreSet,
     defaultRunType,
-    scheduleName,
+    presetName,
     inputValues,
     inputCredentials,
     agent,
-    presetName,
     presetDescription,
     notifyMissingRequirements,
     setupTriggerMutation,
@@ -344,6 +401,8 @@ export function useAgentRunModal(
     createScheduleMutation,
     toast,
     userTimezone,
+    presetName,
+    completeOnboardingStep,
   ]);
 
   function handleShowSchedule() {
@@ -370,6 +429,47 @@ export function useAgentRunModal(
     setCronExpression(expression);
   }
 
+  // Edit mode save handler
+  const handleSave = useCallback(() => {
+    if (!callbacks?.editMode?.preset) return;
+
+    updatePresetMutation.mutate({
+      presetId: callbacks.editMode.preset.id,
+      data: {
+        name: presetName,
+        description: presetDescription,
+        inputs: inputValues,
+        credentials: inputCredentials,
+      },
+    });
+  }, [
+    callbacks?.editMode?.preset,
+    presetName,
+    presetDescription,
+    inputValues,
+    inputCredentials,
+    updatePresetMutation,
+  ]);
+
+  // Check if there are changes in edit mode
+  const hasChanges = useMemo(() => {
+    if (!callbacks?.editMode?.preset) return false;
+    const preset = callbacks.editMode.preset;
+    return (
+      presetName !== preset.name ||
+      presetDescription !== preset.description ||
+      JSON.stringify(inputValues) !== JSON.stringify(preset.inputs || {}) ||
+      JSON.stringify(inputCredentials) !==
+        JSON.stringify(preset.credentials || {})
+    );
+  }, [
+    callbacks?.editMode?.preset,
+    presetName,
+    presetDescription,
+    inputValues,
+    inputCredentials,
+  ]);
+
   const hasInputFields = useMemo(() => {
     return Object.keys(agentInputFields).length > 0;
   }, [agentInputFields]);
@@ -381,7 +481,7 @@ export function useAgentRunModal(
     showScheduleView,
 
     // Run mode
-    defaultRunType,
+    defaultRunType: defaultRunType as RunVariant,
 
     // Form: regular inputs
     inputValues,
@@ -414,6 +514,7 @@ export function useAgentRunModal(
     isExecuting: executeGraphMutation.isPending,
     isCreatingSchedule: createScheduleMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,
+    isUpdatingPreset: updatePresetMutation.isPending,
 
     // Actions
     handleRun,
@@ -422,5 +523,7 @@ export function useAgentRunModal(
     handleGoBack,
     handleSetScheduleName,
     handleSetCronExpression,
+    handleSave,
+    hasChanges,
   };
 }

@@ -13,9 +13,11 @@ export function getCredentialTypeDisplayName(type: string): string {
 }
 
 export function getAgentInputFields(agent: LibraryAgent): Record<string, any> {
-  const schema = agent.input_schema as unknown as {
-    properties?: Record<string, any>;
-  } | null;
+  const schema = agent.trigger_setup_info
+    ? agent.trigger_setup_info.config_schema
+    : (agent.input_schema as unknown as {
+        properties?: Record<string, any>;
+      } | null);
   if (!schema || !schema.properties) return {};
   const properties = schema.properties as Record<string, any>;
   const visibleEntries = Object.entries(properties).filter(

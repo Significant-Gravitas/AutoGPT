@@ -8,6 +8,7 @@ interface RunListItemProps {
   title: string;
   description?: string;
   icon?: React.ReactNode;
+  statusBadge?: React.ReactNode;
   selected?: boolean;
   onClick?: () => void;
 }
@@ -16,6 +17,7 @@ export function RunSidebarCard({
   title,
   description,
   icon,
+  statusBadge,
   selected,
   onClick,
 }: RunListItemProps) {
@@ -30,12 +32,15 @@ export function RunSidebarCard({
       <div className="flex min-w-0 items-center justify-start gap-3">
         {icon}
         <div className="flex min-w-0 flex-1 flex-col items-start justify-between">
-          <Text
-            variant="body-medium"
-            className="block w-full truncate text-ellipsis"
-          >
-            {title}
-          </Text>
+          <div className="flex w-full items-center justify-between">
+            <Text
+              variant="body-medium"
+              className="block truncate text-ellipsis"
+            >
+              {title}
+            </Text>
+            {statusBadge}
+          </div>
           <Text variant="small" className="!text-zinc-500">
             {description}
           </Text>

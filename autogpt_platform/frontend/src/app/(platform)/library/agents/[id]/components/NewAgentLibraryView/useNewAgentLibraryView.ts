@@ -1,5 +1,4 @@
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryState } from "nuqs";
@@ -9,14 +8,10 @@ export function useNewAgentLibraryView() {
   const { id } = useParams();
   const agentId = id as string;
   const {
-    data: response,
+    data: agent,
     isSuccess,
     error,
-  } = useGetV2GetLibraryAgent(agentId, {
-    query: {
-      select: okData<LibraryAgent>,
-    },
-  });
+  } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
 
   const [runParam, setRunParam] = useQueryState("executionId", parseAsString);
   const selectedRun = runParam ?? undefined;
@@ -24,6 +19,7 @@ export function useNewAgentLibraryView() {
   const [sidebarCounts, setSidebarCounts] = useState({
     runsCount: 0,
     schedulesCount: 0,
+    presetsCount: 0,
   });
 
   const [sidebarLoading, setSidebarLoading] = useState(true);
@@ -31,7 +27,8 @@ export function useNewAgentLibraryView() {
   const hasAnyItems = useMemo(
     () =>
       (sidebarCounts.runsCount ?? 0) > 0 ||
-      (sidebarCounts.schedulesCount ?? 0) > 0,
+      (sidebarCounts.schedulesCount ?? 0) > 0 ||
+      (sidebarCounts.presetsCount ?? 0) > 0,
     [sidebarCounts],
   );
 
@@ -50,11 +47,13 @@ export function useNewAgentLibraryView() {
     (counts: {
       runsCount: number;
       schedulesCount: number;
+      presetsCount: number;
       loading?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
         schedulesCount: counts.schedulesCount,
+        presetsCount: counts.presetsCount,
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);
@@ -67,7 +66,7 @@ export function useNewAgentLibraryView() {
     agentId: id,
     ready: isSuccess,
     error,
-    agent: response,
+    agent,
     hasAnyItems,
     showSidebarLayout,
     selectedRun,

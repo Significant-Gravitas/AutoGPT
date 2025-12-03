@@ -6,13 +6,15 @@ import BackendAPI from "@/lib/autogpt-server-api";
  * Usage with React Query select:
  * ```ts
  *   const { data: agent } = useGetV2GetLibraryAgent(agentId, {
- *     query: { select: okData<LibraryAgent> },
+ *     query: { select: okData },
  *   });
  *
  *   data // is now properly typed as LibraryAgent | undefined
  * ```
  */
-export function okData<T>(res: unknown): T | undefined {
+export function okData<TResponse extends { status: number; data?: object }>(
+  res: TResponse | undefined,
+): (TResponse & { status: 200 })["data"] | undefined {
   if (!res || typeof res !== "object") return undefined;
 
   // status must exist and be exactly 200
@@ -23,7 +25,7 @@ export function okData<T>(res: unknown): T | undefined {
   // check presence to safely return it as T; the generic T is enforced at call sites.
   if (!("data" in (res as Record<string, unknown>))) return undefined;
 
-  return (res as { data: T }).data;
+  return res.data;
 }
 
 export async function shouldShowOnboarding() {

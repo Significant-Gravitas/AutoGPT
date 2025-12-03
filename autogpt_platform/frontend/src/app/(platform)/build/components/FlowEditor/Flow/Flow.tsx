@@ -18,7 +18,6 @@ import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
 import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { okData } from "@/app/api/helpers";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 
@@ -33,7 +32,7 @@ export const Flow = () => {
     {},
     {
       query: {
-        select: okData<GraphModel>,
+        select: okData,
         enabled: !!flowID,
       },
     },
