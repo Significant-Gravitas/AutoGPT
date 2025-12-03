@@ -9,7 +9,7 @@ export const NodeContainer = ({
   children,
   nodeId,
   selected,
-  hasErrors,
+  hasErrors, // these are configuration errors that occur before executing the graph -- more like validation errors
 }: {
   children: React.ReactNode;
   nodeId: string;

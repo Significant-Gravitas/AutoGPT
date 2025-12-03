@@ -43,6 +43,11 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
 
+  const nodeErrors = useNodeStore((state) => {
+    const node = state.nodes.find((n) => n.id === nodeId);
+    return node?.data?.errors;
+  });
+
   const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
   const isAnyOf =
@@ -63,11 +68,6 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   if (!showAdvanced && schema.advanced === true && !isConnected) {
     return null;
   }
-
-  const nodeErrors = useNodeStore((state) => {
-    const node = state.nodes.find((n) => n.id === nodeId);
-    return node?.data?.errors;
-  });
 
   const fromAnyOf =
     Boolean((uiSchema as any)?.["ui:options"]?.fromAnyOf) ||
