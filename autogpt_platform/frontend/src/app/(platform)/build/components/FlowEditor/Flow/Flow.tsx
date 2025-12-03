@@ -101,8 +101,7 @@ export const Flow = () => {
           {graph && (
             <FloatingSafeModeToggle
               graph={graph}
-              className="right-4 top-32 p-2"
-              variant="black"
+              className="right-2 top-32 p-2"
             />
           )}
         </ReactFlow>

@@ -4,12 +4,14 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { PlusIcon } from "@phosphor-icons/react";
+import { AgentSettingsButton } from "@/components/molecules/AgentSettingsButton/AgentSettingsButton";
 import { useEffect } from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptyAgentRuns } from "./components/other/EmptyAgentRuns";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
+import { SelectedSettingsView } from "./components/selected-views/SelectedSettingsView/SelectedSettingsView";
 import { AgentRunsLists } from "./components/sidebar/AgentRunsLists/AgentRunsLists";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
@@ -25,6 +27,7 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    handleSelectSettings,
   } = useNewAgentLibraryView();
 
   useEffect(() => {
@@ -60,20 +63,27 @@ export function NewAgentLibraryView() {
     >
       {shouldShowSidebar && (
         <div className="p-4 pl-5">
-          <div className="mb-4">
-            <RunAgentModal
-              triggerSlot={
-                <Button variant="primary" size="large" className="w-full">
-                  <PlusIcon size={20} /> New Run
-                </Button>
-              }
-              agent={agent}
-              agentId={agent.id.toString()}
-              onRunCreated={(execution) => handleSelectRun(execution.id)}
-              onScheduleCreated={(schedule) =>
-                handleSelectRun(`schedule:${schedule.id}`)
-              }
-            />
+          <div className="mb-4 space-y-3">
+            <div className="flex items-center gap-4">
+              <RunAgentModal
+                triggerSlot={
+                  <Button variant="primary" size="large" className="flex-1">
+                    <PlusIcon size={20} /> New Run
+                  </Button>
+                }
+                agent={agent}
+                agentId={agent.id.toString()}
+                onRunCreated={(execution) => handleSelectRun(execution.id)}
+                onScheduleCreated={(schedule) =>
+                  handleSelectRun(`schedule:${schedule.id}`)
+                }
+              />
+              <AgentSettingsButton
+                agent={agent}
+                onSelectSettings={handleSelectSettings}
+                selected={selectedRun === "settings"}
+              />
+            </div>
           </div>
 
           <AgentRunsLists
@@ -92,12 +102,20 @@ export function NewAgentLibraryView() {
             items={[
               { name: "My Library", link: "/library" },
               { name: agent.name, link: `/library/agents/${agentId}` },
+              ...(selectedRun === "settings"
+                ? [{ name: "Settings", link: "" }]
+                : []),
             ]}
           />
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
           {selectedRun ? (
-            selectedRun.startsWith("schedule:") ? (
+            selectedRun === "settings" ? (
+              <SelectedSettingsView
+                agent={agent}
+                onClearSelectedRun={handleClearSelectedRun}
+              />
+            ) : selectedRun.startsWith("schedule:") ? (
               <SelectedScheduleView
                 agent={agent}
                 scheduleId={selectedRun.replace("schedule:", "")}

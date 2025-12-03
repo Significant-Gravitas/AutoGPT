@@ -4,7 +4,7 @@ import { PendingReviewCard } from "@/components/organisms/PendingReviewCard/Pend
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { ClockIcon, PlayIcon, XIcon, CheckIcon } from "@phosphor-icons/react";
+import { ClockIcon, WarningIcon } from "@phosphor-icons/react";
 import { usePostV2ProcessReviewAction } from "@/app/api/__generated__/endpoints/executions/executions";
 
 interface PendingReviewsListProps {
@@ -35,9 +35,10 @@ export function PendingReviewsList({
   const [reviewMessageMap, setReviewMessageMap] = useState<
     Record<string, string>
   >({});
-  const [disabledReviews, setDisabledReviews] = useState<Set<string>>(
-    new Set(),
-  );
+
+  const [pendingAction, setPendingAction] = useState<
+    "approve" | "reject" | null
+  >(null);
 
   const { toast } = useToast();
 
@@ -69,9 +70,11 @@ export function PendingReviewsList({
           });
         }
 
+        setPendingAction(null);
         onReviewComplete?.();
       },
       onError: (error: Error) => {
+        setPendingAction(null);
         toast({
           title: "Failed to process reviews",
           description: error.message || "An error occurred",
@@ -89,28 +92,7 @@ export function PendingReviewsList({
     setReviewMessageMap((prev) => ({ ...prev, [nodeExecId]: message }));
   }
 
-  function handleToggleDisabled(nodeExecId: string) {
-    setDisabledReviews((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeExecId)) {
-        newSet.delete(nodeExecId);
-      } else {
-        newSet.add(nodeExecId);
-      }
-      return newSet;
-    });
-  }
-
-  function handleApproveAll() {
-    setDisabledReviews(new Set());
-  }
-
-  function handleRejectAll() {
-    const allReviewIds = reviews.map((review) => review.node_exec_id);
-    setDisabledReviews(new Set(allReviewIds));
-  }
-
-  function handleContinue() {
+  function handleApprove() {
     if (reviews.length === 0) {
       toast({
         title: "No reviews to process",
@@ -120,15 +102,15 @@ export function PendingReviewsList({
       return;
     }
 
+    setPendingAction("approve");
     const reviewItems = [];
 
     for (const review of reviews) {
-      const isApproved = !disabledReviews.has(review.node_exec_id);
       const reviewData = reviewDataMap[review.node_exec_id];
       const reviewMessage = reviewMessageMap[review.node_exec_id];
 
       let parsedData;
-      if (isApproved && review.editable && reviewData) {
+      if (review.editable && reviewData) {
         try {
           parsedData = JSON.parse(reviewData);
           if (JSON.stringify(parsedData) === JSON.stringify(review.payload)) {
@@ -146,11 +128,36 @@ export function PendingReviewsList({
 
       reviewItems.push({
         node_exec_id: review.node_exec_id,
-        approved: isApproved,
-        reviewed_data: isApproved ? parsedData : undefined,
+        approved: true,
+        reviewed_data: parsedData,
         message: reviewMessage || undefined,
       });
     }
+
+    reviewActionMutation.mutate({
+      data: {
+        reviews: reviewItems,
+      },
+    });
+  }
+
+  function handleStopTask() {
+    if (reviews.length === 0) {
+      toast({
+        title: "No reviews to process",
+        description: "No reviews found to process.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setPendingAction("reject");
+    const reviewItems = reviews.map((review) => ({
+      node_exec_id: review.node_exec_id,
+      approved: false,
+      reviewed_data: undefined,
+      message: reviewMessageMap[review.node_exec_id] || undefined,
+    }));
 
     reviewActionMutation.mutate({
       data: {
@@ -175,71 +182,66 @@ export function PendingReviewsList({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-4">
+    <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
+      {/* Warning Box Header */}
+      <div className="space-y-6">
+        <div className="flex items-start gap-4">
+          <WarningIcon
+            size={28}
+            className="fill-yellow-600 text-white"
+            weight="fill"
+          />
+          <Text
+            variant="lead-semibold"
+            className="overflow-hidden text-ellipsis text-textBlack"
+          >
+            Your review is needed
+          </Text>
+        </div>
+        <Text variant="large" className="text-textGrey">
+          This task is paused until you approve the changes below. Please review
+          and edit if needed. If no action is taken within 24 hours, the agent
+          will automatically stop the task.
+        </Text>
+      </div>
+
+      <div className="space-y-7">
         {reviews.map((review) => (
           <PendingReviewCard
             key={review.node_exec_id}
             review={review}
             onReviewDataChange={handleReviewDataChange}
-            reviewMessage={reviewMessageMap[review.node_exec_id] || ""}
-            onReviewMessageChange={handleReviewMessageChange}
-            isDisabled={disabledReviews.has(review.node_exec_id)}
-            onToggleDisabled={handleToggleDisabled}
           />
         ))}
       </div>
 
-      <div className="border-t pt-6">
-        <div className="mb-6 flex justify-center gap-3">
-          <Button
-            onClick={handleApproveAll}
-            disabled={
-              reviewActionMutation.isPending || disabledReviews.size === 0
-            }
-            variant="ghost"
-            size="small"
-            leftIcon={<CheckIcon size={14} />}
-          >
-            Approve All
-          </Button>
-          <Button
-            onClick={handleRejectAll}
-            disabled={
-              reviewActionMutation.isPending ||
-              disabledReviews.size === reviews.length
-            }
-            variant="ghost"
-            size="small"
-            leftIcon={<XIcon size={14} />}
-          >
-            Reject All
-          </Button>
-        </div>
+      <div className="space-y-7">
+        <Text variant="body" className="text-textGrey">
+          Note: Changes you make here apply only to this task
+        </Text>
 
-        <div className="space-y-4 text-center">
-          <div>
-            <Text variant="small" className="text-muted-foreground">
-              {disabledReviews.size > 0 ? (
-                <>
-                  Approve {reviews.length - disabledReviews.size}, reject{" "}
-                  {disabledReviews.size} of {reviews.length} items
-                </>
-              ) : (
-                <>Approve all {reviews.length} items</>
-              )}
-            </Text>
-          </div>
+        <div className="flex gap-2">
           <Button
-            onClick={handleContinue}
+            onClick={handleApprove}
             disabled={reviewActionMutation.isPending || reviews.length === 0}
             variant="primary"
-            size="large"
-            leftIcon={<PlayIcon size={16} />}
+            className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
+            loading={
+              pendingAction === "approve" && reviewActionMutation.isPending
+            }
           >
-            {disabledReviews.size === reviews.length
-              ? "Continue with Rejections"
-              : "Continue Execution"}
+            Approve
+          </Button>
+          <Button
+            onClick={handleStopTask}
+            disabled={reviewActionMutation.isPending || reviews.length === 0}
+            variant="destructive"
+            className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
+            loading={
+              pendingAction === "reject" && reviewActionMutation.isPending
+            }
+          >
+            Reject
           </Button>
         </div>
       </div>

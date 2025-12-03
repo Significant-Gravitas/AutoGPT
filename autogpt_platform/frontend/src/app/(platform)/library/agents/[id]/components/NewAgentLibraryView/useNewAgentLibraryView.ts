@@ -35,8 +35,9 @@ export function useNewAgentLibraryView() {
     [sidebarCounts],
   );
 
-  // Show sidebar layout while loading or when there are items
-  const showSidebarLayout = sidebarLoading || hasAnyItems;
+  // Show sidebar layout while loading or when there are items or settings is selected
+  const showSidebarLayout =
+    sidebarLoading || hasAnyItems || selectedRun === "settings";
 
   function handleSelectRun(id: string) {
     setRunParam(id, { shallow: true });
@@ -44,6 +45,10 @@ export function useNewAgentLibraryView() {
 
   function handleClearSelectedRun() {
     setRunParam(null, { shallow: true });
+  }
+
+  function handleSelectSettings() {
+    setRunParam("settings", { shallow: true });
   }
 
   const handleCountsChange = useCallback(
@@ -75,5 +80,6 @@ export function useNewAgentLibraryView() {
     handleClearSelectedRun,
     handleCountsChange,
     handleSelectRun,
+    handleSelectSettings,
   };
 }
