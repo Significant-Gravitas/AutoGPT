@@ -218,15 +218,14 @@ async def execute_node(
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
-    creds_lock = None
+    creds_locks: list[AsyncRedisLock] = []
     input_model = cast(type[BlockSchema], node_block.input_schema)
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         credentials_meta = input_type(**input_data[field_name])
-        credentials, creds_lock = await creds_manager.acquire(
-            user_id, credentials_meta.id
-        )
+        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
+        creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
 
     # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
@@ -244,9 +243,8 @@ async def execute_node(
                     )
                     file_name = field_data.get("name", "selected file")
                     try:
-                        credentials, creds_lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
+                        credentials, lock = await creds_manager.acquire(user_id, cred_id)
+                        creds_locks.append(lock)
                         extra_exec_kwargs[kwarg_name] = credentials
                     except ValueError:
                         # Credential was deleted or doesn't exist
@@ -298,12 +296,13 @@ async def execute_node(
         # Re-raise to maintain normal error flow
         raise
     finally:
-        # Ensure credentials are released even if execution fails
-        if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
-            try:
-                await creds_lock.release()
-            except Exception as e:
-                log_metadata.error(f"Failed to release credentials lock: {e}")
+        # Ensure all credentials are released even if execution fails
+        for creds_lock in creds_locks:
+            if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
+                try:
+                    await creds_lock.release()
+                except Exception as e:
+                    log_metadata.error(f"Failed to release credentials lock: {e}")
 
         # Update execution stats
         if execution_stats is not None:
