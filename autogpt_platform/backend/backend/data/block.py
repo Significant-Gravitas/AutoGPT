@@ -30,7 +30,6 @@ from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.cache import cached
 from backend.util.exceptions import (
-    BlockError,
     BlockExecutionError,
     BlockInputError,
     BlockOutputError,
@@ -554,7 +553,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             async for output_name, output_data in self._execute(input_data, **kwargs):
                 yield output_name, output_data
         except Exception as ex:
-            if not isinstance(ex, BlockError):
+            if not isinstance(ex, ValueError):
                 raise BlockUnknownError(
                     message=str(ex),
                     block_name=self.name,
