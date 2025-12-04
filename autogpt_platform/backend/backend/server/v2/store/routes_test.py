@@ -378,6 +378,7 @@ def test_get_agent_details(
         slug="test-agent",
         agent_name="Test Agent",
         agent_video="video.mp4",
+        agent_output_demo="demo.mp4",
         agent_image=["image1.jpg", "image2.jpg"],
         creator="creator1",
         creator_avatar="avatar1.jpg",

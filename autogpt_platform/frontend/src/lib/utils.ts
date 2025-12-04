@@ -428,3 +428,20 @@ export function isEmpty(value: any): boolean {
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/** Validate YouTube URL */
+export function validateYouTubeUrl(val: string): boolean {
+  if (!val) return true;
+  try {
+    const url = new URL(val);
+    const allowedHosts = [
+      "youtube.com",
+      "www.youtube.com",
+      "youtu.be",
+      "www.youtu.be",
+    ];
+    return allowedHosts.includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
