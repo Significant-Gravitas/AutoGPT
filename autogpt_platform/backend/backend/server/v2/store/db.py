@@ -39,6 +39,11 @@ settings = Settings()
 DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
+# Minimum similarity threshold for vector search results
+# Cosine similarity ranges from -1 to 1, where 1 is identical
+# 0.4 filters out loosely related or unrelated results
+VECTOR_SEARCH_SIMILARITY_THRESHOLD = 0.4
+
 
 async def get_store_agents(
     featured: bool = False,
@@ -91,6 +96,10 @@ async def get_store_agents(
             # Always filter for available agents and agents with embeddings
             where_parts.append("is_available = true")
             where_parts.append("embedding IS NOT NULL")
+            # Filter out results below similarity threshold
+            where_parts.append(
+                f"1 - (embedding <=> $1::vector) >= {VECTOR_SEARCH_SIMILARITY_THRESHOLD}"
+            )
 
             if featured:
                 where_parts.append("featured = true")
