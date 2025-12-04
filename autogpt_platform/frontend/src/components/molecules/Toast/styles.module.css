@@ -39,7 +39,7 @@ html body .toastDescription {
 }
 
 /* Position close button on the right */
-html body [data-sonner-toast] [data-close-button] {
+:global(html body [data-sonner-toast] [data-close-button="true"]) {
   left: unset !important;
   right: -18px !important;
   top: -3px !important;
