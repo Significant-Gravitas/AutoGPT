@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   children: React.ReactNode;
   className?: string;
-  title?: string;
+  title?: React.ReactNode;
 };
 
 export function RunDetailCard({ children, className, title }: Props) {
