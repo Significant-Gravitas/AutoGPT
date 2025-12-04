@@ -144,7 +144,7 @@ class TestAutoCredentialsFieldsValidation:
         class DuplicateKwargSchema(BlockSchemaInput):
             """Schema with duplicate auto_credentials kwarg_name."""
 
-            # Both fields use the same default kwarg_name "credentials"
+            # Both fields explicitly use the same kwarg_name "credentials"
             file1: dict[str, Any] = SchemaField(
                 description="First file input",
                 default=None,
