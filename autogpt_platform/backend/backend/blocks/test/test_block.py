@@ -145,7 +145,7 @@ class TestAutoCredentialsFieldsValidation:
             """Schema with duplicate auto_credentials kwarg_name."""
 
             # Both fields explicitly use the same kwarg_name "credentials"
-            file1: dict[str, Any] = SchemaField(
+            file1: dict[str, Any] | None = SchemaField(
                 description="First file input",
                 default=None,
                 json_schema_extra={
@@ -157,7 +157,7 @@ class TestAutoCredentialsFieldsValidation:
                     }
                 },
             )
-            file2: dict[str, Any] = SchemaField(
+            file2: dict[str, Any] | None = SchemaField(
                 description="Second file input",
                 default=None,
                 json_schema_extra={
@@ -184,7 +184,7 @@ class TestAutoCredentialsFieldsValidation:
         class UniqueKwargSchema(BlockSchemaInput):
             """Schema with unique auto_credentials kwarg_name values."""
 
-            file1: dict[str, Any] = SchemaField(
+            file1: dict[str, Any] | None = SchemaField(
                 description="First file input",
                 default=None,
                 json_schema_extra={
@@ -196,7 +196,7 @@ class TestAutoCredentialsFieldsValidation:
                     }
                 },
             )
-            file2: dict[str, Any] = SchemaField(
+            file2: dict[str, Any] | None = SchemaField(
                 description="Second file input",
                 default=None,
                 json_schema_extra={
@@ -223,7 +223,7 @@ class TestAutoCredentialsFieldsValidation:
         class DefaultKwargSchema(BlockSchemaInput):
             """Schema with auto_credentials missing kwarg_name."""
 
-            file: dict[str, Any] = SchemaField(
+            file: dict[str, Any] | None = SchemaField(
                 description="File input",
                 default=None,
                 json_schema_extra={
@@ -247,7 +247,7 @@ class TestAutoCredentialsFieldsValidation:
         class DefaultDuplicateSchema(BlockSchemaInput):
             """Schema where both fields omit kwarg_name, defaulting to 'credentials'."""
 
-            file1: dict[str, Any] = SchemaField(
+            file1: dict[str, Any] | None = SchemaField(
                 description="First file input",
                 default=None,
                 json_schema_extra={
@@ -259,7 +259,7 @@ class TestAutoCredentialsFieldsValidation:
                     }
                 },
             )
-            file2: dict[str, Any] = SchemaField(
+            file2: dict[str, Any] | None = SchemaField(
                 description="Second file input",
                 default=None,
                 json_schema_extra={
