@@ -1,6 +1,5 @@
 "use client";
 
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -12,8 +11,10 @@ import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { SectionWrap } from "./components/other/SectionWrap";
+import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
+import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
@@ -101,49 +102,36 @@ export function NewAgentLibraryView() {
         />
       </SectionWrap>
 
-      <SectionWrap className="mb-3">
-        <div
-          className={`${AGENT_LIBRARY_SECTION_PADDING_X} border-b border-zinc-100 pb-4`}
-        >
-          <Breadcrumbs
-            items={[
-              { name: "My Library", link: "/library" },
-              { name: agent.name, link: `/library/agents/${agentId}` },
-            ]}
+      {activeItem ? (
+        activeTab === "scheduled" ? (
+          <SelectedScheduleView
+            agent={agent}
+            scheduleId={activeItem}
+            onClearSelectedRun={handleClearSelectedRun}
           />
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col">
-          {activeItem ? (
-            activeTab === "scheduled" ? (
-              <SelectedScheduleView
-                agent={agent}
-                scheduleId={activeItem}
-                onClearSelectedRun={handleClearSelectedRun}
-              />
-            ) : (
-              <SelectedRunView
-                agent={agent}
-                runId={activeItem}
-                onSelectRun={handleSelectRun}
-                onClearSelectedRun={handleClearSelectedRun}
-              />
-            )
-          ) : sidebarLoading ? (
-            <div className="flex flex-col gap-4">
-              <Skeleton className="h-8 w-full bg-slate-100" />
-              <Skeleton className="h-12 w-full bg-slate-100" />
-              <Skeleton className="h-64 w-full bg-slate-100" />
-              <Skeleton className="h-32 w-full bg-slate-100" />
-            </div>
-          ) : activeTab === "scheduled" ? (
-            <EmptySchedules />
-          ) : activeTab === "templates" ? (
-            <EmptyTemplates />
-          ) : (
-            <EmptyTasks agent={agent} />
-          )}
-        </div>
-      </SectionWrap>
+        ) : (
+          <SelectedRunView
+            agent={agent}
+            runId={activeItem}
+            onSelectRun={handleSelectRun}
+            onClearSelectedRun={handleClearSelectedRun}
+          />
+        )
+      ) : sidebarLoading ? (
+        <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />
+      ) : activeTab === "scheduled" ? (
+        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <EmptySchedules />
+        </SelectedViewLayout>
+      ) : activeTab === "templates" ? (
+        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <EmptyTemplates />
+        </SelectedViewLayout>
+      ) : (
+        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <EmptyTasks agent={agent} />
+        </SelectedViewLayout>
+      )}
     </div>
   );
 }

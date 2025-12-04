@@ -15,6 +15,7 @@ function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
 export function useNewAgentLibraryView() {
   const { id } = useParams();
   const agentId = id as string;
+
   const {
     data: response,
     isSuccess,
@@ -34,12 +35,12 @@ export function useNewAgentLibraryView() {
   const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
 
   useEffect(() => {
-    if (!activeTabRaw) {
+    if (!activeTabRaw && !activeItem) {
       setQueryStates({
         activeTab: "runs",
       });
     }
-  }, [activeTabRaw, setQueryStates]);
+  }, [activeTabRaw, activeItem, setQueryStates]);
 
   const [sidebarCounts, setSidebarCounts] = useState({
     runsCount: 0,
