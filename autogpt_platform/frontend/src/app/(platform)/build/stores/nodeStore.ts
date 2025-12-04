@@ -139,8 +139,11 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         get().nodes.map((node) => ({
           position: node.position,
           measured: {
-            width: node.data.uiType === BlockUIType.NOTE ? 300 : 500,
-            height: 400,
+            width:
+              node.width ??
+              node.measured?.width ??
+              (node.data.uiType === BlockUIType.NOTE ? 300 : 500),
+            height: node.height ?? node.measured?.height ?? 400,
           },
         })),
         block.uiType === BlockUIType.NOTE ? 300 : 400,
