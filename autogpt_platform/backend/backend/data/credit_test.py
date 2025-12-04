@@ -7,7 +7,7 @@ from prisma.models import CreditTransaction, UserBalance
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.block import get_block
 from backend.data.credit import BetaUserCredit, UsageTransactionMetadata
-from backend.data.execution import NodeExecutionEntry, UserContext
+from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import openai_credentials
@@ -73,6 +73,7 @@ async def test_block_credit_usage(server: SpinTestServer):
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
+            graph_version=1,
             node_id="test_node",
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
@@ -85,7 +86,7 @@ async def test_block_credit_usage(server: SpinTestServer):
                     "type": openai_credentials.type,
                 },
             },
-            user_context=UserContext(timezone="UTC"),
+            execution_context=ExecutionContext(user_timezone="UTC"),
         ),
     )
     assert spending_amount_1 > 0
@@ -94,12 +95,13 @@ async def test_block_credit_usage(server: SpinTestServer):
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
+            graph_version=1,
             node_id="test_node",
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
             inputs={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
-            user_context=UserContext(timezone="UTC"),
+            execution_context=ExecutionContext(user_timezone="UTC"),
         ),
     )
     assert spending_amount_2 == 0

@@ -13,12 +13,38 @@ import { BuilderActions } from "../../BuilderActions/BuilderActions";
 import { RunningBackground } from "./components/RunningBackground";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useCopyPaste } from "./useCopyPaste";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
+import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
+import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import { okData } from "@/app/api/helpers";
+import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 
 export const Flow = () => {
+  const [{ flowID, flowExecutionID }] = useQueryStates({
+    flowID: parseAsString,
+    flowExecutionID: parseAsString,
+  });
+
+  const { data: graph } = useGetV1GetSpecificGraph(
+    flowID ?? "",
+    {},
+    {
+      query: {
+        select: okData<GraphModel>,
+        enabled: !!flowID,
+      },
+    },
+  );
+
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
+  );
+  const hasWebhookNodes = useNodeStore(
+    useShallow((state) => state.hasWebhookNodes()),
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
@@ -44,7 +70,9 @@ export const Flow = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [handleCopyPaste]);
-  const { isGraphRunning } = useGraphStore();
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
@@ -67,11 +95,23 @@ export const Flow = () => {
           <Background />
           <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
           <NewControlPanel />
-          <BuilderActions />
+          {hasWebhookNodes ? <TriggerAgentBanner /> : <BuilderActions />}
           {<GraphLoadingBox flowContentLoading={isFlowContentLoading} />}
           {isGraphRunning && <RunningBackground />}
+          {graph && (
+            <FloatingSafeModeToggle
+              graph={graph}
+              className="right-4 top-32 p-2"
+              variant="black"
+            />
+          )}
         </ReactFlow>
       </div>
+      {/* TODO: Need to update it in future - also do not send executionId as prop - rather use useQueryState inside the component */}
+      <FloatingReviewsPanel
+        executionId={flowExecutionID || undefined}
+        graphId={flowID || undefined}
+      />
     </div>
   );
 };

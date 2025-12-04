@@ -34,6 +34,7 @@ from prisma.types import (
     AgentNodeExecutionKeyValueDataCreateInput,
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
+    AgentNodeExecutionWhereUniqueInput,
 )
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
@@ -70,6 +71,18 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+class ExecutionContext(BaseModel):
+    """
+    Unified context that carries execution-level data throughout the entire execution flow.
+    This includes information needed by blocks, sub-graphs, and execution management.
+    """
+
+    safe_mode: bool = True
+    user_timezone: str = "UTC"
+    root_execution_id: Optional[str] = None
+    parent_execution_id: Optional[str] = None
+
+
 # -------------------------- Models -------------------------- #
 
 
@@ -96,11 +109,14 @@ NodesInputMasks = Mapping[str, NodeInputMask]
 VALID_STATUS_TRANSITIONS = {
     ExecutionStatus.QUEUED: [
         ExecutionStatus.INCOMPLETE,
+        ExecutionStatus.TERMINATED,  # For resuming halted execution
+        ExecutionStatus.REVIEW,  # For resuming after review
     ],
     ExecutionStatus.RUNNING: [
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.TERMINATED,  # For resuming halted execution
+        ExecutionStatus.REVIEW,  # For resuming after review
     ],
     ExecutionStatus.COMPLETED: [
         ExecutionStatus.RUNNING,
@@ -109,10 +125,15 @@ VALID_STATUS_TRANSITIONS = {
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
         ExecutionStatus.RUNNING,
+        ExecutionStatus.REVIEW,
     ],
     ExecutionStatus.TERMINATED: [
         ExecutionStatus.INCOMPLETE,
         ExecutionStatus.QUEUED,
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.REVIEW,
+    ],
+    ExecutionStatus.REVIEW: [
         ExecutionStatus.RUNNING,
     ],
 }
@@ -356,9 +377,8 @@ class GraphExecutionWithNodes(GraphExecution):
 
     def to_graph_execution_entry(
         self,
-        user_context: "UserContext",
+        execution_context: ExecutionContext,
         compiled_nodes_input_masks: Optional[NodesInputMasks] = None,
-        parent_graph_exec_id: Optional[str] = None,
     ):
         return GraphExecutionEntry(
             user_id=self.user_id,
@@ -366,8 +386,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
             nodes_input_masks=compiled_nodes_input_masks,
-            user_context=user_context,
-            parent_graph_exec_id=parent_graph_exec_id,
+            execution_context=execution_context,
         )
 
 
@@ -440,17 +459,18 @@ class NodeExecutionResult(BaseModel):
         )
 
     def to_node_execution_entry(
-        self, user_context: "UserContext"
+        self, execution_context: ExecutionContext
     ) -> "NodeExecutionEntry":
         return NodeExecutionEntry(
             user_id=self.user_id,
             graph_exec_id=self.graph_exec_id,
             graph_id=self.graph_id,
+            graph_version=self.graph_version,
             node_exec_id=self.node_exec_id,
             node_id=self.node_id,
             block_id=self.block_id,
             inputs=self.input_data,
-            user_context=user_context,
+            execution_context=execution_context,
         )
 
 
@@ -728,7 +748,7 @@ async def upsert_execution_input(
     input_name: str,
     input_data: JsonValue,
     node_exec_id: str | None = None,
-) -> tuple[str, BlockInput]:
+) -> tuple[NodeExecutionResult, BlockInput]:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Input.
     If there is no AgentNodeExecution that has no `input_name` as input, create new one.
@@ -761,7 +781,7 @@ async def upsert_execution_input(
     existing_execution = await AgentNodeExecution.prisma().find_first(
         where=existing_exec_query_filter,
         order={"addedTime": "asc"},
-        include={"Input": True},
+        include={"Input": True, "GraphExecution": True},
     )
     json_input_data = SafeJson(input_data)
 
@@ -773,7 +793,7 @@ async def upsert_execution_input(
                 referencedByInputExecId=existing_execution.id,
             )
         )
-        return existing_execution.id, {
+        return NodeExecutionResult.from_db(existing_execution), {
             **{
                 input_data.name: type_utils.convert(input_data.data, JsonValue)
                 for input_data in existing_execution.Input or []
@@ -788,9 +808,10 @@ async def upsert_execution_input(
                 agentGraphExecutionId=graph_exec_id,
                 executionStatus=ExecutionStatus.INCOMPLETE,
                 Input={"create": {"name": input_name, "data": json_input_data}},
-            )
+            ),
+            include={"GraphExecution": True},
         )
-        return result.id, {input_name: input_data}
+        return NodeExecutionResult.from_db(result), {input_name: input_data}
 
     else:
         raise ValueError(
@@ -886,9 +907,25 @@ async def update_node_execution_status_batch(
     node_exec_ids: list[str],
     status: ExecutionStatus,
     stats: dict[str, Any] | None = None,
-):
-    await AgentNodeExecution.prisma().update_many(
-        where={"id": {"in": node_exec_ids}},
+) -> int:
+    # Validate status transitions - allowed_from should never be empty for valid statuses
+    allowed_from = VALID_STATUS_TRANSITIONS.get(status, [])
+    if not allowed_from:
+        raise ValueError(
+            f"Invalid status transition: {status} has no valid source statuses"
+        )
+
+    # For batch updates, we filter to only update nodes with valid current statuses
+    where_clause = cast(
+        AgentNodeExecutionWhereInput,
+        {
+            "id": {"in": node_exec_ids},
+            "executionStatus": {"in": [s.value for s in allowed_from]},
+        },
+    )
+
+    return await AgentNodeExecution.prisma().update_many(
+        where=where_clause,
         data=_get_update_status_data(status, None, stats),
     )
 
@@ -902,15 +939,32 @@ async def update_node_execution_status(
     if status == ExecutionStatus.QUEUED and execution_data is None:
         raise ValueError("Execution data must be provided when queuing an execution.")
 
-    res = await AgentNodeExecution.prisma().update(
-        where={"id": node_exec_id},
+    # Validate status transitions - allowed_from should never be empty for valid statuses
+    allowed_from = VALID_STATUS_TRANSITIONS.get(status, [])
+    if not allowed_from:
+        raise ValueError(
+            f"Invalid status transition: {status} has no valid source statuses"
+        )
+
+    if res := await AgentNodeExecution.prisma().update(
+        where=cast(
+            AgentNodeExecutionWhereUniqueInput,
+            {
+                "id": node_exec_id,
+                "executionStatus": {"in": [s.value for s in allowed_from]},
+            },
+        ),
         data=_get_update_status_data(status, execution_data, stats),
         include=EXECUTION_RESULT_INCLUDE,
-    )
-    if not res:
-        raise ValueError(f"Execution {node_exec_id} not found.")
+    ):
+        return NodeExecutionResult.from_db(res)
 
-    return NodeExecutionResult.from_db(res)
+    if res := await AgentNodeExecution.prisma().find_unique(
+        where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
+    ):
+        return NodeExecutionResult.from_db(res)
+
+    raise ValueError(f"Execution {node_exec_id} not found.")
 
 
 def _get_update_status_data(
@@ -964,17 +1018,17 @@ async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
     return NodeExecutionResult.from_db(execution)
 
 
-async def get_node_executions(
+def _build_node_execution_where_clause(
     graph_exec_id: str | None = None,
     node_id: str | None = None,
     block_ids: list[str] | None = None,
     statuses: list[ExecutionStatus] | None = None,
-    limit: int | None = None,
     created_time_gte: datetime | None = None,
     created_time_lte: datetime | None = None,
-    include_exec_data: bool = True,
-) -> list[NodeExecutionResult]:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+) -> AgentNodeExecutionWhereInput:
+    """
+    Build where clause for node execution queries.
+    """
     where_clause: AgentNodeExecutionWhereInput = {}
     if graph_exec_id:
         where_clause["agentGraphExecutionId"] = graph_exec_id
@@ -990,6 +1044,29 @@ async def get_node_executions(
             "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
             "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
         }
+
+    return where_clause
+
+
+async def get_node_executions(
+    graph_exec_id: str | None = None,
+    node_id: str | None = None,
+    block_ids: list[str] | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    limit: int | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    include_exec_data: bool = True,
+) -> list[NodeExecutionResult]:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    where_clause = _build_node_execution_where_clause(
+        graph_exec_id=graph_exec_id,
+        node_id=node_id,
+        block_ids=block_ids,
+        statuses=statuses,
+        created_time_gte=created_time_gte,
+        created_time_lte=created_time_lte,
+    )
 
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,
@@ -1032,31 +1109,29 @@ async def get_latest_node_execution(
 # ----------------- Execution Infrastructure ----------------- #
 
 
-class UserContext(BaseModel):
-    """Generic user context for graph execution containing user-specific settings."""
-
-    timezone: str
-
-
 class GraphExecutionEntry(BaseModel):
+    model_config = {"extra": "ignore"}
+
     user_id: str
     graph_exec_id: str
     graph_id: str
     graph_version: int
     nodes_input_masks: Optional[NodesInputMasks] = None
-    user_context: UserContext
-    parent_graph_exec_id: Optional[str] = None
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
 
 
 class NodeExecutionEntry(BaseModel):
+    model_config = {"extra": "ignore"}
+
     user_id: str
     graph_exec_id: str
     graph_id: str
+    graph_version: int
     node_exec_id: str
     node_id: str
     block_id: str
     inputs: BlockInput
-    user_context: UserContext
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
 
 
 class ExecutionQueue(Generic[T]):

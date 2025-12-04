@@ -9,9 +9,9 @@ from autogpt_libs.auth import get_user_id
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
 from backend.data.execution import (
+    ExecutionContext,
     ExecutionStatus,
     NodeExecutionResult,
-    UserContext,
     get_graph_execution,
 )
 from backend.data.model import _BaseCredentials
@@ -140,7 +140,8 @@ async def execute_block_test(block: Block):
         "graph_exec_id": str(uuid.uuid4()),
         "node_exec_id": str(uuid.uuid4()),
         "user_id": str(uuid.uuid4()),
-        "user_context": UserContext(timezone="UTC"),  # Default for tests
+        "graph_version": 1,  # Default version for tests
+        "execution_context": ExecutionContext(),
     }
     input_model = cast(type[BlockSchema], block.input_schema)
     credentials_input_fields = input_model.get_credentials_fields()

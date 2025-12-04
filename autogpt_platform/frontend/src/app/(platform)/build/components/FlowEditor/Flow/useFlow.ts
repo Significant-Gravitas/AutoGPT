@@ -13,10 +13,10 @@ import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
 import { useGraphStore } from "../../../stores/graphStore";
-import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 export const useFlow = () => {
   const [isLocked, setIsLocked] = useState(false);
@@ -28,11 +28,11 @@ export const useFlow = () => {
   const updateNodeExecutionResult = useNodeStore(
     useShallow((state) => state.updateNodeExecutionResult),
   );
-  const setIsGraphRunning = useGraphStore(
-    useShallow((state) => state.setIsGraphRunning),
-  );
   const setGraphSchemas = useGraphStore(
     useShallow((state) => state.setGraphSchemas),
+  );
+  const setGraphExecutionStatus = useGraphStore(
+    useShallow((state) => state.setGraphExecutionStatus),
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
@@ -126,15 +126,6 @@ export const useFlow = () => {
     }
   }, [graph?.links, addLinks]);
 
-  // update graph running status
-  useEffect(() => {
-    const isRunning =
-      executionDetails?.status === AgentExecutionStatus.RUNNING ||
-      executionDetails?.status === AgentExecutionStatus.QUEUED;
-
-    setIsGraphRunning(isRunning);
-  }, [executionDetails?.status, customNodes]);
-
   // update node execution status in nodes
   useEffect(() => {
     if (
@@ -167,6 +158,13 @@ export const useFlow = () => {
     customNodes,
   ]);
 
+  // update graph execution status
+  useEffect(() => {
+    if (executionDetails) {
+      setGraphExecutionStatus(executionDetails.status as AgentExecutionStatus);
+    }
+  }, [executionDetails]);
+
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {
       const timer = setTimeout(() => {
@@ -182,7 +180,6 @@ export const useFlow = () => {
       useEdgeStore.getState().setEdges([]);
       useGraphStore.getState().reset();
       useEdgeStore.getState().resetEdgeBeads();
-      setIsGraphRunning(false);
     };
   }, []);
 

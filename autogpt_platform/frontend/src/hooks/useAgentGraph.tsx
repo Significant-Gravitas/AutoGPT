@@ -61,6 +61,9 @@ export default function useAgentGraph(
   const [graphExecutionError, setGraphExecutionError] = useState<string | null>(
     null,
   );
+  const [graphExecutionStatus, setGraphExecutionStatus] = useState<
+    string | null
+  >(null);
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
   const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
@@ -356,11 +359,12 @@ export default function useAgentGraph(
 
       const statusRank = {
         RUNNING: 0,
-        QUEUED: 1,
-        INCOMPLETE: 2,
-        TERMINATED: 3,
-        COMPLETED: 4,
-        FAILED: 5,
+        REVIEW: 1,
+        QUEUED: 2,
+        INCOMPLETE: 3,
+        TERMINATED: 4,
+        COMPLETED: 5,
+        FAILED: 6,
       };
       const status = executionResults
         .map((v) => v.status)
@@ -474,7 +478,8 @@ export default function useAgentGraph(
         flowExecutionID,
       );
 
-      // Set graph execution error from the initial fetch
+      // Set graph execution status and error from the initial fetch
+      setGraphExecutionStatus(execution.status);
       if (execution.status === "FAILED") {
         setGraphExecutionError(
           execution.stats?.error ||
@@ -543,10 +548,14 @@ export default function useAgentGraph(
               });
             }
           }
+          // Update the execution status
+          setGraphExecutionStatus(graphExec.status);
+
           if (
             graphExec.status === "COMPLETED" ||
             graphExec.status === "TERMINATED" ||
-            graphExec.status === "FAILED"
+            graphExec.status === "FAILED" ||
+            graphExec.status === "REVIEW"
           ) {
             cancelGraphExecListener();
             setIsRunning(false);
@@ -732,7 +741,6 @@ export default function useAgentGraph(
   ]);
 
   const saveAgent = useCallback(async () => {
-    console.log("saveAgent");
     setIsSaving(true);
     try {
       await _saveAgent();
@@ -957,6 +965,7 @@ export default function useAgentGraph(
     isStopping,
     isScheduling,
     graphExecutionError,
+    graphExecutionStatus,
     nodes: xyNodes,
     setNodes: setXYNodes,
     edges: xyEdges,
