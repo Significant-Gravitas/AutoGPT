@@ -337,10 +337,15 @@ async def test_output_yielding_with_dynamic_fields():
                 prompt="Create a user dictionary",
                 credentials=llm.TEST_CREDENTIALS_INPUT,
                 model=llm.LlmModel.GPT4O,
+                agent_mode_max_iterations=1,
             )
 
             # Run the block
             outputs = {}
+            from backend.data.execution import ExecutionContext
+
+            mock_execution_context = ExecutionContext(safe_mode=False)
+
             async for output_name, output_value in block.run(
                 input_data,
                 credentials=llm.TEST_CREDENTIALS,
@@ -349,6 +354,8 @@ async def test_output_yielding_with_dynamic_fields():
                 graph_exec_id="test_exec",
                 node_exec_id="test_node_exec",
                 user_id="test_user",
+                graph_version=1,
+                execution_context=mock_execution_context,
             ):
                 outputs[output_name] = output_value
 
@@ -519,10 +526,15 @@ async def test_validation_errors_dont_pollute_conversation():
                 credentials=llm.TEST_CREDENTIALS_INPUT,
                 model=llm.LlmModel.GPT4O,
                 retry=3,  # Allow retries
+                agent_mode_max_iterations=1,
             )
 
             # Run the block
             outputs = {}
+            from backend.data.execution import ExecutionContext
+
+            mock_execution_context = ExecutionContext(safe_mode=False)
+
             async for output_name, output_value in block.run(
                 input_data,
                 credentials=llm.TEST_CREDENTIALS,
@@ -531,6 +543,8 @@ async def test_validation_errors_dont_pollute_conversation():
                 graph_exec_id="test_exec",
                 node_exec_id="test_node_exec",
                 user_id="test_user",
+                graph_version=1,
+                execution_context=mock_execution_context,
             ):
                 outputs[output_name] = output_value
 

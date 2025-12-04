@@ -3,6 +3,8 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
+from pydantic import BaseModel
+
 import backend.blocks.llm as llm
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.block import (
@@ -20,6 +22,7 @@ from backend.data.dynamic_fields import (
     is_dynamic_field,
     is_tool_pin,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
@@ -28,6 +31,28 @@ if TYPE_CHECKING:
     from backend.data.graph import Link, Node
 
 logger = logging.getLogger(__name__)
+
+
+class ToolInfo(BaseModel):
+    """Processed tool call information."""
+
+    tool_call: Any  # The original tool call object from LLM response
+    tool_name: str  # The function name
+    tool_def: dict[str, Any]  # The tool definition from tool_functions
+    input_data: dict[str, Any]  # Processed input data ready for tool execution
+    field_mapping: dict[str, str]  # Field name mapping for the tool
+
+
+class ExecutionParams(BaseModel):
+    """Tool execution parameters."""
+
+    user_id: str
+    graph_id: str
+    node_id: str
+    graph_version: int
+    graph_exec_id: str
+    node_exec_id: str
+    execution_context: "ExecutionContext"
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
@@ -203,6 +228,12 @@ class SmartDecisionMakerBlock(Block):
             advanced=True,
             default="localhost:11434",
             description="Ollama host for local  models",
+        )
+        agent_mode_max_iterations: int = SchemaField(
+            title="Agent Mode Max Iterations",
+            description="Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit.",
+            advanced=True,
+            default=0,
         )
 
         @classmethod
@@ -593,6 +624,292 @@ class SmartDecisionMakerBlock(Block):
 
         return resp
 
+    def _process_tool_calls(
+        self, response, tool_functions: list[dict[str, Any]]
+    ) -> list[ToolInfo]:
+        """Process tool calls and extract tool definitions, arguments, and input data.
+
+        Returns a list of tool info dicts with:
+        - tool_call: The original tool call object
+        - tool_name: The function name
+        - tool_def: The tool definition from tool_functions
+        - input_data: Processed input data dict (includes None values)
+        - field_mapping: Field name mapping for the tool
+        """
+        if not response.tool_calls:
+            return []
+
+        processed_tools = []
+        for tool_call in response.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
+
+            tool_def = next(
+                (
+                    tool
+                    for tool in tool_functions
+                    if tool["function"]["name"] == tool_name
+                ),
+                None,
+            )
+            if not tool_def:
+                if len(tool_functions) == 1:
+                    tool_def = tool_functions[0]
+                else:
+                    continue
+
+            # Build input data for the tool
+            input_data = {}
+            field_mapping = tool_def["function"].get("_field_mapping", {})
+            if "function" in tool_def and "parameters" in tool_def["function"]:
+                expected_args = tool_def["function"]["parameters"].get("properties", {})
+                for clean_arg_name in expected_args:
+                    original_field_name = field_mapping.get(
+                        clean_arg_name, clean_arg_name
+                    )
+                    arg_value = tool_args.get(clean_arg_name)
+                    # Include all expected parameters, even if None (for backward compatibility with tests)
+                    input_data[original_field_name] = arg_value
+
+            processed_tools.append(
+                ToolInfo(
+                    tool_call=tool_call,
+                    tool_name=tool_name,
+                    tool_def=tool_def,
+                    input_data=input_data,
+                    field_mapping=field_mapping,
+                )
+            )
+
+        return processed_tools
+
+    def _update_conversation(
+        self, prompt: list[dict], response, tool_outputs: list | None = None
+    ):
+        """Update conversation history with response and tool outputs."""
+        if response.reasoning:
+            prompt.append(
+                {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
+            )
+
+        prompt.append(_convert_raw_response_to_dict(response.raw_response))
+
+        if tool_outputs:
+            prompt.extend(tool_outputs)
+
+    async def _execute_single_tool(
+        self, tool_info: ToolInfo, execution_params: ExecutionParams
+    ) -> dict:
+        """Execute a single tool with proper execution events and status updates."""
+        # Lazy imports to avoid circular dependencies
+        from backend.data.execution import ExecutionStatus
+        from backend.executor.manager import (
+            async_update_node_execution_status,
+            execute_node,
+        )
+        from backend.integrations.creds_manager import IntegrationCredentialsManager
+
+        tool_call = tool_info.tool_call
+        tool_def = tool_info.tool_def
+        raw_input_data = tool_info.input_data
+
+        # Get sink node and field mapping
+        sink_node_id = tool_def["function"]["_sink_node_id"]
+
+        # Use proper database operations for tool execution
+        db_client = get_database_manager_async_client()
+
+        # Get target node
+        target_node = await db_client.get_node(sink_node_id)
+        if not target_node:
+            raise ValueError(f"Target node {sink_node_id} not found")
+
+        # Create proper node execution using upsert_execution_input
+        # Each call accumulates inputs for the same execution
+        node_exec_result = None
+        final_input_data = None
+
+        # Add all inputs to the execution (including None values)
+        # upsert_execution_input accumulates inputs for the same node_id/graph_exec_id
+        if not raw_input_data:
+            # If truly no input data, fail with clear error
+            raise ValueError(f"Tool call has no input data: {tool_call}")
+
+        for input_name, input_value in raw_input_data.items():
+            # Include all inputs, even None ones - let the target node handle validation
+            node_exec_result, final_input_data = await db_client.upsert_execution_input(
+                node_id=sink_node_id,
+                graph_exec_id=execution_params.graph_exec_id,
+                input_name=input_name,
+                input_data=input_value,
+            )
+
+        # Create NodeExecutionEntry from the result
+        from backend.data.execution import NodeExecutionEntry
+
+        # At this point we know node_exec_result is not None (loop ran at least once)
+        assert (
+            node_exec_result is not None
+        ), "node_exec_result should not be None after processing inputs"
+
+        node_exec_entry = NodeExecutionEntry(
+            user_id=execution_params.user_id,
+            graph_exec_id=execution_params.graph_exec_id,
+            graph_id=execution_params.graph_id,
+            graph_version=execution_params.graph_version,
+            node_exec_id=node_exec_result.node_exec_id,
+            node_id=sink_node_id,
+            block_id=target_node.block_id,
+            inputs=final_input_data or {},
+            execution_context=execution_params.execution_context,
+        )
+
+        # Create credentials manager
+        creds_manager = IntegrationCredentialsManager()
+
+        # Update execution status to running
+        await async_update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec_entry.node_exec_id,
+            status=ExecutionStatus.RUNNING,
+            execution_data=final_input_data or {},
+        )
+
+        # Execute the node and collect outputs
+        node_outputs = {}
+        try:
+            async for output_name, output_data in execute_node(
+                node=target_node,
+                creds_manager=creds_manager,
+                data=node_exec_entry,
+            ):
+                node_outputs[output_name] = output_data
+
+                # Update execution output in database
+                await db_client.upsert_execution_output(
+                    node_exec_id=node_exec_entry.node_exec_id,
+                    output_name=output_name,
+                    output_data=output_data,
+                )
+
+            # Mark execution as completed
+            await async_update_node_execution_status(
+                db_client=db_client,
+                exec_id=node_exec_entry.node_exec_id,
+                status=ExecutionStatus.COMPLETED,
+            )
+
+        except Exception as e:
+            # Mark execution as failed
+            await async_update_node_execution_status(
+                db_client=db_client,
+                exec_id=node_exec_entry.node_exec_id,
+                status=ExecutionStatus.FAILED,
+                stats={"error": str(e)},
+            )
+            node_outputs["error"] = str(e)
+
+        # Create tool response
+        tool_response_content = json.dumps(node_outputs)
+        return _create_tool_response(tool_call.id, tool_response_content)
+
+    async def _execute_tools_agent_mode(
+        self,
+        input_data,
+        credentials,
+        tool_functions: list[dict[str, Any]],
+        prompt: list[dict],
+        graph_exec_id: str,
+        node_id: str,
+        node_exec_id: str,
+        user_id: str,
+        graph_id: str,
+        graph_version: int,
+        execution_context,
+    ):
+        """Execute tools in agent mode with a loop until finished."""
+        max_iterations = input_data.agent_mode_max_iterations
+        iteration = 0
+
+        # Execution parameters for tool execution
+        execution_params = ExecutionParams(
+            user_id=user_id,
+            graph_id=graph_id,
+            node_id=node_id,
+            graph_version=graph_version,
+            graph_exec_id=graph_exec_id,
+            node_exec_id=node_exec_id,
+            execution_context=execution_context,
+        )
+
+        current_prompt = list(prompt)
+
+        while max_iterations == -1 or iteration < max_iterations:
+            iteration += 1
+            logger.debug(f"Agent mode iteration {iteration}")
+
+            # Prepare prompt for this iteration
+            iteration_prompt = list(current_prompt)
+
+            # On the last iteration, add a special system message to encourage completion
+            if max_iterations > 0 and iteration == max_iterations:
+                last_iteration_message = {
+                    "role": "system",
+                    "content": f"[FINAL ITERATION]: This is your last iteration ({iteration}/{max_iterations}). "
+                    "Try to complete the task with the information you have. If you cannot fully complete it, "
+                    "provide a summary of what you've accomplished and what remains to be done. "
+                    "Prefer finishing with a clear response rather than making additional tool calls.",
+                }
+                iteration_prompt.append(last_iteration_message)
+
+            # Get LLM response
+            try:
+                response = await self._attempt_llm_call_with_validation(
+                    credentials, input_data, iteration_prompt, tool_functions
+                )
+            except Exception as e:
+                yield "error", f"LLM call failed in agent mode iteration {iteration}: {str(e)}"
+                return
+
+            # Process tool calls
+            processed_tools = self._process_tool_calls(response, tool_functions)
+
+            # If no tool calls, we're done
+            if not processed_tools:
+                yield "finished", response.response
+                self._update_conversation(current_prompt, response)
+                yield "conversations", current_prompt
+                return
+
+            # Execute tools and collect responses
+            tool_outputs = []
+            for tool_info in processed_tools:
+                try:
+                    tool_response = await self._execute_single_tool(
+                        tool_info, execution_params
+                    )
+                    tool_outputs.append(tool_response)
+                except Exception as e:
+                    logger.error(f"Tool execution failed: {e}")
+                    # Create error response for the tool
+                    error_response = _create_tool_response(
+                        tool_info.tool_call.id, f"Error: {str(e)}"
+                    )
+                    tool_outputs.append(error_response)
+
+            # Update conversation with response and tool outputs
+            self._update_conversation(current_prompt, response, tool_outputs)
+
+            # Yield intermediate conversation state
+            yield "conversations", current_prompt
+
+        # If we reach max iterations, yield the current state
+        if max_iterations == -1:
+            yield "finished", f"Agent mode completed after {iteration} iterations"
+        else:
+            yield "finished", f"Agent mode completed after {max_iterations} iterations (limit reached)"
+        yield "conversations", current_prompt
+
     async def run(
         self,
         input_data: Input,
@@ -603,6 +920,8 @@ class SmartDecisionMakerBlock(Block):
         graph_exec_id: str,
         node_exec_id: str,
         user_id: str,
+        graph_version: int,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         tool_functions = await self._create_tool_node_signatures(node_id)
@@ -660,12 +979,32 @@ class SmartDecisionMakerBlock(Block):
         ):
             prompt.append({"role": "user", "content": prefix + input_data.prompt})
 
+        # Execute tools based on the selected mode
+        if input_data.agent_mode_max_iterations != 0:
+            # In agent mode, execute tools directly in a loop until finished
+            async for result in self._execute_tools_agent_mode(
+                input_data=input_data,
+                credentials=credentials,
+                tool_functions=tool_functions,
+                prompt=prompt,
+                graph_exec_id=graph_exec_id,
+                node_id=node_id,
+                node_exec_id=node_exec_id,
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+                execution_context=execution_context,
+            ):
+                yield result
+            return
+
+        # One-off mode: single LLM call and yield tool calls for external execution
         current_prompt = list(prompt)
         max_attempts = max(1, int(input_data.retry))
         response = None
 
         last_error = None
-        for attempt in range(max_attempts):
+        for _ in range(max_attempts):
             try:
                 response = await self._attempt_llm_call_with_validation(
                     credentials, input_data, current_prompt, tool_functions
