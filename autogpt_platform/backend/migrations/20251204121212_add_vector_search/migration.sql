@@ -17,9 +17,6 @@ DROP VIEW IF EXISTS "StoreAgent";
 DROP TRIGGER IF EXISTS "update_tsvector" ON "StoreListingVersion";
 DROP FUNCTION IF EXISTS update_tsvector_column();
 
--- Drop the tsvector search column
-ALTER TABLE "StoreListingVersion" DROP COLUMN IF EXISTS "search";
-
 -- Add embedding column for vector search (1536 dimensions for text-embedding-3-small)
 ALTER TABLE "StoreListingVersion"
 ADD COLUMN IF NOT EXISTS "embedding" vector(1536);
@@ -64,6 +61,7 @@ SELECT
     slv."subHeading" AS sub_heading,
     slv.description,
     slv.categories,
+    slv.search,
     slv.embedding,
     COALESCE(ar.run_count, 0::bigint) AS runs,
     COALESCE(rs.avg_rating, 0.0)::double precision AS rating,
