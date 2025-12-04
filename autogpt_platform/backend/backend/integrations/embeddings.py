@@ -4,6 +4,7 @@ Embedding service for generating text embeddings using OpenAI.
 Used for vector-based semantic search in the store.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -136,13 +137,17 @@ def create_search_text(name: str, sub_heading: str, description: str) -> str:
     return " ".join(filter(None, parts)).strip()
 
 
-# Singleton instance
+# Singleton instance with lock for thread-safe initialization
 _embedding_service: Optional[EmbeddingService] = None
+_embedding_service_lock: asyncio.Lock = asyncio.Lock()
 
 
 async def get_embedding_service() -> EmbeddingService:
     """
     Get or create the embedding service singleton.
+
+    Uses double-checked locking to prevent race conditions in concurrent
+    async environments while avoiding lock overhead after initialization.
 
     Returns:
         The shared EmbeddingService instance.
@@ -152,5 +157,7 @@ async def get_embedding_service() -> EmbeddingService:
     """
     global _embedding_service
     if _embedding_service is None:
-        _embedding_service = EmbeddingService()
+        async with _embedding_service_lock:
+            if _embedding_service is None:
+                _embedding_service = EmbeddingService()
     return _embedding_service
