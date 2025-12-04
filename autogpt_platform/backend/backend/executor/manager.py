@@ -238,7 +238,9 @@ async def execute_node(
                 cred_id = field_data["_credentials_id"]
                 if cred_id:
                     # Credential ID provided - acquire credentials
-                    provider = info.get("config", {}).get("provider", "external service")
+                    provider = info.get("config", {}).get(
+                        "provider", "external service"
+                    )
                     file_name = field_data.get("name", "selected file")
                     try:
                         credentials, lock = await creds_manager.acquire(user_id, cred_id)
