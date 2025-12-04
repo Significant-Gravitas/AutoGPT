@@ -1,18 +1,21 @@
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 type Props = {
   children: React.ReactNode;
   className?: string;
+  title?: string;
 };
 
-export function RunDetailCard({ children, className }: Props) {
+export function RunDetailCard({ children, className, title }: Props) {
   return (
     <div
       className={cn(
-        "mx-4 min-h-20 rounded-medium border border-zinc-100 bg-white p-6",
+        "relative mx-4 flex min-h-20 flex-col gap-4 rounded-medium border border-zinc-100 bg-white p-6",
         className,
       )}
     >
+      {title && <Text variant="lead-semibold">{title}</Text>}
       {children}
     </div>
   );

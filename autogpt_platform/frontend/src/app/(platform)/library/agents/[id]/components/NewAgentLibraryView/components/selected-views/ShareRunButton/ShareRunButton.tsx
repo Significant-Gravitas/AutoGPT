@@ -1,18 +1,17 @@
 "use client";
 
-import React from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
-  ShareFatIcon,
-  CopyIcon,
   CheckIcon,
+  CopyIcon,
+  ShareFatIcon,
   WarningIcon,
 } from "@phosphor-icons/react";
 import { useShareRunButton } from "./useShareRunButton";
-import { Input } from "@/components/atoms/Input/Input";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   graphId: string;
@@ -49,12 +48,12 @@ export function ShareRunButton({
     >
       <Dialog.Trigger>
         <Button
-          variant={isShared ? "primary" : "secondary"}
-          size="small"
+          variant="icon"
+          size="icon"
+          aria-label="Share results"
           className={isShared ? "relative" : ""}
         >
-          <ShareFatIcon size={16} />
-          {isShared ? "Shared" : "Share"}
+          <ShareFatIcon weight="bold" size={18} className="text-zinc-700" />
         </Button>
       </Dialog.Trigger>
 
