@@ -5,7 +5,10 @@ import {
   getV1GetGraphVersion,
   useDeleteV1DeleteGraphExecution,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { useDeleteV2DeleteLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  useDeleteV2DeleteLibraryAgent,
+} from "@/app/api/__generated__/endpoints/library/library";
 import {
   getGetV1ListExecutionSchedulesForAGraphQueryOptions,
   useDeleteV1DeleteExecutionSchedule,
@@ -70,6 +73,11 @@ export function AgentActionsDropdown({
 
     try {
       await deleteAgent({ libraryAgentId: agent.id });
+
+      await queryClient.refetchQueries({
+        queryKey: getGetV2ListLibraryAgentsQueryKey(),
+      });
+
       toast({ title: "Agent deleted" });
       setShowDeleteDialog(false);
       router.push("/library");
@@ -147,7 +155,7 @@ export function AgentActionsDropdown({
 
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListExecutionSchedulesForAGraphQueryOptions(
-          scheduleId ?? "",
+          agentGraphId ?? "",
         ).queryKey,
       });
 
