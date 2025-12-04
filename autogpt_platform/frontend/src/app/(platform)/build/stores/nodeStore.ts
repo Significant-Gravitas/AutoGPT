@@ -53,6 +53,15 @@ type NodeStore = {
   getNodeExecutionResult: (nodeId: string) => NodeExecutionResult | undefined;
   getNodeBlockUIType: (nodeId: string) => BlockUIType;
   hasWebhookNodes: () => boolean;
+
+  updateNodeErrors: (nodeId: string, errors: { [key: string]: string }) => void;
+  clearNodeErrors: (nodeId: string) => void;
+  getNodeErrors: (nodeId: string) => { [key: string]: string } | undefined;
+  setNodeErrorsForBackendId: (
+    backendId: string,
+    errors: { [key: string]: string },
+  ) => void;
+  clearAllNodeErrors: () => void; // Add this
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -252,5 +261,48 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     return get().nodes.some((n) =>
       [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(n.data.uiType),
     );
+  },
+
+  updateNodeErrors: (nodeId: string, errors: { [key: string]: string }) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, errors } } : n,
+      ),
+    }));
+  },
+
+  clearNodeErrors: (nodeId: string) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, errors: undefined } } : n,
+      ),
+    }));
+  },
+
+  getNodeErrors: (nodeId: string) => {
+    return get().nodes.find((n) => n.id === nodeId)?.data?.errors;
+  },
+
+  setNodeErrorsForBackendId: (
+    backendId: string,
+    errors: { [key: string]: string },
+  ) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        // Match by backend_id if nodes have it, or by id
+        const matches =
+          n.data.metadata?.backend_id === backendId || n.id === backendId;
+        return matches ? { ...n, data: { ...n.data, errors } } : n;
+      }),
+    }));
+  },
+
+  clearAllNodeErrors: () => {
+    set((state) => ({
+      nodes: state.nodes.map((n) => ({
+        ...n,
+        data: { ...n.data, errors: undefined },
+      })),
+    }));
   },
 }));

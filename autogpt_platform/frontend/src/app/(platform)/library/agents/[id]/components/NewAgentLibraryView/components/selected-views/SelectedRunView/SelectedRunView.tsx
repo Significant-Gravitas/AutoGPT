@@ -2,24 +2,25 @@
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import {
-  TabsLine,
-  TabsLineContent,
-  TabsLineList,
-  TabsLineTrigger,
-} from "@/components/molecules/TabsLine/TabsLine";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
-import { parseAsString, useQueryState } from "nuqs";
 import { useEffect } from "react";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
+import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
+import { SelectedViewLayout } from "../SelectedViewLayout";
 import { RunOutputs } from "./components/RunOutputs";
+import { RunSummary } from "./components/RunSummary";
+import { SelectedRunActions } from "./components/SelectedRunActions/SelectedRunActions";
 import { useSelectedRunView } from "./useSelectedRunView";
+
+const anchorStyles =
+  "border-b-2 border-transparent pb-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:border-slate-900";
 
 interface Props {
   agent: LibraryAgent;
@@ -45,17 +46,21 @@ export function SelectedRunView({
     refetch: refetchReviews,
   } = usePendingReviewsForExecution(runId);
 
-  // Tab state management
-  const [activeTab, setActiveTab] = useQueryState(
-    "tab",
-    parseAsString.withDefault("output"),
-  );
-
   useEffect(() => {
     if (run?.status === AgentExecutionStatus.REVIEW && runId) {
       refetchReviews();
     }
   }, [run?.status, runId, refetchReviews]);
+
+  const withSummary = run?.stats?.activity_status;
+  const withReviews = run?.status === AgentExecutionStatus.REVIEW;
+
+  function scrollToSection(id: string) {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
 
   if (responseError || httpError) {
     return (
@@ -68,79 +73,118 @@ export function SelectedRunView({
   }
 
   if (isLoading && !run) {
-    return (
-      <div className="flex-1 space-y-4 px-4">
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <RunDetailHeader
-        agent={agent}
-        run={run}
-        onSelectRun={onSelectRun}
-        onClearSelectedRun={onClearSelectedRun}
-      />
+    <div className="flex h-full w-full gap-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <div className="flex flex-col gap-4">
+            <RunDetailHeader agent={agent} run={run} />
 
-      {/* Content */}
-      <TabsLine value={activeTab} onValueChange={setActiveTab}>
-        <TabsLineList className={AGENT_LIBRARY_SECTION_PADDING_X}>
-          <TabsLineTrigger value="output">Output</TabsLineTrigger>
-          <TabsLineTrigger value="input">Your input</TabsLineTrigger>
-          {run?.status === AgentExecutionStatus.REVIEW && (
-            <TabsLineTrigger value="reviews">
-              Reviews ({pendingReviews.length})
-            </TabsLineTrigger>
-          )}
-        </TabsLineList>
+            {/* Navigation Links */}
+            <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
+              <nav className="flex gap-8 px-3 pb-1">
+                {withSummary && (
+                  <button
+                    onClick={() => scrollToSection("summary")}
+                    className={anchorStyles}
+                  >
+                    Summary
+                  </button>
+                )}
+                <button
+                  onClick={() => scrollToSection("output")}
+                  className={anchorStyles}
+                >
+                  Output
+                </button>
+                <button
+                  onClick={() => scrollToSection("input")}
+                  className={anchorStyles}
+                >
+                  Your input
+                </button>
+                {withReviews && (
+                  <button
+                    onClick={() => scrollToSection("reviews")}
+                    className={anchorStyles}
+                  >
+                    Reviews ({pendingReviews.length})
+                  </button>
+                )}
+              </nav>
+            </div>
 
-        <TabsLineContent value="output">
-          <RunDetailCard>
-            {isLoading ? (
-              <div className="text-neutral-500">Loading…</div>
-            ) : run && "outputs" in run ? (
-              <RunOutputs outputs={run.outputs as any} />
-            ) : (
-              <div className="text-neutral-600">No output from this run.</div>
+            {/* Summary Section */}
+            {withSummary && (
+              <div id="summary" className="scroll-mt-4">
+                <RunDetailCard title="Summary">
+                  <RunSummary run={run} />
+                </RunDetailCard>
+              </div>
             )}
-          </RunDetailCard>
-        </TabsLineContent>
 
-        <TabsLineContent value="input">
-          <RunDetailCard>
-            <AgentInputsReadOnly
-              agent={agent}
-              inputs={(run as any)?.inputs}
-              credentialInputs={(run as any)?.credential_inputs}
-            />
-          </RunDetailCard>
-        </TabsLineContent>
+            {/* Output Section */}
+            <div id="output" className="scroll-mt-4">
+              <RunDetailCard title="Output">
+                {isLoading ? (
+                  <div className="text-neutral-500">
+                    <LoadingSpinner />
+                  </div>
+                ) : run && "outputs" in run ? (
+                  <RunOutputs outputs={run.outputs as any} />
+                ) : (
+                  <Text variant="body" className="text-neutral-600">
+                    No output from this run.
+                  </Text>
+                )}
+              </RunDetailCard>
+            </div>
 
-        {run?.status === AgentExecutionStatus.REVIEW && (
-          <TabsLineContent value="reviews">
-            <RunDetailCard>
-              {reviewsLoading ? (
-                <div className="text-neutral-500">Loading reviews…</div>
-              ) : pendingReviews.length > 0 ? (
-                <PendingReviewsList
-                  reviews={pendingReviews}
-                  onReviewComplete={refetchReviews}
-                  emptyMessage="No pending reviews for this execution"
+            {/* Input Section */}
+            <div id="input" className="scroll-mt-4">
+              <RunDetailCard title="Your input">
+                <AgentInputsReadOnly
+                  agent={agent}
+                  inputs={(run as any)?.inputs}
+                  credentialInputs={(run as any)?.credential_inputs}
                 />
-              ) : (
-                <div className="text-neutral-600">
-                  No pending reviews for this execution
-                </div>
-              )}
-            </RunDetailCard>
-          </TabsLineContent>
-        )}
-      </TabsLine>
+              </RunDetailCard>
+            </div>
+
+            {/* Reviews Section */}
+            {withReviews && (
+              <div id="reviews" className="scroll-mt-4">
+                <RunDetailCard>
+                  {reviewsLoading ? (
+                    <div className="text-neutral-500">Loading reviews…</div>
+                  ) : pendingReviews.length > 0 ? (
+                    <PendingReviewsList
+                      reviews={pendingReviews}
+                      onReviewComplete={refetchReviews}
+                      emptyMessage="No pending reviews for this execution"
+                    />
+                  ) : (
+                    <div className="text-neutral-600">
+                      No pending reviews for this execution
+                    </div>
+                  )}
+                </RunDetailCard>
+              </div>
+            )}
+          </div>
+        </SelectedViewLayout>
+      </div>
+      <div className="-mt-2 max-w-[3.75rem] flex-shrink-0">
+        <SelectedRunActions
+          agent={agent}
+          run={run}
+          onSelectRun={onSelectRun}
+          onClearSelectedRun={onClearSelectedRun}
+        />
+      </div>
     </div>
   );
 }
