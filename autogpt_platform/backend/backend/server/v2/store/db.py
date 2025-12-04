@@ -26,6 +26,7 @@ from backend.data.notifications import (
     AgentRejectionData,
     NotificationEventModel,
 )
+from backend.integrations.embeddings import create_search_text, get_embedding_service
 from backend.notifications.notifications import queue_notification_async
 from backend.util.exceptions import DatabaseError
 from backend.util.settings import Settings
@@ -56,31 +57,40 @@ async def get_store_agents(
     )
 
     try:
-        # If search_query is provided, use full-text search
+        # If search_query is provided, use vector similarity search
         if search_query:
             offset = (page - 1) * page_size
 
+            # Generate embedding for search query
+            embedding_service = await get_embedding_service()
+            query_embedding = await embedding_service.generate_embedding(search_query)
+            # Convert embedding to PostgreSQL array format
+            embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+
             # Whitelist allowed order_by columns
+            # For vector search, we use similarity instead of rank
             ALLOWED_ORDER_BY = {
-                "rating": "rating DESC, rank DESC",
-                "runs": "runs DESC, rank DESC",
-                "name": "agent_name ASC, rank ASC",
-                "updated_at": "updated_at DESC, rank DESC",
+                "rating": "rating DESC, similarity DESC",
+                "runs": "runs DESC, similarity DESC",
+                "name": "agent_name ASC, similarity DESC",
+                "updated_at": "updated_at DESC, similarity DESC",
             }
 
             # Validate and get order clause
             if sorted_by and sorted_by in ALLOWED_ORDER_BY:
                 order_by_clause = ALLOWED_ORDER_BY[sorted_by]
             else:
-                order_by_clause = "updated_at DESC, rank DESC"
+                # Default: order by vector similarity (most similar first)
+                order_by_clause = "similarity DESC, updated_at DESC"
 
             # Build WHERE conditions and parameters list
             where_parts: list[str] = []
-            params: list[typing.Any] = [search_query]  # $1 - search term
+            params: list[typing.Any] = [embedding_str]  # $1 - query embedding
             param_index = 2  # Start at $2 for next parameter
 
-            # Always filter for available agents
+            # Always filter for available agents and agents with embeddings
             where_parts.append("is_available = true")
+            where_parts.append("embedding IS NOT NULL")
 
             if featured:
                 where_parts.append("featured = true")
@@ -103,7 +113,9 @@ async def get_store_agents(
             limit_param = f"${param_index}"
             offset_param = f"${param_index + 1}"
 
-            # Execute full-text search query with parameterized values
+            # Vector similarity search query using cosine distance
+            # The <=> operator returns cosine distance (0 = identical, 2 = opposite)
+            # We convert to similarity: 1 - distance/2 gives range [0, 1]
             sql_query = f"""
                 SELECT
                     slug,
@@ -119,22 +131,18 @@ async def get_store_agents(
                     featured,
                     is_available,
                     updated_at,
-                    ts_rank_cd(search, query) AS rank
-                FROM {{schema_prefix}}"StoreAgent",
-                    plainto_tsquery('english', $1) AS query
+                    1 - (embedding <=> $1::vector) AS similarity
+                FROM {{schema_prefix}}"StoreAgent"
                 WHERE {sql_where_clause}
-                    AND search @@ query
                 ORDER BY {order_by_clause}
                 LIMIT {limit_param} OFFSET {offset_param}
             """
 
-            # Count query for pagination - only uses search term parameter
+            # Count query for pagination
             count_query = f"""
                 SELECT COUNT(*) as count
-                FROM {{schema_prefix}}"StoreAgent",
-                    plainto_tsquery('english', $1) AS query
+                FROM {{schema_prefix}}"StoreAgent"
                 WHERE {sql_where_clause}
-                    AND search @@ query
             """
 
             # Execute both queries with parameters
@@ -253,6 +261,56 @@ async def log_search_term(search_query: str):
     except Exception as e:
         # Fail silently here so that logging search terms doesn't break the app
         logger.error(f"Error logging search term: {e}")
+
+
+async def _generate_and_store_embedding(
+    store_listing_version_id: str,
+    name: str,
+    sub_heading: str,
+    description: str,
+) -> None:
+    """
+    Generate and store embedding for a store listing version.
+
+    This creates a vector embedding from the agent's name, sub_heading, and
+    description, which is used for semantic search.
+
+    Args:
+        store_listing_version_id: The ID of the store listing version.
+        name: The agent name.
+        sub_heading: The agent sub-heading/tagline.
+        description: The agent description.
+    """
+    try:
+        embedding_service = await get_embedding_service()
+        search_text = create_search_text(name, sub_heading, description)
+
+        if not search_text:
+            logger.warning(
+                f"No searchable text for version {store_listing_version_id}, "
+                "skipping embedding generation"
+            )
+            return
+
+        embedding = await embedding_service.generate_embedding(search_text)
+        embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+
+        await query_raw_with_schema(
+            """
+            UPDATE {schema_prefix}"StoreListingVersion"
+            SET embedding = $1::vector
+            WHERE id = $2
+            """,
+            embedding_str,
+            store_listing_version_id,
+        )
+        logger.debug(f"Generated embedding for version {store_listing_version_id}")
+    except Exception as e:
+        # Log error but don't fail the whole operation
+        # Embeddings can be generated later via backfill
+        logger.error(
+            f"Failed to generate embedding for {store_listing_version_id}: {e}"
+        )
 
 
 async def get_store_agent_details(
@@ -801,6 +859,12 @@ async def create_store_submission(
             else None
         )
 
+        # Generate embedding for semantic search
+        if store_listing_version_id:
+            await _generate_and_store_embedding(
+                store_listing_version_id, name, sub_heading, description
+            )
+
         logger.debug(f"Created store listing for agent {agent_id}")
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
@@ -963,6 +1027,12 @@ async def edit_store_submission(
 
             if not updated_version:
                 raise DatabaseError("Failed to update store listing version")
+
+            # Regenerate embedding with updated content
+            await _generate_and_store_embedding(
+                store_listing_version_id, name, sub_heading, description
+            )
+
             return backend.server.v2.store.model.StoreSubmission(
                 agent_id=current_version.agentGraphId,
                 agent_version=current_version.agentGraphVersion,
@@ -1093,6 +1163,12 @@ async def create_store_version(
         logger.debug(
             f"Created new version for listing {store_listing_id} of agent {agent_id}"
         )
+
+        # Generate embedding for semantic search
+        await _generate_and_store_embedding(
+            new_version.id, name, sub_heading, description
+        )
+
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
             agent_id=agent_id,

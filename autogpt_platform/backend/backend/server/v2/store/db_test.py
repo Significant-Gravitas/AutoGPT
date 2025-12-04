@@ -405,3 +405,237 @@ async def test_get_store_agents_search_category_array_injection():
     # Verify the query executed without error
     # Category should be parameterized, preventing SQL injection
     assert isinstance(result.agents, list)
+
+
+# Vector search tests
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_vector_search_mocked(mocker):
+    """Test vector search uses embedding service and executes query safely."""
+    from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
+
+    # Mock embedding service
+    mock_embedding = [0.1] * EMBEDDING_DIMENSIONS
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        return_value=mock_embedding
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.AsyncMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query_raw_with_schema to return empty results
+    mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(side_effect=[[], [{"count": 0}]]),
+    )
+
+    # Call function with search query
+    result = await db.get_store_agents(search_query="test query")
+
+    # Verify embedding service was called
+    mock_embedding_service.generate_embedding.assert_called_once_with("test query")
+
+    # Verify results
+    assert isinstance(result.agents, list)
+    assert len(result.agents) == 0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_vector_search_with_results(mocker):
+    """Test vector search returns properly formatted results."""
+    from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
+
+    # Mock embedding service
+    mock_embedding = [0.1] * EMBEDDING_DIMENSIONS
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        return_value=mock_embedding
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.AsyncMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query results
+    mock_agents = [
+        {
+            "slug": "test-agent",
+            "agent_name": "Test Agent",
+            "agent_image": ["image.jpg"],
+            "creator_username": "creator",
+            "creator_avatar": "avatar.jpg",
+            "sub_heading": "Test heading",
+            "description": "Test description",
+            "runs": 10,
+            "rating": 4.5,
+            "categories": ["test"],
+            "featured": False,
+            "is_available": True,
+            "updated_at": datetime.now(),
+            "similarity": 0.95,
+        }
+    ]
+    mock_count = [{"count": 1}]
+
+    mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(side_effect=[mock_agents, mock_count]),
+    )
+
+    # Call function with search query
+    result = await db.get_store_agents(search_query="test query")
+
+    # Verify results
+    assert len(result.agents) == 1
+    assert result.agents[0].slug == "test-agent"
+    assert result.agents[0].agent_name == "Test Agent"
+    assert result.pagination.total_items == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_vector_search_with_filters(mocker):
+    """Test vector search works correctly with additional filters."""
+    from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
+
+    # Mock embedding service
+    mock_embedding = [0.1] * EMBEDDING_DIMENSIONS
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        return_value=mock_embedding
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.AsyncMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query_raw_with_schema
+    mock_query = mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(side_effect=[[], [{"count": 0}]]),
+    )
+
+    # Call function with search query and filters
+    await db.get_store_agents(
+        search_query="test query",
+        featured=True,
+        creators=["creator1", "creator2"],
+        category="AI",
+        sorted_by="rating",
+    )
+
+    # Verify query was called with parameterized values
+    # First call is the main query, second is count
+    assert mock_query.call_count == 2
+
+    # Check that the SQL query includes proper parameterization
+    first_call_args = mock_query.call_args_list[0]
+    sql_query = first_call_args[0][0]
+
+    # Verify key elements of the query
+    assert "embedding <=> $1::vector" in sql_query
+    assert "featured = true" in sql_query
+    assert "creator_username = ANY($" in sql_query
+    assert "= ANY(categories)" in sql_query
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_generate_and_store_embedding_success(mocker):
+    """Test that embedding generation and storage works correctly."""
+    from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
+
+    # Mock embedding service
+    mock_embedding = [0.1] * EMBEDDING_DIMENSIONS
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        return_value=mock_embedding
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.AsyncMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query_raw_with_schema
+    mock_query = mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(return_value=[]),
+    )
+
+    # Call the internal function
+    await db._generate_and_store_embedding(
+        store_listing_version_id="version-123",
+        name="Test Agent",
+        sub_heading="A test agent",
+        description="Does testing",
+    )
+
+    # Verify embedding service was called with combined text
+    mock_embedding_service.generate_embedding.assert_called_once_with(
+        "Test Agent A test agent Does testing"
+    )
+
+    # Verify database update was called
+    mock_query.assert_called_once()
+    call_args = mock_query.call_args
+    assert "UPDATE" in call_args[0][0]
+    assert "embedding = $1::vector" in call_args[0][0]
+    assert call_args[0][2] == "version-123"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_generate_and_store_embedding_empty_text(mocker):
+    """Test that embedding is not generated for empty text."""
+    # Mock embedding service
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock()
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.AsyncMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query_raw_with_schema
+    mock_query = mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(return_value=[]),
+    )
+
+    # Call with empty fields
+    await db._generate_and_store_embedding(
+        store_listing_version_id="version-123",
+        name="",
+        sub_heading="",
+        description="",
+    )
+
+    # Verify embedding service was NOT called
+    mock_embedding_service.generate_embedding.assert_not_called()
+
+    # Verify database was NOT updated
+    mock_query.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_generate_and_store_embedding_handles_error(mocker):
+    """Test that embedding generation errors don't crash the operation."""
+    # Mock embedding service to raise an error
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        side_effect=Exception("API error")
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.AsyncMock(return_value=mock_embedding_service),
+    )
+
+    # Call should not raise - errors are logged but not propagated
+    await db._generate_and_store_embedding(
+        store_listing_version_id="version-123",
+        name="Test Agent",
+        sub_heading="A test agent",
+        description="Does testing",
+    )
+
+    # Verify embedding service was called (and failed)
+    mock_embedding_service.generate_embedding.assert_called_once()
