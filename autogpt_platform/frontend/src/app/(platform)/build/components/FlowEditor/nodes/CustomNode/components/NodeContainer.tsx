@@ -23,6 +23,7 @@ export const NodeContainer = ({
         selected && "shadow-lg ring-2 ring-slate-200",
         status && nodeStyleBasedOnStatus[status],
       )}
+      data-id={`custom-node-${nodeId}`}
     >
       {children}
     </div>

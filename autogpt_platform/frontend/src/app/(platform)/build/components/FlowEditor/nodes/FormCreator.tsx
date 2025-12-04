@@ -33,7 +33,10 @@ export const FormCreator = React.memo(
     const initialValues = getHardCodedValues(nodeId);
 
     return (
-      <div className={className}>
+      <div
+        className={className}
+        data-id={`form-creator-container-${nodeId}-node`}
+      >
         <FormRenderer
           jsonSchema={jsonSchema}
           handleChange={handleChange}

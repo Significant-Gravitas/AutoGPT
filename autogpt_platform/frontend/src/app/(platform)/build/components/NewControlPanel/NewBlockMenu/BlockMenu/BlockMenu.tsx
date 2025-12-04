@@ -15,10 +15,17 @@ import {
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
 export const BlockMenu = () => {
-  const { blockMenuOpen, setBlockMenuOpen } = useControlPanelStore();
+  const { blockMenuOpen, setBlockMenuOpen, forceOpenBlockMenu } =
+    useControlPanelStore();
   return (
-    // pinBlocksPopover ? true : open
-    <Popover onOpenChange={setBlockMenuOpen} open={blockMenuOpen}>
+    <Popover
+      onOpenChange={(open) => {
+        if (!forceOpenBlockMenu || open) {
+          setBlockMenuOpen(open);
+        }
+      }}
+      open={forceOpenBlockMenu ? true : blockMenuOpen}
+    >
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <PopoverTrigger className="hover:cursor-pointer">

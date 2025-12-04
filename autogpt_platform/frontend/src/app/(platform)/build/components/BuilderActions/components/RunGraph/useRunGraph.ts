@@ -7,8 +7,9 @@ import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { GraphExecutionMeta } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/use-agent-runs";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSaveGraph } from "@/app/(platform)/build/hooks/useSaveGraph";
+import { useTutorialStore } from "@/app/(platform)/build/stores/tutorialStore";
 
 export const useRunGraph = () => {
   const { saveGraph, isSaving } = useSaveGraph({
@@ -23,6 +24,29 @@ export const useRunGraph = () => {
     useShallow((state) => state.setIsGraphRunning),
   );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
+
+  // Tutorial integration - force open dialog when tutorial requests it
+  const forceOpenRunInputDialog = useTutorialStore(
+    (state) => state.forceOpenRunInputDialog,
+  );
+  const setForceOpenRunInputDialog = useTutorialStore(
+    (state) => state.setForceOpenRunInputDialog,
+  );
+
+  // Sync tutorial state with dialog state
+  useEffect(() => {
+    if (forceOpenRunInputDialog && !openRunInputDialog) {
+      setOpenRunInputDialog(true);
+    }
+  }, [forceOpenRunInputDialog, openRunInputDialog]);
+
+  // Reset tutorial state when dialog closes
+  const handleSetOpenRunInputDialog = (isOpen: boolean) => {
+    setOpenRunInputDialog(isOpen);
+    if (!isOpen && forceOpenRunInputDialog) {
+      setForceOpenRunInputDialog(false);
+    }
+  };
 
   const [{ flowID, flowVersion, flowExecutionID }, setQueryStates] =
     useQueryStates({
@@ -99,6 +123,6 @@ export const useRunGraph = () => {
     isExecutingGraph,
     isTerminatingGraph,
     openRunInputDialog,
-    setOpenRunInputDialog,
+    setOpenRunInputDialog: handleSetOpenRunInputDialog,
   };
 };
