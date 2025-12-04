@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { BlockUIType } from "@/lib/autogpt-server-api";
 import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
+import { getFieldErrorKey } from "../utils/helpers";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id: fieldId,
@@ -41,6 +42,11 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
+
+  const nodeErrors = useNodeStore((state) => {
+    const node = state.nodes.find((n) => n.id === nodeId);
+    return node?.data?.errors;
+  });
 
   const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
@@ -88,6 +94,13 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   if (uiType === BlockUIType.OUTPUT && fieldId === "root_name") {
     shouldShowHandle = false;
   }
+
+  const fieldErrorKey = getFieldErrorKey(fieldId);
+  const fieldError =
+    nodeErrors?.[fieldErrorKey] ||
+    nodeErrors?.[fieldErrorKey.replace(/_/g, ".")] ||
+    nodeErrors?.[fieldErrorKey.replace(/\./g, "_")] ||
+    null;
 
   return (
     <div
@@ -150,7 +163,12 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
         <div className={cn(size === "small" ? "max-w-[340px] pl-2" : "")}>
           {children}
         </div>
-      )}{" "}
+      )}
+      {fieldError && (
+        <Text variant="small" className="mt-1 pl-4 !text-red-600">
+          {fieldError}
+        </Text>
+      )}
     </div>
   );
 };
