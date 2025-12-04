@@ -272,8 +272,12 @@ class BlockSchema(BaseModel):
         Get fields that have auto_credentials metadata (e.g., GoogleDriveFileInput).
 
         Returns a dict mapping kwarg_name -> {field_name, auto_credentials_config}
+
+        Raises:
+            ValueError: If multiple fields have the same kwarg_name, as this would
+                cause silent overwriting and only the last field would be processed.
         """
-        result = {}
+        result: dict[str, dict[str, Any]] = {}
         schema = cls.jsonschema()
         properties = schema.get("properties", {})
 
@@ -281,6 +285,12 @@ class BlockSchema(BaseModel):
             auto_creds = field_schema.get("auto_credentials")
             if auto_creds:
                 kwarg_name = auto_creds.get("kwarg_name", "credentials")
+                if kwarg_name in result:
+                    raise ValueError(
+                        f"Duplicate auto_credentials kwarg_name '{kwarg_name}' "
+                        f"in fields '{result[kwarg_name]['field_name']}' and "
+                        f"'{field_name}' on {cls.__qualname__}"
+                    )
                 result[kwarg_name] = {
                     "field_name": field_name,
                     "config": auto_creds,
