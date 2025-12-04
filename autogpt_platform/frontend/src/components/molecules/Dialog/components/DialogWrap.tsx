@@ -4,6 +4,7 @@ import * as RXDialog from "@radix-ui/react-dialog";
 import {
   CSSProperties,
   PropsWithChildren,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -20,6 +21,14 @@ interface Props extends BaseProps {
   withGradient?: boolean;
 }
 
+/**
+ * Check if an external picker (like Google Drive) is currently open.
+ * Used to prevent dialog from closing when user interacts with the picker.
+ */
+function isExternalPickerOpen(): boolean {
+  return document.body.hasAttribute("data-google-picker-open");
+}
+
 export function DialogWrap({
   children,
   title,
@@ -29,6 +38,30 @@ export function DialogWrap({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
+
+  // Prevent dialog from closing when external picker is open
+  const handleInteractOutside = useCallback(
+    (event: Event) => {
+      if (isExternalPickerOpen()) {
+        event.preventDefault();
+        return;
+      }
+      handleClose();
+    },
+    [handleClose],
+  );
+
+  const handlePointerDownOutside = useCallback((event: Event) => {
+    if (isExternalPickerOpen()) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const handleFocusOutside = useCallback((event: Event) => {
+    if (isExternalPickerOpen()) {
+      event.preventDefault();
+    }
+  }, []);
 
   useEffect(() => {
     function update() {
@@ -48,12 +81,15 @@ export function DialogWrap({
 
   return (
     <RXDialog.Portal>
-      <RXDialog.Overlay className={modalStyles.overlay} />
+      <RXDialog.Overlay data-dialog-overlay className={modalStyles.overlay} />
       <RXDialog.Content
-        onInteractOutside={handleClose}
+        data-dialog-content
+        onInteractOutside={handleInteractOutside}
+        onPointerDownOutside={handlePointerDownOutside}
+        onFocusOutside={handleFocusOutside}
         onEscapeKeyDown={handleClose}
         aria-describedby={undefined}
-        className={cn(modalStyles.content)}
+        className={modalStyles.content}
         style={{
           ...styling,
         }}
