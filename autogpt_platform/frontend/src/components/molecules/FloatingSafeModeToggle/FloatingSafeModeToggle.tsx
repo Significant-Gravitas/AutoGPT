@@ -1,22 +1,22 @@
-import { useCallback, useState, useEffect } from "react";
-import { ShieldIcon, ShieldCheckIcon } from "@phosphor-icons/react";
+import { usePatchV1UpdateGraphSettings } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV2GetLibraryAgentQueryOptions,
+  useGetV2GetLibraryAgentByGraphId,
+} from "@/app/api/__generated__/endpoints/library/library";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { usePatchV1UpdateGraphSettings } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import {
-  getGetV2GetLibraryAgentQueryOptions,
-  useGetV2GetLibraryAgentByGraphId,
-} from "@/app/api/__generated__/endpoints/library/library";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { cn } from "@/lib/utils";
-import { GraphModel } from "@/app/api/__generated__/models/graphModel";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useQueryClient } from "@tanstack/react-query";
 import { Graph } from "@/lib/autogpt-server-api/types";
+import { cn } from "@/lib/utils";
+import { ShieldCheckIcon, ShieldIcon } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 
 function getGraphId(graph: GraphModel | LibraryAgent | Graph): string {
   if ("graph_id" in graph) return graph.graph_id || "";
@@ -163,8 +163,8 @@ export function FloatingSafeModeToggle({
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <Button
-            variant="secondary"
-            size="small"
+            variant="icon"
+            size="icon"
             onClick={handleToggle}
             disabled={isPending}
             loading={isPending}
@@ -177,12 +177,12 @@ export function FloatingSafeModeToggle({
           >
             {currentSafeMode! ? (
               <>
-                <ShieldCheckIcon className="h-4 w-4" />
+                <ShieldCheckIcon weight="bold" size={16} />
                 Safe Mode: ON
               </>
             ) : (
               <>
-                <ShieldIcon className="h-4 w-4" />
+                <ShieldIcon weight="bold" size={16} />
                 Safe Mode: OFF
               </>
             )}
