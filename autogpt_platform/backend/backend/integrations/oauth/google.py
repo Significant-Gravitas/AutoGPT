@@ -11,7 +11,6 @@ from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 
@@ -108,13 +107,13 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         return credentials
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
-        # Use a simple POST request - no auth session needed for token revocation
-        response = await Requests().post(
+        session = AuthorizedSession(credentials)
+        session.post(
             self.revoke_uri,
             params={"token": credentials.access_token.get_secret_value()},
             headers={"content-type": "application/x-www-form-urlencoded"},
         )
-        return response.ok
+        return True
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials
