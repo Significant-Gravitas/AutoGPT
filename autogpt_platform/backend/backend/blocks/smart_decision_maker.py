@@ -844,7 +844,7 @@ class SmartDecisionMakerBlock(Block):
 
         current_prompt = list(prompt)
 
-        while max_iterations == -1 or iteration < max_iterations:
+        while max_iterations < 0 or iteration < max_iterations:
             iteration += 1
             logger.debug(f"Agent mode iteration {iteration}")
 
@@ -904,7 +904,7 @@ class SmartDecisionMakerBlock(Block):
             yield "conversations", current_prompt
 
         # If we reach max iterations, yield the current state
-        if max_iterations == -1:
+        if max_iterations < 0:
             yield "finished", f"Agent mode completed after {iteration} iterations"
         else:
             yield "finished", f"Agent mode completed after {max_iterations} iterations (limit reached)"
