@@ -80,6 +80,7 @@ export const useEditAgentForm = ({
       category: submission.categories?.[0] || "",
       description: submission.description,
       changes_summary: submission.changes_summary || "",
+      agentOutputDemo: submission.agent_output_demo_url || "",
     },
   });
 

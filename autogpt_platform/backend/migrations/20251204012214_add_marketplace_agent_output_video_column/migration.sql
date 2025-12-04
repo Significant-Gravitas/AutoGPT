@@ -31,15 +31,17 @@ SELECT
     slv."agentOutputDemoUrl" AS agent_output_demo,
     COALESCE(slv."imageUrls", ARRAY[]::text[]) AS agent_image,
     slv."isFeatured" AS featured,
-    p.username AS creator_username,
-    p."avatarUrl" AS creator_avatar,
+    p.username AS creator_username,  -- Allow NULL for malformed sub-agents
+    p."avatarUrl" AS creator_avatar,  -- Allow NULL for malformed sub-agents
     slv."subHeading" AS sub_heading,
     slv.description,
     slv.categories,
+    slv.search,
     COALESCE(ar.run_count, 0::bigint) AS runs,
     COALESCE(rs.avg_rating, 0.0)::double precision AS rating,
     COALESCE(av.versions, ARRAY[slv.version::text]) AS versions,
-    slv."isAvailable" AS is_available
+    slv."isAvailable" AS is_available,
+    COALESCE(sl."useForOnboarding", false) AS "useForOnboarding"
 FROM "StoreListing" sl
 JOIN latest_versions lv 
     ON sl.id = lv."storeListingId"
