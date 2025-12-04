@@ -13,11 +13,13 @@ router = fastapi.APIRouter(
 
 @router.get("/models", response_model=llm_model.LlmModelsResponse)
 async def list_models():
-    models = await llm_db.list_models()
+    """List all enabled LLM models available to users."""
+    models = await llm_db.list_models(enabled_only=True)
     return llm_model.LlmModelsResponse(models=models)
 
 
 @router.get("/providers", response_model=llm_model.LlmProvidersResponse)
 async def list_providers():
-    providers = await llm_db.list_providers(include_models=True)
+    """List all LLM providers with their enabled models."""
+    providers = await llm_db.list_providers(include_models=True, enabled_only=True)
     return llm_model.LlmProvidersResponse(providers=providers)

@@ -57,7 +57,7 @@ def test_list_llm_providers_success(
     ]
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.get_all_providers",
+        "backend.server.v2.admin.llm_routes.llm_db.list_providers",
         new=AsyncMock(return_value=mock_providers),
     )
 
@@ -102,7 +102,7 @@ def test_list_llm_models_success(
     ]
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.get_all_models",
+        "backend.server.v2.admin.llm_routes.llm_db.list_models",
         new=AsyncMock(return_value=mock_models),
     )
 
@@ -135,12 +135,12 @@ def test_create_llm_provider_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.upsert_provider",
+        "backend.server.v2.admin.llm_routes.llm_db.upsert_provider",
         new=AsyncMock(return_value=mock_provider),
     )
 
-    mock_notify = mocker.patch(
-        "backend.server.v2.admin.llm_routes.notify_llm_registry_refresh",
+    mock_refresh = mocker.patch(
+        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -162,8 +162,8 @@ def test_create_llm_provider_success(
     assert response_data["name"] == "groq"
     assert response_data["display_name"] == "Groq"
 
-    # Verify notification was sent
-    mock_notify.assert_called_once()
+    # Verify refresh was called
+    mock_refresh.assert_called_once()
 
     # Snapshot test the response
     configured_snapshot.assert_match(response_data, "create_llm_provider_success.json")
@@ -196,12 +196,12 @@ def test_create_llm_model_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.create_model",
+        "backend.server.v2.admin.llm_routes.llm_db.create_model",
         new=AsyncMock(return_value=mock_model),
     )
 
-    mock_notify = mocker.patch(
-        "backend.server.v2.admin.llm_routes.notify_llm_registry_refresh",
+    mock_refresh = mocker.patch(
+        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -231,8 +231,8 @@ def test_create_llm_model_success(
     assert response_data["slug"] == "gpt-4.1-mini"
     assert response_data["is_enabled"] is True
 
-    # Verify notification was sent
-    mock_notify.assert_called_once()
+    # Verify refresh was called
+    mock_refresh.assert_called_once()
 
     # Snapshot test the response
     configured_snapshot.assert_match(response_data, "create_llm_model_success.json")
@@ -265,12 +265,12 @@ def test_update_llm_model_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.update_model",
+        "backend.server.v2.admin.llm_routes.llm_db.update_model",
         new=AsyncMock(return_value=mock_model),
     )
 
-    mock_notify = mocker.patch(
-        "backend.server.v2.admin.llm_routes.notify_llm_registry_refresh",
+    mock_refresh = mocker.patch(
+        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -288,8 +288,8 @@ def test_update_llm_model_success(
     assert response_data["display_name"] == "GPT-4o Updated"
     assert response_data["context_window"] == 256000
 
-    # Verify notification was sent
-    mock_notify.assert_called_once()
+    # Verify refresh was called
+    mock_refresh.assert_called_once()
 
     # Snapshot test the response
     configured_snapshot.assert_match(response_data, "update_llm_model_success.json")
@@ -315,12 +315,12 @@ def test_toggle_llm_model_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.toggle_model",
+        "backend.server.v2.admin.llm_routes.llm_db.toggle_model",
         new=AsyncMock(return_value=mock_model),
     )
 
-    mock_notify = mocker.patch(
-        "backend.server.v2.admin.llm_routes.notify_llm_registry_refresh",
+    mock_refresh = mocker.patch(
+        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -332,8 +332,8 @@ def test_toggle_llm_model_success(
     response_data = response.json()
     assert response_data["is_enabled"] is False
 
-    # Verify notification was sent
-    mock_notify.assert_called_once()
+    # Verify refresh was called
+    mock_refresh.assert_called_once()
 
     # Snapshot test the response
     configured_snapshot.assert_match(response_data, "toggle_llm_model_success.json")

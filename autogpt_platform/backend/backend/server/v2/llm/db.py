@@ -4,6 +4,7 @@ from typing import Any, Iterable, Sequence
 
 import prisma.models
 
+from backend.data.db import transaction
 from backend.server.v2.llm import model as llm_model
 
 
@@ -70,8 +71,21 @@ def _map_provider(record: prisma.models.LlmProvider) -> llm_model.LlmProvider:
     )
 
 
-async def list_providers(include_models: bool = True) -> list[llm_model.LlmProvider]:
-    include = {"Models": {"include": {"Costs": True}}} if include_models else None
+async def list_providers(
+    include_models: bool = True, enabled_only: bool = False
+) -> list[llm_model.LlmProvider]:
+    """
+    List all LLM providers.
+
+    Args:
+        include_models: Whether to include models for each provider
+        enabled_only: If True, only include enabled models (for public routes)
+    """
+    if include_models:
+        model_where = {"isEnabled": True} if enabled_only else None
+        include = {"Models": {"include": {"Costs": True}, "where": model_where}}
+    else:
+        include = None
     records = await prisma.models.LlmProvider.prisma().find_many(include=include)
     return [_map_provider(record) for record in records]
 
@@ -107,10 +121,24 @@ async def upsert_provider(
     return _map_provider(record)
 
 
-async def list_models(provider_id: str | None = None) -> list[llm_model.LlmModel]:
-    where = {"providerId": provider_id} if provider_id else None
+async def list_models(
+    provider_id: str | None = None, enabled_only: bool = False
+) -> list[llm_model.LlmModel]:
+    """
+    List LLM models.
+
+    Args:
+        provider_id: Optional filter by provider ID
+        enabled_only: If True, only return enabled models (for public routes)
+    """
+    where: dict[str, Any] = {}
+    if provider_id:
+        where["providerId"] = provider_id
+    if enabled_only:
+        where["isEnabled"] = True
+
     records = await prisma.models.LlmModel.prisma().find_many(
-        where=where,
+        where=where if where else None,
         include={"Costs": True},
     )
     return [_map_model(record) for record in records]
@@ -227,12 +255,12 @@ async def delete_model(
     """
     Delete a model and migrate all AgentNodes using it to a replacement model.
 
-    This performs an atomic operation:
+    This performs an atomic operation within a database transaction:
     1. Validates the model exists
     2. Validates the replacement model exists and is enabled
     3. Counts affected nodes
-    4. Migrates all AgentNode.constantInput->model to replacement
-    5. Deletes the LlmModel record (CASCADE deletes costs)
+    4. Migrates all AgentNode.constantInput->model to replacement (in transaction)
+    5. Deletes the LlmModel record (CASCADE deletes costs) (in transaction)
 
     Args:
         model_id: UUID of the model to delete
@@ -244,9 +272,7 @@ async def delete_model(
     Raises:
         ValueError: If model not found, replacement not found, or replacement is disabled
     """
-    import prisma as prisma_module
-
-    # 1. Get the model being deleted
+    # 1. Get the model being deleted (validation - outside transaction)
     model = await prisma.models.LlmModel.prisma().find_unique(
         where={"id": model_id}, include={"Costs": True}
     )
@@ -256,7 +282,7 @@ async def delete_model(
     deleted_slug = model.slug
     deleted_display_name = model.displayName
 
-    # 2. Validate replacement model exists and is enabled
+    # 2. Validate replacement model exists and is enabled (validation - outside transaction)
     replacement = await prisma.models.LlmModel.prisma().find_unique(
         where={"slug": replacement_model_slug}
     )
@@ -268,7 +294,9 @@ async def delete_model(
             f"Please enable it before using it as a replacement."
         )
 
-    # 3. Count affected nodes
+    # 3. Count affected nodes (read - outside transaction)
+    import prisma as prisma_module
+
     count_result = await prisma_module.get_client().query_raw(
         """
         SELECT COUNT(*) as count
@@ -279,24 +307,26 @@ async def delete_model(
     )
     nodes_affected = int(count_result[0]["count"]) if count_result else 0
 
-    # 4. Perform migration
-    if nodes_affected > 0:
-        await prisma_module.get_client().execute_raw(
-            """
-            UPDATE "AgentNode"
-            SET "constantInput" = JSONB_SET(
-                "constantInput"::jsonb,
-                '{model}',
-                to_jsonb($1::text)
+    # 4 & 5. Perform migration and deletion atomically within a transaction
+    async with transaction() as tx:
+        # Migrate all AgentNode.constantInput->model to replacement
+        if nodes_affected > 0:
+            await tx.execute_raw(
+                """
+                UPDATE "AgentNode"
+                SET "constantInput" = JSONB_SET(
+                    "constantInput"::jsonb,
+                    '{model}',
+                    to_jsonb($1::text)
+                )
+                WHERE "constantInput"::jsonb->>'model' = $2
+                """,
+                replacement_model_slug,
+                deleted_slug,
             )
-            WHERE "constantInput"::jsonb->>'model' = $2
-            """,
-            replacement_model_slug,
-            deleted_slug,
-        )
 
-    # 5. Delete the model (CASCADE will delete costs automatically)
-    await prisma.models.LlmModel.prisma().delete(where={"id": model_id})
+        # Delete the model (CASCADE will delete costs automatically)
+        await tx.llmmodel.delete(where={"id": model_id})
 
     return llm_model.DeleteLlmModelResponse(
         deleted_model_slug=deleted_slug,

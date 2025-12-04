@@ -191,21 +191,20 @@ def get_llm_model_cost(slug: str) -> tuple[RegistryModelCost, ...]:
 def get_llm_model_schema_options() -> list[dict[str, str]]:
     """
     Get schema options for LLM model selection dropdown.
-    Always rebuilds from current registry state to ensure enabled/disabled status is current.
+
+    Returns cached schema options that are refreshed when the registry is updated
+    via refresh_llm_registry() (called on startup and via Redis pub/sub notifications).
     """
-    # Always rebuild to ensure we have the latest enabled/disabled status
-    # This is called when generating block schemas, so we need fresh data
-    _refresh_cached_schema()
     return _schema_options
 
 
 def get_llm_discriminator_mapping() -> dict[str, str]:
     """
     Get discriminator mapping for LLM models.
-    Always rebuilds from current registry state to ensure it's current.
+
+    Returns cached discriminator mapping that is refreshed when the registry is updated
+    via refresh_llm_registry() (called on startup and via Redis pub/sub notifications).
     """
-    # Always rebuild to ensure we have the latest mapping
-    _refresh_cached_schema()
     return _discriminator_mapping
 
 
