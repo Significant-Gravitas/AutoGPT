@@ -243,7 +243,9 @@ async def execute_node(
                     )
                     file_name = field_data.get("name", "selected file")
                     try:
-                        credentials, lock = await creds_manager.acquire(user_id, cred_id)
+                        credentials, lock = await creds_manager.acquire(
+                            user_id, cred_id
+                        )
                         creds_locks.append(lock)
                         extra_exec_kwargs[kwarg_name] = credentials
                     except ValueError:
@@ -298,7 +300,11 @@ async def execute_node(
     finally:
         # Ensure all credentials are released even if execution fails
         for creds_lock in creds_locks:
-            if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
+            if (
+                creds_lock
+                and (await creds_lock.locked())
+                and (await creds_lock.owned())
+            ):
                 try:
                     await creds_lock.release()
                 except Exception as e:
