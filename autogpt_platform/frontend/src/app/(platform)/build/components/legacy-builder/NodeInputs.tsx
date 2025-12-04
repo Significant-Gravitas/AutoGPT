@@ -981,15 +981,17 @@ const NodeArrayInput: FC<{
           );
         return (
           <div key={entryKey}>
-            <NodeHandle
-              title={`#${index + 1}`}
-              className="text-sm text-gray-500"
-              keyName={entryKey}
-              schema={schema.items!}
-              isConnected={isConnected}
-              isRequired={false}
-              side="left"
-            />
+            {schema.items && (
+              <NodeHandle
+                title={`#${index + 1}`}
+                className="text-sm text-gray-500"
+                keyName={entryKey}
+                schema={schema.items}
+                isConnected={isConnected}
+                isRequired={false}
+                side="left"
+              />
+            )}
             <div className="mb-2 flex space-x-2">
               {!isConnected &&
                 (schema.items ? (
