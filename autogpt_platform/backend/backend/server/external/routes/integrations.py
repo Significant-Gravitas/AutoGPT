@@ -287,7 +287,9 @@ async def list_providers(
         sdk_provider = AutoRegistry.get_provider(name)
         if sdk_provider and sdk_provider.supported_auth_types:
             supports_api_key = "api_key" in sdk_provider.supported_auth_types
-            supports_user_password = "user_password" in sdk_provider.supported_auth_types
+            supports_user_password = (
+                "user_password" in sdk_provider.supported_auth_types
+            )
             supports_host_scoped = "host_scoped" in sdk_provider.supported_auth_types
         else:
             # Fallback for legacy providers
