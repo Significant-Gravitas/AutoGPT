@@ -72,6 +72,7 @@
     "dotenv": "17.2.3",
     "elliptic": "6.6.1",
     "embla-carousel-react": "8.6.0",
+    "flatbush": "4.5.0",
     "framer-motion": "12.23.24",
     "geist": "1.5.1",
     "highlight.js": "11.11.1",

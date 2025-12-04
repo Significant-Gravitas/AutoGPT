@@ -144,6 +144,8 @@ async def execute_block_test(block: Block):
         "execution_context": ExecutionContext(),
     }
     input_model = cast(type[BlockSchema], block.input_schema)
+
+    # Handle regular credentials fields
     credentials_input_fields = input_model.get_credentials_fields()
     if len(credentials_input_fields) == 1 and isinstance(
         block.test_credentials, _BaseCredentials
@@ -157,6 +159,18 @@ async def execute_block_test(block: Block):
             for field_name in credentials_input_fields:
                 if field_name in block.test_credentials:
                     extra_exec_kwargs[field_name] = block.test_credentials[field_name]
+
+    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+    auto_creds_fields = input_model.get_auto_credentials_fields()
+    if auto_creds_fields and block.test_credentials:
+        if isinstance(block.test_credentials, _BaseCredentials):
+            # Single credentials object - use for all auto_credentials kwargs
+            for kwarg_name in auto_creds_fields.keys():
+                extra_exec_kwargs[kwarg_name] = block.test_credentials
+        elif isinstance(block.test_credentials, dict):
+            for kwarg_name in auto_creds_fields.keys():
+                if kwarg_name in block.test_credentials:
+                    extra_exec_kwargs[kwarg_name] = block.test_credentials[kwarg_name]
 
     for input_data in block.test_input:
         log.info(f"{prefix} in: {input_data}")
