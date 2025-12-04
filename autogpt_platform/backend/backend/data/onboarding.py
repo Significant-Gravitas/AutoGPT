@@ -10,9 +10,7 @@ from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
 from backend.data import execution as execution_db
-from backend.data.block import get_blocks
 from backend.data.credit import get_user_credit_model
-from backend.data.model import CredentialsMetaInput
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
@@ -283,20 +281,6 @@ def _calculate_points(
     points += runs_points
 
     return int(points)
-
-
-def get_credentials_blocks() -> dict[str, str]:
-    # Returns a dictionary of block id to credentials field name
-    creds: dict[str, str] = {}
-    blocks = get_blocks()
-    for id, block in blocks.items():
-        for field_name, field_info in block().input_schema.model_fields.items():
-            if field_info.annotation == CredentialsMetaInput:
-                creds[id] = field_name
-    return creds
-
-
-CREDENTIALS_FIELDS: dict[str, str] = get_credentials_blocks()
 
 
 def _normalize_datetime(value: datetime | None) -> datetime | None:
