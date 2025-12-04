@@ -37,3 +37,10 @@ html body .toastDescription {
   font-size: 0.75rem !important;
   line-height: 1.25rem !important;
 }
+
+/* Position close button on the right */
+html body [data-sonner-toast] [data-close-button] {
+  left: unset !important;
+  right: -18px !important;
+  top: -3px !important;
+}
