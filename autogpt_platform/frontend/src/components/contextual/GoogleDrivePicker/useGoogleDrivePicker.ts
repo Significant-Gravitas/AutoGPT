@@ -305,10 +305,30 @@ export function useGoogleDrivePicker(options: Props) {
     });
 
     const picker = builder.build();
+
+    // Mark picker as open - prevents parent dialogs from closing on outside clicks
+    document.body.setAttribute("data-google-picker-open", "true");
+
     picker.setVisible(true);
   }
 
   function handlePickerData(data: any): void {
+    // Google Picker fires callback on multiple events: LOADED, PICKED, CANCEL
+    // Only remove the marker and process when picker is actually closed (PICKED or CANCEL)
+    const gp = window.google?.picker;
+    if (!gp || !data) return;
+
+    const action = data[gp.Response.ACTION];
+
+    // Ignore LOADED action - picker is still open
+    // Note: gp.Action.LOADED exists at runtime but not in types
+    if (action === "loaded") {
+      return;
+    }
+
+    // Remove the marker when picker closes (PICKED or CANCEL)
+    document.body.removeAttribute("data-google-picker-open");
+
     try {
       const files = normalizePickerResponse(data);
       if (files.length) {
