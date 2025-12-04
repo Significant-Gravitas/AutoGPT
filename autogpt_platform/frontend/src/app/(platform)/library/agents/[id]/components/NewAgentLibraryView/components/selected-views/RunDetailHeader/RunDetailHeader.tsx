@@ -60,14 +60,6 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   </Text>
                 </>
               )}
-              {run.stats?.activity_status && (
-                <>
-                  <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="text-zinc-500">
-                    {String(run.stats.activity_status)}
-                  </Text>
-                </>
-              )}
             </div>
           ) : scheduleRecurrence ? (
             <Text variant="small" className="mt-1 !text-zinc-600">
