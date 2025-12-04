@@ -240,3 +240,41 @@ class TestAutoCredentialsFieldsValidation:
 
         assert "credentials" in result
         assert result["credentials"]["field_name"] == "file"
+
+    def test_duplicate_default_kwarg_name_raises_error(self):
+        """Test that two fields with default kwarg_name raises ValueError."""
+
+        class DefaultDuplicateSchema(BlockSchemaInput):
+            """Schema where both fields omit kwarg_name, defaulting to 'credentials'."""
+
+            file1: dict[str, Any] = SchemaField(
+                description="First file input",
+                default=None,
+                json_schema_extra={
+                    "auto_credentials": {
+                        "provider": "google",
+                        "type": "oauth2",
+                        "scopes": ["https://www.googleapis.com/auth/drive.file"],
+                        # No kwarg_name - defaults to "credentials"
+                    }
+                },
+            )
+            file2: dict[str, Any] = SchemaField(
+                description="Second file input",
+                default=None,
+                json_schema_extra={
+                    "auto_credentials": {
+                        "provider": "google",
+                        "type": "oauth2",
+                        "scopes": ["https://www.googleapis.com/auth/drive.file"],
+                        # No kwarg_name - also defaults to "credentials"
+                    }
+                },
+            )
+
+        with pytest.raises(ValueError) as exc_info:
+            DefaultDuplicateSchema.get_auto_credentials_fields()
+
+        assert "Duplicate auto_credentials kwarg_name 'credentials'" in str(
+            exc_info.value
+        )
