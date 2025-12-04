@@ -184,7 +184,8 @@ async def add_test_data(db):
 
             # Update listing with active version
             await db.storelisting.update(
-                where={"id": listing.id}, data={"activeVersionId": version.id}
+                where={"id": listing.id},
+                data={"ActiveVersion": {"connect": {"id": version.id}}},
             )
 
         print("✅ Created test store listings")

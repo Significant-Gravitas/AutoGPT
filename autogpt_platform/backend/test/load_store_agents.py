@@ -353,7 +353,7 @@ async def create_store_listing(
     if is_approved:
         await db.storelisting.update(
             where={"id": listing_id},
-            data={"activeVersionId": version_id},
+            data={"ActiveVersion": {"connect": {"id": version_id}}},
         )
 
 
