@@ -10425,8 +10425,10 @@
             "title": "Selectedstorelistingversionid"
           },
           "agentInput": {
-            "additionalProperties": true,
-            "type": "object",
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
             "title": "Agentinput"
           },
           "onboardingAgentExecutionId": {
