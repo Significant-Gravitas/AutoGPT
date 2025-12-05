@@ -273,6 +273,8 @@ async def list_providers(
     except Exception as e:
         logger.warning(f"Failed to load blocks: {e}")
 
+    from backend.sdk.registry import AutoRegistry
+
     providers = []
     for name in get_all_provider_names():
         supports_oauth = name in HANDLERS_BY_NAME
@@ -281,13 +283,27 @@ async def list_providers(
             getattr(handler_class, "DEFAULT_SCOPES", []) if handler_class else []
         )
 
+        # Check if provider has specific auth types from SDK registration
+        sdk_provider = AutoRegistry.get_provider(name)
+        if sdk_provider and sdk_provider.supported_auth_types:
+            supports_api_key = "api_key" in sdk_provider.supported_auth_types
+            supports_user_password = (
+                "user_password" in sdk_provider.supported_auth_types
+            )
+            supports_host_scoped = "host_scoped" in sdk_provider.supported_auth_types
+        else:
+            # Fallback for legacy providers
+            supports_api_key = True  # All providers can accept API keys
+            supports_user_password = name in ("smtp",)
+            supports_host_scoped = name == "http"
+
         providers.append(
             ProviderInfo(
                 name=name,
                 supports_oauth=supports_oauth,
-                supports_api_key=True,  # All providers can accept API keys
-                supports_user_password=name in ("smtp",),  # SMTP uses user/password
-                supports_host_scoped=name == "http",  # HTTP block uses host-scoped
+                supports_api_key=supports_api_key,
+                supports_user_password=supports_user_password,
+                supports_host_scoped=supports_host_scoped,
                 default_scopes=default_scopes,
             )
         )
