@@ -24,17 +24,11 @@ export function SelectedSettingsView({
           variant="ghost"
           size="icon"
           onClick={onClearSelectedRun}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-300 p-3 hover:border-zinc-300"
+          className="rounded-full border border-zinc-300 hover:border-zinc-300"
         >
-          <ArrowLeftIcon size={20} />
+          <ArrowLeftIcon />
         </Button>
-        <Text
-          variant="h1"
-          className="text-[32px] font-medium leading-10 tracking-[-0.32px] text-neutral-900"
-          style={{ fontFamily: "Poppins" }}
-        >
-          Agent Settings
-        </Text>
+        <Text variant="h1">Agent Settings</Text>
       </div>
 
       <div className="flex-1">
@@ -46,7 +40,7 @@ export function SelectedSettingsView({
             </Text>
           </div>
         ) : (
-          <div className="flex w-full max-w-[690px] flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white px-7 pb-7 pt-6">
+          <div className="flex w-full max-w-2xl flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
             <div className="flex w-full items-start justify-between gap-4">
               <div className="flex-1">
                 <Text variant="lead-semibold">Require human approval</Text>

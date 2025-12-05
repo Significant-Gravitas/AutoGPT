@@ -180,14 +180,14 @@ export function PendingReviewsList({
     <div className="space-y-7 rounded-xl border border-yellow-150 bg-yellow-25 p-6">
       {/* Warning Box Header */}
       <div className="space-y-6">
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-2">
           <WarningIcon
             size={28}
             className="fill-yellow-600 text-white"
             weight="fill"
           />
           <Text
-            variant="lead-semibold"
+            variant="large-semibold"
             className="overflow-hidden text-ellipsis text-textBlack"
           >
             Your review is needed
