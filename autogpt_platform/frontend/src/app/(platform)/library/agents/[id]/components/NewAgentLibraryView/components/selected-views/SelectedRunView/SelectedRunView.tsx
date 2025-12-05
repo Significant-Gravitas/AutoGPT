@@ -99,7 +99,7 @@ export function SelectedRunView({
                     onClick={() => scrollToSection("summary")}
                     className={anchorStyles}
                   >
-                    {withReviews ? "Review Required" : "Summary"}
+                    Summary
                   </button>
                 )}
                 <button
@@ -122,38 +122,31 @@ export function SelectedRunView({
               <div id="summary" className="scroll-mt-4">
                 <RunDetailCard
                   title={
-                    withReviews ? (
-                      "Review Required"
-                    ) : (
-                      <div>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <InfoIcon
-                                size={8}
-                                className="cursor-help text-neutral-500 hover:text-neutral-700"
-                              />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="max-w-xs">
-                                This AI-generated summary describes how the
-                                agent handled your task. It&apos;s an
-                                experimental feature and may occasionally be
-                                inaccurate.
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    )
+                    <div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <InfoIcon
+                              size={8}
+                              className="cursor-help text-neutral-500 hover:text-neutral-700"
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">
+                              This AI-generated summary describes how the agent
+                              handled your task. It&apos;s an experimental
+                              feature and may occasionally be inaccurate.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                   }
                 >
                   <div className="space-y-6">
-                    {withSummary && <RunSummary run={run} />}
-
                     {/* Human-in-the-Loop Reviews */}
                     {withReviews && (
-                      <div className={withSummary ? "border-t pt-6" : ""}>
+                      <div>
                         {reviewsLoading ? (
                           <div className="text-neutral-500">
                             Loading reviews…
@@ -169,6 +162,12 @@ export function SelectedRunView({
                             No pending reviews for this execution
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {withSummary && (
+                      <div className={withReviews ? "border-t pt-6" : ""}>
+                        <RunSummary run={run} />
                       </div>
                     )}
                   </div>
