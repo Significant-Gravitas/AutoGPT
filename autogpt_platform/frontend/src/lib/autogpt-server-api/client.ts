@@ -55,7 +55,6 @@ import type {
   Schedule,
   ScheduleCreatable,
   ScheduleID,
-  StoreAgentDetails,
   StoreAgentsResponse,
   StoreListingsWithVersionsResponse,
   StoreReview,
@@ -66,7 +65,6 @@ import type {
   SubmissionStatus,
   TransactionHistory,
   User,
-  UserOnboarding,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
   WebSocketNotification,
@@ -194,29 +192,6 @@ export default class BackendAPI {
   }
 
   ////////////////////////////////////////
-  ////////////// ONBOARDING //////////////
-  ////////////////////////////////////////
-
-  getUserOnboarding(): Promise<UserOnboarding> {
-    return this._get("/onboarding");
-  }
-
-  updateUserOnboarding(
-    onboarding: Omit<Partial<UserOnboarding>, "rewardedFor">,
-  ): Promise<void> {
-    return this._request("PATCH", "/onboarding", onboarding);
-  }
-
-  getOnboardingAgents(): Promise<StoreAgentDetails[]> {
-    return this._get("/onboarding/agents");
-  }
-
-  /** Check if onboarding is enabled not if user finished it or not. */
-  isOnboardingEnabled(): Promise<boolean> {
-    return this._get("/onboarding/enabled");
-  }
-
-  ////////////////////////////////////////
   //////////////// GRAPHS ////////////////
   ////////////////////////////////////////
 
@@ -249,8 +224,14 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}/versions`);
   }
 
-  createGraph(graph: GraphCreatable): Promise<Graph> {
-    const requestBody = { graph } as GraphCreateRequestBody;
+  createGraph(
+    graph: GraphCreatable,
+    source?: GraphCreationSource,
+  ): Promise<Graph> {
+    const requestBody: GraphCreateRequestBody = { graph };
+    if (source) {
+      requestBody.source = source;
+    }
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -274,11 +255,13 @@ export default class BackendAPI {
     version: number,
     inputs: { [key: string]: any } = {},
     credentials_inputs: { [key: string]: CredentialsMetaInput } = {},
+    source?: GraphExecutionSource,
   ): Promise<GraphExecutionMeta> {
-    return this._request("POST", `/graphs/${id}/execute/${version}`, {
-      inputs,
-      credentials_inputs,
-    });
+    const body: GraphExecuteRequestBody = { inputs, credentials_inputs };
+    if (source) {
+      body.source = source;
+    }
+    return this._request("POST", `/graphs/${id}/execute/${version}`, body);
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {
@@ -468,27 +451,10 @@ export default class BackendAPI {
     return this._get("/store/agents", params);
   }
 
-  getStoreAgent(
-    username: string,
-    agentName: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(
-      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
-        agentName,
-      )}`,
-    );
-  }
-
   getGraphMetaByStoreListingVersionID(
     storeListingVersionID: string,
   ): Promise<GraphMeta> {
     return this._get(`/store/graph/${storeListingVersionID}`);
-  }
-
-  getStoreAgentByVersionId(
-    storeListingVersionID: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(`/store/agents/${storeListingVersionID}`);
   }
 
   getStoreCreators(params?: {
@@ -686,14 +652,6 @@ export default class BackendAPI {
   ): Promise<LibraryAgent> {
     return this._get(`/library/agents/by-graph/${graphID}`, {
       version: graphVersion,
-    });
-  }
-
-  addMarketplaceAgentToLibrary(
-    storeListingVersionID: string,
-  ): Promise<LibraryAgent> {
-    return this._request("POST", "/library/agents", {
-      store_listing_version_id: storeListingVersionID,
     });
   }
 
@@ -1356,8 +1314,18 @@ declare global {
 
 /* *** UTILITY TYPES *** */
 
+type GraphCreationSource = "builder" | "upload";
+type GraphExecutionSource = "builder" | "library" | "onboarding";
+
 type GraphCreateRequestBody = {
   graph: GraphCreatable;
+  source?: GraphCreationSource;
+};
+
+type GraphExecuteRequestBody = {
+  inputs: { [key: string]: any };
+  credentials_inputs: { [key: string]: CredentialsMetaInput };
+  source?: GraphExecutionSource;
 };
 
 type WebsocketMessageTypeMap = {
