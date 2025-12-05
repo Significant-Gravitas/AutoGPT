@@ -601,14 +601,18 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             async for output_name, output_data in self._execute(input_data, **kwargs):
                 yield output_name, output_data
         except Exception as ex:
-            if not isinstance(ex, BlockError):
-                raise BlockUnknownError(
+            if isinstance(ex, BlockError):
+                raise ex
+            else:
+                raise (
+                    BlockExecutionError
+                    if isinstance(ex, ValueError)
+                    else BlockUnknownError
+                )(
                     message=str(ex),
                     block_name=self.name,
                     block_id=self.id,
                 ) from ex
-            else:
-                raise ex
 
     async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
