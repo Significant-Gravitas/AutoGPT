@@ -693,6 +693,9 @@ class ConcatenateListsBlock(Block):
         concatenated_list: List[Any] = SchemaField(
             description="The concatenated list containing all elements from all input lists in order."
         )
+        error: str = SchemaField(
+            description="Error message if concatenation failed due to invalid input types."
+        )
 
     def __init__(self):
         super().__init__(
@@ -717,13 +720,18 @@ class ConcatenateListsBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         concatenated = []
-        for lst in input_data.lists:
+        for idx, lst in enumerate(input_data.lists):
             if lst is None:
                 # Skip None values to avoid errors
                 continue
             if not isinstance(lst, list):
-                # If an item is not a list, wrap it in a list to handle gracefully
-                concatenated.append(lst)
-            else:
-                concatenated.extend(lst)
+                # Type validation: each item must be a list
+                # Strings are iterable and would cause extend() to iterate character-by-character
+                # Non-iterable types would raise TypeError
+                yield "error", (
+                    f"Invalid input at index {idx}: expected a list, got {type(lst).__name__}. "
+                    f"All items in 'lists' must be lists (e.g., [[1, 2], [3, 4]])."
+                )
+                return
+            concatenated.extend(lst)
         yield "concatenated_list", concatenated

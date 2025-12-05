@@ -80,4 +80,22 @@ async def test_concatenate_lists_manual():
     # Test case 5: Verify category is BASIC (not DATA) for consistency
     from backend.data.block import BlockCategory
     assert BlockCategory.BASIC in block.categories
+    
+    # Test case 6: Error handling for invalid input types
+    # Note: Pydantic should prevent this, but we test defensive code
+    # We'll test by directly calling run with invalid data structure
+    # (bypassing Pydantic validation to test runtime validation)
+    class InvalidInput:
+        def __init__(self):
+            self.lists = ["abc", "def"]  # Strings instead of lists
+    
+    invalid_input = InvalidInput()
+    result = []
+    async for output_name, output_data in block.run(invalid_input):
+        result.append((output_name, output_data))
+    
+    # Should yield an error for invalid input
+    assert len(result) == 1
+    assert result[0][0] == "error"
+    assert "expected a list" in result[0][1].lower()
 
