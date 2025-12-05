@@ -28,6 +28,7 @@ export const NodeContextMenu = ({
       })),
     }));
 
+    useCopyPasteStore.getState().copySelectedNodes();
     useCopyPasteStore.getState().pasteNodes();
   };
 

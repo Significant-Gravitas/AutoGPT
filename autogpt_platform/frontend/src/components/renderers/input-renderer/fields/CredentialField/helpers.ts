@@ -1,5 +1,6 @@
 import { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import { getHostFromUrl } from "@/lib/utils/url";
 import {
   GoogleLogoIcon,
   KeyholeIcon,
@@ -14,9 +15,44 @@ import {
 export const filterCredentialsByProvider = (
   credentials: CredentialsMetaResponse[] | undefined,
   provider: string,
+  schema?: BlockIOCredentialsSubSchema,
+  discriminatorValue?: string,
 ) => {
   const filtered =
-    credentials?.filter((credential) => provider === credential.provider) ?? [];
+    credentials?.filter((credential) => {
+      // First filter by provider
+      if (provider !== credential.provider) {
+        return false;
+      }
+
+      // Check if credential type is supported by this block
+      if (schema && !schema.credentials_types.includes(credential.type)) {
+        return false;
+      }
+
+      // Filter OAuth credentials that have sufficient scopes for this block
+      if (credential.type === "oauth2" && schema?.credentials_scopes) {
+        const credentialScopes = new Set(credential.scopes || []);
+        const requiredScopes = new Set(schema.credentials_scopes);
+        const hasAllScopes = [...requiredScopes].every((scope) =>
+          credentialScopes.has(scope),
+        );
+        if (!hasAllScopes) {
+          return false;
+        }
+      }
+
+      // Filter host_scoped credentials by host matching
+      if (credential.type === "host_scoped") {
+        if (!discriminatorValue) {
+          return false;
+        }
+        const hostFromUrl = getHostFromUrl(discriminatorValue);
+        return hostFromUrl === credential.host;
+      }
+
+      return true;
+    }) ?? [];
   return {
     credentials: filtered,
     exists: filtered.length > 0,
@@ -96,22 +132,31 @@ export const providerIcons: Partial<Record<string, Icon>> = {
   zerobounce: KeyholeIcon,
 };
 
+export const getDiscriminatorValue = (
+  formData: Record<string, any>,
+  schema: BlockIOCredentialsSubSchema,
+): string | undefined => {
+  const discriminator = schema.discriminator;
+  const discriminatorValues = schema.discriminator_values;
+
+  return [
+    discriminator ? formData[discriminator] : null,
+    ...(discriminatorValues || []),
+  ].find(Boolean);
+};
+
 export const getCredentialProviderFromSchema = (
   formData: Record<string, any>,
   schema: BlockIOCredentialsSubSchema,
 ) => {
   const discriminator = schema.discriminator;
   const discriminatorMapping = schema.discriminator_mapping;
-  const discriminatorValues = schema.discriminator_values;
   const providers = schema.credentials_provider;
 
-  const discriminatorValue = [
-    discriminator ? formData[discriminator] : null,
-    ...(discriminatorValues || []),
-  ].find(Boolean);
+  const discriminatorValue = getDiscriminatorValue(formData, schema);
 
   const discriminatedProvider = discriminatorMapping
-    ? discriminatorMapping[discriminatorValue]
+    ? discriminatorMapping[discriminatorValue ?? ""]
     : null;
 
   if (providers.length > 1) {

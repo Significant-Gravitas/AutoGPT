@@ -150,3 +150,16 @@ input[type="number"]::-webkit-inner-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/* Google Drive Picker: ensure picker appears above dialogs and can receive clicks */
+[class*="picker-dialog"] {
+  z-index: 10000 !important;
+  pointer-events: auto !important;
+}
+
+/* When Google picker is open, lower dialog z-index so picker renders on top */
+body[data-google-picker-open="true"] [data-dialog-overlay],
+body[data-google-picker-open="true"] [data-dialog-content] {
+  z-index: 1 !important;
+  pointer-events: none !important;
+}

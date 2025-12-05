@@ -1,6 +1,6 @@
 import { RegistryWidgetsType } from "@rjsf/utils";
 import { SelectWidget } from "./SelectWidget";
-import { TextInputWidget } from "./TextInputWidget";
+import { TextInputWidget } from "./TextInputWidget/TextInputWidget";
 import { SwitchWidget } from "./SwitchWidget";
 import { FileWidget } from "./FileWidget";
 import { DateInputWidget } from "./DateInputWidget";

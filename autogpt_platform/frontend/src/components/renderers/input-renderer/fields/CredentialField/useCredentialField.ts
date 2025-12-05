@@ -4,6 +4,7 @@ import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import {
   filterCredentialsByProvider,
   getCredentialProviderFromSchema,
+  getDiscriminatorValue,
 } from "./helpers";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useEffect, useRef } from "react";
@@ -44,13 +45,25 @@ export const useCredentialField = ({
     credentialSchema,
   );
 
+  const discriminatorValue = getDiscriminatorValue(
+    hardcodedValues,
+    credentialSchema,
+  );
+
   const supportsApiKey = credentialSchema.credentials_types.includes("api_key");
   const supportsOAuth2 = credentialSchema.credentials_types.includes("oauth2");
   const supportsUserPassword =
     credentialSchema.credentials_types.includes("user_password");
+  const supportsHostScoped =
+    credentialSchema.credentials_types.includes("host_scoped");
 
   const { credentials: filteredCredentials, exists: credentialsExists } =
-    filterCredentialsByProvider(credentials, credentialProvider ?? "");
+    filterCredentialsByProvider(
+      credentials,
+      credentialProvider ?? "",
+      credentialSchema,
+      discriminatorValue,
+    );
 
   const setCredential = (credentialId: string) => {
     const selectedCredential = filteredCredentials.find(
@@ -120,7 +133,9 @@ export const useCredentialField = ({
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,
+    supportsHostScoped,
     credentialsExists,
     credentialProvider,
+    discriminatorValue,
   };
 };

@@ -81,7 +81,7 @@ export const useFlow = () => {
       {
         query: {
           select: (res) => res.data as BlockInfo[],
-          enabled: !!flowID && !!blockIds,
+          enabled: !!flowID && !!blockIds && blockIds.length > 0,
         },
       },
     );

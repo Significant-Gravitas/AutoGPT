@@ -45,6 +45,8 @@ export const FormRenderer = ({
         onChange={handleChange}
         uiSchema={uiSchema}
         formData={initialValues}
+        noValidate={true}
+        liveValidate={false}
       />
     </div>
   );

@@ -1,15 +1,46 @@
-import { ShieldIcon, ShieldCheckIcon } from "@phosphor-icons/react";
+import { usePatchV1UpdateGraphSettings } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV2GetLibraryAgentQueryOptions,
+  useGetV2GetLibraryAgentByGraphId,
+} from "@/app/api/__generated__/endpoints/library/library";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
-import { GraphModel } from "@/app/api/__generated__/models/graphModel";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Graph } from "@/lib/autogpt-server-api/types";
+import { cn } from "@/lib/utils";
+import { ShieldCheckIcon, ShieldIcon } from "@phosphor-icons/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
+
+function getGraphId(graph: GraphModel | LibraryAgent | Graph): string {
+  if ("graph_id" in graph) return graph.graph_id || "";
+  return (graph.id || "").toString();
+}
+
+function hasHITLBlocks(graph: GraphModel | LibraryAgent | Graph): boolean {
+  if ("has_human_in_the_loop" in graph) {
+    return !!graph.has_human_in_the_loop;
+  }
+
+  if (isLibraryAgent(graph)) {
+    return graph.settings?.human_in_the_loop_safe_mode !== null;
+  }
+
+  return false;
+}
+
+function isLibraryAgent(
+  graph: GraphModel | LibraryAgent | Graph,
+): graph is LibraryAgent {
+  return "graph_id" in graph && "settings" in graph;
+}
 
 interface FloatingSafeModeToggleProps {
   graph: GraphModel | LibraryAgent | Graph;
@@ -48,12 +79,12 @@ export function FloatingSafeModeToggle({
           >
             {currentSafeMode! ? (
               <>
-                <ShieldCheckIcon className="h-4 w-4" />
+                <ShieldCheckIcon weight="bold" size={16} />
                 Safe Mode: ON
               </>
             ) : (
               <>
-                <ShieldIcon className="h-4 w-4" />
+                <ShieldIcon weight="bold" size={16} />
                 Safe Mode: OFF
               </>
             )}

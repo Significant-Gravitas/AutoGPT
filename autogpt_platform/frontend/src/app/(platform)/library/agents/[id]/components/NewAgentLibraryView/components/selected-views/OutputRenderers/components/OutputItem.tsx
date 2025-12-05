@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { OutputRenderer, OutputMetadata } from "../types";
+import { Text } from "@/components/atoms/Text/Text";
+import { OutputMetadata, OutputRenderer } from "../types";
 
 interface OutputItemProps {
   value: any;
@@ -19,7 +19,9 @@ export function OutputItem({
   return (
     <div className="relative">
       {label && (
-        <label className="mb-1.5 block text-sm font-medium">{label}</label>
+        <Text variant="large-medium" className="capitalize">
+          {label}
+        </Text>
       )}
 
       <div className="relative">{renderer.render(value, metadata)}</div>

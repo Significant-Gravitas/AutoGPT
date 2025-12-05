@@ -1,11 +1,19 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Play, Plus } from "lucide-react";
+import { TooltipProvider } from "../Tooltip/BaseTooltip";
 import { Button } from "./Button";
 
 const meta: Meta<typeof Button> = {
   title: "Atoms/Button",
   tags: ["autodocs"],
   component: Button,
+  decorators: [
+    (Story) => (
+      <TooltipProvider>
+        <Story />
+      </TooltipProvider>
+    ),
+  ],
   parameters: {
     layout: "centered",
     docs: {

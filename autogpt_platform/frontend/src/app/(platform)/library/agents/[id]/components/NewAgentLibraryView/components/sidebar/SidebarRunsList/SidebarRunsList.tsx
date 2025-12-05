@@ -62,7 +62,12 @@ export function SidebarRunsList({
 
   if (loading) {
     return (
-      <div className="ml-6 w-[20vw] space-y-4">
+      <div
+        className={cn(
+          "ml-6 mt-8 w-[20vw] space-y-4",
+          AGENT_LIBRARY_SECTION_PADDING_X,
+        )}
+      >
         <Skeleton className="h-12 w-full" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-24 w-full" />
@@ -119,7 +124,7 @@ export function SidebarRunsList({
             hasMore={!!hasMoreRuns}
             isFetchingMore={isFetchingMoreRuns}
             onEndReached={fetchMoreRuns}
-            className="flex flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden"
+            className="flex max-h-[76vh] flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden"
             itemWrapperClassName="w-auto lg:w-full"
             renderItem={(run) => (
               <div className="w-[15rem] lg:w-full">
@@ -140,7 +145,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden">
+          <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             {schedules.length > 0 ? (
               schedules.map((s: GraphExecutionJobInfo) => (
                 <div className="w-[15rem] lg:w-full" key={s.id}>
@@ -167,7 +172,7 @@ export function SidebarRunsList({
             AGENT_LIBRARY_SECTION_PADDING_X,
           )}
         >
-          <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 lg:flex-col lg:gap-3 lg:overflow-x-hidden">
+          <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
             <div className="flex min-h-[50vh] flex-col items-center justify-center">
               <Text variant="large" className="text-zinc-700">
                 No templates saved
