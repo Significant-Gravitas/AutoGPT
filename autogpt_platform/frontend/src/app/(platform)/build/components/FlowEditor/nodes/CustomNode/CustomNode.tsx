@@ -37,6 +37,7 @@ export type CustomNodeData = {
   costs: BlockCost[];
   categories: BlockInfoCategoriesItem[];
   metadata?: NodeModelMetadata;
+  errors?: { [key: string]: string };
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -71,10 +72,24 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         ? (data.hardcodedValues.output_schema ?? {})
         : data.outputSchema;
 
+    const hasConfigErrors =
+      data.errors &&
+      Object.values(data.errors).some(
+        (value) => value !== null && value !== undefined && value !== "",
+      );
+
+    const outputData = data.nodeExecutionResult?.output_data;
+    const hasOutputError =
+      typeof outputData === "object" &&
+      outputData !== null &&
+      "error" in outputData;
+
+    const hasErrors = hasConfigErrors || hasOutputError;
+
     // Currently all blockTypes design are similar - that's why i am using the same component for all of them
     // If in future - if we need some drastic change in some blockTypes design - we can create separate components for them
     return (
-      <NodeContainer selected={selected} nodeId={nodeId}>
+      <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
         <div className="rounded-xlarge bg-white">
           <NodeHeader data={data} nodeId={nodeId} />
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
