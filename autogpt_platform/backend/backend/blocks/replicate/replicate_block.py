@@ -9,7 +9,11 @@ from backend.blocks.replicate._auth import (
     TEST_CREDENTIALS_INPUT,
     ReplicateCredentialsInput,
 )
-from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
+from backend.blocks.replicate._helper import (
+    ReplicateOutputs,
+    extract_result,
+    run_replicate_with_retry,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -129,8 +133,8 @@ class ReplicateModelBlock(Block):
         """
         api_key_str = api_key.get_secret_value()
         client = ReplicateClient(api_token=api_key_str)
-        output: ReplicateOutputs = await client.async_run(
-            model_ref, input=model_inputs, wait=False
+        output: ReplicateOutputs = await run_replicate_with_retry(
+            client, model_ref, input_params=model_inputs, wait=False
         )  # type: ignore they suck at typing
 
         result = extract_result(output)

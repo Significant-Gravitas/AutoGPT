@@ -1,11 +1,12 @@
-import asyncio
 import logging
 from enum import Enum
 from typing import Literal
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
+from replicate.helpers import FileOutput
 
+from backend.blocks.replicate._helper import run_replicate_with_retry
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -43,12 +44,14 @@ class MusicGenModelVersion(str, Enum):
     STEREO_LARGE = "stereo-large"
     MELODY_LARGE = "melody-large"
     LARGE = "large"
+    MINIMAX_MUSIC_1_5 = "minimax/music-1.5"
 
 
 # Audio format enum
 class AudioFormat(str, Enum):
     WAV = "wav"
     MP3 = "mp3"
+    PCM = "pcm"
 
 
 # Normalization strategy enum
@@ -71,6 +74,14 @@ class AIMusicGeneratorBlock(Block):
             description="A description of the music you want to generate",
             placeholder="e.g., 'An upbeat electronic dance track with heavy bass'",
             title="Prompt",
+        )
+        lyrics: str | None = SchemaField(
+            description=(
+                "Lyrics for the song (required for Minimax Music 1.5). "
+                "Use \\n to separate lines. Supports tags like [intro], [verse], [chorus], etc."
+            ),
+            default=None,
+            title="Lyrics",
         )
         music_gen_model_version: MusicGenModelVersion = SchemaField(
             description="Model to use for generation",
@@ -126,6 +137,7 @@ class AIMusicGeneratorBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "prompt": "An upbeat electronic dance track with heavy bass",
+                "lyrics": None,
                 "music_gen_model_version": MusicGenModelVersion.STEREO_LARGE,
                 "duration": 8,
                 "temperature": 1.0,
@@ -142,7 +154,7 @@ class AIMusicGeneratorBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, music_gen_model_version, prompt, duration, temperature, top_k, top_p, classifier_free_guidance, output_format, normalization_strategy: "https://replicate.com/output/generated-audio-url.wav",
+                "run_model": lambda api_key, music_gen_model_version, prompt, lyrics, duration, temperature, top_k, top_p, classifier_free_guidance, output_format, normalization_strategy: "https://replicate.com/output/generated-audio-url.wav",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -150,48 +162,35 @@ class AIMusicGeneratorBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        max_retries = 3
-        retry_delay = 5  # seconds
-        last_error = None
+        try:
+            result = await self.run_model(
+                api_key=credentials.api_key,
+                music_gen_model_version=input_data.music_gen_model_version,
+                prompt=input_data.prompt,
+                lyrics=input_data.lyrics,
+                duration=input_data.duration,
+                temperature=input_data.temperature,
+                top_k=input_data.top_k,
+                top_p=input_data.top_p,
+                classifier_free_guidance=input_data.classifier_free_guidance,
+                output_format=input_data.output_format,
+                normalization_strategy=input_data.normalization_strategy,
+            )
+            if result and isinstance(result, str) and result.startswith("http"):
+                yield "result", result
+            else:
+                yield "error", "Model returned empty or invalid response"
 
-        for attempt in range(max_retries):
-            try:
-                logger.debug(
-                    f"[AIMusicGeneratorBlock] - Running model (attempt {attempt + 1})"
-                )
-                result = await self.run_model(
-                    api_key=credentials.api_key,
-                    music_gen_model_version=input_data.music_gen_model_version,
-                    prompt=input_data.prompt,
-                    duration=input_data.duration,
-                    temperature=input_data.temperature,
-                    top_k=input_data.top_k,
-                    top_p=input_data.top_p,
-                    classifier_free_guidance=input_data.classifier_free_guidance,
-                    output_format=input_data.output_format,
-                    normalization_strategy=input_data.normalization_strategy,
-                )
-                if result and isinstance(result, str) and result.startswith("http"):
-                    yield "result", result
-                    return
-                else:
-                    last_error = "Model returned empty or invalid response"
-                    raise ValueError(last_error)
-            except Exception as e:
-                last_error = f"Unexpected error: {str(e)}"
-                logger.error(f"[AIMusicGeneratorBlock] - Error: {last_error}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(retry_delay)
-                    continue
-
-        # If we've exhausted all retries, yield the error
-        yield "error", f"Failed after {max_retries} attempts. Last error: {last_error}"
+        except Exception as e:
+            logger.error(f"[AIMusicGeneratorBlock] - Error: {str(e)}")
+            yield "error", f"Failed to generate music: {str(e)}"
 
     async def run_model(
         self,
         api_key: SecretStr,
         music_gen_model_version: MusicGenModelVersion,
         prompt: str,
+        lyrics: str | None,
         duration: int,
         temperature: float,
         top_k: int,
@@ -203,10 +202,24 @@ class AIMusicGeneratorBlock(Block):
         # Initialize Replicate client with the API key
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
-        # Run the model with parameters
-        output = await client.async_run(
-            "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
-            input={
+        if music_gen_model_version == MusicGenModelVersion.MINIMAX_MUSIC_1_5:
+            if not lyrics:
+                raise ValueError("Lyrics are required for Minimax Music 1.5 model")
+
+            # Validate prompt length (10-300 chars)
+            if len(prompt) < 10:
+                prompt = prompt.ljust(10, ".")
+            elif len(prompt) > 300:
+                prompt = prompt[:300]
+
+            input_params = {
+                "prompt": prompt,
+                "lyrics": lyrics,
+                "audio_format": output_format.value,
+            }
+            model_name = "minimax/music-1.5"
+        else:
+            input_params = {
                 "prompt": prompt,
                 "music_gen_model_version": music_gen_model_version,
                 "duration": duration,
@@ -216,7 +229,15 @@ class AIMusicGeneratorBlock(Block):
                 "classifier_free_guidance": classifier_free_guidance,
                 "output_format": output_format,
                 "normalization_strategy": normalization_strategy,
-            },
+            }
+            model_name = "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb"
+
+        # Run the model with parameters
+        output = await run_replicate_with_retry(
+            client,
+            model_name,
+            input_params,
+            wait=True,
         )
 
         # Handle the output
@@ -224,6 +245,8 @@ class AIMusicGeneratorBlock(Block):
             result_url = output[0]  # If output is a list, get the first element
         elif isinstance(output, str):
             result_url = output  # If output is a string, use it directly
+        elif isinstance(output, FileOutput):
+            result_url = output.url
         else:
             result_url = (
                 "No output received"  # Fallback message if output is not as expected
