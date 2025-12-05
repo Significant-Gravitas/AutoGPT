@@ -6,6 +6,7 @@ interface Props {
   agentName: string;
   agentId: string;
   children: React.ReactNode;
+  additionalBreadcrumb?: { name: string; link?: string };
 }
 
 export function SelectedViewLayout(props: Props) {
@@ -18,6 +19,7 @@ export function SelectedViewLayout(props: Props) {
           items={[
             { name: "My Library", link: "/library" },
             { name: props.agentName, link: `/library/agents/${props.agentId}` },
+            ...(props.additionalBreadcrumb ? [props.additionalBreadcrumb] : []),
           ]}
         />
       </div>
