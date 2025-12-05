@@ -849,7 +849,10 @@ model StoreListingVersion {
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
 
-  // Vector embedding for semantic search (replaces tsvector full-text search)
+  // Full-text search tsvector column
+  search Unsupported("tsvector")?
+
+  // Vector embedding for semantic search
   embedding Unsupported("vector(1536)")?
 
   // Version workflow state

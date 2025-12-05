@@ -13,10 +13,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- First drop the view that depends on the search column
 DROP VIEW IF EXISTS "StoreAgent";
 
--- Remove full-text search infrastructure
-DROP TRIGGER IF EXISTS "update_tsvector" ON "StoreListingVersion";
-DROP FUNCTION IF EXISTS update_tsvector_column();
-
 -- Add embedding column for vector search (1536 dimensions for text-embedding-3-small)
 ALTER TABLE "StoreListingVersion"
 ADD COLUMN IF NOT EXISTS "embedding" vector(1536);
