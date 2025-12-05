@@ -54,6 +54,7 @@ SELECT
     sl.slug,
     COALESCE(slv.name, '') AS agent_name,
     slv."videoUrl" AS agent_video,
+    slv."agentOutputDemoUrl" AS agent_output_demo,
     COALESCE(slv."imageUrls", ARRAY[]::text[]) AS agent_image,
     slv."isFeatured" AS featured,
     p.username AS creator_username,
