@@ -94,9 +94,21 @@ export function SelectedRunView({
             {/* Navigation Links */}
             <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
               <nav className="flex gap-8 px-3 pb-1">
-                {showSummarySection && (
+                {withReviews && (
                   <button
                     onClick={() => scrollToSection("summary")}
+                    className={anchorStyles}
+                  >
+                    Reviews ({pendingReviews.length})
+                  </button>
+                )}
+                {withSummary && (
+                  <button
+                    onClick={() =>
+                      scrollToSection(
+                        withReviews ? "summary-details" : "summary",
+                      )
+                    }
                     className={anchorStyles}
                   >
                     Summary
@@ -117,9 +129,33 @@ export function SelectedRunView({
               </nav>
             </div>
 
-            {/* Summary Section */}
-            {showSummarySection && (
+            {/* Human-in-the-Loop Reviews Section */}
+            {withReviews && (
               <div id="summary" className="scroll-mt-4">
+                <RunDetailCard>
+                  {reviewsLoading ? (
+                    <div className="text-neutral-500">Loading reviews…</div>
+                  ) : pendingReviews.length > 0 ? (
+                    <PendingReviewsList
+                      reviews={pendingReviews}
+                      onReviewComplete={refetchReviews}
+                      emptyMessage="No pending reviews for this execution"
+                    />
+                  ) : (
+                    <div className="text-neutral-600">
+                      No pending reviews for this execution
+                    </div>
+                  )}
+                </RunDetailCard>
+              </div>
+            )}
+
+            {/* Summary Section */}
+            {withSummary && (
+              <div
+                id={withReviews ? "summary-details" : "summary"}
+                className="scroll-mt-4"
+              >
                 <RunDetailCard
                   title={
                     <div>
@@ -143,34 +179,7 @@ export function SelectedRunView({
                     </div>
                   }
                 >
-                  <div className="space-y-6">
-                    {/* Human-in-the-Loop Reviews */}
-                    {withReviews && (
-                      <div>
-                        {reviewsLoading ? (
-                          <div className="text-neutral-500">
-                            Loading reviews…
-                          </div>
-                        ) : pendingReviews.length > 0 ? (
-                          <PendingReviewsList
-                            reviews={pendingReviews}
-                            onReviewComplete={refetchReviews}
-                            emptyMessage="No pending reviews for this execution"
-                          />
-                        ) : (
-                          <div className="text-neutral-600">
-                            No pending reviews for this execution
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {withSummary && (
-                      <div className={withReviews ? "border-t pt-6" : ""}>
-                        <RunSummary run={run} />
-                      </div>
-                    )}
-                  </div>
+                  <RunSummary run={run} />
                 </RunDetailCard>
               </div>
             )}
