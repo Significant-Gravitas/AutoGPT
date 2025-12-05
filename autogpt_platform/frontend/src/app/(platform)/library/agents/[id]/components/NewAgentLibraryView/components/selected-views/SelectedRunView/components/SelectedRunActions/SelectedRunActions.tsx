@@ -102,11 +102,7 @@ export function SelectedRunActions(props: Props) {
           shareToken={props.run.share_token}
         />
       )}
-      <FloatingSafeModeToggle
-        graph={props.agent}
-        variant="white"
-        fullWidth={false}
-      />
+      <FloatingSafeModeToggle graph={props.agent} fullWidth={false} />
       <AgentActionsDropdown
         agent={props.agent}
         run={props.run}

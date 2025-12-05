@@ -61,6 +61,7 @@ export function SelectedRunView({
 
   const withSummary = run?.stats?.activity_status;
   const withReviews = run?.status === AgentExecutionStatus.REVIEW;
+  const showSummarySection = withSummary || withReviews;
 
   function scrollToSection(id: string) {
     const element = document.getElementById(id);
@@ -93,12 +94,12 @@ export function SelectedRunView({
             {/* Navigation Links */}
             <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
               <nav className="flex gap-8 px-3 pb-1">
-                {withSummary && (
+                {showSummarySection && (
                   <button
                     onClick={() => scrollToSection("summary")}
                     className={anchorStyles}
                   >
-                    Summary
+                    {withReviews ? "Review Required" : "Summary"}
                   </button>
                 )}
                 <button
@@ -113,44 +114,64 @@ export function SelectedRunView({
                 >
                   Your input
                 </button>
-                {withReviews && (
-                  <button
-                    onClick={() => scrollToSection("reviews")}
-                    className={anchorStyles}
-                  >
-                    Reviews ({pendingReviews.length})
-                  </button>
-                )}
               </nav>
             </div>
 
             {/* Summary Section */}
-            {withSummary && (
+            {showSummarySection && (
               <div id="summary" className="scroll-mt-4">
                 <RunDetailCard
                   title={
-                    <div>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <InfoIcon
-                              size={8}
-                              className="cursor-help text-neutral-500 hover:text-neutral-700"
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="max-w-xs">
-                              This AI-generated summary describes how the agent
-                              handled your task. It&apos;s an experimental
-                              feature and may occasionally be inaccurate.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
+                    withReviews ? (
+                      "Review Required"
+                    ) : (
+                      <div>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <InfoIcon
+                                size={8}
+                                className="cursor-help text-neutral-500 hover:text-neutral-700"
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="max-w-xs">
+                                This AI-generated summary describes how the
+                                agent handled your task. It&apos;s an
+                                experimental feature and may occasionally be
+                                inaccurate.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    )
                   }
                 >
-                  <RunSummary run={run} />
+                  <div className="space-y-6">
+                    {withSummary && <RunSummary run={run} />}
+
+                    {/* Human-in-the-Loop Reviews */}
+                    {withReviews && (
+                      <div className={withSummary ? "border-t pt-6" : ""}>
+                        {reviewsLoading ? (
+                          <div className="text-neutral-500">
+                            Loading reviews…
+                          </div>
+                        ) : pendingReviews.length > 0 ? (
+                          <PendingReviewsList
+                            reviews={pendingReviews}
+                            onReviewComplete={refetchReviews}
+                            emptyMessage="No pending reviews for this execution"
+                          />
+                        ) : (
+                          <div className="text-neutral-600">
+                            No pending reviews for this execution
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </RunDetailCard>
               </div>
             )}
@@ -182,27 +203,6 @@ export function SelectedRunView({
                 />
               </RunDetailCard>
             </div>
-
-            {/* Reviews Section */}
-            {withReviews && (
-              <div id="reviews" className="scroll-mt-4">
-                <RunDetailCard>
-                  {reviewsLoading ? (
-                    <div className="text-neutral-500">Loading reviews…</div>
-                  ) : pendingReviews.length > 0 ? (
-                    <PendingReviewsList
-                      reviews={pendingReviews}
-                      onReviewComplete={refetchReviews}
-                      emptyMessage="No pending reviews for this execution"
-                    />
-                  ) : (
-                    <div className="text-neutral-600">
-                      No pending reviews for this execution
-                    </div>
-                  )}
-                </RunDetailCard>
-              </div>
-            )}
           </div>
         </SelectedViewLayout>
       </div>
