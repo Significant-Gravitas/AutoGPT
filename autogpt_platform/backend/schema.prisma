@@ -713,7 +713,7 @@ view StoreAgent {
   sub_heading      String
   description      String
   categories       String[]
-  search           Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+  embedding        Unsupported("vector(1536)")?
   runs             Int
   rating           Float
   versions         String[]
@@ -849,7 +849,11 @@ model StoreListingVersion {
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
 
-  search Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+  // Full-text search tsvector column
+  search Unsupported("tsvector")?
+
+  // Vector embedding for semantic search
+  embedding Unsupported("vector(1536)")?
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
