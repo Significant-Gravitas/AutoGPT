@@ -45,7 +45,9 @@ def sanitize_query(query: str | None) -> str | None:
     summary="Get Builder suggestions",
     response_model=builder_model.SuggestionsResponse,
 )
-async def get_suggestions() -> builder_model.SuggestionsResponse:
+async def get_suggestions(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+) -> builder_model.SuggestionsResponse:
     """
     Get all suggestions for the Blocks Menu.
     """
@@ -55,11 +57,7 @@ async def get_suggestions() -> builder_model.SuggestionsResponse:
             "Help me create a list",
             "Help me feed my data to Google Maps",
         ],
-        recent_searches=[
-            "image generation",
-            "deepfake",
-            "competitor analysis",
-        ],
+        recent_searches=await builder_db.get_recent_searches(user_id),
         providers=[
             ProviderName.TWITTER,
             ProviderName.GITHUB,
@@ -157,7 +155,7 @@ async def get_providers(
 async def search(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     search_query: Annotated[str | None, fastapi.Query()] = None,
-    filter: Annotated[list[str] | None, fastapi.Query()] = None,
+    filter: Annotated[list[builder_model.FilterType] | None, fastapi.Query()] = None,
     search_id: Annotated[str | None, fastapi.Query()] = None,
     by_creator: Annotated[list[str] | None, fastapi.Query()] = None,
     page: Annotated[int, fastapi.Query()] = 1,
@@ -229,8 +227,19 @@ async def search(
     ):
         more_pages = True
 
+    search_id = await builder_db.update_search(
+        user_id,
+        builder_model.SearchEntry(
+            search_query=search_query,
+            filter=filter,
+            by_creator=by_creator,
+            search_id=search_id,
+        ),
+    )
+
     return builder_model.SearchResponse(
         items=blocks.blocks.blocks + my_agents.agents + marketplace_agents.agents,
+        search_id=search_id,
         total_items={
             "blocks": blocks.total_block_count,
             "integrations": blocks.total_integration_count,

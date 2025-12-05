@@ -6,6 +6,7 @@ import prisma
 import backend.data.block
 from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
+from backend.data.db import query_raw_with_schema
 from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
 from backend.data.db import query_raw_with_schema
 from backend.integrations.providers import ProviderName
@@ -17,14 +18,13 @@ from backend.server.v2.builder.model import (
     Provider,
     ProviderResponse,
     SearchBlocksResponse,
+    SearchEntry,
 )
 from backend.util.cache import cached
 from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
 llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
-_static_counts_cache: dict | None = None
-_suggested_blocks: list[BlockInfo] | None = None
 
 
 def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
@@ -128,6 +128,60 @@ def get_block_by_id(block_id: str) -> BlockInfo | None:
         if block.id == block_id:
             return block.get_info()
     return None
+
+
+async def update_search(user_id: str, search: SearchEntry) -> str:
+    """
+    Upsert a search request for the user and return the search ID.
+    """
+    if search.search_id:
+        # Update existing search
+        await prisma.models.BuilderSearch.prisma().update(
+            where={
+                "id": search.search_id,
+            },
+            data={
+                "searchQuery": search.search_query or "",
+                "filter": search.filter or [],  # type: ignore
+                "byCreator": search.by_creator or [],
+            },
+        )
+        return search.search_id
+    else:
+        # Create new search
+        new_search = await prisma.models.BuilderSearch.prisma().create(
+            data={
+                "userId": user_id,
+                "searchQuery": search.search_query or "",
+                "filter": search.filter or [],  # type: ignore
+                "byCreator": search.by_creator or [],
+            }
+        )
+        return new_search.id
+
+
+async def get_recent_searches(user_id: str, limit: int = 5) -> list[SearchEntry]:
+    """
+    Get the user's most recent search requests.
+    """
+    searches = await prisma.models.BuilderSearch.prisma().find_many(
+        where={
+            "userId": user_id,
+        },
+        order={
+            "updatedAt": "desc",
+        },
+        take=limit,
+    )
+    return [
+        SearchEntry(
+            search_query=s.searchQuery,
+            filter=s.filter,  # type: ignore
+            by_creator=s.byCreator,
+            search_id=s.id,
+        )
+        for s in searches
+    ]
 
 
 def search_blocks(
@@ -251,16 +305,12 @@ async def get_counts(user_id: str) -> CountResponse:
     )
 
 
+@cached(ttl_seconds=3600)
 async def _get_static_counts():
     """
     Get counts of blocks, integrations, and marketplace agents.
     This is cached to avoid unnecessary database queries and calculations.
-    Can't use functools.cache here because the function is async.
     """
-    global _static_counts_cache
-    if _static_counts_cache is not None:
-        return _static_counts_cache
-
     all_blocks = 0
     input_blocks = 0
     action_blocks = 0
@@ -287,7 +337,7 @@ async def _get_static_counts():
 
     marketplace_agents = await prisma.models.StoreAgent.prisma().count()
 
-    _static_counts_cache = {
+    return {
         "all_blocks": all_blocks,
         "input_blocks": input_blocks,
         "action_blocks": action_blocks,
@@ -295,8 +345,6 @@ async def _get_static_counts():
         "integrations": integrations,
         "marketplace_agents": marketplace_agents,
     }
-
-    return _static_counts_cache
 
 
 def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
@@ -329,13 +377,9 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
     return providers
 
 
+@cached(ttl_seconds=3600)
 async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
-    global _suggested_blocks
-
-    if _suggested_blocks is not None and len(_suggested_blocks) >= count:
-        return _suggested_blocks[:count]
-
-    _suggested_blocks = []
+    suggested_blocks = []
     # Sum the number of executions for each block type
     # Prisma cannot group by nested relations, so we do a raw query
     # Calculate the cutoff timestamp
@@ -376,7 +420,7 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
     # Sort blocks by execution count
     blocks.sort(key=lambda x: x[1], reverse=True)
 
-    _suggested_blocks = [block[0] for block in blocks]
+    suggested_blocks = [block[0] for block in blocks]
 
     # Return the top blocks
-    return _suggested_blocks[:count]
+    return suggested_blocks[:count]
