@@ -1,6 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
@@ -18,11 +28,12 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   usePostV2GenerateExecutionAnalytics,
   useGetV2GetExecutionAnalyticsConfiguration,
-  usePostV2GetExecutionAccuracyTrendsAndAlerts,
+  useGetV2GetExecutionAccuracyTrendsAndAlerts,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
 import type { AccuracyTrendsResponse } from "@/app/api/__generated__/models/accuracyTrendsResponse";
+import type { AccuracyLatestData } from "@/app/api/__generated__/models/accuracyLatestData";
 
 // Use the generated type with minimal adjustment for form handling
 interface FormData extends Omit<ExecutionAnalyticsRequest, "created_after"> {
@@ -40,42 +51,125 @@ export function ExecutionAnalyticsForm() {
   );
   const { toast } = useToast();
 
-  // Use the generated API client for accuracy trends
-  const accuracyTrendsMutation = usePostV2GetExecutionAccuracyTrendsAndAlerts({
-    mutation: {
-      onSuccess: (response) => {
-        setTrendsData(response.data);
+  // State for accuracy trends query parameters
+  const [accuracyParams, setAccuracyParams] = useState<{
+    graph_id: string;
+    user_id?: string;
+    days_back: number;
+    drop_threshold: number;
+    include_historical?: boolean;
+  } | null>(null);
 
-        if (response.data.alert) {
-          toast({
-            title: "🚨 Accuracy Alert Detected",
-            description: `${response.data.alert.drop_percent.toFixed(1)}% accuracy drop detected for this agent`,
-            variant: "destructive",
-          });
-        }
+  // Use the generated API client for accuracy trends (GET)
+  const { data: accuracyApiResponse, error: accuracyError } =
+    useGetV2GetExecutionAccuracyTrendsAndAlerts(
+      accuracyParams || {
+        graph_id: "",
+        days_back: 30,
+        drop_threshold: 10.0,
+        include_historical: false,
       },
-      onError: (error: any) => {
-        console.error("Failed to fetch trends:", error);
+      {
+        query: {
+          enabled: !!accuracyParams?.graph_id,
+        },
+      },
+    );
+
+  // Update local state when data changes and handle success/error
+  useEffect(() => {
+    if (accuracyError) {
+      console.error("Failed to fetch trends:", accuracyError);
+      toast({
+        title: "Trends Error",
+        description:
+          (accuracyError as any)?.message || "Failed to fetch accuracy trends",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const data = accuracyApiResponse?.data;
+    if (data && "latest_data" in data) {
+      setTrendsData(data);
+
+      // Check for alerts
+      if (data.alert) {
         toast({
-          title: "Trends Error",
-          description: error?.message || "Failed to fetch accuracy trends",
+          title: "🚨 Accuracy Alert Detected",
+          description: `${data.alert.drop_percent.toFixed(1)}% accuracy drop detected for this agent`,
           variant: "destructive",
         });
-      },
-    },
-  });
+      }
+    }
+  }, [accuracyApiResponse, accuracyError, toast]);
+
+  // Chart component for accuracy trends
+  function AccuracyChart({ data }: { data: AccuracyLatestData[] }) {
+    const chartData = data.map((item) => ({
+      date: new Date(item.date).toLocaleDateString(),
+      "Daily Score": item.daily_score,
+      "3-Day Avg": item.three_day_avg,
+      "7-Day Avg": item.seven_day_avg,
+      "14-Day Avg": item.fourteen_day_avg,
+    }));
+
+    return (
+      <ResponsiveContainer width="100%" height={400}>
+        <LineChart
+          data={chartData}
+          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="date" />
+          <YAxis domain={[0, 100]} />
+          <Tooltip
+            formatter={(value) => [`${Number(value).toFixed(2)}%`, ""]}
+          />
+          <Legend />
+          <Line
+            type="monotone"
+            dataKey="Daily Score"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="3-Day Avg"
+            stroke="#10b981"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="7-Day Avg"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="14-Day Avg"
+            stroke="#8b5cf6"
+            strokeWidth={2}
+            dot={{ r: 3 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
 
   // Function to fetch accuracy trends using generated API client
   const fetchAccuracyTrends = (graphId: string, userId?: string) => {
     if (!graphId.trim()) return;
 
-    accuracyTrendsMutation.mutate({
-      data: {
-        graph_id: graphId.trim(),
-        user_id: userId?.trim() || undefined,
-        days_back: 30,
-        drop_threshold: 10.0,
-      },
+    setAccuracyParams({
+      graph_id: graphId.trim(),
+      user_id: userId?.trim() || undefined,
+      days_back: 30,
+      drop_threshold: 10.0,
+      include_historical: showAccuracyChart, // Include historical data when chart is enabled
     });
   };
 
@@ -132,6 +226,9 @@ export function ExecutionAnalyticsForm() {
     user_prompt: "", // Will use config default when empty
   });
 
+  // State for accuracy trends chart toggle
+  const [showAccuracyChart, setShowAccuracyChart] = useState(true);
+
   // Update form defaults when config loads
   useEffect(() => {
     if (config?.data && config.status === 200 && !formData.model_name) {
@@ -156,8 +253,10 @@ export function ExecutionAnalyticsForm() {
 
     setResults(null);
 
-    // Always fetch accuracy trends first since it doesn't require OpenAI
-    await fetchAccuracyTrends(formData.graph_id, formData.user_id);
+    // Fetch accuracy trends if chart is enabled
+    if (showAccuracyChart) {
+      fetchAccuracyTrends(formData.graph_id, formData.user_id || undefined);
+    }
 
     // Prepare the request payload
     const payload: ExecutionAnalyticsRequest = {
@@ -317,6 +416,18 @@ export function ExecutionAnalyticsForm() {
                 <Label htmlFor="skip_existing" className="text-sm">
                   Skip executions that already have activity status and
                   correctness score
+                </Label>
+              </div>
+
+              {/* Show Accuracy Chart Checkbox */}
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="show_accuracy_chart"
+                  checked={showAccuracyChart}
+                  onCheckedChange={(checked) => setShowAccuracyChart(!!checked)}
+                />
+                <Label htmlFor="show_accuracy_chart" className="text-sm">
+                  Show accuracy trends chart and historical data visualization
                 </Label>
               </div>
 
@@ -505,6 +616,18 @@ export function ExecutionAnalyticsForm() {
               <div className="text-sm text-gray-600">14-Day Avg</div>
             </div>
           </div>
+
+          {/* Chart Section - only show when toggle is enabled and historical data exists */}
+          {showAccuracyChart && trendsData?.historical_data && (
+            <div className="mt-6">
+              <h4 className="mb-4 text-lg font-semibold">
+                Execution Accuracy Trends Chart
+              </h4>
+              <div className="rounded-lg border bg-white p-6">
+                <AccuracyChart data={trendsData.historical_data} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

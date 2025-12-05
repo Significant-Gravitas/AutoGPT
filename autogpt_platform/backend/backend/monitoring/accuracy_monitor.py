@@ -2,6 +2,10 @@
 
 import logging
 
+from backend.data.analytics import (
+    get_accuracy_trends_and_alerts,
+    get_marketplace_graphs_for_monitoring,
+)
 from backend.util.clients import (
     get_database_manager_client,
     get_notification_manager_client,
@@ -22,13 +26,13 @@ class AccuracyMonitor:
         self.database_client = get_database_manager_client()
         self.drop_threshold = drop_threshold
 
-    def check_execution_accuracy_alerts(self) -> str:
+    async def check_execution_accuracy_alerts(self) -> str:
         """Check marketplace agents for accuracy drops and send alerts."""
         try:
             logger.info("Checking execution accuracy for marketplace agents")
 
-            # Get frequently executed graphs from database manager
-            graphs = self.database_client.get_frequently_executed_graphs(
+            # Get marketplace graphs directly
+            graphs = await get_marketplace_graphs_for_monitoring(
                 days_back=30, min_executions=10
             )
 
@@ -36,9 +40,9 @@ class AccuracyMonitor:
             alert_messages = []
 
             for graph_data in graphs:
-                result = self.database_client.get_accuracy_trends_and_alerts(
-                    graph_id=graph_data["graph_id"],
-                    user_id=graph_data.get("user_id"),
+                result = await get_accuracy_trends_and_alerts(
+                    graph_id=graph_data.graph_id,
+                    user_id=graph_data.user_id,
                     days_back=21,  # 3 weeks
                     drop_threshold=self.drop_threshold,
                 )
@@ -81,7 +85,7 @@ class AccuracyMonitor:
             return msg
 
 
-def report_execution_accuracy_alerts(drop_threshold: float = 10.0) -> str:
+async def report_execution_accuracy_alerts(drop_threshold: float = 10.0) -> str:
     """
     Check execution accuracy and send alerts if drops are detected.
 
@@ -92,4 +96,4 @@ def report_execution_accuracy_alerts(drop_threshold: float = 10.0) -> str:
         Status message indicating results of the check
     """
     monitor = AccuracyMonitor(drop_threshold=drop_threshold)
-    return monitor.check_execution_accuracy_alerts()
+    return await monitor.check_execution_accuracy_alerts()

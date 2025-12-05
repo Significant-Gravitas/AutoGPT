@@ -8,11 +8,13 @@ from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
 from backend.blocks.llm import LlmModel
-from backend.data.execution import (
+from backend.data.analytics import (
     AccuracyTrendsResponse,
+    get_accuracy_trends_and_alerts,
+)
+from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionMeta,
-    get_accuracy_trends_and_alerts,
     get_graph_executions,
     update_graph_execution_stats,
 )
@@ -91,6 +93,9 @@ class AccuracyTrendsRequest(BaseModel):
     days_back: int = Field(30, description="Number of days to look back", ge=7, le=90)
     drop_threshold: float = Field(
         10.0, description="Alert threshold percentage", ge=1.0, le=50.0
+    )
+    include_historical: bool = Field(
+        False, description="Include historical data for charts"
     )
 
 
@@ -432,35 +437,38 @@ async def _process_batch(
     )
 
 
-@router.post(
+@router.get(
     "/execution_accuracy_trends",
     response_model=AccuracyTrendsResponse,
     summary="Get Execution Accuracy Trends and Alerts",
 )
 async def get_execution_accuracy_trends(
-    request: AccuracyTrendsRequest,
+    graph_id: str,
+    user_id: Optional[str] = None,
+    days_back: int = 30,
+    drop_threshold: float = 10.0,
+    include_historical: bool = False,
     admin_user_id: str = Security(get_user_id),
-):
+) -> AccuracyTrendsResponse:
     """
     Get execution accuracy trends with moving averages and alert detection.
     Simple single-query approach.
     """
     logger.info(
-        f"Admin user {admin_user_id} requesting accuracy trends for graph {request.graph_id}"
+        f"Admin user {admin_user_id} requesting accuracy trends for graph {graph_id}"
     )
 
     try:
         result = await get_accuracy_trends_and_alerts(
-            graph_id=request.graph_id,
-            days_back=request.days_back,
-            user_id=request.user_id,
-            drop_threshold=request.drop_threshold,
+            graph_id=graph_id,
+            days_back=days_back,
+            user_id=user_id,
+            drop_threshold=drop_threshold,
+            include_historical=include_historical,
         )
 
         return result
 
     except Exception as e:
-        logger.exception(
-            f"Error getting accuracy trends for graph {request.graph_id}: {e}"
-        )
+        logger.exception(f"Error getting accuracy trends for graph {graph_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
