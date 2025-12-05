@@ -869,7 +869,6 @@ class ExecutionProcessor:
         self.execution_stats_lock = execution_stats_lock
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
 
-        # Create local references to reduce changes throughout the function
         running_node_execution = self.running_node_execution
         running_node_evaluation = self.running_node_evaluation
 
