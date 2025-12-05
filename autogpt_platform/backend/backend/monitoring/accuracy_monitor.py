@@ -2,10 +2,6 @@
 
 import logging
 
-from backend.data.analytics import (
-    get_accuracy_trends_and_alerts,
-    get_marketplace_graphs_for_monitoring,
-)
 from backend.util.clients import (
     get_database_manager_client,
     get_notification_manager_client,
@@ -26,13 +22,13 @@ class AccuracyMonitor:
         self.database_client = get_database_manager_client()
         self.drop_threshold = drop_threshold
 
-    async def check_execution_accuracy_alerts(self) -> str:
+    def check_execution_accuracy_alerts(self) -> str:
         """Check marketplace agents for accuracy drops and send alerts."""
         try:
             logger.info("Checking execution accuracy for marketplace agents")
 
-            # Get marketplace graphs directly
-            graphs = await get_marketplace_graphs_for_monitoring(
+            # Get marketplace graphs using database client
+            graphs = self.database_client.get_marketplace_graphs_for_monitoring(
                 days_back=30, min_executions=10
             )
 
@@ -40,7 +36,7 @@ class AccuracyMonitor:
             alert_messages = []
 
             for graph_data in graphs:
-                result = await get_accuracy_trends_and_alerts(
+                result = self.database_client.get_accuracy_trends_and_alerts(
                     graph_id=graph_data.graph_id,
                     user_id=graph_data.user_id,
                     days_back=21,  # 3 weeks
@@ -85,7 +81,7 @@ class AccuracyMonitor:
             return msg
 
 
-async def report_execution_accuracy_alerts(drop_threshold: float = 10.0) -> str:
+def report_execution_accuracy_alerts(drop_threshold: float = 10.0) -> str:
     """
     Check execution accuracy and send alerts if drops are detected.
 
@@ -96,4 +92,4 @@ async def report_execution_accuracy_alerts(drop_threshold: float = 10.0) -> str:
         Status message indicating results of the check
     """
     monitor = AccuracyMonitor(drop_threshold=drop_threshold)
-    return await monitor.check_execution_accuracy_alerts()
+    return monitor.check_execution_accuracy_alerts()

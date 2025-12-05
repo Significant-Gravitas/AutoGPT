@@ -240,6 +240,11 @@ def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
 
 
+def execution_accuracy_alerts():
+    """Check execution accuracy and send alerts if drops are detected."""
+    return report_execution_accuracy_alerts()
+
+
 # Monitoring functions are now imported from monitoring module
 
 
@@ -439,13 +444,14 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # Execution Accuracy Monitoring - run every hour
+            # Execution Accuracy Monitoring - configurable interval
             self.scheduler.add_job(
-                report_execution_accuracy_alerts,
+                execution_accuracy_alerts,
                 id="report_execution_accuracy_alerts",
                 trigger="interval",
                 replace_existing=True,
-                seconds=3600,  # Every hour
+                seconds=config.execution_accuracy_check_interval_hours
+                * 3600,  # Convert hours to seconds
                 jobstore=Jobstores.EXECUTION.value,
             )
 
@@ -599,7 +605,7 @@ class Scheduler(AppService):
     @expose
     def execute_report_execution_accuracy_alerts(self):
         """Manually trigger execution accuracy alert checking."""
-        return report_execution_accuracy_alerts()
+        return execution_accuracy_alerts()
 
 
 class SchedulerClient(AppServiceClient):
