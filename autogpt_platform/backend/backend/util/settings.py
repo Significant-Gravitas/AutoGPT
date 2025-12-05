@@ -187,7 +187,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     # Execution Accuracy Monitoring
     execution_accuracy_check_interval_hours: int = Field(
-        default=6,  # 6 hours
+        default=24,
         description="Interval in hours between execution accuracy alert checks.",
     )
 

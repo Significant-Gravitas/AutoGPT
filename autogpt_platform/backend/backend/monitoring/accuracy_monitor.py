@@ -6,7 +6,7 @@ from backend.util.clients import (
     get_database_manager_client,
     get_notification_manager_client,
 )
-from backend.util.metrics import sentry_capture_error
+from backend.util.metrics import DiscordChannel, sentry_capture_error
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -60,11 +60,12 @@ class AccuracyMonitor:
                     alerts_found += 1
 
             if alert_messages:
-                # Send Discord notification
                 full_message = "Execution Accuracy Alerts:\n\n" + "\n\n".join(
                     alert_messages
                 )
-                self.notification_client.discord_system_alert(full_message)
+                self.notification_client.discord_system_alert(
+                    full_message, DiscordChannel.PRODUCT
+                )
                 logger.warning(f"Sent accuracy alerts for {alerts_found} agents")
                 return f"Alert sent for {alerts_found} agents with accuracy drops"
 
@@ -77,7 +78,7 @@ class AccuracyMonitor:
             error = Exception(f"Error checking execution accuracy alerts: {e}")
             msg = str(error)
             sentry_capture_error(error)
-            self.notification_client.discord_system_alert(msg)
+            self.notification_client.discord_system_alert(msg, DiscordChannel.PRODUCT)
             return msg
 
 
