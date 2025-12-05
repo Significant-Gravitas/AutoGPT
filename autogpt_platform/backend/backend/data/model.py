@@ -880,7 +880,7 @@ class UserOnboarding(BaseModel):
     integrations: list[str]
     otherIntegrations: Optional[str]
     selectedStoreListingVersionId: Optional[str]
-    agentInput: dict[str, Any]
+    agentInput: Optional[dict[str, Any]]
     onboardingAgentExecutionId: Optional[str]
     agentRuns: int
     lastRunAt: Optional[datetime]
