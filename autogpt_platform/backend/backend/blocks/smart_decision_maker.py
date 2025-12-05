@@ -1,6 +1,7 @@
 import logging
 import re
 from collections import Counter
+from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ from backend.util.clients import get_database_manager_async_client
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
+    from backend.executor.manager import ExecutionProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -697,17 +699,15 @@ class SmartDecisionMakerBlock(Block):
         if tool_outputs:
             prompt.extend(tool_outputs)
 
-    async def _execute_single_tool(
-        self, tool_info: ToolInfo, execution_params: ExecutionParams
+    async def _execute_single_tool_with_manager(
+        self,
+        tool_info: ToolInfo,
+        execution_params: ExecutionParams,
+        execution_processor: "ExecutionProcessor",
     ) -> dict:
-        """Execute a single tool with proper execution events and status updates."""
+        """Execute a single tool using the execution manager for proper integration."""
         # Lazy imports to avoid circular dependencies
-        from backend.data.execution import ExecutionStatus
-        from backend.executor.manager import (
-            async_update_node_execution_status,
-            execute_node,
-        )
-        from backend.integrations.creds_manager import IntegrationCredentialsManager
+        from backend.data.execution import NodeExecutionEntry
 
         tool_call = tool_info.tool_call
         tool_def = tool_info.tool_def
@@ -725,18 +725,14 @@ class SmartDecisionMakerBlock(Block):
             raise ValueError(f"Target node {sink_node_id} not found")
 
         # Create proper node execution using upsert_execution_input
-        # Each call accumulates inputs for the same execution
         node_exec_result = None
         final_input_data = None
 
-        # Add all inputs to the execution (including None values)
-        # upsert_execution_input accumulates inputs for the same node_id/graph_exec_id
+        # Add all inputs to the execution
         if not raw_input_data:
-            # If truly no input data, fail with clear error
             raise ValueError(f"Tool call has no input data: {tool_call}")
 
         for input_name, input_value in raw_input_data.items():
-            # Include all inputs, even None ones - let the target node handle validation
             node_exec_result, final_input_data = await db_client.upsert_execution_input(
                 node_id=sink_node_id,
                 graph_exec_id=execution_params.graph_exec_id,
@@ -744,14 +740,9 @@ class SmartDecisionMakerBlock(Block):
                 input_data=input_value,
             )
 
-        # Create NodeExecutionEntry from the result
-        from backend.data.execution import NodeExecutionEntry
+        assert node_exec_result is not None, "node_exec_result should not be None"
 
-        # At this point we know node_exec_result is not None (loop ran at least once)
-        assert (
-            node_exec_result is not None
-        ), "node_exec_result should not be None after processing inputs"
-
+        # Create NodeExecutionEntry for execution manager
         node_exec_entry = NodeExecutionEntry(
             user_id=execution_params.user_id,
             graph_exec_id=execution_params.graph_exec_id,
@@ -764,54 +755,60 @@ class SmartDecisionMakerBlock(Block):
             execution_context=execution_params.execution_context,
         )
 
-        # Create credentials manager
-        creds_manager = IntegrationCredentialsManager()
-
-        # Update execution status to running
-        await async_update_node_execution_status(
-            db_client=db_client,
-            exec_id=node_exec_entry.node_exec_id,
-            status=ExecutionStatus.RUNNING,
-            execution_data=final_input_data or {},
-        )
-
-        # Execute the node and collect outputs
-        node_outputs = {}
+        # Use the execution manager to execute the tool node
         try:
-            async for output_name, output_data in execute_node(
-                node=target_node,
-                creds_manager=creds_manager,
-                data=node_exec_entry,
-            ):
-                node_outputs[output_name] = output_data
+            # Get NodeExecutionProgress from the execution manager's running nodes
+            node_exec_progress = execution_processor.running_node_execution[
+                sink_node_id
+            ]
 
-                # Update execution output in database
-                await db_client.upsert_execution_output(
-                    node_exec_id=node_exec_entry.node_exec_id,
-                    output_name=output_name,
-                    output_data=output_data,
-                )
-
-            # Mark execution as completed
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=node_exec_entry.node_exec_id,
-                status=ExecutionStatus.COMPLETED,
+            # Use the execution manager's own graph stats
+            graph_stats_pair = (
+                execution_processor.execution_stats,
+                execution_processor.execution_stats_lock,
             )
+
+            # Execute the node directly since we're in the SmartDecisionMaker context
+            node_stats = await execution_processor.on_node_execution(
+                node_exec=node_exec_entry,
+                node_exec_progress=node_exec_progress,
+                nodes_input_masks=None,
+                graph_stats_pair=graph_stats_pair,
+            )
+
+            # Create a completed future for the task tracking system
+            completed_future = Future()
+            completed_future.set_result(node_stats)
+
+            # Add the completed future so it can be evaluated by is_done()
+            node_exec_progress.add_task(
+                node_exec_id=node_exec_result.node_exec_id,
+                task=completed_future,
+            )
+
+            # Get outputs from database after execution completes using database manager client
+            node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
+                node_exec_result.node_exec_id
+            )
+
+            # If execution failed, add error to outputs
+            if node_stats and node_stats.error:
+                node_outputs["error"] = str(node_stats.error)
+
+            # Create tool response
+            tool_response_content = (
+                json.dumps(node_outputs)
+                if node_outputs
+                else "Tool executed successfully"
+            )
+            return _create_tool_response(tool_call.id, tool_response_content)
 
         except Exception as e:
-            # Mark execution as failed
-            await async_update_node_execution_status(
-                db_client=db_client,
-                exec_id=node_exec_entry.node_exec_id,
-                status=ExecutionStatus.FAILED,
-                stats={"error": str(e)},
+            logger.error(f"Tool execution with manager failed: {e}")
+            # Return error response
+            return _create_tool_response(
+                tool_call.id, f"Tool execution failed: {str(e)}"
             )
-            node_outputs["error"] = str(e)
-
-        # Create tool response
-        tool_response_content = json.dumps(node_outputs)
-        return _create_tool_response(tool_call.id, tool_response_content)
 
     async def _execute_tools_agent_mode(
         self,
@@ -825,7 +822,8 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         graph_id: str,
         graph_version: int,
-        execution_context,
+        execution_context: ExecutionContext,
+        execution_processor: "ExecutionProcessor",
     ):
         """Execute tools in agent mode with a loop until finished."""
         max_iterations = input_data.agent_mode_max_iterations
@@ -885,8 +883,8 @@ class SmartDecisionMakerBlock(Block):
             tool_outputs = []
             for tool_info in processed_tools:
                 try:
-                    tool_response = await self._execute_single_tool(
-                        tool_info, execution_params
+                    tool_response = await self._execute_single_tool_with_manager(
+                        tool_info, execution_params, execution_processor
                     )
                     tool_outputs.append(tool_response)
                 except Exception as e:
@@ -922,8 +920,10 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         graph_version: int,
         execution_context: ExecutionContext,
+        execution_processor: "ExecutionProcessor",
         **kwargs,
     ) -> BlockOutput:
+
         tool_functions = await self._create_tool_node_signatures(node_id)
         yield "tool_functions", json.dumps(tool_functions)
 
@@ -994,6 +994,7 @@ class SmartDecisionMakerBlock(Block):
                 graph_id=graph_id,
                 graph_version=graph_version,
                 execution_context=execution_context,
+                execution_processor=execution_processor,
             ):
                 yield result
             return

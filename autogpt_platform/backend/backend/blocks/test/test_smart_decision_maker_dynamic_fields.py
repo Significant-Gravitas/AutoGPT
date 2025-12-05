@@ -1,7 +1,7 @@
 """Comprehensive tests for SmartDecisionMakerBlock dynamic field handling."""
 
 import json
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -345,6 +345,7 @@ async def test_output_yielding_with_dynamic_fields():
             from backend.data.execution import ExecutionContext
 
             mock_execution_context = ExecutionContext(safe_mode=False)
+            mock_execution_processor = MagicMock()
 
             async for output_name, output_value in block.run(
                 input_data,
@@ -356,6 +357,7 @@ async def test_output_yielding_with_dynamic_fields():
                 user_id="test_user",
                 graph_version=1,
                 execution_context=mock_execution_context,
+                execution_processor=mock_execution_processor,
             ):
                 outputs[output_name] = output_value
 
@@ -534,6 +536,7 @@ async def test_validation_errors_dont_pollute_conversation():
             from backend.data.execution import ExecutionContext
 
             mock_execution_context = ExecutionContext(safe_mode=False)
+            mock_execution_processor = MagicMock()
 
             async for output_name, output_value in block.run(
                 input_data,
@@ -545,6 +548,7 @@ async def test_validation_errors_dont_pollute_conversation():
                 user_id="test_user",
                 graph_version=1,
                 execution_context=mock_execution_context,
+                execution_processor=mock_execution_processor,
             ):
                 outputs[output_name] = output_value
 

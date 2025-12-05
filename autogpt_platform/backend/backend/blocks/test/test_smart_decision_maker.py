@@ -1,7 +1,11 @@
 import logging
+import threading
+from collections import defaultdict
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.data.execution import ExecutionContext
 from backend.data.model import ProviderName, User
 from backend.server.model import CreateGraph
 from backend.server.rest_api import AgentServer
@@ -17,10 +21,10 @@ async def create_graph(s: SpinTestServer, g, u: User):
 
 
 async def create_credentials(s: SpinTestServer, u: User):
-    import backend.blocks.llm as llm
+    import backend.blocks.llm as llm_module
 
     provider = ProviderName.OPENAI
-    credentials = llm.TEST_CREDENTIALS
+    credentials = llm_module.TEST_CREDENTIALS
     return await s.agent_server.test_create_credentials(u.id, provider, credentials)
 
 
@@ -196,8 +200,6 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
 @pytest.mark.asyncio
 async def test_smart_decision_maker_tracks_llm_stats():
     """Test that SmartDecisionMakerBlock correctly tracks LLM usage stats."""
-    from unittest.mock import MagicMock, patch
-
     import backend.blocks.llm as llm_module
     from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 
@@ -216,7 +218,6 @@ async def test_smart_decision_maker_tracks_llm_stats():
     }
 
     # Mock the _create_tool_node_signatures method to avoid database calls
-    from unittest.mock import AsyncMock
 
     with patch(
         "backend.blocks.llm.llm_call",
@@ -240,9 +241,12 @@ async def test_smart_decision_maker_tracks_llm_stats():
         # Execute the block
         outputs = {}
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         async for output_name, output_data in block.run(
             input_data,
@@ -254,6 +258,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
@@ -271,8 +276,6 @@ async def test_smart_decision_maker_tracks_llm_stats():
 @pytest.mark.asyncio
 async def test_smart_decision_maker_parameter_validation():
     """Test that SmartDecisionMakerBlock correctly validates tool call parameters."""
-    from unittest.mock import MagicMock, patch
-
     import backend.blocks.llm as llm_module
     from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 
@@ -319,8 +322,6 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_with_typo.reasoning = None
     mock_response_with_typo.raw_response = {"role": "assistant", "content": None}
 
-    from unittest.mock import AsyncMock
-
     with patch(
         "backend.blocks.llm.llm_call",
         new_callable=AsyncMock,
@@ -341,9 +342,12 @@ async def test_smart_decision_maker_parameter_validation():
         )
 
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         # Should raise ValueError after retries due to typo'd parameter name
         with pytest.raises(ValueError) as exc_info:
@@ -358,6 +362,7 @@ async def test_smart_decision_maker_parameter_validation():
                 user_id="test-user-id",
                 graph_version=1,
                 execution_context=mock_execution_context,
+                execution_processor=mock_execution_processor,
             ):
                 outputs[output_name] = output_data
 
@@ -384,8 +389,6 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_missing_required.reasoning = None
     mock_response_missing_required.raw_response = {"role": "assistant", "content": None}
 
-    from unittest.mock import AsyncMock
-
     with patch(
         "backend.blocks.llm.llm_call",
         new_callable=AsyncMock,
@@ -405,9 +408,12 @@ async def test_smart_decision_maker_parameter_validation():
         )
 
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         # Should raise ValueError due to missing required parameter
         with pytest.raises(ValueError) as exc_info:
@@ -422,6 +428,7 @@ async def test_smart_decision_maker_parameter_validation():
                 user_id="test-user-id",
                 graph_version=1,
                 execution_context=mock_execution_context,
+                execution_processor=mock_execution_processor,
             ):
                 outputs[output_name] = output_data
 
@@ -441,8 +448,6 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_valid.completion_tokens = 25
     mock_response_valid.reasoning = None
     mock_response_valid.raw_response = {"role": "assistant", "content": None}
-
-    from unittest.mock import AsyncMock
 
     with patch(
         "backend.blocks.llm.llm_call",
@@ -465,9 +470,12 @@ async def test_smart_decision_maker_parameter_validation():
         # Should succeed - optional parameter missing is OK
         outputs = {}
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         async for output_name, output_data in block.run(
             input_data,
@@ -479,6 +487,7 @@ async def test_smart_decision_maker_parameter_validation():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
@@ -504,8 +513,6 @@ async def test_smart_decision_maker_parameter_validation():
     mock_response_all_params.reasoning = None
     mock_response_all_params.raw_response = {"role": "assistant", "content": None}
 
-    from unittest.mock import AsyncMock
-
     with patch(
         "backend.blocks.llm.llm_call",
         new_callable=AsyncMock,
@@ -527,9 +534,12 @@ async def test_smart_decision_maker_parameter_validation():
         # Should succeed with all parameters
         outputs = {}
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         async for output_name, output_data in block.run(
             input_data,
@@ -541,6 +551,7 @@ async def test_smart_decision_maker_parameter_validation():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
@@ -553,8 +564,6 @@ async def test_smart_decision_maker_parameter_validation():
 @pytest.mark.asyncio
 async def test_smart_decision_maker_raw_response_conversion():
     """Test that SmartDecisionMaker correctly handles different raw_response types with retry mechanism."""
-    from unittest.mock import MagicMock, patch
-
     import backend.blocks.llm as llm_module
     from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 
@@ -624,7 +633,6 @@ async def test_smart_decision_maker_raw_response_conversion():
     )
 
     # Mock llm_call to return different responses on different calls
-    from unittest.mock import AsyncMock
 
     with patch(
         "backend.blocks.llm.llm_call", new_callable=AsyncMock
@@ -649,9 +657,12 @@ async def test_smart_decision_maker_raw_response_conversion():
         # Should succeed after retry, demonstrating our helper function works
         outputs = {}
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         async for output_name, output_data in block.run(
             input_data,
@@ -663,6 +674,7 @@ async def test_smart_decision_maker_raw_response_conversion():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
@@ -698,8 +710,6 @@ async def test_smart_decision_maker_raw_response_conversion():
         "I'll help you with that."  # Ollama returns string
     )
 
-    from unittest.mock import AsyncMock
-
     with patch(
         "backend.blocks.llm.llm_call",
         new_callable=AsyncMock,
@@ -719,9 +729,12 @@ async def test_smart_decision_maker_raw_response_conversion():
 
         outputs = {}
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         async for output_name, output_data in block.run(
             input_data,
@@ -733,6 +746,7 @@ async def test_smart_decision_maker_raw_response_conversion():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
@@ -751,8 +765,6 @@ async def test_smart_decision_maker_raw_response_conversion():
         "role": "assistant",
         "content": "Test response",
     }  # Dict format
-
-    from unittest.mock import AsyncMock
 
     with patch(
         "backend.blocks.llm.llm_call",
@@ -773,9 +785,12 @@ async def test_smart_decision_maker_raw_response_conversion():
 
         outputs = {}
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         async for output_name, output_data in block.run(
             input_data,
@@ -787,6 +802,7 @@ async def test_smart_decision_maker_raw_response_conversion():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
@@ -797,8 +813,6 @@ async def test_smart_decision_maker_raw_response_conversion():
 @pytest.mark.asyncio
 async def test_smart_decision_maker_agent_mode():
     """Test that agent mode executes tools directly and loops until finished."""
-    from unittest.mock import AsyncMock, MagicMock, patch
-
     import backend.blocks.llm as llm_module
     from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 
@@ -874,18 +888,13 @@ async def test_smart_decision_maker_agent_mode():
         mock_input_data,
     )
 
-    async def mock_execute_node_generator(*args, **kwargs):
-        yield ("result", {"status": "success", "data": "search completed"})
-
-    mock_execute_node = AsyncMock(side_effect=mock_execute_node_generator)
+    # No longer need mock_execute_node since we use execution_processor.on_node_execution
 
     with patch("backend.blocks.llm.llm_call", llm_call_mock), patch.object(
         block, "_create_tool_node_signatures", return_value=mock_tool_signatures
     ), patch(
         "backend.blocks.smart_decision_maker.get_database_manager_async_client",
         return_value=mock_db_client,
-    ), patch(
-        "backend.executor.manager.execute_node", mock_execute_node
     ), patch(
         "backend.executor.manager.async_update_node_execution_status",
         new_callable=AsyncMock,
@@ -894,11 +903,30 @@ async def test_smart_decision_maker_agent_mode():
     ):
 
         # Create a mock execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(
             safe_mode=False,
         )
+
+        # Create a mock execution processor for agent mode tests
+
+        mock_execution_processor = AsyncMock()
+        # Configure the execution processor mock with required attributes
+        mock_execution_processor.running_node_execution = defaultdict(MagicMock)
+        mock_execution_processor.execution_stats = MagicMock()
+        mock_execution_processor.execution_stats_lock = threading.Lock()
+
+        # Mock the on_node_execution method to return successful stats
+        mock_node_stats = MagicMock()
+        mock_node_stats.error = None  # No error
+        mock_execution_processor.on_node_execution = AsyncMock(
+            return_value=mock_node_stats
+        )
+
+        # Mock the get_execution_outputs_by_node_exec_id method
+        mock_db_client.get_execution_outputs_by_node_exec_id.return_value = {
+            "result": {"status": "success", "data": "search completed"}
+        }
 
         # Test agent mode with max_iterations = 3
         input_data = SmartDecisionMakerBlock.Input(
@@ -919,6 +947,7 @@ async def test_smart_decision_maker_agent_mode():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
@@ -935,15 +964,13 @@ async def test_smart_decision_maker_agent_mode():
         # Verify LLM was called twice (once for tool call, once for finish)
         assert llm_call_mock.call_count == 2
 
-        # Verify tool was executed
-        assert mock_execute_node.call_count == 1
+        # Verify tool was executed via execution processor
+        assert mock_execution_processor.on_node_execution.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_smart_decision_maker_traditional_mode_default():
     """Test that default behavior (agent_mode_max_iterations=0) works as traditional mode."""
-    from unittest.mock import AsyncMock, MagicMock, patch
-
     import backend.blocks.llm as llm_module
     from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 
@@ -999,9 +1026,12 @@ async def test_smart_decision_maker_traditional_mode_default():
         )
 
         # Create execution context
-        from backend.data.execution import ExecutionContext
 
         mock_execution_context = ExecutionContext(safe_mode=False)
+
+        # Create a mock execution processor for tests
+
+        mock_execution_processor = MagicMock()
 
         outputs = {}
         async for output_name, output_data in block.run(
@@ -1014,6 +1044,7 @@ async def test_smart_decision_maker_traditional_mode_default():
             user_id="test-user-id",
             graph_version=1,
             execution_context=mock_execution_context,
+            execution_processor=mock_execution_processor,
         ):
             outputs[output_name] = output_data
 
