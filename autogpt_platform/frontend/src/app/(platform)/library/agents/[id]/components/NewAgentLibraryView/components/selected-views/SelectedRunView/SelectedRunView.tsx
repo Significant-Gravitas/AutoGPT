@@ -61,7 +61,6 @@ export function SelectedRunView({
 
   const withSummary = run?.stats?.activity_status;
   const withReviews = run?.status === AgentExecutionStatus.REVIEW;
-  const showSummarySection = withSummary || withReviews;
 
   function scrollToSection(id: string) {
     const element = document.getElementById(id);
