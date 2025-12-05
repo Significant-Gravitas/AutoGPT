@@ -132,21 +132,19 @@ export function SelectedRunView({
             {/* Human-in-the-Loop Reviews Section */}
             {withReviews && (
               <div id="summary" className="scroll-mt-4">
-                <RunDetailCard>
-                  {reviewsLoading ? (
-                    <div className="text-neutral-500">Loading reviews…</div>
-                  ) : pendingReviews.length > 0 ? (
-                    <PendingReviewsList
-                      reviews={pendingReviews}
-                      onReviewComplete={refetchReviews}
-                      emptyMessage="No pending reviews for this execution"
-                    />
-                  ) : (
-                    <div className="text-neutral-600">
-                      No pending reviews for this execution
-                    </div>
-                  )}
-                </RunDetailCard>
+                {reviewsLoading ? (
+                  <div className="text-neutral-500">Loading reviews…</div>
+                ) : pendingReviews.length > 0 ? (
+                  <PendingReviewsList
+                    reviews={pendingReviews}
+                    onReviewComplete={refetchReviews}
+                    emptyMessage="No pending reviews for this execution"
+                  />
+                ) : (
+                  <div className="text-neutral-600">
+                    No pending reviews for this execution
+                  </div>
+                )}
               </div>
             )}
 
