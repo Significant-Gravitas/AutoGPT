@@ -18,9 +18,11 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import {
   usePostV2GenerateExecutionAnalytics,
   useGetV2GetExecutionAnalyticsConfiguration,
+  usePostV2GetExecutionAccuracyTrendsAndAlerts,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import type { ExecutionAnalyticsRequest } from "@/app/api/__generated__/models/executionAnalyticsRequest";
 import type { ExecutionAnalyticsResponse } from "@/app/api/__generated__/models/executionAnalyticsResponse";
+import type { AccuracyTrendsResponse } from "@/app/api/__generated__/models/accuracyTrendsResponse";
 
 // Use the generated type with minimal adjustment for form handling
 interface FormData extends Omit<ExecutionAnalyticsRequest, "created_after"> {
@@ -33,7 +35,49 @@ export function ExecutionAnalyticsForm() {
   const [results, setResults] = useState<ExecutionAnalyticsResponse | null>(
     null,
   );
+  const [trendsData, setTrendsData] = useState<AccuracyTrendsResponse | null>(
+    null,
+  );
   const { toast } = useToast();
+
+  // Use the generated API client for accuracy trends
+  const accuracyTrendsMutation = usePostV2GetExecutionAccuracyTrendsAndAlerts({
+    mutation: {
+      onSuccess: (response) => {
+        setTrendsData(response.data);
+
+        if (response.data.alert) {
+          toast({
+            title: "🚨 Accuracy Alert Detected",
+            description: `${response.data.alert.drop_percent.toFixed(1)}% accuracy drop detected for this agent`,
+            variant: "destructive",
+          });
+        }
+      },
+      onError: (error: any) => {
+        console.error("Failed to fetch trends:", error);
+        toast({
+          title: "Trends Error",
+          description: error?.message || "Failed to fetch accuracy trends",
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  // Function to fetch accuracy trends using generated API client
+  const fetchAccuracyTrends = (graphId: string, userId?: string) => {
+    if (!graphId.trim()) return;
+
+    accuracyTrendsMutation.mutate({
+      data: {
+        graph_id: graphId.trim(),
+        user_id: userId?.trim() || undefined,
+        days_back: 30,
+        drop_threshold: 10.0,
+      },
+    });
+  };
 
   // Fetch configuration from API
   const {
@@ -50,6 +94,7 @@ export function ExecutionAnalyticsForm() {
         }
         const result = res.data;
         setResults(result);
+
         toast({
           title: "Analytics Generated",
           description: `Processed ${result.processed_executions} executions. ${result.successful_analytics} successful, ${result.failed_analytics} failed, ${result.skipped_executions} skipped.`,
@@ -58,11 +103,21 @@ export function ExecutionAnalyticsForm() {
       },
       onError: (error: any) => {
         console.error("Analytics generation error:", error);
+
+        const errorMessage =
+          error?.message || error?.detail || "An unexpected error occurred";
+        const isOpenAIError = errorMessage.includes(
+          "OpenAI API key not configured",
+        );
+
         toast({
-          title: "Analytics Generation Failed",
-          description:
-            error?.message || error?.detail || "An unexpected error occurred",
-          variant: "destructive",
+          title: isOpenAIError
+            ? "Analytics Generation Skipped"
+            : "Analytics Generation Failed",
+          description: isOpenAIError
+            ? "Analytics generation requires OpenAI configuration, but accuracy trends are still available above."
+            : errorMessage,
+          variant: isOpenAIError ? "default" : "destructive",
         });
       },
     },
@@ -100,6 +155,9 @@ export function ExecutionAnalyticsForm() {
     }
 
     setResults(null);
+
+    // Always fetch accuracy trends first since it doesn't require OpenAI
+    await fetchAccuracyTrends(formData.graph_id, formData.user_id);
 
     // Prepare the request payload
     const payload: ExecutionAnalyticsRequest = {
@@ -369,6 +427,86 @@ export function ExecutionAnalyticsForm() {
           </Button>
         </div>
       </form>
+
+      {/* Accuracy Trends Display */}
+      {trendsData && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
+
+          {/* Alert Section */}
+          {trendsData.alert && (
+            <div className="rounded-lg border-l-4 border-red-500 bg-red-50 p-4">
+              <div className="flex items-start">
+                <span className="text-2xl">🚨</span>
+                <div className="ml-3 space-y-2">
+                  <h4 className="text-lg font-semibold text-red-800">
+                    Accuracy Alert Detected
+                  </h4>
+                  <p className="text-red-700">
+                    <strong>
+                      {trendsData.alert.drop_percent.toFixed(1)}% accuracy drop
+                    </strong>{" "}
+                    detected for agent{" "}
+                    <code className="rounded bg-red-100 px-1 text-sm">
+                      {formData.graph_id}
+                    </code>
+                  </p>
+                  <div className="space-y-1 text-sm text-red-600">
+                    <p>
+                      • 3-day average:{" "}
+                      <strong>
+                        {trendsData.alert.three_day_avg.toFixed(2)}%
+                      </strong>
+                    </p>
+                    <p>
+                      • 7-day average:{" "}
+                      <strong>
+                        {trendsData.alert.seven_day_avg.toFixed(2)}%
+                      </strong>
+                    </p>
+                    <p>
+                      • Detected at:{" "}
+                      <strong>
+                        {new Date(
+                          trendsData.alert.detected_at,
+                        ).toLocaleString()}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Latest Data Summary */}
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div className="rounded-lg border bg-white p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {trendsData.latest_data.daily_score?.toFixed(2) || "N/A"}
+              </div>
+              <div className="text-sm text-gray-600">Daily Score</div>
+            </div>
+            <div className="rounded-lg border bg-white p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {trendsData.latest_data.three_day_avg?.toFixed(2) || "N/A"}
+              </div>
+              <div className="text-sm text-gray-600">3-Day Avg</div>
+            </div>
+            <div className="rounded-lg border bg-white p-4 text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {trendsData.latest_data.seven_day_avg?.toFixed(2) || "N/A"}
+              </div>
+              <div className="text-sm text-gray-600">7-Day Avg</div>
+            </div>
+            <div className="rounded-lg border bg-white p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">
+                {trendsData.latest_data.fourteen_day_avg?.toFixed(2) || "N/A"}
+              </div>
+              <div className="text-sm text-gray-600">14-Day Avg</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {results && <AnalyticsResultsTable results={results} />}
     </div>

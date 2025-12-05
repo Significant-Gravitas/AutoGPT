@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 
 from backend.blocks.llm import LlmModel
 from backend.data.execution import (
+    AccuracyTrendsResponse,
     ExecutionStatus,
     GraphExecutionMeta,
+    get_accuracy_trends_and_alerts,
     get_graph_executions,
     update_graph_execution_stats,
 )
@@ -81,6 +83,15 @@ class ExecutionAnalyticsConfig(BaseModel):
     default_system_prompt: str
     default_user_prompt: str
     recommended_model: str
+
+
+class AccuracyTrendsRequest(BaseModel):
+    graph_id: str = Field(..., description="Graph ID to analyze", min_length=1)
+    user_id: Optional[str] = Field(None, description="Optional user ID filter")
+    days_back: int = Field(30, description="Number of days to look back", ge=7, le=90)
+    drop_threshold: float = Field(
+        10.0, description="Alert threshold percentage", ge=1.0, le=50.0
+    )
 
 
 router = APIRouter(
@@ -419,3 +430,37 @@ async def _process_batch(
     return await asyncio.gather(
         *[process_single_execution(execution) for execution in executions]
     )
+
+
+@router.post(
+    "/execution_accuracy_trends",
+    response_model=AccuracyTrendsResponse,
+    summary="Get Execution Accuracy Trends and Alerts",
+)
+async def get_execution_accuracy_trends(
+    request: AccuracyTrendsRequest,
+    admin_user_id: str = Security(get_user_id),
+):
+    """
+    Get execution accuracy trends with moving averages and alert detection.
+    Simple single-query approach.
+    """
+    logger.info(
+        f"Admin user {admin_user_id} requesting accuracy trends for graph {request.graph_id}"
+    )
+
+    try:
+        result = await get_accuracy_trends_and_alerts(
+            graph_id=request.graph_id,
+            days_back=request.days_back,
+            user_id=request.user_id,
+            drop_threshold=request.drop_threshold,
+        )
+
+        return result
+
+    except Exception as e:
+        logger.exception(
+            f"Error getting accuracy trends for graph {request.graph_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail=str(e))

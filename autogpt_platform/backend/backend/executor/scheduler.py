@@ -32,6 +32,7 @@ from backend.monitoring import (
     process_existing_batches,
     process_weekly_summary,
     report_block_error_rates,
+    report_execution_accuracy_alerts,
     report_late_executions,
 )
 from backend.util.clients import get_scheduler_client
@@ -438,6 +439,16 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Execution Accuracy Monitoring - run every hour
+            self.scheduler.add_job(
+                report_execution_accuracy_alerts,
+                id="report_execution_accuracy_alerts",
+                trigger="interval",
+                replace_existing=True,
+                seconds=3600,  # Every hour
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
@@ -584,6 +595,11 @@ class Scheduler(AppService):
     def execute_cleanup_expired_files(self):
         """Manually trigger cleanup of expired cloud storage files."""
         return cleanup_expired_files()
+
+    @expose
+    def execute_report_execution_accuracy_alerts(self):
+        """Manually trigger execution accuracy alert checking."""
+        return report_execution_accuracy_alerts()
 
 
 class SchedulerClient(AppServiceClient):

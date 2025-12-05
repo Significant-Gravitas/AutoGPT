@@ -1465,3 +1465,190 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+class AccuracyAlertData(BaseModel):
+    """Data structure for execution accuracy alerts."""
+
+    graph_id: str
+    user_id: Optional[str]
+    drop_percent: float
+    three_day_avg: float
+    seven_day_avg: float
+    detected_at: datetime
+
+
+class AccuracyLatestData(BaseModel):
+    """Latest execution accuracy data point."""
+
+    date: datetime
+    daily_score: Optional[float]
+    three_day_avg: Optional[float]
+    seven_day_avg: Optional[float]
+    fourteen_day_avg: Optional[float]
+
+
+class AccuracyTrendsResponse(BaseModel):
+    """Response model for accuracy trends and alerts."""
+
+    latest_data: AccuracyLatestData
+    alert: Optional[AccuracyAlertData]
+
+
+async def get_accuracy_trends_and_alerts(
+    graph_id: str,
+    days_back: int = 30,
+    user_id: Optional[str] = None,
+    drop_threshold: float = 10.0,
+) -> AccuracyTrendsResponse:
+    """Get accuracy trends and detect alerts for a specific graph."""
+    query_template = """
+    WITH daily_scores AS (
+        SELECT 
+            DATE(e."createdAt") as execution_date,
+            AVG(CASE 
+                WHEN e.stats IS NOT NULL 
+                AND e.stats::json->>'correctness_score' IS NOT NULL
+                AND e.stats::json->>'correctness_score' != 'null'
+                THEN (e.stats::json->>'correctness_score')::float 
+                ELSE NULL 
+            END) as daily_score
+        FROM {schema_prefix}"AgentGraphExecution" e
+        WHERE e."agentGraphId" = $1::text
+            AND e."isDeleted" = false
+            AND e."createdAt" >= $2::timestamp
+            AND e."executionStatus" IN ('COMPLETED', 'FAILED', 'TERMINATED')
+            {user_filter}
+        GROUP BY DATE(e."createdAt")
+        HAVING COUNT(*) >= 3  -- Need at least 3 executions per day
+    ),
+    trends AS (
+        SELECT 
+            execution_date,
+            daily_score,
+            AVG(daily_score) OVER (
+                ORDER BY execution_date 
+                ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+            ) as three_day_avg,
+            AVG(daily_score) OVER (
+                ORDER BY execution_date 
+                ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+            ) as seven_day_avg,
+            AVG(daily_score) OVER (
+                ORDER BY execution_date 
+                ROWS BETWEEN 13 PRECEDING AND CURRENT ROW
+            ) as fourteen_day_avg
+        FROM daily_scores
+    )
+    SELECT *,
+        CASE 
+            WHEN three_day_avg IS NOT NULL AND seven_day_avg IS NOT NULL
+            THEN ((seven_day_avg - three_day_avg) / seven_day_avg * 100)
+            ELSE NULL
+        END as drop_percent
+    FROM trends
+    ORDER BY execution_date DESC
+    LIMIT 1
+    """
+
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    params = [graph_id, start_date]
+    user_filter = ""
+    if user_id:
+        user_filter = 'AND e."userId" = $3::text'
+        params.append(user_id)
+
+    final_query = query_template.format(
+        schema_prefix="{schema_prefix}", user_filter=user_filter
+    )
+
+    result = await query_raw_with_schema(final_query, *params)
+
+    if not result:
+        return AccuracyTrendsResponse(
+            latest_data=AccuracyLatestData(
+                date=datetime.now(timezone.utc),
+                daily_score=None,
+                three_day_avg=None,
+                seven_day_avg=None,
+                fourteen_day_avg=None,
+            ),
+            alert=None,
+        )
+
+    latest = result[0]
+
+    alert = None
+    if (
+        latest["drop_percent"] is not None
+        and latest["drop_percent"] >= drop_threshold
+        and latest["three_day_avg"] is not None
+        and latest["seven_day_avg"] is not None
+    ):
+        alert = AccuracyAlertData(
+            graph_id=graph_id,
+            user_id=user_id,
+            drop_percent=float(latest["drop_percent"]),
+            three_day_avg=float(latest["three_day_avg"]),
+            seven_day_avg=float(latest["seven_day_avg"]),
+            detected_at=datetime.now(timezone.utc),
+        )
+
+    return AccuracyTrendsResponse(
+        latest_data=AccuracyLatestData(
+            date=latest["execution_date"],
+            daily_score=(
+                float(latest["daily_score"])
+                if latest["daily_score"] is not None
+                else None
+            ),
+            three_day_avg=(
+                float(latest["three_day_avg"])
+                if latest["three_day_avg"] is not None
+                else None
+            ),
+            seven_day_avg=(
+                float(latest["seven_day_avg"])
+                if latest["seven_day_avg"] is not None
+                else None
+            ),
+            fourteen_day_avg=(
+                float(latest["fourteen_day_avg"])
+                if latest["fourteen_day_avg"] is not None
+                else None
+            ),
+        ),
+        alert=alert,
+    )
+
+
+async def get_frequently_executed_graphs(
+    days_back: int = 30,
+    min_executions: int = 10,
+) -> list[dict]:
+    """Get graphs that have been frequently executed for monitoring."""
+    query_template = """
+    SELECT DISTINCT 
+        e."agentGraphId" as graph_id,
+        e."userId" as user_id,
+        COUNT(*) as execution_count
+    FROM {schema_prefix}"AgentGraphExecution" e
+    WHERE e."createdAt" >= $1::timestamp
+        AND e."isDeleted" = false
+        AND e."executionStatus" IN ('COMPLETED', 'FAILED', 'TERMINATED')
+    GROUP BY e."agentGraphId", e."userId"
+    HAVING COUNT(*) >= $2
+    ORDER BY execution_count DESC
+    """
+
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    result = await query_raw_with_schema(query_template, start_date, min_executions)
+
+    return [
+        {
+            "graph_id": row["graph_id"],
+            "user_id": row["user_id"],
+            "execution_count": int(row["execution_count"]),
+        }
+        for row in result
+    ]
