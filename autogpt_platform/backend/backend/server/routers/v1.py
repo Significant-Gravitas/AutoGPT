@@ -5,7 +5,7 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Annotated, Any, Sequence
+from typing import Annotated, Any, Sequence, get_args
 
 import pydantic
 import stripe
@@ -45,12 +45,17 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.graph import GraphSettings
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
+    FrontendOnboardingStep,
+    OnboardingStep,
     UserOnboardingUpdate,
+    complete_onboarding_step,
+    complete_re_run_agent,
     get_recommended_agents,
     get_user_onboarding,
+    increment_runs,
     onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
@@ -78,6 +83,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    GraphExecutionSource,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
@@ -85,6 +91,7 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -274,9 +281,10 @@ async def update_preferences(
 
 @v1_router.get(
     "/onboarding",
-    summary="Get onboarding status",
+    summary="Onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
 async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await get_user_onboarding(user_id)
@@ -284,9 +292,10 @@ async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
 
 @v1_router.patch(
     "/onboarding",
-    summary="Update onboarding progress",
+    summary="Update onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
 async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
@@ -294,25 +303,39 @@ async def update_onboarding(
     return await update_user_onboarding(user_id, data)
 
 
+@v1_router.post(
+    "/onboarding/step",
+    summary="Complete onboarding step",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def onboarding_complete_step(
+    user_id: Annotated[str, Security(get_user_id)], step: FrontendOnboardingStep
+):
+    if step not in get_args(FrontendOnboardingStep):
+        raise HTTPException(status_code=400, detail="Invalid onboarding step")
+    return await complete_onboarding_step(user_id, step)
+
+
 @v1_router.get(
     "/onboarding/agents",
-    summary="Get recommended agents",
+    summary="Recommended onboarding agents",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
 async def get_onboarding_agents(
     user_id: Annotated[str, Security(get_user_id)],
-):
+) -> list[StoreAgentDetails]:
     return await get_recommended_agents(user_id)
 
 
 @v1_router.get(
     "/onboarding/enabled",
-    summary="Check onboarding enabled",
+    summary="Is onboarding enabled",
     tags=["onboarding", "public"],
     dependencies=[Security(requires_user)],
 )
-async def is_onboarding_enabled():
+async def is_onboarding_enabled() -> bool:
     return await onboarding_enabled()
 
 
@@ -321,6 +344,7 @@ async def is_onboarding_enabled():
     summary="Reset onboarding progress",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
 async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await reset_user_onboarding(user_id)
@@ -809,7 +833,12 @@ async def create_new_graph(
     # as the graph already valid and no sub-graphs are returned back.
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id=user_id)
-    return await on_graph_activate(graph, user_id=user_id)
+    activated_graph = await on_graph_activate(graph, user_id=user_id)
+
+    if create_graph.source == "builder":
+        await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
+
+    return activated_graph
 
 
 @v1_router.delete(
@@ -967,6 +996,7 @@ async def execute_graph(
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
     ],
+    source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> execution_db.GraphExecutionMeta:
@@ -990,6 +1020,14 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
+        await increment_runs(user_id)
+        await complete_re_run_agent(user_id, graph_id)
+        if source == "library":
+            await complete_onboarding_step(
+                user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
+            )
+        elif source == "builder":
+            await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
         # Record failed graph execution
@@ -1103,6 +1141,15 @@ async def list_graph_executions(
     filtered_executions = await hide_activity_summaries_if_disabled(
         paginated_result.executions, user_id
     )
+    onboarding = await get_user_onboarding(user_id)
+    if (
+        onboarding.onboardingAgentExecutionId
+        and onboarding.onboardingAgentExecutionId
+        in [exec.id for exec in filtered_executions]
+        and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
+    ):
+        await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
+
     return execution_db.GraphExecutionsPaginated(
         executions=filtered_executions, pagination=paginated_result.pagination
     )
@@ -1140,6 +1187,12 @@ async def get_graph_execution(
 
     # Apply feature flags to filter out disabled features
     result = await hide_activity_summary_if_disabled(result, user_id)
+    onboarding = await get_user_onboarding(user_id)
+    if (
+        onboarding.onboardingAgentExecutionId == graph_exec_id
+        and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
+    ):
+        await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return result
 
@@ -1315,6 +1368,8 @@ async def create_graph_execution_schedule(
         result.next_run_time = convert_utc_time_to_user_timezone(
             result.next_run_time, user_timezone
         )
+
+    await complete_onboarding_step(user_id, OnboardingStep.SCHEDULE_AGENT)
 
     return result
 

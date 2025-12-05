@@ -4,9 +4,16 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import { InfoIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
@@ -120,7 +127,29 @@ export function SelectedRunView({
             {/* Summary Section */}
             {withSummary && (
               <div id="summary" className="scroll-mt-4">
-                <RunDetailCard title="Summary">
+                <RunDetailCard
+                  title={
+                    <div>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <InfoIcon
+                              size={8}
+                              className="cursor-help text-neutral-500 hover:text-neutral-700"
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">
+                              This AI-generated summary describes how the agent
+                              handled your task. It&apos;s an experimental
+                              feature and may occasionally be inaccurate.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  }
+                >
                   <RunSummary run={run} />
                 </RunDetailCard>
               </div>
