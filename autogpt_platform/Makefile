@@ -44,7 +44,7 @@ test-data:
 	cd backend && poetry run python test/test_data_creator.py
 
 load-store-agents:
-	cd backend && poetry run python test/load_store_agents.py
+	cd backend && poetry run load-store-agents
 
 help:
 	@echo "Usage: make <target>"

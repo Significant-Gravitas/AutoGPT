@@ -10,7 +10,7 @@ It creates:
 
 Usage:
     cd backend
-    poetry run python test/load_store_agents.py
+    poetry run load-store-agents
 """
 
 import asyncio
@@ -37,7 +37,8 @@ from prisma.types import (
 AGENTS_DIR = Path(__file__).parent.parent / "agents"
 CSV_FILE = AGENTS_DIR / "StoreAgent_rows.csv"
 
-# Fixed user ID for the autogpt creator (test data, not production)
+# User constants for the autogpt creator (test data, not production)
+# Fixed uuid4 for idempotency - same user is reused across script runs
 AUTOGPT_USER_ID = "79d96c73-e6f5-4656-a83a-185b41ee0d06"
 AUTOGPT_EMAIL = "autogpt-test@agpt.co"
 AUTOGPT_USERNAME = "autogpt"
@@ -253,7 +254,12 @@ async def create_agent_graph(
     for node in nodes:
         block_id = node["block_id"]
         # Ensure the block exists (create placeholder if needed)
-        await ensure_block_exists(db, block_id, known_blocks)
+        block_exists = await ensure_block_exists(db, block_id, known_blocks)
+        if not block_exists:
+            print(
+                f"    Skipping node {node['id']} - block {block_id} could not be created"
+            )
+            continue
 
         await db.agentnode.create(
             data=AgentNodeCreateInput(
@@ -387,6 +393,7 @@ async def main():
 
         # Build mapping from version_id to json file
         loaded_graphs = {}  # graph_id -> (graph_id, version)
+        failed_agents = []
 
         for json_file in json_files:
             # Extract the version ID from filename (agent_<version_id>.json)
@@ -399,17 +406,25 @@ async def main():
                 continue
 
             metadata = csv_metadata[version_id]
-            print(f"\nProcessing: {metadata['agent_name']}")
+            agent_name = metadata["agent_name"]
+            print(f"\nProcessing: {agent_name}")
 
-            # Load and create the agent graph
-            agent_data = await load_agent_json(json_file)
-            graph_id, graph_version = await create_agent_graph(
-                db, agent_data, known_blocks
-            )
-            loaded_graphs[graph_id] = (graph_id, graph_version)
+            # Use a transaction per agent to prevent dangling resources
+            try:
+                async with db.tx() as tx:
+                    # Load and create the agent graph
+                    agent_data = await load_agent_json(json_file)
+                    graph_id, graph_version = await create_agent_graph(
+                        tx, agent_data, known_blocks
+                    )
+                    loaded_graphs[graph_id] = (graph_id, graph_version)
 
-            # Create store listing
-            await create_store_listing(db, graph_id, graph_version, metadata)
+                    # Create store listing
+                    await create_store_listing(tx, graph_id, graph_version, metadata)
+            except Exception as e:
+                print(f"  Error loading agent '{agent_name}': {e}")
+                failed_agents.append(agent_name)
+                continue
 
         # Step 4: Refresh materialized views
         print("\n[Step 4] Refreshing materialized views...")
@@ -421,11 +436,20 @@ async def main():
 
         print("\n" + "=" * 60)
         print(f"Successfully loaded {len(loaded_graphs)} agents")
+        if failed_agents:
+            print(
+                f"Failed to load {len(failed_agents)} agents: {', '.join(failed_agents)}"
+            )
         print("=" * 60)
 
     finally:
         await db.disconnect()
 
 
-if __name__ == "__main__":
+def run():
+    """Entry point for poetry script."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    run()
