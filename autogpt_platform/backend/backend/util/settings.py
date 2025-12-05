@@ -185,6 +185,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Execution Accuracy Monitoring
+    execution_accuracy_check_interval_hours: int = Field(
+        default=24,
+        description="Interval in hours between execution accuracy alert checks.",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="allow",
