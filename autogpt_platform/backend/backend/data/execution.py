@@ -5,6 +5,7 @@ from enum import Enum
 from multiprocessing import Manager
 from queue import Empty
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     AsyncGenerator,
@@ -64,6 +65,9 @@ from .includes import (
     graph_execution_include,
 )
 from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
+
+if TYPE_CHECKING:
+    pass
 
 T = TypeVar("T")
 
@@ -834,6 +838,30 @@ async def upsert_execution_output(
     if output_data is not None:
         data["data"] = SafeJson(output_data)
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
+
+
+async def get_execution_outputs_by_node_exec_id(
+    node_exec_id: str,
+) -> dict[str, Any]:
+    """
+    Get all execution outputs for a specific node execution ID.
+
+    Args:
+        node_exec_id: The node execution ID to get outputs for
+
+    Returns:
+        Dictionary mapping output names to their data values
+    """
+    outputs = await AgentNodeExecutionInputOutput.prisma().find_many(
+        where={"referencedByOutputExecId": node_exec_id}
+    )
+
+    result = {}
+    for output in outputs:
+        if output.data is not None:
+            result[output.name] = type_utils.convert(output.data, JsonValue)
+
+    return result
 
 
 async def update_graph_execution_start_time(
