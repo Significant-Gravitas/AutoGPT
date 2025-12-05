@@ -132,19 +132,21 @@ export function SelectedRunView({
             {/* Human-in-the-Loop Reviews Section */}
             {withReviews && (
               <div id="summary" className="scroll-mt-4">
-                {reviewsLoading ? (
-                  <div className="text-neutral-500">Loading reviews…</div>
-                ) : pendingReviews.length > 0 ? (
-                  <PendingReviewsList
-                    reviews={pendingReviews}
-                    onReviewComplete={refetchReviews}
-                    emptyMessage="No pending reviews for this execution"
-                  />
-                ) : (
-                  <div className="text-neutral-600">
-                    No pending reviews for this execution
-                  </div>
-                )}
+                <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
+                  {reviewsLoading ? (
+                    <div className="text-neutral-500">Loading reviews…</div>
+                  ) : pendingReviews.length > 0 ? (
+                    <PendingReviewsList
+                      reviews={pendingReviews}
+                      onReviewComplete={refetchReviews}
+                      emptyMessage="No pending reviews for this execution"
+                    />
+                  ) : (
+                    <div className="text-neutral-600">
+                      No pending reviews for this execution
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -156,12 +158,13 @@ export function SelectedRunView({
               >
                 <RunDetailCard
                   title={
-                    <div>
+                    <div className="flex items-center gap-2">
+                      Summary
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <InfoIcon
-                              size={8}
+                              size={16}
                               className="cursor-help text-neutral-500 hover:text-neutral-700"
                             />
                           </TooltipTrigger>
