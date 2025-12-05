@@ -768,32 +768,27 @@ class SmartDecisionMakerBlock(Block):
                 execution_processor.execution_stats_lock,
             )
 
-            # Execute the node directly since we're in the SmartDecisionMaker context
-            node_stats = await execution_processor.on_node_execution(
-                node_exec=node_exec_entry,
-                node_exec_progress=node_exec_progress,
-                nodes_input_masks=None,
-                graph_stats_pair=graph_stats_pair,
-            )
-
             # Create a completed future for the task tracking system
-            completed_future = Future()
-            completed_future.set_result(node_stats)
-
-            # Add the completed future so it can be evaluated by is_done()
+            node_exec_future = Future()
             node_exec_progress.add_task(
                 node_exec_id=node_exec_result.node_exec_id,
-                task=completed_future,
+                task=node_exec_future,
+            )
+
+            # Execute the node directly since we're in the SmartDecisionMaker context
+            node_exec_future.set_result(
+                await execution_processor.on_node_execution(
+                    node_exec=node_exec_entry,
+                    node_exec_progress=node_exec_progress,
+                    nodes_input_masks=None,
+                    graph_stats_pair=graph_stats_pair,
+                )
             )
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
                 node_exec_result.node_exec_id
             )
-
-            # If execution failed, add error to outputs
-            if node_stats and node_stats.error:
-                node_outputs["error"] = str(node_stats.error)
 
             # Create tool response
             tool_response_content = (
