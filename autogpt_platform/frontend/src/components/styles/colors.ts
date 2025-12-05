@@ -48,10 +48,10 @@ export const colors = {
     900: "#6b3900",
   },
   yellow: {
-    25: "#FFFCF3", // Warning background
+    25: "#FFFCF3",
     50: "#fef9e6",
     100: "#fcebb0",
-    150: "#FDEFBF", // Warning border
+    150: "#FDEFBF",
     200: "#fae28a",
     300: "#f8d554",
     400: "#f7cd33",

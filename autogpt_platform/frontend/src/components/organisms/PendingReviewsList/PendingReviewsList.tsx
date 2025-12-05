@@ -111,30 +111,18 @@ export function PendingReviewsList({
 
       let parsedData: any = review.payload; // Default to original payload
 
+      // Parse edited data if available and editable
       if (review.editable && reviewData) {
         try {
           parsedData = JSON.parse(reviewData);
-
-          // For approvals, only send data if it's different from original
-          if (
-            approved &&
-            JSON.stringify(parsedData) === JSON.stringify(review.payload)
-          ) {
-            parsedData = undefined;
-          }
         } catch (error) {
-          if (approved) {
-            // For approvals, show error and stop processing
-            toast({
-              title: "Invalid JSON",
-              description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
-              variant: "destructive",
-            });
-            return;
-          } else {
-            // For rejections, fall back to original payload
-            parsedData = review.payload;
-          }
+          toast({
+            title: "Invalid JSON",
+            description: `Please fix the JSON format in review for node ${review.node_exec_id}: ${error instanceof Error ? error.message : "Invalid syntax"}`,
+            variant: "destructive",
+          });
+          setPendingAction(null);
+          return;
         }
       }
 
@@ -151,14 +139,6 @@ export function PendingReviewsList({
         reviews: reviewItems,
       },
     });
-  }
-
-  function handleApprove() {
-    processReviews(true);
-  }
-
-  function handleStopTask() {
-    processReviews(false);
   }
 
   if (reviews.length === 0) {
@@ -218,7 +198,7 @@ export function PendingReviewsList({
 
         <div className="flex gap-2">
           <Button
-            onClick={handleApprove}
+            onClick={() => processReviews(true)}
             disabled={reviewActionMutation.isPending || reviews.length === 0}
             variant="primary"
             className="flex min-w-20 items-center justify-center gap-2 rounded-full px-4 py-3"
@@ -229,7 +209,7 @@ export function PendingReviewsList({
             Approve
           </Button>
           <Button
-            onClick={handleStopTask}
+            onClick={() => processReviews(false)}
             disabled={reviewActionMutation.isPending || reviews.length === 0}
             variant="destructive"
             className="flex min-w-20 items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3"
