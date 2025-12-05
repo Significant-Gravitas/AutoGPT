@@ -7,15 +7,10 @@ from prisma.enums import ReviewStatus
 
 from backend.data.human_review import (
     get_or_create_human_review,
-    get_pending_review_by_node_exec_id,
     get_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     has_pending_reviews_for_graph_exec,
     process_all_reviews_for_execution,
-)
-
-pytestmark = pytest.mark.skip(
-    reason="Tests failing in CI due to mocking issues - skipping until refactored"
 )
 
 
@@ -24,7 +19,7 @@ def sample_db_review():
     """Create a sample database review object"""
     mock_review = Mock()
     mock_review.nodeExecId = "test_node_123"
-    mock_review.userId = "test_user"
+    mock_review.userId = "test-user-123"
     mock_review.graphExecId = "test_graph_exec_456"
     mock_review.graphId = "test_graph_789"
     mock_review.graphVersion = 1
@@ -42,40 +37,6 @@ def sample_db_review():
 
 
 @pytest.mark.asyncio
-async def test_get_pending_review_by_node_exec_id_found(
-    mocker: pytest_mock.MockFixture,
-    sample_db_review,
-):
-    """Test finding an existing pending review"""
-    mock_find_first = mocker.patch(
-        "backend.data.human_review.PendingHumanReview.prisma"
-    )
-    mock_find_first.return_value.find_first = AsyncMock(return_value=sample_db_review)
-
-    result = await get_pending_review_by_node_exec_id("test_node_123", "test_user")
-
-    assert result is not None
-    assert result.node_exec_id == "test_node_123"
-    assert result.user_id == "test_user"
-    assert result.status == ReviewStatus.WAITING
-
-
-@pytest.mark.asyncio
-async def test_get_pending_review_by_node_exec_id_not_found(
-    mocker: pytest_mock.MockFixture,
-):
-    """Test when review is not found"""
-    mock_find_first = mocker.patch(
-        "backend.data.human_review.PendingHumanReview.prisma"
-    )
-    mock_find_first.return_value.find_first = AsyncMock(return_value=None)
-
-    result = await get_pending_review_by_node_exec_id("nonexistent", "test_user")
-
-    assert result is None
-
-
-@pytest.mark.asyncio
 async def test_get_or_create_human_review_new(
     mocker: pytest_mock.MockFixture,
     sample_db_review,
@@ -89,7 +50,7 @@ async def test_get_or_create_human_review_new(
     mock_upsert.return_value.upsert = AsyncMock(return_value=sample_db_review)
 
     result = await get_or_create_human_review(
-        user_id="test_user",
+        user_id="test-user-123",
         node_exec_id="test_node_123",
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
@@ -118,7 +79,7 @@ async def test_get_or_create_human_review_approved(
     mock_upsert.return_value.upsert = AsyncMock(return_value=sample_db_review)
 
     result = await get_or_create_human_review(
-        user_id="test_user",
+        user_id="test-user-123",
         node_exec_id="test_node_123",
         graph_exec_id="test_graph_exec_456",
         graph_id="test_graph_789",
@@ -190,7 +151,9 @@ async def test_get_pending_reviews_for_execution(
     mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
     mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
 
-    result = await get_pending_reviews_for_execution("test_graph_exec_456", "test_user")
+    result = await get_pending_reviews_for_execution(
+        "test_graph_exec_456", "test-user-123"
+    )
 
     assert len(result) == 1
     assert result[0].graph_exec_id == "test_graph_exec_456"
@@ -198,7 +161,7 @@ async def test_get_pending_reviews_for_execution(
     # Verify it filters by execution and user
     call_args = mock_find_many.return_value.find_many.call_args
     where_clause = call_args.kwargs["where"]
-    assert where_clause["userId"] == "test_user"
+    assert where_clause["userId"] == "test-user-123"
     assert where_clause["graphExecId"] == "test_graph_exec_456"
     assert where_clause["status"] == ReviewStatus.WAITING
 
@@ -210,13 +173,13 @@ async def test_process_all_reviews_for_execution_success(
 ):
     """Test successful processing of reviews for an execution"""
     # Mock finding reviews
-    mock_find_many = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_find_many.return_value.find_many = AsyncMock(return_value=[sample_db_review])
+    mock_prisma = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
+    mock_prisma.return_value.find_many = AsyncMock(return_value=[sample_db_review])
 
     # Mock updating reviews
     updated_review = Mock()
     updated_review.nodeExecId = "test_node_123"
-    updated_review.userId = "test_user"
+    updated_review.userId = "test-user-123"
     updated_review.graphExecId = "test_graph_exec_456"
     updated_review.graphId = "test_graph_789"
     updated_review.graphVersion = 1
@@ -230,8 +193,7 @@ async def test_process_all_reviews_for_execution_success(
     updated_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
     updated_review.updatedAt = datetime.datetime.now(datetime.timezone.utc)
     updated_review.reviewedAt = datetime.datetime.now(datetime.timezone.utc)
-    mock_update = mocker.patch("backend.data.human_review.PendingHumanReview.prisma")
-    mock_update.return_value.update = AsyncMock(return_value=updated_review)
+    mock_prisma.return_value.update = AsyncMock(return_value=updated_review)
 
     # Mock gather to simulate parallel updates
     mocker.patch(
@@ -240,7 +202,7 @@ async def test_process_all_reviews_for_execution_success(
     )
 
     result = await process_all_reviews_for_execution(
-        user_id="test_user",
+        user_id="test-user-123",
         review_decisions={
             "test_node_123": (ReviewStatus.APPROVED, {"data": "modified"}, "Approved")
         },
@@ -264,7 +226,7 @@ async def test_process_all_reviews_for_execution_validation_errors(
 
     with pytest.raises(ValueError, match="Reviews not found"):
         await process_all_reviews_for_execution(
-            user_id="test_user",
+            user_id="test-user-123",
             review_decisions={
                 "nonexistent_node": (ReviewStatus.APPROVED, {"data": "test"}, "message")
             },
@@ -286,7 +248,7 @@ async def test_process_all_reviews_edit_permission_error(
 
     with pytest.raises(ValueError, match="not editable"):
         await process_all_reviews_for_execution(
-            user_id="test_user",
+            user_id="test-user-123",
             review_decisions={
                 "test_node_123": (
                     ReviewStatus.APPROVED,
@@ -306,7 +268,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     # Create second review for rejection
     second_review = Mock()
     second_review.nodeExecId = "test_node_456"
-    second_review.userId = "test_user"
+    second_review.userId = "test-user-123"
     second_review.graphExecId = "test_graph_exec_456"
     second_review.graphId = "test_graph_789"
     second_review.graphVersion = 1
@@ -330,7 +292,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     # Mock updating reviews
     approved_review = Mock()
     approved_review.nodeExecId = "test_node_123"
-    approved_review.userId = "test_user"
+    approved_review.userId = "test-user-123"
     approved_review.graphExecId = "test_graph_exec_456"
     approved_review.graphId = "test_graph_789"
     approved_review.graphVersion = 1
@@ -347,7 +309,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
 
     rejected_review = Mock()
     rejected_review.nodeExecId = "test_node_456"
-    rejected_review.userId = "test_user"
+    rejected_review.userId = "test-user-123"
     rejected_review.graphExecId = "test_graph_exec_456"
     rejected_review.graphId = "test_graph_789"
     rejected_review.graphVersion = 1
@@ -368,7 +330,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     )
 
     result = await process_all_reviews_for_execution(
-        user_id="test_user",
+        user_id="test-user-123",
         review_decisions={
             "test_node_123": (ReviewStatus.APPROVED, {"data": "modified"}, "Approved"),
             "test_node_456": (ReviewStatus.REJECTED, None, "Rejected"),

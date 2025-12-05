@@ -59,10 +59,9 @@ class QueueOrderTester:
                 "graph_exec_id": f"exec-{message_id}",
                 "graph_id": f"graph-{message_id}",
                 "user_id": user_id,
-                "user_context": {"timezone": "UTC"},
+                "execution_context": {"timezone": "UTC"},
                 "nodes_input_masks": {},
                 "starting_nodes_input": [],
-                "parent_graph_exec_id": None,
             }
         )
 

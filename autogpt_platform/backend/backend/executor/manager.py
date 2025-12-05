@@ -29,6 +29,7 @@ from backend.data.block import (
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
+    ExecutionContext,
     ExecutionQueue,
     ExecutionStatus,
     GraphExecution,
@@ -36,7 +37,6 @@ from backend.data.execution import (
     NodeExecutionEntry,
     NodeExecutionResult,
     NodesInputMasks,
-    UserContext,
 )
 from backend.data.graph import Link, Node
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
@@ -168,6 +168,7 @@ async def execute_node(
     node_exec_id = data.node_exec_id
     node_id = data.node_id
     node_block = node.block
+    execution_context = data.execution_context
 
     log_metadata = LogMetadata(
         logger=_logger,
@@ -210,23 +211,59 @@ async def execute_node(
         "graph_exec_id": graph_exec_id,
         "node_exec_id": node_exec_id,
         "user_id": user_id,
+        "execution_context": execution_context,
     }
-
-    # Add user context from NodeExecutionEntry
-    extra_exec_kwargs["user_context"] = data.user_context
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
-    creds_lock = None
+    creds_locks: list[AsyncRedisLock] = []
     input_model = cast(type[BlockSchema], node_block.input_schema)
+
+    # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         credentials_meta = input_type(**input_data[field_name])
-        credentials, creds_lock = await creds_manager.acquire(
-            user_id, credentials_meta.id
-        )
+        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
+        creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
+
+    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
+        field_name = info["field_name"]
+        field_data = input_data.get(field_name)
+        if field_data and isinstance(field_data, dict):
+            # Check if _credentials_id key exists in the field data
+            if "_credentials_id" in field_data:
+                cred_id = field_data["_credentials_id"]
+                if cred_id:
+                    # Credential ID provided - acquire credentials
+                    provider = info.get("config", {}).get(
+                        "provider", "external service"
+                    )
+                    file_name = field_data.get("name", "selected file")
+                    try:
+                        credentials, lock = await creds_manager.acquire(
+                            user_id, cred_id
+                        )
+                        creds_locks.append(lock)
+                        extra_exec_kwargs[kwarg_name] = credentials
+                    except ValueError:
+                        # Credential was deleted or doesn't exist
+                        raise ValueError(
+                            f"Authentication expired for '{file_name}' in field '{field_name}'. "
+                            f"The saved {provider.capitalize()} credentials no longer exist. "
+                            f"Please re-select the file to re-authenticate."
+                        )
+                # else: _credentials_id is explicitly None, skip credentials (for chained data)
+            else:
+                # _credentials_id key missing entirely - this is an error
+                provider = info.get("config", {}).get("provider", "external service")
+                file_name = field_data.get("name", "selected file")
+                raise ValueError(
+                    f"Authentication missing for '{file_name}' in field '{field_name}'. "
+                    f"Please re-select the file to authenticate with {provider.capitalize()}."
+                )
 
     output_size = 0
 
@@ -243,8 +280,8 @@ async def execute_node(
     scope.set_tag("node_id", node_id)
     scope.set_tag("block_name", node_block.name)
     scope.set_tag("block_id", node_block.id)
-    for k, v in (data.user_context or UserContext(timezone="UTC")).model_dump().items():
-        scope.set_tag(f"user_context.{k}", v)
+    for k, v in execution_context.model_dump().items():
+        scope.set_tag(f"execution_context.{k}", v)
 
     try:
         async for output_name, output_data in node_block.execute(
@@ -261,12 +298,17 @@ async def execute_node(
         # Re-raise to maintain normal error flow
         raise
     finally:
-        # Ensure credentials are released even if execution fails
-        if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
-            try:
-                await creds_lock.release()
-            except Exception as e:
-                log_metadata.error(f"Failed to release credentials lock: {e}")
+        # Ensure all credentials are released even if execution fails
+        for creds_lock in creds_locks:
+            if (
+                creds_lock
+                and (await creds_lock.locked())
+                and (await creds_lock.owned())
+            ):
+                try:
+                    await creds_lock.release()
+                except Exception as e:
+                    log_metadata.error(f"Failed to release credentials lock: {e}")
 
         # Update execution stats
         if execution_stats is not None:
@@ -289,7 +331,7 @@ async def _enqueue_next_nodes(
     graph_version: int,
     log_metadata: LogMetadata,
     nodes_input_masks: Optional[NodesInputMasks],
-    user_context: UserContext,
+    execution_context: ExecutionContext,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
@@ -309,7 +351,7 @@ async def _enqueue_next_nodes(
             node_id=node_id,
             block_id=block_id,
             inputs=data,
-            user_context=user_context,
+            execution_context=execution_context,
         )
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -861,7 +903,9 @@ class ExecutionProcessor:
                     ExecutionStatus.REVIEW,
                 ],
             ):
-                node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
+                node_entry = node_exec.to_node_execution_entry(
+                    graph_exec.execution_context
+                )
                 execution_queue.add(node_entry)
 
             # ------------------------------------------------------------
@@ -1165,7 +1209,7 @@ class ExecutionProcessor:
             graph_version=graph_exec.graph_version,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
-            user_context=graph_exec.user_context,
+            execution_context=graph_exec.execution_context,
         ):
             execution_queue.add(next_execution)
 
@@ -1555,36 +1599,32 @@ class ExecutionManager(AppProcess):
         graph_exec_id = graph_exec_entry.graph_exec_id
         user_id = graph_exec_entry.user_id
         graph_id = graph_exec_entry.graph_id
-        parent_graph_exec_id = graph_exec_entry.parent_graph_exec_id
+        root_exec_id = graph_exec_entry.execution_context.root_execution_id
+        parent_exec_id = graph_exec_entry.execution_context.parent_execution_id
 
         logger.info(
             f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}, executor_id={self.executor_id}"
-            + (f", parent={parent_graph_exec_id}" if parent_graph_exec_id else "")
+            + (f", root={root_exec_id}" if root_exec_id else "")
+            + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
-        # Check if parent execution is already terminated (prevents orphaned child executions)
-        if parent_graph_exec_id:
-            try:
-                parent_exec = get_db_client().get_graph_execution_meta(
-                    execution_id=parent_graph_exec_id,
-                    user_id=user_id,
+        # Check if root execution is already terminated (prevents orphaned child executions)
+        if root_exec_id and root_exec_id != graph_exec_id:
+            parent_exec = get_db_client().get_graph_execution_meta(
+                execution_id=root_exec_id,
+                user_id=user_id,
+            )
+            if parent_exec and parent_exec.status == ExecutionStatus.TERMINATED:
+                logger.info(
+                    f"[{self.service_name}] Skipping execution {graph_exec_id} - parent {root_exec_id} is TERMINATED"
                 )
-                if parent_exec and parent_exec.status == ExecutionStatus.TERMINATED:
-                    logger.info(
-                        f"[{self.service_name}] Skipping execution {graph_exec_id} - parent {parent_graph_exec_id} is TERMINATED"
-                    )
-                    # Mark this child as terminated since parent was stopped
-                    get_db_client().update_graph_execution_stats(
-                        graph_exec_id=graph_exec_id,
-                        status=ExecutionStatus.TERMINATED,
-                    )
-                    _ack_message(reject=False, requeue=False)
-                    return
-            except Exception as e:
-                logger.warning(
-                    f"[{self.service_name}] Could not check parent status for {graph_exec_id}: {e}"
+                # Mark this child as terminated since parent was stopped
+                get_db_client().update_graph_execution_stats(
+                    graph_exec_id=graph_exec_id,
+                    status=ExecutionStatus.TERMINATED,
                 )
-                # Continue execution if parent check fails (don't block on errors)
+                _ack_message(reject=False, requeue=False)
+                return
 
         # Check user rate limit before processing
         try:

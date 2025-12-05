@@ -16,6 +16,7 @@ import { useGraphStore } from "../../../stores/graphStore";
 import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
 import { useHistoryStore } from "../../../stores/historyStore";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 export const useFlow = () => {
   const [isLocked, setIsLocked] = useState(false);
@@ -29,6 +30,9 @@ export const useFlow = () => {
   );
   const setGraphSchemas = useGraphStore(
     useShallow((state) => state.setGraphSchemas),
+  );
+  const setGraphExecutionStatus = useGraphStore(
+    useShallow((state) => state.setGraphExecutionStatus),
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
@@ -77,7 +81,7 @@ export const useFlow = () => {
       {
         query: {
           select: (res) => res.data as BlockInfo[],
-          enabled: !!flowID && !!blockIds,
+          enabled: !!flowID && !!blockIds && blockIds.length > 0,
         },
       },
     );
@@ -153,6 +157,13 @@ export const useFlow = () => {
     updateEdgeBeads,
     customNodes,
   ]);
+
+  // update graph execution status
+  useEffect(() => {
+    if (executionDetails) {
+      setGraphExecutionStatus(executionDetails.status as AgentExecutionStatus);
+    }
+  }, [executionDetails]);
 
   useEffect(() => {
     if (customNodes.length > 0 && graph?.links) {
