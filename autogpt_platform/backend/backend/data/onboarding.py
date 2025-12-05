@@ -432,6 +432,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
             slug=agent.slug,
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
+            agent_output_demo=agent.agent_output_demo or "",
             agent_image=agent.agent_image,
             creator=agent.creator_username,
             creator_avatar=agent.creator_avatar,

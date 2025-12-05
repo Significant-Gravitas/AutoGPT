@@ -8685,6 +8685,10 @@
           "slug": { "type": "string", "title": "Slug" },
           "agent_name": { "type": "string", "title": "Agent Name" },
           "agent_video": { "type": "string", "title": "Agent Video" },
+          "agent_output_demo": {
+            "type": "string",
+            "title": "Agent Output Demo"
+          },
           "agent_image": {
             "items": { "type": "string" },
             "type": "array",
@@ -8735,6 +8739,7 @@
           "slug",
           "agent_name",
           "agent_video",
+          "agent_output_demo",
           "agent_image",
           "creator",
           "creator_avatar",
@@ -8902,6 +8907,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
           },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -8932,6 +8941,10 @@
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
           },
           "image_urls": {
             "items": { "type": "string" },
@@ -8977,6 +8990,10 @@
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
           },
           "image_urls": {
             "items": { "type": "string" },
