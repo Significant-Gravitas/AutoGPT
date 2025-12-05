@@ -680,3 +680,43 @@ class ListIsEmptyBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "is_empty", len(input_data.list) == 0
+
+
+class ConcatenateListsBlock(Block):
+    class Input(BlockSchemaInput):
+        lists: List[List[Any]] = SchemaField(
+            description="A list of lists to concatenate together. All lists will be combined in order into a single list.",
+            placeholder="e.g., [[1, 2], [3, 4], [5, 6]]",
+        )
+
+    class Output(BlockSchemaOutput):
+        concatenated_list: List[Any] = SchemaField(
+            description="The concatenated list containing all elements from all input lists in order."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="3cf9298b-5817-4141-9d80-7c2cc5199c8e",
+            description="Concatenates multiple lists into a single list. All elements from all input lists are combined in order.",
+            categories={BlockCategory.DATA},
+            input_schema=ConcatenateListsBlock.Input,
+            output_schema=ConcatenateListsBlock.Output,
+            test_input=[
+                {"lists": [[1, 2, 3], [4, 5, 6]]},
+                {"lists": [["a", "b"], ["c"], ["d", "e", "f"]]},
+                {"lists": [[1, 2], []]},
+                {"lists": []},
+            ],
+            test_output=[
+                ("concatenated_list", [1, 2, 3, 4, 5, 6]),
+                ("concatenated_list", ["a", "b", "c", "d", "e", "f"]),
+                ("concatenated_list", [1, 2]),
+                ("concatenated_list", []),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        concatenated = []
+        for lst in input_data.lists:
+            concatenated.extend(lst)
+        yield "concatenated_list", concatenated
