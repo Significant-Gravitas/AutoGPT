@@ -33,7 +33,6 @@ class AccuracyMonitor:
             )
 
             alerts_found = 0
-            alert_messages = []
 
             for graph_data in graphs:
                 result = self.database_client.get_accuracy_trends_and_alerts(
@@ -46,27 +45,39 @@ class AccuracyMonitor:
                 if result.alert:
                     alert = result.alert
 
+                    # Get graph details for better alert info
+                    try:
+                        graph_info = self.database_client.get_graph_metadata(
+                            graph_id=alert.graph_id
+                        )
+                        graph_name = graph_info.name if graph_info else "Unknown Agent"
+                    except Exception:
+                        graph_name = "Unknown Agent"
+
+                    # Create detailed alert message
                     alert_msg = (
-                        f"🚨 ACCURACY ALERT: Graph {alert.graph_id[:8]}... "
-                        f"has {alert.drop_percent:.1f}% accuracy drop.\n"
-                        f"3-day avg: {alert.three_day_avg:.2f}, "
-                        f"7-day avg: {alert.seven_day_avg:.2f}"
+                        f"🚨 **AGENT ACCURACY DROP DETECTED**\n\n"
+                        f"**Agent:** {graph_name}\n"
+                        f"**Graph ID:** `{alert.graph_id}`\n"
+                        f"**Accuracy Drop:** {alert.drop_percent:.1f}%\n"
+                        f"**Recent Performance:**\n"
+                        f"  • 3-day average: {alert.three_day_avg:.1f}%\n"
+                        f"  • 7-day average: {alert.seven_day_avg:.1f}%\n"
                     )
 
                     if alert.user_id:
-                        alert_msg += f"\nUser: {alert.user_id[:8]}..."
+                        alert_msg += f"**Owner:** {alert.user_id}\n"
 
-                    alert_messages.append(alert_msg)
+                    # Send individual alert for each agent (not batched)
+                    self.notification_client.discord_system_alert(
+                        alert_msg, DiscordChannel.PRODUCT
+                    )
                     alerts_found += 1
+                    logger.warning(
+                        f"Sent accuracy alert for agent: {graph_name} ({alert.graph_id})"
+                    )
 
-            if alert_messages:
-                full_message = "Execution Accuracy Alerts:\n\n" + "\n\n".join(
-                    alert_messages
-                )
-                self.notification_client.discord_system_alert(
-                    full_message, DiscordChannel.PRODUCT
-                )
-                logger.warning(f"Sent accuracy alerts for {alerts_found} agents")
+            if alerts_found > 0:
                 return f"Alert sent for {alerts_found} agents with accuracy drops"
 
             logger.info("No execution accuracy alerts detected")
