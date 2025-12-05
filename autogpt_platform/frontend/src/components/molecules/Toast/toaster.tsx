@@ -1,7 +1,7 @@
 "use client";
 
+import { CheckCircle, Info, Warning, XCircle } from "@phosphor-icons/react";
 import { Toaster as SonnerToaster } from "sonner";
-import { CheckCircle, XCircle, Warning, Info } from "@phosphor-icons/react";
 import styles from "./styles.module.css";
 
 export function Toaster() {
@@ -9,6 +9,7 @@ export function Toaster() {
     <SonnerToaster
       position="bottom-center"
       richColors
+      closeButton
       toastOptions={{
         classNames: {
           toast: styles.toastDefault,
