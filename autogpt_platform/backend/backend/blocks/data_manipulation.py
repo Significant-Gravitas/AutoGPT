@@ -698,7 +698,7 @@ class ConcatenateListsBlock(Block):
         super().__init__(
             id="3cf9298b-5817-4141-9d80-7c2cc5199c8e",
             description="Concatenates multiple lists into a single list. All elements from all input lists are combined in order.",
-            categories={BlockCategory.DATA},
+            categories={BlockCategory.BASIC},
             input_schema=ConcatenateListsBlock.Input,
             output_schema=ConcatenateListsBlock.Output,
             test_input=[
@@ -718,5 +718,12 @@ class ConcatenateListsBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         concatenated = []
         for lst in input_data.lists:
-            concatenated.extend(lst)
+            if lst is None:
+                # Skip None values to avoid errors
+                continue
+            if not isinstance(lst, list):
+                # If an item is not a list, wrap it in a list to handle gracefully
+                concatenated.append(lst)
+            else:
+                concatenated.extend(lst)
         yield "concatenated_list", concatenated

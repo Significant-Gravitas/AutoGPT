@@ -76,4 +76,8 @@ async def test_concatenate_lists_manual():
     assert len(result) == 1
     assert result[0][0] == "concatenated_list"
     assert result[0][1] == []
+    
+    # Test case 5: Verify category is BASIC (not DATA) for consistency
+    from backend.data.block import BlockCategory
+    assert BlockCategory.BASIC in block.categories
 
