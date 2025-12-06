@@ -2,11 +2,14 @@
 Instagram Post Blocks for AutoGPT Platform.
 """
 
+from pathlib import Path
+
 from instagrapi import Client
 from instagrapi.types import Media
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import SchemaField
+from backend.util.file import MediaFileType, store_media_file
 
 from .auth import (
     InstagramCredentials,
@@ -94,45 +97,48 @@ class InstagramPostPhotoBlock(Block):
             },
         )
 
-    @staticmethod
-    def post_photo(
+    async def run(
+        self,
+        input_data: Input,
+        *,
         credentials: InstagramCredentials,
-        photo_url: str,
-        caption: str,
-        location_name: str | None = None,
-    ):
-        """
-        Post a photo to Instagram.
-
-        Args:
-            credentials: Instagram credentials
-            photo_url: URL or path to photo
-            caption: Post caption
-            location_name: Optional location name
-
-        Returns:
-            Tuple of (success, media_id, media_code, post_url, error)
-        """
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        """Execute the photo post."""
         try:
+            # Download/store the photo file locally
+            photo_path = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=input_data.photo_url,
+                user_id=user_id,
+                file_type=MediaFileType.IMAGE,
+            )
+
             # Extract username and password
             api_key = credentials.api_key.get_secret_value()
             if ":" not in api_key:
-                return False, None, None, None, "Invalid credentials format"
+                yield "success", False
+                yield "error", "Invalid credentials format"
+                return
 
             username, password = api_key.split(":", 1)
+
+            # Validate caption length
+            if len(input_data.caption) > 2200:
+                yield "success", False
+                yield "error", f"Caption too long ({len(input_data.caption)}/2200 chars)"
+                return
 
             # Login to Instagram
             client = Client()
             client.login(username, password)
 
-            # Validate caption length
-            if len(caption) > 2200:
-                return False, None, None, None, f"Caption too long ({len(caption)}/2200 chars)"
-
-            # Post the photo
+            # Post the photo using the local file path
             media: Media = client.photo_upload(
-                photo_url,
-                caption=caption,
+                Path(photo_path),
+                caption=input_data.caption,
             )
 
             # Get media details
@@ -140,37 +146,14 @@ class InstagramPostPhotoBlock(Block):
             media_code = media.code
             post_url = f"https://www.instagram.com/p/{media_code}/"
 
-            return True, media_id, media_code, post_url, None
+            yield "success", True
+            yield "media_id", media_id
+            yield "media_code", media_code
+            yield "post_url", post_url
 
         except Exception as e:
-            return False, None, None, None, f"Failed to post photo: {str(e)}"
-
-    async def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: InstagramCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        """Execute the photo post."""
-        success, media_id, media_code, post_url, error = self.post_photo(
-            credentials,
-            input_data.photo_url,
-            input_data.caption,
-            input_data.location_name,
-        )
-
-        if success:
-            yield "success", True
-            if media_id:
-                yield "media_id", media_id
-            if media_code:
-                yield "media_code", media_code
-            if post_url:
-                yield "post_url", post_url
-        else:
             yield "success", False
-            yield "error", error or "Unknown error occurred"
+            yield "error", f"Failed to post photo: {str(e)}"
 
 
 class InstagramPostReelBlock(Block):
@@ -237,66 +220,70 @@ class InstagramPostReelBlock(Block):
             },
         )
 
-    @staticmethod
-    def post_reel(
+    async def run(
+        self,
+        input_data: Input,
+        *,
         credentials: InstagramCredentials,
-        video_url: str,
-        caption: str,
-        thumbnail_url: str | None = None,
-    ):
-        """Post a reel to Instagram."""
+        graph_exec_id: str,
+        user_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        """Execute the reel post."""
         try:
+            # Download/store the video file locally
+            video_path = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=input_data.video_url,
+                user_id=user_id,
+                file_type=MediaFileType.VIDEO,
+            )
+
+            # Download thumbnail if provided
+            thumbnail_path = None
+            if input_data.thumbnail_url:
+                thumbnail_path = await store_media_file(
+                    graph_exec_id=graph_exec_id,
+                    file=input_data.thumbnail_url,
+                    user_id=user_id,
+                    file_type=MediaFileType.IMAGE,
+                )
+
+            # Extract username and password
             api_key = credentials.api_key.get_secret_value()
             if ":" not in api_key:
-                return False, None, None, None, "Invalid credentials format"
+                yield "success", False
+                yield "error", "Invalid credentials format"
+                return
 
             username, password = api_key.split(":", 1)
 
+            # Validate caption length
+            if len(input_data.caption) > 2200:
+                yield "success", False
+                yield "error", f"Caption too long ({len(input_data.caption)}/2200 chars)"
+                return
+
+            # Login to Instagram
             client = Client()
             client.login(username, password)
 
-            if len(caption) > 2200:
-                return False, None, None, None, f"Caption too long ({len(caption)}/2200 chars)"
-
-            # Post the reel
+            # Post the reel using the local file path
             media: Media = client.clip_upload(
-                video_url,
-                caption=caption,
-                thumbnail=thumbnail_url,
+                Path(video_path),
+                caption=input_data.caption,
+                thumbnail=Path(thumbnail_path) if thumbnail_path else None,
             )
 
             media_id = str(media.pk)
             media_code = media.code
             post_url = f"https://www.instagram.com/p/{media_code}/"
 
-            return True, media_id, media_code, post_url, None
+            yield "success", True
+            yield "media_id", media_id
+            yield "media_code", media_code
+            yield "post_url", post_url
 
         except Exception as e:
-            return False, None, None, None, f"Failed to post reel: {str(e)}"
-
-    async def run(
-        self,
-        input_data: Input,
-        *,
-        credentials: InstagramCredentials,
-        **kwargs,
-    ) -> BlockOutput:
-        """Execute the reel post."""
-        success, media_id, media_code, post_url, error = self.post_reel(
-            credentials,
-            input_data.video_url,
-            input_data.caption,
-            input_data.thumbnail_url,
-        )
-
-        if success:
-            yield "success", True
-            if media_id:
-                yield "media_id", media_id
-            if media_code:
-                yield "media_code", media_code
-            if post_url:
-                yield "post_url", post_url
-        else:
             yield "success", False
-            yield "error", error or "Unknown error occurred"
+            yield "error", f"Failed to post reel: {str(e)}"
