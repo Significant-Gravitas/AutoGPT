@@ -138,3 +138,8 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
+
+[tool.pyright]
+exclude = [
+    "backend/blocks/instagram"
+]
