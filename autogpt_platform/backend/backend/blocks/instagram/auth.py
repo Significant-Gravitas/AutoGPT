@@ -4,6 +4,7 @@ Instagram authentication module for AutoGPT Platform.
 This module provides authentication utilities for Instagram blocks.
 """
 
+# Authentication imports
 from typing import Literal
 
 from pydantic import SecretStr
