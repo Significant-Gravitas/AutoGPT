@@ -98,12 +98,6 @@ requests = "^2.32.5"
 ruff = "^0.14.5"
 # NOTE: please insert new dependencies in their alphabetical location
 
-[tool.poetry.group.instagram]
-optional = true
-
-[tool.poetry.group.instagram.dependencies]
-instagrapi = "^2.1.2"
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

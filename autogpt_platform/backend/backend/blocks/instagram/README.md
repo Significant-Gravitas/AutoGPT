@@ -28,14 +28,15 @@ This module provides comprehensive Instagram automation capabilities:
 
 ### 1. Install Dependencies
 
-The `instagrapi` library is available as an optional dependency group. To use Instagram blocks, install with:
+The `instagrapi` library is **not included** in the Poetry dependencies due to version conflicts with core platform dependencies (pydantic and moviepy). To use Instagram blocks, you must install it separately using pip:
 
 ```bash
 cd backend
-poetry install --with instagram
+poetry install  # Install core dependencies first
+poetry run pip install instagrapi
 ```
 
-**Note:** The Instagram dependency group is optional because `instagrapi` has specific version requirements that may conflict with other dependencies. This allows users to opt-in to Instagram functionality only when needed.
+**Note:** The Instagram blocks require `instagrapi`, which has specific pydantic (2.7.1-2.11.5) and moviepy (1.0.3) requirements that conflict with the platform's requirements (pydantic ^2.11.7, moviepy ^2.1.2). Installing via pip after poetry allows both to coexist in the same environment.
 
 ### 2. Configure Credentials
 
