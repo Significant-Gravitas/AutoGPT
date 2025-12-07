@@ -7,16 +7,22 @@ from pathlib import Path
 from instagrapi import Client
 from instagrapi.types import Media
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util.file import MediaFileType, store_media_file
 
 from .auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     InstagramCredentials,
     InstagramCredentialsField,
     InstagramCredentialsInput,
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
 )
 
 
@@ -50,21 +56,16 @@ class InstagramPostPhotoBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        success: bool = SchemaField(
-            description="Whether the post was successful"
-        )
+        success: bool = SchemaField(description="Whether the post was successful")
         media_id: str = SchemaField(
             description="Instagram media ID of the posted photo"
         )
         media_code: str = SchemaField(
             description="Instagram media code (short code in URL)"
         )
-        post_url: str = SchemaField(
-            description="URL to the Instagram post"
-        )
+        post_url: str = SchemaField(description="URL to the Instagram post")
         error: str = SchemaField(
-            description="Error message if posting failed",
-            default=""
+            description="Error message if posting failed", default=""
         )
 
     def __init__(self):
@@ -128,7 +129,10 @@ class InstagramPostPhotoBlock(Block):
             # Validate caption length
             if len(input_data.caption) > 2200:
                 yield "success", False
-                yield "error", f"Caption too long ({len(input_data.caption)}/2200 chars)"
+                yield (
+                    "error",
+                    f"Caption too long ({len(input_data.caption)}/2200 chars)",
+                )
                 return
 
             # Login to Instagram
@@ -184,11 +188,15 @@ class InstagramPostReelBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        success: bool = SchemaField(description="Whether the reel was posted successfully")
+        success: bool = SchemaField(
+            description="Whether the reel was posted successfully"
+        )
         media_id: str = SchemaField(description="Instagram media ID of the posted reel")
         media_code: str = SchemaField(description="Instagram media code")
         post_url: str = SchemaField(description="URL to the Instagram reel")
-        error: str = SchemaField(description="Error message if posting failed", default="")
+        error: str = SchemaField(
+            description="Error message if posting failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -261,7 +269,10 @@ class InstagramPostReelBlock(Block):
             # Validate caption length
             if len(input_data.caption) > 2200:
                 yield "success", False
-                yield "error", f"Caption too long ({len(input_data.caption)}/2200 chars)"
+                yield (
+                    "error",
+                    f"Caption too long ({len(input_data.caption)}/2200 chars)",
+                )
                 return
 
             # Login to Instagram

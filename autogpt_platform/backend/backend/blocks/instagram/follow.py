@@ -4,15 +4,21 @@ Instagram Follow Blocks for AutoGPT Platform.
 
 from instagrapi import Client
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from .auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     InstagramCredentials,
     InstagramCredentialsField,
     InstagramCredentialsInput,
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
 )
 
 
@@ -34,7 +40,9 @@ class InstagramFollowUserBlock(Block):
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the follow was successful")
         user_id: str = SchemaField(description="User ID of the followed account")
-        error: str = SchemaField(description="Error message if following failed", default="")
+        error: str = SchemaField(
+            description="Error message if following failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -119,7 +127,9 @@ class InstagramUnfollowUserBlock(Block):
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the unfollow was successful")
         user_id: str = SchemaField(description="User ID of the unfollowed account")
-        error: str = SchemaField(description="Error message if unfollowing failed", default="")
+        error: str = SchemaField(
+            description="Error message if unfollowing failed", default=""
+        )
 
     def __init__(self):
         super().__init__(

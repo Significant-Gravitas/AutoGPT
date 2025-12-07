@@ -5,15 +5,21 @@ Instagram Search Blocks for AutoGPT Platform.
 from instagrapi import Client
 from instagrapi.types import Media, UserShort
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from .auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     InstagramCredentials,
     InstagramCredentialsField,
     InstagramCredentialsInput,
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
 )
 
 
@@ -44,7 +50,9 @@ class InstagramGetUserInfoBlock(Block):
         is_private: bool = SchemaField(description="Whether the account is private")
         is_verified: bool = SchemaField(description="Whether the account is verified")
         profile_pic_url: str = SchemaField(description="URL to profile picture")
-        error: str = SchemaField(description="Error message if request failed", default="")
+        error: str = SchemaField(
+            description="Error message if request failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -93,7 +101,19 @@ class InstagramGetUserInfoBlock(Block):
         try:
             api_key = credentials.api_key.get_secret_value()
             if ":" not in api_key:
-                return None, None, None, None, None, None, None, None, None, None, "Invalid credentials format"
+                return (
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    "Invalid credentials format",
+                )
 
             user, pwd = api_key.split(":", 1)
 
@@ -118,7 +138,19 @@ class InstagramGetUserInfoBlock(Block):
             )
 
         except Exception as e:
-            return None, None, None, None, None, None, None, None, None, None, f"Failed to get user info: {str(e)}"
+            return (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                f"Failed to get user info: {str(e)}",
+            )
 
     async def run(
         self,
@@ -193,8 +225,12 @@ class InstagramSearchHashtagBlock(Block):
         post_ids: list[str] = SchemaField(description="List of media IDs found")
         post_urls: list[str] = SchemaField(description="List of post URLs")
         captions: list[str] = SchemaField(description="List of post captions")
-        like_counts: list[int] = SchemaField(description="List of like counts for each post")
-        error: str = SchemaField(description="Error message if search failed", default="")
+        like_counts: list[int] = SchemaField(
+            description="List of like counts for each post"
+        )
+        error: str = SchemaField(
+            description="Error message if search failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -211,11 +247,14 @@ class InstagramSearchHashtagBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("post_ids", ["123", "456", "789"]),
-                ("post_urls", [
-                    "https://www.instagram.com/p/ABC1/",
-                    "https://www.instagram.com/p/ABC2/",
-                    "https://www.instagram.com/p/ABC3/",
-                ]),
+                (
+                    "post_urls",
+                    [
+                        "https://www.instagram.com/p/ABC1/",
+                        "https://www.instagram.com/p/ABC2/",
+                        "https://www.instagram.com/p/ABC3/",
+                    ],
+                ),
                 ("captions", ["Caption 1", "Caption 2", "Caption 3"]),
                 ("like_counts", [100, 200, 300]),
             ],
@@ -235,7 +274,9 @@ class InstagramSearchHashtagBlock(Block):
         )
 
     @staticmethod
-    def search_hashtag(credentials: InstagramCredentials, hashtag: str, amount: int = 10):
+    def search_hashtag(
+        credentials: InstagramCredentials, hashtag: str, amount: int = 10
+    ):
         """Search Instagram posts by hashtag."""
         try:
             api_key = credentials.api_key.get_secret_value()
@@ -260,7 +301,9 @@ class InstagramSearchHashtagBlock(Block):
             medias: list[Media] = client.hashtag_medias_recent(hashtag, amount)
 
             post_ids = [str(media.pk) for media in medias]
-            post_urls = [f"https://www.instagram.com/p/{media.code}/" for media in medias]
+            post_urls = [
+                f"https://www.instagram.com/p/{media.code}/" for media in medias
+            ]
             captions = [media.caption_text or "" for media in medias]
             like_counts = [media.like_count for media in medias]
 

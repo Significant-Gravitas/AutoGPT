@@ -11,7 +11,11 @@ If instagrapi is not available, the blocks will not be loaded.
 __all__ = []
 
 try:
-    from .auth import InstagramCredentials, InstagramCredentialsField, InstagramCredentialsInput
+    from .auth import (
+        InstagramCredentials,
+        InstagramCredentialsField,
+        InstagramCredentialsInput,
+    )
     from .comment import InstagramCommentBlock
     from .follow import InstagramFollowUserBlock, InstagramUnfollowUserBlock
     from .like import InstagramLikePostBlock, InstagramUnlikePostBlock

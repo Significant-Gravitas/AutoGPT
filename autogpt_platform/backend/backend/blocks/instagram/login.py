@@ -4,15 +4,21 @@ Instagram Login Block for AutoGPT Platform.
 
 from instagrapi import Client
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from .auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     InstagramCredentials,
     InstagramCredentialsField,
     InstagramCredentialsInput,
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
 )
 
 
@@ -28,9 +34,7 @@ class InstagramLoginBlock(Block):
         credentials: InstagramCredentialsInput = InstagramCredentialsField()
 
     class Output(BlockSchemaOutput):
-        success: bool = SchemaField(
-            description="Whether login was successful"
-        )
+        success: bool = SchemaField(description="Whether login was successful")
         user_id: str = SchemaField(
             description="Instagram user ID of the logged-in account"
         )
@@ -38,8 +42,7 @@ class InstagramLoginBlock(Block):
             description="Instagram username of the logged-in account"
         )
         error: str = SchemaField(
-            description="Error message if login failed",
-            default=""
+            description="Error message if login failed", default=""
         )
 
     def __init__(self):
@@ -59,7 +62,12 @@ class InstagramLoginBlock(Block):
                 ("username", "test_username"),
             ],
             test_mock={
-                "login": lambda *args, **kwargs: (True, "123456789", "test_username", None)
+                "login": lambda *args, **kwargs: (
+                    True,
+                    "123456789",
+                    "test_username",
+                    None,
+                )
             },
         )
 
@@ -78,7 +86,12 @@ class InstagramLoginBlock(Block):
             # Extract username and password from API key
             api_key = credentials.api_key.get_secret_value()
             if ":" not in api_key:
-                return False, None, None, "Invalid credentials format. Use 'username:password'"
+                return (
+                    False,
+                    None,
+                    None,
+                    "Invalid credentials format. Use 'username:password'",
+                )
 
             username, password = api_key.split(":", 1)
 

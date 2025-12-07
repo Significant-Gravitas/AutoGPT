@@ -4,15 +4,21 @@ Instagram Comment Block for AutoGPT Platform.
 
 from instagrapi import Client
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from .auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     InstagramCredentials,
     InstagramCredentialsField,
     InstagramCredentialsInput,
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
 )
 
 
@@ -37,9 +43,13 @@ class InstagramCommentBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        success: bool = SchemaField(description="Whether the comment was posted successfully")
+        success: bool = SchemaField(
+            description="Whether the comment was posted successfully"
+        )
         comment_id: str = SchemaField(description="ID of the posted comment")
-        error: str = SchemaField(description="Error message if commenting failed", default="")
+        error: str = SchemaField(
+            description="Error message if commenting failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -59,12 +69,18 @@ class InstagramCommentBlock(Block):
                 ("comment_id", "17890123456789012"),
             ],
             test_mock={
-                "comment_post": lambda *args, **kwargs: (True, "17890123456789012", None)
+                "comment_post": lambda *args, **kwargs: (
+                    True,
+                    "17890123456789012",
+                    None,
+                )
             },
         )
 
     @staticmethod
-    def comment_post(credentials: InstagramCredentials, media_id: str, comment_text: str):
+    def comment_post(
+        credentials: InstagramCredentials, media_id: str, comment_text: str
+    ):
         """Comment on an Instagram post."""
         try:
             api_key = credentials.api_key.get_secret_value()
@@ -84,6 +100,7 @@ class InstagramCommentBlock(Block):
             if media_id.startswith("http://") or media_id.startswith("https://"):
                 # Validate it's actually an Instagram URL
                 from urllib.parse import urlparse
+
                 parsed = urlparse(media_id)
                 if parsed.netloc not in ("instagram.com", "www.instagram.com"):
                     return False, None, "Invalid URL: must be an Instagram URL"

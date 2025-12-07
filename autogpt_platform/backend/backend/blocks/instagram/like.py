@@ -4,15 +4,21 @@ Instagram Like Blocks for AutoGPT Platform.
 
 from instagrapi import Client
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaInput, BlockSchemaOutput
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 from .auth import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     InstagramCredentials,
     InstagramCredentialsField,
     InstagramCredentialsInput,
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
 )
 
 
@@ -33,7 +39,9 @@ class InstagramLikePostBlock(Block):
 
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the like was successful")
-        error: str = SchemaField(description="Error message if liking failed", default="")
+        error: str = SchemaField(
+            description="Error message if liking failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -50,9 +58,7 @@ class InstagramLikePostBlock(Block):
             test_output=[
                 ("success", True),
             ],
-            test_mock={
-                "like_post": lambda *args, **kwargs: (True, None)
-            },
+            test_mock={"like_post": lambda *args, **kwargs: (True, None)},
         )
 
     @staticmethod
@@ -72,6 +78,7 @@ class InstagramLikePostBlock(Block):
             if media_id.startswith("http://") or media_id.startswith("https://"):
                 # Validate it's actually an Instagram URL
                 from urllib.parse import urlparse
+
                 parsed = urlparse(media_id)
                 if parsed.netloc not in ("instagram.com", "www.instagram.com"):
                     return False, "Invalid URL: must be an Instagram URL"
@@ -115,7 +122,9 @@ class InstagramUnlikePostBlock(Block):
 
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the unlike was successful")
-        error: str = SchemaField(description="Error message if unliking failed", default="")
+        error: str = SchemaField(
+            description="Error message if unliking failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -132,9 +141,7 @@ class InstagramUnlikePostBlock(Block):
             test_output=[
                 ("success", True),
             ],
-            test_mock={
-                "unlike_post": lambda *args, **kwargs: (True, None)
-            },
+            test_mock={"unlike_post": lambda *args, **kwargs: (True, None)},
         )
 
     @staticmethod
@@ -153,6 +160,7 @@ class InstagramUnlikePostBlock(Block):
             if media_id.startswith("http://") or media_id.startswith("https://"):
                 # Validate it's actually an Instagram URL
                 from urllib.parse import urlparse
+
                 parsed = urlparse(media_id)
                 if parsed.netloc not in ("instagram.com", "www.instagram.com"):
                     return False, "Invalid URL: must be an Instagram URL"
