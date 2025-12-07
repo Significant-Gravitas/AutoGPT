@@ -28,12 +28,14 @@ This module provides comprehensive Instagram automation capabilities:
 
 ### 1. Install Dependencies
 
-The `instagrapi` library is included in the `pyproject.toml`:
+The `instagrapi` library is available as an optional dependency group. To use Instagram blocks, install with:
 
 ```bash
 cd backend
-poetry install
+poetry install --with instagram
 ```
+
+**Note:** The Instagram dependency group is optional because `instagrapi` has specific version requirements that may conflict with other dependencies. This allows users to opt-in to Instagram functionality only when needed.
 
 ### 2. Configure Credentials
 
