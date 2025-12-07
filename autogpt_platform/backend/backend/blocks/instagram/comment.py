@@ -81,7 +81,12 @@ class InstagramCommentBlock(Block):
                 return False, None, f"Comment too long ({len(comment_text)}/2200 chars)"
 
             # Handle both media ID and URL
-            if "instagram.com" in media_id:
+            if media_id.startswith("http://") or media_id.startswith("https://"):
+                # Validate it's actually an Instagram URL
+                from urllib.parse import urlparse
+                parsed = urlparse(media_id)
+                if parsed.netloc not in ("instagram.com", "www.instagram.com"):
+                    return False, None, "Invalid URL: must be an Instagram URL"
                 media_id = client.media_pk_from_url(media_id)
 
             # Post the comment

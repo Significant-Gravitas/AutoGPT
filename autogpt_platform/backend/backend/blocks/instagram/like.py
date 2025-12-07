@@ -69,7 +69,12 @@ class InstagramLikePostBlock(Block):
             client.login(username, password)
 
             # Handle both media ID and URL
-            if "instagram.com" in media_id:
+            if media_id.startswith("http://") or media_id.startswith("https://"):
+                # Validate it's actually an Instagram URL
+                from urllib.parse import urlparse
+                parsed = urlparse(media_id)
+                if parsed.netloc not in ("instagram.com", "www.instagram.com"):
+                    return False, "Invalid URL: must be an Instagram URL"
                 media_id = client.media_pk_from_url(media_id)
 
             client.media_like(media_id)
@@ -145,7 +150,12 @@ class InstagramUnlikePostBlock(Block):
             client = Client()
             client.login(username, password)
 
-            if "instagram.com" in media_id:
+            if media_id.startswith("http://") or media_id.startswith("https://"):
+                # Validate it's actually an Instagram URL
+                from urllib.parse import urlparse
+                parsed = urlparse(media_id)
+                if parsed.netloc not in ("instagram.com", "www.instagram.com"):
+                    return False, "Invalid URL: must be an Instagram URL"
                 media_id = client.media_pk_from_url(media_id)
 
             client.media_unlike(media_id)
