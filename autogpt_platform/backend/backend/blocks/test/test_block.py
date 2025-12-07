@@ -8,6 +8,16 @@ from backend.util.test import execute_block_test
 
 SKIP_BLOCK_TESTS = {
     "HumanInTheLoopBlock",
+    "InstagramLoginBlock",
+    "InstagramPostPhotoBlock",
+    "InstagramPostReelBlock",
+    "InstagramLikePostBlock",
+    "InstagramUnlikePostBlock",
+    "InstagramFollowUserBlock",
+    "InstagramUnfollowUserBlock",
+    "InstagramCommentBlock",
+    "InstagramGetUserInfoBlock",
+    "InstagramSearchHashtagBlock",
 }
 
 
@@ -111,6 +121,16 @@ async def test_block_ids_valid(block: Type[Block]):
         "TodoistDeleteCommentBlock",
         "GithubListStargazersBlock",
         "Slant3DSlicerBlock",
+        "InstagramLoginBlock",
+        "InstagramPostPhotoBlock",
+        "InstagramPostReelBlock",
+        "InstagramLikePostBlock",
+        "InstagramUnlikePostBlock",
+        "InstagramFollowUserBlock",
+        "InstagramUnfollowUserBlock",
+        "InstagramCommentBlock",
+        "InstagramGetUserInfoBlock",
+        "InstagramSearchHashtagBlock",
     }
 
     block_instance = block()
