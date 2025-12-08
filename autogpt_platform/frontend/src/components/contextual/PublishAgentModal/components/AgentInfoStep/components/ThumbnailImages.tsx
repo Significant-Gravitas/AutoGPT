@@ -42,9 +42,9 @@ export function ThumbnailImages({
   return (
     <div className="space-y-2.5">
       <div className="flex flex-col items-start justify-start gap-1">
-        <label className="text-sm font-medium leading-tight text-slate-950">
+        <Text variant="large-medium" className="leading-tight">
           Thumbnail images
-        </label>
+        </Text>
         <Text variant="body" className="!text-zinc-500">
           The first image will be used as the thumbnail for your agent.
         </Text>

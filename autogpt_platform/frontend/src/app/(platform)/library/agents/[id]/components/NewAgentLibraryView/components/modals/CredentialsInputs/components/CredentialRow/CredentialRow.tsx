@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { DotsThreeVertical } from "@phosphor-icons/react";
+import { CaretDown, DotsThreeVertical } from "@phosphor-icons/react";
 import {
   fallbackIcon,
   getCredentialDisplayName,
@@ -25,35 +25,37 @@ type CredentialRowProps = {
   };
   provider: string;
   displayName: string;
-  isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
   readOnly?: boolean;
+  showCaret?: boolean;
+  asSelectTrigger?: boolean;
 };
 
 export function CredentialRow({
   credential,
   provider,
   displayName,
-  isSelected,
   onSelect,
   onDelete,
   readOnly = false,
+  showCaret = false,
+  asSelectTrigger = false,
 }: CredentialRowProps) {
   const ProviderIcon = providerIcons[provider] || fallbackIcon;
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-medium border p-3 transition-colors",
-        readOnly
-          ? "w-fit border-zinc-200 bg-white"
-          : isSelected
-            ? "border-purple-500 bg-white"
-            : "border-zinc-200 bg-white hover:border-gray-300",
+        "flex items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
+        asSelectTrigger ? "border-0 bg-transparent" : readOnly ? "w-fit" : "",
       )}
-      onClick={readOnly ? undefined : onSelect}
-      style={readOnly ? { cursor: "default" } : undefined}
+      onClick={readOnly || showCaret || asSelectTrigger ? undefined : onSelect}
+      style={
+        readOnly || showCaret || asSelectTrigger
+          ? { cursor: showCaret || asSelectTrigger ? "pointer" : "default" }
+          : undefined
+      }
     >
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900">
         <ProviderIcon className="h-3 w-3 text-white" />
@@ -70,7 +72,10 @@ export function CredentialRow({
           {"*".repeat(MASKED_KEY_LENGTH)}
         </Text>
       </div>
-      {!readOnly && (
+      {showCaret && !asSelectTrigger && (
+        <CaretDown className="h-4 w-4 shrink-0 text-gray-400" />
+      )}
+      {!readOnly && !showCaret && !asSelectTrigger && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

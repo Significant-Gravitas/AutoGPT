@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { CredentialRow } from "./components/CredentialRow/CredentialRow";
+import { CredentialsSelect } from "./components/CredentialsSelect/CredentialsSelect";
 import { DeleteConfirmationModal } from "./components/DeleteConfirmationModal/DeleteConfirmationModal";
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
@@ -97,28 +98,40 @@ export function CredentialsInput({
 
       {hasCredentialsToShow ? (
         <>
-          <div className="mb-4 space-y-2">
-            {credentialsToShow.map((credential) => {
-              const isSelected = selectedCredentials?.id === credential.id;
-              return (
-                <CredentialRow
-                  key={credential.id}
-                  credential={credential}
-                  provider={provider}
-                  displayName={displayName}
-                  isSelected={isSelected}
-                  onSelect={() => handleCredentialSelect(credential.id)}
-                  onDelete={() =>
-                    handleDeleteCredential({
-                      id: credential.id,
-                      title: getCredentialDisplayName(credential, displayName),
-                    })
-                  }
-                  readOnly={readOnly}
-                />
-              );
-            })}
-          </div>
+          {credentialsToShow.length > 1 && !readOnly ? (
+            <CredentialsSelect
+              credentials={credentialsToShow}
+              provider={provider}
+              displayName={displayName}
+              selectedCredentials={selectedCredentials}
+              onSelectCredential={handleCredentialSelect}
+              readOnly={readOnly}
+            />
+          ) : (
+            <div className="mb-4 space-y-2">
+              {credentialsToShow.map((credential) => {
+                return (
+                  <CredentialRow
+                    key={credential.id}
+                    credential={credential}
+                    provider={provider}
+                    displayName={displayName}
+                    onSelect={() => handleCredentialSelect(credential.id)}
+                    onDelete={() =>
+                      handleDeleteCredential({
+                        id: credential.id,
+                        title: getCredentialDisplayName(
+                          credential,
+                          displayName,
+                        ),
+                      })
+                    }
+                    readOnly={readOnly}
+                  />
+                );
+              })}
+            </div>
+          )}
           {!readOnly && (
             <Button
               variant="secondary"
