@@ -1,41 +1,5 @@
-import type { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphExecutionsPaginated";
 import { Pagination } from "@/app/api/__generated__/models/pagination";
 import type { InfiniteData } from "@tanstack/react-query";
-
-const AGENT_RUNNING_POLL_INTERVAL = 1500;
-
-function hasValidExecutionsData(
-  page: unknown,
-): page is { data: GraphExecutionsPaginated } {
-  return (
-    typeof page === "object" &&
-    page !== null &&
-    "data" in page &&
-    typeof page.data === "object" &&
-    page.data !== null &&
-    "executions" in page.data
-  );
-}
-
-export function getRunsPollingInterval(
-  pages: Array<unknown> | undefined,
-  isRunsTab: boolean,
-): number | false {
-  if (!isRunsTab || !pages?.length) return false;
-
-  try {
-    const executions = pages.flatMap((page) => {
-      if (!hasValidExecutionsData(page)) return [];
-      return page.data.executions || [];
-    });
-    const hasActive = executions.some(
-      (e) => e.status === "RUNNING" || e.status === "QUEUED",
-    );
-    return hasActive ? AGENT_RUNNING_POLL_INTERVAL : false;
-  } catch {
-    return false;
-  }
-}
 
 export function getPaginatedTotalCount(
   infiniteData: InfiniteData<unknown> | undefined,

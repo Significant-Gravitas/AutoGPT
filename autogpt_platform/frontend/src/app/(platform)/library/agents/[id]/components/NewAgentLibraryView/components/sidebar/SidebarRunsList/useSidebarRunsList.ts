@@ -1,22 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useGetV2ListPresetsInfinite } from "@/app/api/__generated__/endpoints/presets/presets";
 import { okData } from "@/app/api/helpers";
-import { useSearchParams } from "next/navigation";
+import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import { useQueryClient } from "@tanstack/react-query";
+import { parseAsString, useQueryStates } from "nuqs";
 import {
   getPaginatedTotalCount,
   getPaginationNextPageNumber,
-  getRunsPollingInterval,
   unpaginate,
 } from "./helpers";
 
+function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
+  if (value === "runs" || value === "scheduled" || value === "templates") {
+    return value;
+  }
+  return "runs";
+}
+
 type Args = {
   graphId?: string;
-  onSelectRun: (runId: string) => void;
+  onSelectRun: (runId: string, tab?: "runs" | "scheduled") => void;
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
@@ -25,16 +33,18 @@ type Args = {
   }) => void;
 };
 
-export function useAgentRunsLists({
+export function useSidebarRunsList({
   graphId,
   onSelectRun,
   onCountsChange,
 }: Args) {
-  const params = useSearchParams();
-  const existingRunId = params.get("executionId") as string | undefined;
-  const [tabValue, setTabValue] = useState<"runs" | "scheduled" | "templates">(
-    "runs",
-  );
+  const [{ activeItem, activeTab: activeTabRaw }] = useQueryStates({
+    activeItem: parseAsString,
+    activeTab: parseAsString,
+  });
+
+  const tabValue = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
+  const queryClient = useQueryClient();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
     graphId || "",
@@ -42,9 +52,6 @@ export function useAgentRunsLists({
     {
       query: {
         enabled: !!graphId,
-        refetchInterval: (q) =>
-          getRunsPollingInterval(q.state.data?.pages, tabValue === "runs"),
-        refetchIntervalInBackground: true,
         refetchOnWindowFocus: false,
         getNextPageParam: getPaginationNextPageNumber,
       },
@@ -93,6 +100,19 @@ export function useAgentRunsLists({
     !runsQuery.isSuccess ||
     !presetsQuery.isSuccess;
 
+  // Update query cache when execution events arrive via websocket
+  useExecutionEvents({
+    graphId: graphId || undefined,
+    enabled: !!graphId && tabValue === "runs",
+    onExecutionUpdate: (_execution) => {
+      // Invalidate and refetch the query to ensure we have the latest data
+      // This is simpler and more reliable than manually updating the cache
+      // The queryKey is stable and includes the graphId, so this only invalidates
+      // queries for this specific graph's executions
+      queryClient.invalidateQueries({ queryKey: runsQuery.queryKey });
+    },
+  });
+
   // Notify parent about counts and loading state
   useEffect(() => {
     if (onCountsChange) {
@@ -101,33 +121,21 @@ export function useAgentRunsLists({
   }, [runsCount, schedulesCount, presetsCount, loading, onCountsChange]);
 
   useEffect(() => {
-    if (runs.length > 0) {
-      if (existingRunId) {
-        onSelectRun(existingRunId);
-        return;
-      }
-      onSelectRun(runs[0].id);
+    if (runs.length > 0 && tabValue === "runs" && !activeItem) {
+      onSelectRun(runs[0].id, "runs");
     }
-  }, [runs, existingRunId]);
-
-  useEffect(() => {
-    if (existingRunId && existingRunId.startsWith("schedule:"))
-      setTabValue("scheduled");
-    else if (existingRunId && existingRunId.startsWith("preset:"))
-      setTabValue("templates");
-    else setTabValue("runs");
-  }, [existingRunId]);
+  }, [runs, activeItem, tabValue, onSelectRun]);
 
   // If there are no runs but there are schedules or presets, auto-select the first available
   useEffect(() => {
-    if (!existingRunId && runs.length === 0) {
+    if (!activeItem && runs.length === 0) {
       if (schedules.length > 0) {
         onSelectRun(`schedule:${schedules[0].id}`);
       } else if (presets.length > 0) {
         onSelectRun(`preset:${presets[0].id}`);
       }
     }
-  }, [existingRunId, runs.length, schedules, presets, onSelectRun]);
+  }, [activeItem, runs.length, schedules, onSelectRun]);
 
   return {
     runs,
@@ -138,7 +146,6 @@ export function useAgentRunsLists({
     runsQuery,
     presetsQuery,
     tabValue,
-    setTabValue,
     runsCount,
     presetsCount,
     schedulesCount,

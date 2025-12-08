@@ -165,6 +165,21 @@ export function AgentInfoStep({
 
           <FormField
             control={form.control}
+            name="agentOutputDemo"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="Agent Output Demo"
+                type="url"
+                placeholder="Add a short video showing the agent's results in action."
+                error={form.formState.errors.agentOutputDemo?.message}
+                {...field}
+              />
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name="instructions"
             render={({ field }) => (
               <Input

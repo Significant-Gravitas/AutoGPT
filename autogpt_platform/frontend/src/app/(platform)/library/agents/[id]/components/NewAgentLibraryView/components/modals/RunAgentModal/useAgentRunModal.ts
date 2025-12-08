@@ -20,7 +20,6 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { analytics } from "@/services/analytics";
 
 export type RunVariant =
@@ -72,7 +71,6 @@ export function useAgentRunModal(
   const [cronExpression, setCronExpression] = useState(
     agent.recommended_schedule_cron || "0 9 * * 1",
   );
-  const { completeStep: completeOnboardingStep } = useOnboarding();
 
   // Get user timezone for scheduling
   const { data: userTimezone } = useGetV1GetUserTimezone({
@@ -109,9 +107,13 @@ export function useAgentRunModal(
         }
       },
       onError: (error: any) => {
+        const errorMessage = error.isGraphValidationError()
+          ? error.response.detail.message
+          : error.message;
+
         toast({
           title: "❌ Failed to execute agent",
-          description: error.message || "An unexpected error occurred.",
+          description: errorMessage || "An unexpected error occurred.",
           variant: "destructive",
         });
       },
@@ -344,6 +346,7 @@ export function useAgentRunModal(
         data: {
           inputs: inputValues,
           credentials_inputs: inputCredentials,
+          source: "library",
         },
       });
     }
@@ -388,8 +391,6 @@ export function useAgentRunModal(
           userTimezone && userTimezone !== "not-set" ? userTimezone : undefined,
       },
     });
-
-    completeOnboardingStep("SCHEDULE_AGENT");
   }, [
     allRequiredInputsAreSet,
     scheduleName,
@@ -402,7 +403,6 @@ export function useAgentRunModal(
     toast,
     userTimezone,
     presetName,
-    completeOnboardingStep,
   ]);
 
   function handleShowSchedule() {

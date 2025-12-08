@@ -4,7 +4,7 @@ import CustomEdge from "../edges/CustomEdge";
 import { useFlow } from "./useFlow";
 import { useShallow } from "zustand/react/shallow";
 import { useNodeStore } from "../../../stores/nodeStore";
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useCallback } from "react";
 import { CustomNode } from "../nodes/CustomNode/CustomNode";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { useFlowRealtime } from "./useFlowRealtime";
@@ -20,6 +20,7 @@ import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeT
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
+import { resolveCollisions } from "./helpers/resolve-collision";
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -39,6 +40,7 @@ export const Flow = () => {
   );
 
   const nodes = useNodeStore(useShallow((state) => state.nodes));
+  const setNodes = useNodeStore(useShallow((state) => state.setNodes));
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
   );
@@ -47,6 +49,15 @@ export const Flow = () => {
   );
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+  const onNodeDragStop = useCallback(() => {
+    setNodes(
+      resolveCollisions(nodes, {
+        maxIterations: Infinity,
+        overlapThreshold: 0.5,
+        margin: 15,
+      }),
+    );
+  }, [setNodes, nodes]);
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
   // We use this hook to load the graph and convert them into custom nodes and edges.
@@ -83,6 +94,7 @@ export const Flow = () => {
           edges={edges}
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
+          onNodeDragStop={onNodeDragStop}
           maxZoom={2}
           minZoom={0.1}
           onDragOver={onDragOver}

@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
+import React from "react";
 
 interface RunListItemProps {
   title: string;
@@ -24,14 +24,14 @@ export function RunSidebarCard({
   return (
     <button
       className={cn(
-        "w-full rounded-large border border-slate-50/70 bg-white p-3 text-left transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
-        selected ? "large ring-2 ring-slate-800" : undefined,
+        "w-full rounded-large border border-zinc-200 bg-white p-3 text-left ring-1 ring-transparent transition-all duration-150 hover:scale-[1.01] hover:bg-slate-50/50",
+        selected ? "border-slate-800 ring-slate-800" : undefined,
       )}
       onClick={onClick}
     >
       <div className="flex min-w-0 items-center justify-start gap-3">
         {icon}
-        <div className="flex min-w-0 flex-1 flex-col items-start justify-between">
+        <div className="flex min-w-0 flex-1 flex-col items-start justify-between gap-0">
           <div className="flex w-full items-center justify-between">
             <Text
               variant="body-medium"
@@ -41,7 +41,7 @@ export function RunSidebarCard({
             </Text>
             {statusBadge}
           </div>
-          <Text variant="small" className="!text-zinc-500">
+          <Text variant="body" className="leading-tight !text-zinc-500">
             {description}
           </Text>
         </div>

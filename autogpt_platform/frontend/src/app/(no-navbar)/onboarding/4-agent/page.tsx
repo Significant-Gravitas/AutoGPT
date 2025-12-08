@@ -1,6 +1,4 @@
 "use client";
-import { StoreAgentDetails } from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -13,15 +11,17 @@ import {
   OnboardingStep,
 } from "../components/OnboardingStep";
 import { OnboardingText } from "../components/OnboardingText";
+import { getV1RecommendedOnboardingAgents } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { resolveResponse } from "@/app/api/helpers";
+import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 
 export default function Page() {
   const { state, updateState, completeStep } = useOnboarding(4, "INTEGRATIONS");
   const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
-  const api = useBackendAPI();
   const router = useRouter();
 
   useEffect(() => {
-    api.getOnboardingAgents().then((agents) => {
+    resolveResponse(getV1RecommendedOnboardingAgents()).then((agents) => {
       if (agents.length < 2) {
         completeStep("CONGRATS");
         router.replace("/");

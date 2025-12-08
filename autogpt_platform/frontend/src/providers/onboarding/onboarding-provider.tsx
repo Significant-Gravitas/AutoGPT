@@ -10,7 +10,10 @@ import {
 } from "@/components/__legacy__/ui/dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
-import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
+import {
+  UserOnboarding,
+  WebSocketNotification,
+} from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import Link from "next/link";
@@ -25,28 +28,37 @@ import {
   useState,
 } from "react";
 import {
-  calculateConsecutiveDays,
-  createInitialOnboardingState,
-  getRunMilestoneSteps,
-  processOnboardingData,
+  updateOnboardingState,
+  fromBackendUserOnboarding,
   shouldRedirectFromOnboarding,
+  LocalOnboardingStateUpdate,
 } from "./helpers";
+import { resolveResponse } from "@/app/api/helpers";
+import {
+  getV1IsOnboardingEnabled,
+  getV1OnboardingState,
+  patchV1UpdateOnboardingState,
+  postV1CompleteOnboardingStep,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { PostV1CompleteOnboardingStepStep } from "@/app/api/__generated__/models/postV1CompleteOnboardingStepStep";
+
+type FrontendOnboardingStep = PostV1CompleteOnboardingStepStep;
 
 const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
-      updateState: (
-        state: Omit<Partial<UserOnboarding>, "rewardedFor">,
-      ) => void;
+      updateState: (state: LocalOnboardingStateUpdate) => void;
       step: number;
       setStep: (step: number) => void;
-      completeStep: (step: OnboardingStep) => void;
-      incrementRuns: () => void;
+      completeStep: (step: FrontendOnboardingStep) => void;
     }
   | undefined
 >(undefined);
 
-export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
+export function useOnboarding(
+  step?: number,
+  completeStep?: FrontendOnboardingStep,
+) {
   const context = useContext(OnboardingContext);
 
   if (!context)
@@ -56,15 +68,13 @@ export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
     if (
       !completeStep ||
       !context.state ||
-      !context.state.completedSteps ||
       context.state.completedSteps.includes(completeStep)
-    )
+    ) {
       return;
+    }
 
-    context.updateState({
-      completedSteps: [...context.state.completedSteps, completeStep],
-    });
-  }, [completeStep, context, context.updateState]);
+    context.completeStep(completeStep);
+  }, [completeStep, context]);
 
   useEffect(() => {
     if (step && context.step !== step) {
@@ -113,6 +123,15 @@ export default function OnboardingProvider({
 
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");
 
+  const fetchOnboarding = useCallback(async () => {
+    const onboarding = await resolveResponse(getV1OnboardingState());
+    const processedOnboarding = fromBackendUserOnboarding(onboarding);
+    if (isMounted.current) {
+      setState(processedOnboarding);
+    }
+    return processedOnboarding;
+  }, []);
+
   useEffect(() => {
     // Prevent multiple initializations
     if (hasInitialized.current || !isLoggedIn) {
@@ -125,26 +144,19 @@ export default function OnboardingProvider({
       try {
         // Check onboarding enabled only for onboarding routes
         if (isOnOnboardingRoute) {
-          const enabled = await api.isOnboardingEnabled();
+          const enabled = await resolveResponse(getV1IsOnboardingEnabled());
           if (!enabled) {
             router.push("/marketplace");
             return;
           }
         }
 
-        const onboarding = await api.getUserOnboarding();
-        if (!onboarding) return;
-
-        const processedOnboarding = processOnboardingData(onboarding);
-        setState(processedOnboarding);
+        const onboarding = await fetchOnboarding();
 
         // Handle redirects for completed onboarding
         if (
           isOnOnboardingRoute &&
-          shouldRedirectFromOnboarding(
-            processedOnboarding.completedSteps,
-            pathname,
-          )
+          shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
           router.push("/marketplace");
         }
@@ -163,21 +175,53 @@ export default function OnboardingProvider({
     initializeOnboarding();
   }, [api, isOnOnboardingRoute, router, isLoggedIn, pathname]);
 
-  const updateState = useCallback(
-    (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
-      if (!isLoggedIn || !isMounted.current) return;
+  const handleOnboardingNotification = useCallback(
+    (notification: WebSocketNotification) => {
+      if (!isLoggedIn || notification.type !== "onboarding") {
+        return;
+      }
 
-      // Update local state immediately
-      setState((prev) => {
-        if (!prev) {
-          return createInitialOnboardingState(newState);
-        }
-        return { ...prev, ...newState };
+      if (notification.step === "RUN_AGENTS") {
+        setNpsDialogOpen(true);
+      }
+
+      fetchOnboarding().catch((error) => {
+        console.error(
+          "Failed to refresh onboarding after notification:",
+          error,
+        );
       });
+    },
+    [fetchOnboarding, isLoggedIn],
+  );
+
+  useEffect(() => {
+    const detachMessage = api.onWebSocketMessage(
+      "notification",
+      handleOnboardingNotification,
+    );
+
+    if (isLoggedIn) {
+      api.connectWebSocket();
+    }
+
+    return () => {
+      detachMessage();
+    };
+  }, [api, handleOnboardingNotification, isLoggedIn]);
+
+  const updateState = useCallback(
+    (newState: LocalOnboardingStateUpdate) => {
+      if (!isLoggedIn) {
+        return;
+      }
+
+      setState((prev) => updateOnboardingState(prev, newState));
 
       const updatePromise = (async () => {
         try {
-          await api.updateUserOnboarding(newState);
+          if (!isMounted.current) return;
+          await patchV1UpdateOnboardingState(newState);
         } catch (error) {
           console.error("Failed to update user onboarding:", error);
 
@@ -188,58 +232,54 @@ export default function OnboardingProvider({
         }
       })();
 
-      // Track this pending update
       pendingUpdatesRef.current.add(updatePromise);
 
       updatePromise.finally(() => {
         pendingUpdatesRef.current.delete(updatePromise);
       });
     },
-    [api, isLoggedIn, isMounted],
+    [toast, isLoggedIn, fetchOnboarding, api, setState],
   );
 
   const completeStep = useCallback(
-    (step: OnboardingStep) => {
-      if (!state?.completedSteps?.includes(step)) {
-        updateState({
-          completedSteps: [...(state?.completedSteps || []), step],
-        });
+    (step: FrontendOnboardingStep) => {
+      if (!isLoggedIn || state?.completedSteps?.includes(step)) {
+        return;
       }
+
+      const completionPromise = (async () => {
+        try {
+          await postV1CompleteOnboardingStep({ step });
+          await fetchOnboarding();
+        } catch (error) {
+          if (isMounted.current) {
+            console.error("Failed to complete onboarding step:", error);
+          }
+
+          toast({
+            title: "Failed to complete onboarding step",
+            variant: "destructive",
+          });
+        }
+      })();
+
+      pendingUpdatesRef.current.add(completionPromise);
+      completionPromise.finally(() => {
+        pendingUpdatesRef.current.delete(completionPromise);
+      });
     },
-    [state?.completedSteps, updateState],
+    [isLoggedIn, state?.completedSteps, fetchOnboarding, toast],
   );
-
-  const incrementRuns = useCallback(() => {
-    if (!state?.completedSteps) return;
-
-    const newRunCount = state.agentRuns + 1;
-    const consecutiveData = calculateConsecutiveDays(
-      state.lastRunAt,
-      state.consecutiveRunDays,
-    );
-
-    const milestoneSteps = getRunMilestoneSteps(
-      newRunCount,
-      consecutiveData.consecutiveRunDays,
-    );
-
-    // Show NPS dialog at 10 runs
-    if (newRunCount === 10) {
-      setNpsDialogOpen(true);
-    }
-
-    updateState({
-      agentRuns: newRunCount,
-      completedSteps: Array.from(
-        new Set([...state.completedSteps, ...milestoneSteps]),
-      ),
-      ...consecutiveData,
-    });
-  }, [state, updateState]);
 
   return (
     <OnboardingContext.Provider
-      value={{ state, updateState, step, setStep, completeStep, incrementRuns }}
+      value={{
+        state,
+        updateState,
+        step,
+        setStep,
+        completeStep,
+      }}
     >
       <Dialog onOpenChange={setNpsDialogOpen} open={npsDialogOpen}>
         <DialogContent>

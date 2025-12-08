@@ -83,8 +83,8 @@ export function RunOutputs({ outputs }: RunOutputsProps) {
   }
 
   return (
-    <div className="relative flex flex-col gap-4">
-      <div className="absolute -top-3 right-0 z-10">
+    <div className="flex flex-col gap-4">
+      <div className="absolute right-3 top-3 z-10">
         <OutputActions
           items={items.map((item) => ({
             value: item.value,

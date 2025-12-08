@@ -7,6 +7,7 @@ import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { APIKeyCredentialsModal } from "./models/APIKeyCredentialModal/APIKeyCredentialModal";
 import { OAuthCredentialModal } from "./models/OAuthCredentialModal/OAuthCredentialModal";
 import { PasswordCredentialsModal } from "./models/PasswordCredentialModal/PasswordCredentialModal";
+import { HostScopedCredentialsModal } from "./models/HostScopedCredentialsModal/HostScopedCredentialsModal";
 
 export const CredentialsField = (props: FieldProps) => {
   const {
@@ -22,9 +23,11 @@ export const CredentialsField = (props: FieldProps) => {
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,
+    supportsHostScoped,
     credentialsExists,
     credentialProvider,
     setCredential,
+    discriminatorValue,
   } = useCredentialField({
     credentialSchema: schema as BlockIOCredentialsSubSchema,
     formData,
@@ -70,6 +73,13 @@ export const CredentialsField = (props: FieldProps) => {
         )}
         {supportsUserPassword && (
           <PasswordCredentialsModal provider={credentialProvider} />
+        )}
+        {supportsHostScoped && discriminatorValue && (
+          <HostScopedCredentialsModal
+            schema={schema as BlockIOCredentialsSubSchema}
+            provider={credentialProvider}
+            discriminatorValue={discriminatorValue}
+          />
         )}
       </div>
     </div>

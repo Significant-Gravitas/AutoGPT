@@ -9,6 +9,8 @@ import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 import { useState } from "react";
 import { useSaveGraph } from "@/app/(platform)/build/hooks/useSaveGraph";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { ApiError } from "@/lib/autogpt-server-api/helpers"; // Check if this exists
 
 export const useRunGraph = () => {
   const { saveGraph, isSaving } = useSaveGraph({
@@ -24,6 +26,13 @@ export const useRunGraph = () => {
   );
   const [openRunInputDialog, setOpenRunInputDialog] = useState(false);
 
+  const setNodeErrorsForBackendId = useNodeStore(
+    useShallow((state) => state.setNodeErrorsForBackendId),
+  );
+  const clearAllNodeErrors = useNodeStore(
+    useShallow((state) => state.clearAllNodeErrors),
+  );
+
   const [{ flowID, flowVersion, flowExecutionID }, setQueryStates] =
     useQueryStates({
       flowID: parseAsString,
@@ -35,19 +44,49 @@ export const useRunGraph = () => {
     usePostV1ExecuteGraphAgent({
       mutation: {
         onSuccess: (response: any) => {
+          clearAllNodeErrors();
           const { id } = response.data as GraphExecutionMeta;
           setQueryStates({
             flowExecutionID: id,
           });
         },
         onError: (error: any) => {
-          // Reset running state on error
           setIsGraphRunning(false);
-          toast({
-            title: (error.detail as string) ?? "An unexpected error occurred.",
-            description: "An unexpected error occurred.",
-            variant: "destructive",
-          });
+          if (error instanceof ApiError && error.isGraphValidationError?.()) {
+            const errorData = error.response?.detail;
+
+            if (errorData?.node_errors) {
+              Object.entries(errorData.node_errors).forEach(
+                ([backendId, nodeErrors]) => {
+                  setNodeErrorsForBackendId(
+                    backendId,
+                    nodeErrors as { [key: string]: string },
+                  );
+                },
+              );
+
+              useNodeStore.getState().nodes.forEach((node) => {
+                const backendId = node.data.metadata?.backend_id || node.id;
+                if (!errorData.node_errors[backendId as string]) {
+                  useNodeStore.getState().updateNodeErrors(node.id, {});
+                }
+              });
+            }
+
+            toast({
+              title: errorData?.message || "Graph validation failed",
+              description:
+                "Please fix the validation errors on the highlighted nodes and try again.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title:
+                (error.detail as string) ?? "An unexpected error occurred.",
+              description: "An unexpected error occurred.",
+              variant: "destructive",
+            });
+          }
         },
       },
     });
@@ -77,7 +116,7 @@ export const useRunGraph = () => {
       await executeGraph({
         graphId: flowID ?? "",
         graphVersion: flowVersion || null,
-        data: { inputs: {}, credentials_inputs: {} },
+        data: { inputs: {}, credentials_inputs: {}, source: "builder" },
       });
     }
   };

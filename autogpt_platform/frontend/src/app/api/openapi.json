@@ -827,12 +827,16 @@
     "/api/onboarding": {
       "get": {
         "tags": ["v1", "onboarding"],
-        "summary": "Get onboarding status",
-        "operationId": "getV1Get onboarding status",
+        "summary": "Onboarding state",
+        "operationId": "getV1Onboarding state",
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserOnboarding" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -842,8 +846,8 @@
       },
       "patch": {
         "tags": ["v1", "onboarding"],
-        "summary": "Update onboarding progress",
-        "operationId": "patchV1Update onboarding progress",
+        "summary": "Update onboarding state",
+        "operationId": "patchV1Update onboarding state",
         "requestBody": {
           "content": {
             "application/json": {
@@ -855,7 +859,11 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserOnboarding" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -872,15 +880,70 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/agents": {
-      "get": {
+    "/api/onboarding/step": {
+      "post": {
         "tags": ["v1", "onboarding"],
-        "summary": "Get recommended agents",
-        "operationId": "getV1Get recommended agents",
+        "summary": "Complete onboarding step",
+        "operationId": "postV1Complete onboarding step",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "step",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "WELCOME",
+                "USAGE_REASON",
+                "INTEGRATIONS",
+                "AGENT_CHOICE",
+                "AGENT_NEW_RUN",
+                "AGENT_INPUT",
+                "CONGRATS",
+                "MARKETPLACE_VISIT",
+                "BUILDER_OPEN"
+              ],
+              "type": "string",
+              "title": "Step"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/onboarding/agents": {
+      "get": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Recommended onboarding agents",
+        "operationId": "getV1Recommended onboarding agents",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/StoreAgentDetails" },
+                  "type": "array",
+                  "title": "Response Getv1Recommended Onboarding Agents"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -892,12 +955,19 @@
     "/api/onboarding/enabled": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
-        "summary": "Check onboarding enabled",
-        "operationId": "getV1Check onboarding enabled",
+        "summary": "Is onboarding enabled",
+        "operationId": "getV1Is onboarding enabled",
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean",
+                  "title": "Response Getv1Is Onboarding Enabled"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -914,7 +984,11 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserOnboarding" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -5343,7 +5417,10 @@
           "EXECUTE_BLOCK",
           "READ_BLOCK",
           "READ_STORE",
-          "USE_TOOLS"
+          "USE_TOOLS",
+          "MANAGE_INTEGRATIONS",
+          "READ_INTEGRATIONS",
+          "DELETE_INTEGRATIONS"
         ],
         "title": "APIKeyPermission"
       },
@@ -5662,6 +5739,16 @@
             },
             "type": "object",
             "title": "Credentials Inputs"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["builder", "library", "onboarding"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Source"
           }
         },
         "type": "object",
@@ -5709,6 +5796,12 @@
           "store_listing_version_id": {
             "type": "string",
             "title": "Store Listing Version Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["onboarding", "marketplace"],
+            "title": "Source",
+            "default": "marketplace"
           }
         },
         "type": "object",
@@ -5816,7 +5909,16 @@
         "title": "CreateAPIKeyResponse"
       },
       "CreateGraph": {
-        "properties": { "graph": { "$ref": "#/components/schemas/Graph" } },
+        "properties": {
+          "graph": { "$ref": "#/components/schemas/Graph" },
+          "source": {
+            "anyOf": [
+              { "type": "string", "enum": ["builder", "upload"] },
+              { "type": "null" }
+            ],
+            "title": "Source"
+          }
+        },
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
@@ -8583,6 +8685,10 @@
           "slug": { "type": "string", "title": "Slug" },
           "agent_name": { "type": "string", "title": "Agent Name" },
           "agent_video": { "type": "string", "title": "Agent Video" },
+          "agent_output_demo": {
+            "type": "string",
+            "title": "Agent Output Demo"
+          },
           "agent_image": {
             "items": { "type": "string" },
             "type": "array",
@@ -8633,6 +8739,7 @@
           "slug",
           "agent_name",
           "agent_video",
+          "agent_output_demo",
           "agent_image",
           "creator",
           "creator_avatar",
@@ -8800,6 +8907,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
           },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -8830,6 +8941,10 @@
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
           },
           "image_urls": {
             "items": { "type": "string" },
@@ -8875,6 +8990,10 @@
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
           },
           "image_urls": {
             "items": { "type": "string" },
@@ -10286,18 +10405,87 @@
         "title": "UserHistoryResponse",
         "description": "Response model for listings with version history"
       },
-      "UserOnboardingUpdate": {
+      "UserOnboarding": {
         "properties": {
+          "userId": { "type": "string", "title": "Userid" },
           "completedSteps": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/OnboardingStep" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
+            "items": { "$ref": "#/components/schemas/OnboardingStep" },
+            "type": "array",
             "title": "Completedsteps"
           },
+          "walletShown": { "type": "boolean", "title": "Walletshown" },
+          "notified": {
+            "items": { "$ref": "#/components/schemas/OnboardingStep" },
+            "type": "array",
+            "title": "Notified"
+          },
+          "rewardedFor": {
+            "items": { "$ref": "#/components/schemas/OnboardingStep" },
+            "type": "array",
+            "title": "Rewardedfor"
+          },
+          "usageReason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usagereason"
+          },
+          "integrations": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Integrations"
+          },
+          "otherIntegrations": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Otherintegrations"
+          },
+          "selectedStoreListingVersionId": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Selectedstorelistingversionid"
+          },
+          "agentInput": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Agentinput"
+          },
+          "onboardingAgentExecutionId": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Onboardingagentexecutionid"
+          },
+          "agentRuns": { "type": "integer", "title": "Agentruns" },
+          "lastRunAt": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Lastrunat"
+          },
+          "consecutiveRunDays": {
+            "type": "integer",
+            "title": "Consecutiverundays"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "completedSteps",
+          "walletShown",
+          "notified",
+          "rewardedFor",
+          "usageReason",
+          "integrations",
+          "otherIntegrations",
+          "selectedStoreListingVersionId",
+          "agentInput",
+          "onboardingAgentExecutionId",
+          "agentRuns",
+          "lastRunAt",
+          "consecutiveRunDays"
+        ],
+        "title": "UserOnboarding"
+      },
+      "UserOnboardingUpdate": {
+        "properties": {
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"
@@ -10341,21 +10529,6 @@
           "onboardingAgentExecutionId": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Onboardingagentexecutionid"
-          },
-          "agentRuns": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Agentruns"
-          },
-          "lastRunAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Lastrunat"
-          },
-          "consecutiveRunDays": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Consecutiverundays"
           }
         },
         "type": "object",
