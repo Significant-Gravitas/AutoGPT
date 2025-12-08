@@ -670,12 +670,6 @@ class AgentGoogleDriveFileInputBlock(AgentInputBlock):
             advanced=False,
             title="Allowed Views",
         )
-        multiselect: bool = SchemaField(
-            description="Whether to allow selecting multiple files.",
-            default=False,
-            advanced=True,
-            title="Allow Multiple Selection",
-        )
         allow_folder_selection: bool = SchemaField(
             description="Whether to allow selecting folders.",
             default=False,
@@ -692,7 +686,7 @@ class AgentGoogleDriveFileInputBlock(AgentInputBlock):
 
             # Build picker configuration
             picker_config = {
-                "multiselect": self.multiselect,
+                "multiselect": False,  # Single file selection only for now
                 "allow_folder_selection": self.allow_folder_selection,
                 "allowed_views": (
                     list(self.allowed_views) if self.allowed_views else ["DOCS"]

@@ -1,4 +1,7 @@
-import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import {
+  API_KEY_HEADER_NAME,
+  IMPERSONATION_HEADER_NAME,
+} from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
@@ -153,6 +156,12 @@ export function createRequestHeaders(
     );
     if (impersonationHeader) {
       headers[IMPERSONATION_HEADER_NAME] = impersonationHeader;
+    }
+
+    // Forward X-API-Key header if present
+    const apiKeyHeader = originalRequest.headers.get(API_KEY_HEADER_NAME);
+    if (apiKeyHeader) {
+      headers[API_KEY_HEADER_NAME] = apiKeyHeader;
     }
   }
 

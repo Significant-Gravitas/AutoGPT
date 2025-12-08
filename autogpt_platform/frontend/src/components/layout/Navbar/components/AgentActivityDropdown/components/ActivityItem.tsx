@@ -89,9 +89,11 @@ export function ActivityItem({ execution }: Props) {
   }
 
   // Determine the tab based on execution status
-  const tabParam =
-    execution.status === AgentExecutionStatus.REVIEW ? "&tab=reviews" : "";
-  const linkUrl = `/library/agents/${execution.library_agent_id}?executionId=${execution.id}${tabParam}`;
+  const searchParams = new URLSearchParams();
+  const isReview = execution.status === AgentExecutionStatus.REVIEW;
+  searchParams.set("activeTab", isReview ? "reviews" : "runs");
+  searchParams.set("activeItem", execution.id);
+  const linkUrl = `/library/agents/${execution.library_agent_id}?${searchParams.toString()}`;
   const withExecutionLink = execution.library_agent_id && execution.id;
 
   const content = (
