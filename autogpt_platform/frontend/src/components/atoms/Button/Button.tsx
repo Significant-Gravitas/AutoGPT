@@ -15,6 +15,7 @@ export function Button(props: ButtonProps) {
     variant,
     size,
     loading = false,
+    withTooltip = true,
     leftIcon,
     rightIcon,
     children,
@@ -28,7 +29,9 @@ export function Button(props: ButtonProps) {
   // Extract aria-label for tooltip on icon variant
   const ariaLabel =
     "aria-label" in restProps ? restProps["aria-label"] : undefined;
-  const shouldShowTooltip = variant === "icon" && ariaLabel && !loading;
+
+  const shouldShowTooltip =
+    variant === "icon" && ariaLabel && !loading && withTooltip;
 
   // Helper to wrap button with tooltip if needed
   const wrapWithTooltip = (buttonElement: React.ReactElement) => {

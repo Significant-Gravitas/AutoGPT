@@ -1,17 +1,14 @@
-import {
-  IconKey,
-  IconKeyPlus,
-  IconUserPlus,
-} from "@/components/__legacy__/ui/icons";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/__legacy__/ui/select";
+import { useDeleteV1DeleteCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
+import { IconKey } from "@/components/__legacy__/ui/icons";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -20,9 +17,12 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
-import { getHostFromUrl } from "@/lib/utils/url";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { toDisplayName } from "@/providers/agent-credentials/helper";
+import { DotsThreeVertical } from "@phosphor-icons/react";
 import { NotionLogoIcon } from "@radix-ui/react-icons";
-import { FC, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useContext, useEffect, useMemo, useState } from "react";
 import {
   FaDiscord,
   FaGithub,
@@ -32,10 +32,10 @@ import {
   FaMedium,
   FaTwitter,
 } from "react-icons/fa";
-import { APIKeyCredentialsModal } from "./APIKeyCredentialsModal/APIKeyCredentialsModal";
-import { HostScopedCredentialsModal } from "./HotScopedCredentialsModal/HotScopedCredentialsModal";
-import { OAuthFlowWaitingModal } from "./OAuthWaitingModal/OAuthWaitingModal";
-import { PasswordCredentialsModal } from "./PasswordCredentialsModal/PasswordCredentialsModal";
+import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
+import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
+import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
+import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
 
 const fallbackIcon = FaKey;
 
@@ -98,7 +98,7 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
     }
 );
 
-export const CredentialsInput: FC<{
+type Props = {
   schema: BlockIOCredentialsSubSchema;
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
@@ -106,7 +106,9 @@ export const CredentialsInput: FC<{
   siblingInputs?: Record<string, any>;
   hideIfSingleCredentialAvailable?: boolean;
   onLoaded?: (loaded: boolean) => void;
-}> = ({
+};
+
+export function CredentialsInput({
   schema,
   className,
   selectedCredentials,
@@ -114,7 +116,7 @@ export const CredentialsInput: FC<{
   siblingInputs,
   hideIfSingleCredentialAvailable = true,
   onLoaded,
-}) => {
+}: Props) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
   const [
@@ -127,9 +129,37 @@ export const CredentialsInput: FC<{
   const [oAuthPopupController, setOAuthPopupController] =
     useState<AbortController | null>(null);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
+  const [credentialToDelete, setCredentialToDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const api = useBackendAPI();
+  const queryClient = useQueryClient();
   const credentials = useCredentials(schema, siblingInputs);
+  const allProviders = useContext(CredentialsProvidersContext);
+
+  const deleteCredentialsMutation = useDeleteV1DeleteCredentials({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: ["/api/integrations/credentials"],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/integrations/${credentials?.provider}/credentials`],
+        });
+        setCredentialToDelete(null);
+        if (selectedCredentials?.id === credentialToDelete?.id) {
+          onSelectCredentials(undefined);
+        }
+      },
+    },
+  });
+
+  // Get the raw provider data to access ALL saved credentials (not filtered)
+  const rawProvider = credentials
+    ? allProviders?.[credentials.provider as keyof typeof allProviders]
+    : null;
 
   // Report loaded state to parent
   useEffect(() => {
@@ -149,16 +179,12 @@ export const CredentialsInput: FC<{
     }
   }, [credentials, selectedCredentials, onSelectCredentials]);
 
-  const { hasRelevantCredentials, singleCredential } = useMemo(() => {
+  const { singleCredential } = useMemo(() => {
     if (!credentials || !("savedCredentials" in credentials)) {
       return {
-        hasRelevantCredentials: false,
         singleCredential: null,
       };
     }
-
-    // Simple logic: if we have any saved credentials, we have relevant credentials
-    const hasRelevant = credentials.savedCredentials.length > 0;
 
     // Auto-select single credential if only one exists
     const single =
@@ -167,23 +193,32 @@ export const CredentialsInput: FC<{
         : null;
 
     return {
-      hasRelevantCredentials: hasRelevant,
       singleCredential: single,
     };
   }, [credentials]);
 
-  // If only 1 credential is available, auto-select it and hide this input
+  // If only 1 credential is available, auto-select it
   useEffect(() => {
-    if (singleCredential && !selectedCredentials) {
+    if (
+      singleCredential &&
+      !selectedCredentials &&
+      hideIfSingleCredentialAvailable
+    ) {
       onSelectCredentials(singleCredential);
     }
-  }, [singleCredential, selectedCredentials, onSelectCredentials]);
+  }, [
+    singleCredential,
+    selectedCredentials,
+    onSelectCredentials,
+    hideIfSingleCredentialAvailable,
+  ]);
 
-  if (
-    !credentials ||
-    credentials.isLoading ||
-    (singleCredential && hideIfSingleCredentialAvailable)
-  ) {
+  if (!credentials || credentials.isLoading) {
+    return null;
+  }
+
+  // Type guard to ensure we have the loaded credentials data
+  if (!("savedCredentials" in credentials)) {
     return null;
   }
 
@@ -336,167 +371,201 @@ export const CredentialsInput: FC<{
     </>
   );
 
-  const fieldHeader = (
-    <div className="mb-2 flex gap-1">
-      <span className="text-m green text-gray-900">
-        {providerName} Credentials
-      </span>
-      <InformationTooltip description={schema.description} />
-    </div>
-  );
-
-  // Show credentials creation UI when no relevant credentials exist
-  if (!hasRelevantCredentials) {
-    return (
-      <div className="mb-4">
-        {fieldHeader}
-
-        <div className={cn("flex flex-row space-x-2", className)}>
-          {supportsOAuth2 && (
-            <Button onClick={handleOAuthLogin} size="small">
-              <ProviderIcon className="mr-2 h-4 w-4" />
-              {"Sign in with " + providerName}
-            </Button>
-          )}
-          {supportsApiKey && (
-            <Button
-              onClick={() => setAPICredentialsModalOpen(true)}
-              size="small"
-            >
-              <ProviderIcon className="mr-2 h-4 w-4" />
-              Enter API key
-            </Button>
-          )}
-          {supportsUserPassword && (
-            <Button
-              onClick={() => setUserPasswordCredentialsModalOpen(true)}
-              size="small"
-            >
-              <ProviderIcon className="mr-2 h-4 w-4" />
-              Enter username and password
-            </Button>
-          )}
-          {supportsHostScoped && credentials.discriminatorValue && (
-            <Button
-              onClick={() => setHostScopedCredentialsModalOpen(true)}
-              size="small"
-            >
-              <ProviderIcon className="mr-2 h-4 w-4" />
-              {`Enter sensitive headers for ${getHostFromUrl(credentials.discriminatorValue)}`}
-            </Button>
-          )}
-        </div>
-        {modals}
-        {oAuthError && (
-          <div className="mt-2 text-red-500">Error: {oAuthError}</div>
-        )}
-      </div>
-    );
+  function getActionButtonText(): string {
+    if (supportsOAuth2) return "Connect a different account";
+    if (supportsApiKey) return "Use a different API key";
+    if (supportsUserPassword) return "Use a different username and password";
+    if (supportsHostScoped) return "Use different headers";
+    return "Add credentials";
   }
 
-  function handleValueChange(newValue: string) {
-    if (newValue === "sign-in") {
-      // Trigger OAuth2 sign in flow
+  function handleActionButtonClick() {
+    if (supportsOAuth2) {
       handleOAuthLogin();
-    } else if (newValue === "add-api-key") {
-      // Open API key dialog
+    } else if (supportsApiKey) {
       setAPICredentialsModalOpen(true);
-    } else if (newValue === "add-user-password") {
-      // Open user password dialog
+    } else if (supportsUserPassword) {
       setUserPasswordCredentialsModalOpen(true);
-    } else if (newValue === "add-host-scoped") {
-      // Open host-scoped credentials dialog
+    } else if (supportsHostScoped) {
       setHostScopedCredentialsModalOpen(true);
-    } else {
-      const selectedCreds = savedCredentials.find((c) => c.id == newValue)!;
+    }
+  }
 
+  function handleCredentialSelect(credentialId: string) {
+    const selectedCreds =
+      savedCredentials.find((c) => c.id === credentialId) ||
+      (selectedCredentials?.id === credentialId ? selectedCredentials : null);
+    if (selectedCreds) {
       onSelectCredentials({
         id: selectedCreds.id,
         type: selectedCreds.type,
         provider: provider,
-        // title: customTitle, // TODO: add input for title
+        title: (selectedCreds as any).title,
       });
     }
   }
 
-  // Saved credentials exist
-  return (
-    <div>
-      {fieldHeader}
+  const displayName = toDisplayName(provider);
 
-      <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
-        <SelectTrigger>
-          <SelectValue placeholder={schema.placeholder} />
-        </SelectTrigger>
-        <SelectContent className="nodrag">
-          {savedCredentials
-            .filter((c) => c.type == "oauth2")
-            .map((credentials, index) => (
-              <SelectItem key={index} value={credentials.id}>
-                <ProviderIcon className="mr-2 inline h-4 w-4" />
-                {credentials.title ||
-                  credentials.username ||
-                  `Your ${providerName} account`}
-              </SelectItem>
-            ))}
-          {savedCredentials
-            .filter((c) => c.type == "api_key")
-            .map((credentials, index) => (
-              <SelectItem key={index} value={credentials.id}>
-                <ProviderIcon className="mr-2 inline h-4 w-4" />
-                <IconKey className="mr-1.5 inline" />
-                {credentials.title}
-              </SelectItem>
-            ))}
-          {savedCredentials
-            .filter((c) => c.type == "user_password")
-            .map((credentials, index) => (
-              <SelectItem key={index} value={credentials.id}>
-                <ProviderIcon className="mr-2 inline h-4 w-4" />
-                <IconUserPlus className="mr-1.5 inline" />
-                {credentials.title}
-              </SelectItem>
-            ))}
-          {savedCredentials
-            .filter((c) => c.type == "host_scoped")
-            .map((credentials, index) => (
-              <SelectItem key={index} value={credentials.id}>
-                <ProviderIcon className="mr-2 inline h-4 w-4" />
-                <IconKey className="mr-1.5 inline" />
-                {credentials.title}
-              </SelectItem>
-            ))}
-          <SelectSeparator />
-          {supportsOAuth2 && (
-            <SelectItem value="sign-in">
-              <IconUserPlus className="mr-1.5 inline" />
-              Sign in with {providerName}
-            </SelectItem>
-          )}
-          {supportsApiKey && (
-            <SelectItem value="add-api-key">
-              <IconKeyPlus className="mr-1.5 inline" />
-              Add new API key
-            </SelectItem>
-          )}
-          {supportsUserPassword && (
-            <SelectItem value="add-user-password">
-              <IconUserPlus className="mr-1.5 inline" />
-              Add new user password
-            </SelectItem>
-          )}
-          {supportsHostScoped && (
-            <SelectItem value="add-host-scoped">
-              <IconKey className="mr-1.5 inline" />
-              Add host-scoped headers
-            </SelectItem>
-          )}
-        </SelectContent>
-      </Select>
+  // Use raw provider credentials (all saved credentials) instead of filtered ones
+  // The filtering in useCredentials is for compatibility checking, but we want to show all credentials
+  const allSavedCredentials = rawProvider?.savedCredentials || savedCredentials;
+
+  // Combine saved credentials with selected credential if it's not already in the list
+  const credentialsToShow = (() => {
+    const creds = [...allSavedCredentials];
+    if (
+      selectedCredentials &&
+      !creds.some((c) => c.id === selectedCredentials.id)
+    ) {
+      // If selected credential is not in saved list, add it
+      creds.push({
+        id: selectedCredentials.id,
+        type: selectedCredentials.type,
+        title: selectedCredentials.title || "Selected credential",
+        provider: provider,
+      } as any);
+    }
+    return creds;
+  })();
+
+  const hasCredentialsToShow = credentialsToShow.length > 0;
+
+  return (
+    <div className={cn("mb-6", className)}>
+      <div className="mb-2 flex items-center gap-2">
+        <Text variant="large-medium">{displayName} credentials</Text>
+        <InformationTooltip description={schema.description} />
+      </div>
+
+      {hasCredentialsToShow ? (
+        <>
+          <div className="mb-4 space-y-2">
+            {credentialsToShow.map((credential) => {
+              const isSelected = selectedCredentials?.id === credential.id;
+              return (
+                <div
+                  key={credential.id}
+                  className={cn(
+                    "flex items-center gap-3 rounded-medium border p-3 transition-colors",
+                    isSelected
+                      ? "border-purple-500 bg-white"
+                      : "border-zinc-200 bg-white hover:border-gray-300",
+                  )}
+                  onClick={() => handleCredentialSelect(credential.id)}
+                >
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900">
+                    <ProviderIcon className="h-3 w-3 text-white" />
+                  </div>
+                  <IconKey className="h-5 w-5 shrink-0 text-zinc-800" />
+                  <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-4">
+                    <Text variant="body" className="tracking-tight">
+                      {credential.title ||
+                        credential.username ||
+                        `Your ${displayName} account`}
+                    </Text>
+                    <Text
+                      variant="large"
+                      className="relative top-1 font-mono tracking-tight"
+                    >
+                      {"*".repeat(30)}
+                    </Text>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <DotsThreeVertical className="h-5 w-5 text-gray-400" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCredentialToDelete({
+                            id: credential.id,
+                            title:
+                              credential.title ||
+                              credential.username ||
+                              `Your ${displayName} account`,
+                          });
+                        }}
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            })}
+          </div>
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={handleActionButtonClick}
+            className="w-fit"
+          >
+            {getActionButtonText()}
+          </Button>
+        </>
+      ) : (
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={handleActionButtonClick}
+          className="w-fit"
+        >
+          {getActionButtonText()}
+        </Button>
+      )}
+
       {modals}
       {oAuthError && (
         <div className="mt-2 text-red-500">Error: {oAuthError}</div>
       )}
+
+      <Dialog
+        controlled={{
+          isOpen: credentialToDelete !== null,
+          set: (open) => {
+            if (!open) setCredentialToDelete(null);
+          },
+        }}
+        title="Delete credential"
+        styling={{ maxWidth: "32rem" }}
+      >
+        <Dialog.Content>
+          <Text variant="large">
+            Are you sure you want to delete &quot;{credentialToDelete?.title}
+            &quot;? This action cannot be undone.
+          </Text>
+          <Dialog.Footer>
+            <Button
+              variant="secondary"
+              onClick={() => setCredentialToDelete(null)}
+              disabled={deleteCredentialsMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (credentialToDelete && credentials) {
+                  deleteCredentialsMutation.mutate({
+                    provider: credentials.provider,
+                    credId: credentialToDelete.id,
+                  });
+                }
+              }}
+              loading={deleteCredentialsMutation.isPending}
+            >
+              Delete
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
     </div>
   );
-};
+}
