@@ -26,12 +26,19 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
   const dynamicMenuItems = getAccountMenuItems(user?.role);
   const isChatEnabled = useGetFlag(Flag.CHAT);
 
-  const { data: profile } = useGetV2GetUserProfile({
-    query: {
-      select: (res) => (res.status === 200 ? res.data : null),
-      enabled: isLoggedIn,
+  const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
+    {
+      query: {
+        select: (res) => (res.status === 200 ? res.data : null),
+        enabled: isLoggedIn && !!user,
+        // Include user ID in query key to ensure cache invalidation when user changes
+        queryKey: ["/api/store/profile", user?.id],
+      },
     },
-  });
+  );
+
+  const { isUserLoading } = useSupabase();
+  const isLoadingProfile = isProfileLoading || isUserLoading;
 
   const linksWithChat = useMemo(() => {
     const chatLink = { name: "Chat", href: "/chat" };
@@ -46,7 +53,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
         {shouldShowPreviewBanner && previewBranchName ? (
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
-        <nav className="inline-flex h-[60px] w-full items-center border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px]">
+        <nav className="border-zinc-[#EFEFF0] inline-flex h-[60px] w-full items-center border border-[#EFEFF0] bg-[#F3F4F6]/20 p-3 backdrop-blur-[26px]">
           {/* Left section */}
           {!isSmallScreen ? (
             <div className="flex flex-1 items-center gap-5">
@@ -84,6 +91,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
                   userEmail={profile?.name}
                   avatarSrc={profile?.avatar_url ?? ""}
                   menuItemGroups={dynamicMenuItems}
+                  isLoading={isLoadingProfile}
                 />
               </div>
             </div>

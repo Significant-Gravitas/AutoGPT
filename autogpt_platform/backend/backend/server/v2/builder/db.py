@@ -8,6 +8,7 @@ from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
 from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
+from backend.data.db import query_raw_with_schema
 from backend.integrations.providers import ProviderName
 from backend.server.v2.builder.model import (
     BlockCategoryResponse,
@@ -389,8 +390,8 @@ async def get_suggested_blocks(count: int = 5) -> list[BlockInfo]:
         SELECT
             agent_node."agentBlockId" AS block_id,
             COUNT(execution.id) AS execution_count
-        FROM "AgentNodeExecution" execution
-        JOIN "AgentNode" agent_node ON execution."agentNodeId" = agent_node.id
+        FROM {schema_prefix}"AgentNodeExecution" execution
+        JOIN {schema_prefix}"AgentNode" agent_node ON execution."agentNodeId" = agent_node.id
         WHERE execution."endedTime" >= $1::timestamp
         GROUP BY agent_node."agentBlockId"
         ORDER BY execution_count DESC;

@@ -4,7 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useState } from "react";
 
 export const useNodeOutput = (nodeId: string) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const { toast } = useToast();
 

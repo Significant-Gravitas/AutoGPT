@@ -1,8 +1,11 @@
 import { create } from "zustand";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 
 interface GraphStore {
+  graphExecutionStatus: AgentExecutionStatus | undefined;
   isGraphRunning: boolean;
-  setIsGraphRunning: (isGraphRunning: boolean) => void;
+  setGraphExecutionStatus: (status: AgentExecutionStatus | undefined) => void;
+  setIsGraphRunning: (isRunning: boolean) => void;
 
   inputSchema: Record<string, any> | null;
   credentialsInputSchema: Record<string, any> | null;
@@ -21,12 +24,24 @@ interface GraphStore {
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
+  graphExecutionStatus: undefined,
   isGraphRunning: false,
   inputSchema: null,
   credentialsInputSchema: null,
   outputSchema: null,
 
-  setIsGraphRunning: (isGraphRunning: boolean) => set({ isGraphRunning }),
+  setGraphExecutionStatus: (status: AgentExecutionStatus | undefined) => {
+    set({
+      graphExecutionStatus: status,
+      isGraphRunning:
+        status === AgentExecutionStatus.RUNNING ||
+        status === AgentExecutionStatus.QUEUED,
+    });
+  },
+
+  setIsGraphRunning: (isRunning: boolean) => {
+    set({ isGraphRunning: isRunning });
+  },
 
   setGraphSchemas: (inputSchema, credentialsInputSchema, outputSchema) =>
     set({ inputSchema, credentialsInputSchema, outputSchema }),
@@ -48,6 +63,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   reset: () =>
     set({
+      graphExecutionStatus: undefined,
       isGraphRunning: false,
       inputSchema: null,
       credentialsInputSchema: null,

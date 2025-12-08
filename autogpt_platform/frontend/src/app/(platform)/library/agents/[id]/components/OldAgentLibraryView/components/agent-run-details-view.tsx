@@ -1,6 +1,6 @@
 "use client";
 import moment from "moment";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useEffect } from "react";
 
 import {
   Graph,
@@ -38,7 +38,8 @@ import { AgentRunStatus, agentRunStatusMap } from "./agent-run-status-chip";
 import useCredits from "@/hooks/useCredits";
 import { AgentRunOutputView } from "./agent-run-output-view";
 import { analytics } from "@/services/analytics";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
+import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 
 export function AgentRunDetailsView({
   agent,
@@ -65,9 +66,20 @@ export function AgentRunDetailsView({
     [run],
   );
 
-  const { completeStep } = useOnboarding();
+  const {
+    pendingReviews,
+    isLoading: reviewsLoading,
+    refetch: refetchReviews,
+  } = usePendingReviewsForExecution(run.id);
 
   const toastOnFail = useToastOnFail();
+
+  // Refetch pending reviews when execution status changes to REVIEW
+  useEffect(() => {
+    if (runStatus === "review" && run.id) {
+      refetchReviews();
+    }
+  }, [runStatus, run.id, refetchReviews]);
 
   const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
     if (!run) return [];
@@ -151,13 +163,13 @@ export function AgentRunDetailsView({
         graph.version,
         run.inputs!,
         run.credential_inputs!,
+        "library",
       )
       .then(({ id }) => {
         analytics.sendDatafastEvent("run_agent", {
           name: graph.name,
           id: graph.id,
         });
-        completeStep("RE_RUN_AGENT");
         onRun(id);
       })
       .catch(toastOnFail("execute agent"));
@@ -371,6 +383,32 @@ export function AgentRunDetailsView({
 
         {agentRunOutputs !== null && (
           <AgentRunOutputView agentRunOutputs={agentRunOutputs} />
+        )}
+
+        {/* Pending Reviews Section */}
+        {runStatus === "review" && (
+          <Card className="agpt-box">
+            <CardHeader>
+              <CardTitle className="font-poppins text-lg">
+                Pending Reviews ({pendingReviews.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {reviewsLoading ? (
+                <LoadingBox spinnerSize={12} className="h-24" />
+              ) : pendingReviews.length > 0 ? (
+                <PendingReviewsList
+                  reviews={pendingReviews}
+                  onReviewComplete={refetchReviews}
+                  emptyMessage="No pending reviews for this execution"
+                />
+              ) : (
+                <div className="py-4 text-neutral-600">
+                  No pending reviews for this execution
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         <Card className="agpt-box">

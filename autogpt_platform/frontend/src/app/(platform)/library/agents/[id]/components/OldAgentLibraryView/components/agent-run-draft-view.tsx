@@ -12,6 +12,9 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentInputs/RunAgentInputs";
+import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
 import ActionButtonGroup from "@/components/__legacy__/action-button-group";
 import type { ButtonAction } from "@/components/__legacy__/types";
 import {
@@ -25,24 +28,19 @@ import {
   IconPlay,
   IconSave,
 } from "@/components/__legacy__/ui/icons";
-import { CalendarClockIcon, Trash2Icon } from "lucide-react";
-import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
-import { cn, isEmpty } from "@/lib/utils";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { CopyIcon } from "@phosphor-icons/react";
-import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/__legacy__/ui/input";
+import { Button } from "@/components/atoms/Button/Button";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
   useToast,
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { cn, isEmpty } from "@/lib/utils";
+import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
+import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { analytics } from "@/services/analytics";
 
 export function AgentRunDraftView({
@@ -56,7 +54,6 @@ export function AgentRunDraftView({
   doCreateSchedule: _doCreateSchedule,
   onCreateSchedule,
   agentActions,
-  runCount,
   className,
   recommendedScheduleCron,
 }: {
@@ -75,7 +72,6 @@ export function AgentRunDraftView({
     credentialsInputs: Record<string, CredentialsMetaInput>,
   ) => Promise<void>;
   onCreateSchedule?: (schedule: Schedule) => void;
-  runCount: number;
   className?: string;
 } & (
   | {
@@ -104,7 +100,6 @@ export function AgentRunDraftView({
   const [changedPresetAttributes, setChangedPresetAttributes] = useState<
     Set<keyof LibraryAgentPresetUpdatable>
   >(new Set());
-  const { completeStep: completeOnboardingStep } = useOnboarding();
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] = useState(false);
 
   // Update values if agentPreset parameter is changed
@@ -194,7 +189,13 @@ export function AgentRunDraftView({
       }
       // TODO: on executing preset with changes, ask for confirmation and offer save+run
       const newRun = await api
-        .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
+        .executeGraph(
+          graph.id,
+          graph.version,
+          inputValues,
+          inputCredentials,
+          "library",
+        )
         .catch(toastOnFail("execute agent"));
 
       if (newRun && onRun) onRun(newRun.id);
@@ -204,26 +205,12 @@ export function AgentRunDraftView({
         .then((newRun) => onRun && onRun(newRun.id))
         .catch(toastOnFail("execute agent preset"));
     }
-    // Mark run agent onboarding step as completed
-    completeOnboardingStep("MARKETPLACE_RUN_AGENT");
 
     analytics.sendDatafastEvent("run_agent", {
       name: graph.name,
       id: graph.id,
     });
-
-    if (runCount > 0) {
-      completeOnboardingStep("RE_RUN_AGENT");
-    }
-  }, [
-    api,
-    graph,
-    inputValues,
-    inputCredentials,
-    onRun,
-    toastOnFail,
-    completeOnboardingStep,
-  ]);
+  }, [api, graph, inputValues, inputCredentials, onRun, toastOnFail]);
 
   const doCreatePreset = useCallback(async () => {
     if (!onCreatePreset) return;
@@ -257,7 +244,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    completeOnboardingStep,
   ]);
 
   const doUpdatePreset = useCallback(async () => {
@@ -296,7 +282,6 @@ export function AgentRunDraftView({
     onUpdatePreset,
     toast,
     toastOnFail,
-    completeOnboardingStep,
   ]);
 
   const doSetPresetActive = useCallback(
@@ -343,7 +328,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    completeOnboardingStep,
   ]);
 
   const openScheduleDialog = useCallback(() => {

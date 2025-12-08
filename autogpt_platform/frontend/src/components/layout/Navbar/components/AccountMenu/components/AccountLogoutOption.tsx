@@ -5,17 +5,20 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function AccountLogoutOption() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const supabase = useSupabase();
+  const router = useRouter();
   const { toast } = useToast();
 
   async function handleLogout() {
     setIsLoggingOut(true);
     try {
       await supabase.logOut();
+      router.push("/login");
     } catch (e) {
       Sentry.captureException(e);
       toast({
@@ -25,7 +28,9 @@ export function AccountLogoutOption() {
         variant: "destructive",
       });
     } finally {
-      setIsLoggingOut(false);
+      setTimeout(() => {
+        setIsLoggingOut(false);
+      }, 3000);
     }
   }
 
@@ -43,8 +48,8 @@ export function AccountLogoutOption() {
         <LoadingSpinner className="size-5" />
       ) : (
         <>
-          <div className="relative h-6 w-6">
-            <IconLogOut className="h-6 w-6" />
+          <div className="relative h-4 w-4">
+            <IconLogOut />
           </div>
           <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
             Log out

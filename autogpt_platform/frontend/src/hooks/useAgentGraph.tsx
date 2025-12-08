@@ -26,7 +26,6 @@ import { default as NextLink } from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 
@@ -62,9 +61,11 @@ export default function useAgentGraph(
   const [graphExecutionError, setGraphExecutionError] = useState<string | null>(
     null,
   );
+  const [graphExecutionStatus, setGraphExecutionStatus] = useState<
+    string | null
+  >(null);
   const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
   const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
-  const { state, completeStep, incrementRuns } = useOnboarding();
   const betaBlocks = useGetFlag(Flag.BETA_BLOCKS);
 
   // Filter blocks based on beta flags
@@ -358,11 +359,12 @@ export default function useAgentGraph(
 
       const statusRank = {
         RUNNING: 0,
-        QUEUED: 1,
-        INCOMPLETE: 2,
-        TERMINATED: 3,
-        COMPLETED: 4,
-        FAILED: 5,
+        REVIEW: 1,
+        QUEUED: 2,
+        INCOMPLETE: 3,
+        TERMINATED: 4,
+        COMPLETED: 5,
+        FAILED: 6,
       };
       const status = executionResults
         .map((v) => v.status)
@@ -476,7 +478,8 @@ export default function useAgentGraph(
         flowExecutionID,
       );
 
-      // Set graph execution error from the initial fetch
+      // Set graph execution status and error from the initial fetch
+      setGraphExecutionStatus(execution.status);
       if (execution.status === "FAILED") {
         setGraphExecutionError(
           execution.stats?.error ||
@@ -545,23 +548,26 @@ export default function useAgentGraph(
               });
             }
           }
+          // Update the execution status
+          setGraphExecutionStatus(graphExec.status);
+
           if (
             graphExec.status === "COMPLETED" ||
             graphExec.status === "TERMINATED" ||
-            graphExec.status === "FAILED"
+            graphExec.status === "FAILED" ||
+            graphExec.status === "REVIEW"
           ) {
             cancelGraphExecListener();
             setIsRunning(false);
             setIsStopping(false);
             setActiveExecutionID(null);
-            incrementRuns();
           }
         },
       );
     };
 
     fetchExecutions();
-  }, [flowID, flowExecutionID, incrementRuns]);
+  }, [flowID, flowExecutionID]);
 
   const prepareNodeInputData = useCallback(
     (node: CustomNode) => {
@@ -670,7 +676,7 @@ export default function useAgentGraph(
             ...payload,
             id: savedAgent.id,
           })
-        : await api.createGraph(payload);
+        : await api.createGraph(payload, "builder");
 
       console.debug("Response from the API:", newSavedAgent);
     }
@@ -735,7 +741,6 @@ export default function useAgentGraph(
   ]);
 
   const saveAgent = useCallback(async () => {
-    console.log("saveAgent");
     setIsSaving(true);
     try {
       await _saveAgent();
@@ -743,8 +748,6 @@ export default function useAgentGraph(
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListLibraryAgentsQueryKey(),
       });
-
-      completeStep("BUILDER_SAVE_AGENT");
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -757,7 +760,7 @@ export default function useAgentGraph(
     } finally {
       setIsSaving(false);
     }
-  }, [_saveAgent, toast, completeStep]);
+  }, [_saveAgent, toast]);
 
   const saveAndRun = useCallback(
     async (
@@ -772,7 +775,6 @@ export default function useAgentGraph(
       let savedAgent: Graph;
       try {
         savedAgent = await _saveAgent();
-        completeStep("BUILDER_SAVE_AGENT");
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -800,6 +802,7 @@ export default function useAgentGraph(
           savedAgent.version,
           inputs,
           credentialsInputs,
+          "builder",
         );
 
         setActiveExecutionID(graphExecution.id);
@@ -810,10 +813,6 @@ export default function useAgentGraph(
         path.set("flowVersion", savedAgent.version.toString());
         path.set("flowExecutionID", graphExecution.id);
         router.push(`${pathname}?${path.toString()}`);
-
-        if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
-          completeStep("BUILDER_RUN_AGENT");
-        }
       } catch (error) {
         // Check if this is a structured validation error from the backend
         if (error instanceof ApiError && error.isGraphValidationError()) {
@@ -863,12 +862,10 @@ export default function useAgentGraph(
     [
       _saveAgent,
       toast,
-      completeStep,
       api,
       searchParams,
       pathname,
       router,
-      state,
       isSaving,
       isRunning,
       processedUpdates,
@@ -968,6 +965,7 @@ export default function useAgentGraph(
     isStopping,
     isScheduling,
     graphExecutionError,
+    graphExecutionStatus,
     nodes: xyNodes,
     setNodes: setXYNodes,
     edges: xyEdges,
