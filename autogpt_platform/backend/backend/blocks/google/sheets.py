@@ -5563,6 +5563,9 @@ class GoogleSheetsExportCsvBlock(Block):
         spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="The spreadsheet to export from",
+            credentials_kwarg="credentials",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         sheet_name: str = SchemaField(
             default="",
@@ -5697,6 +5700,9 @@ class GoogleSheetsImportCsvBlock(Block):
         spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="The spreadsheet to import into",
+            credentials_kwarg="credentials",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         csv_data: str = SchemaField(description="CSV data to import")
         sheet_name: str = SchemaField(
@@ -5844,6 +5850,9 @@ class GoogleSheetsAddNoteBlock(Block):
         spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="The spreadsheet to add note to",
+            credentials_kwarg="credentials",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         cell: str = SchemaField(
             description="Cell to add note to (e.g., A1, B2)",
@@ -5983,6 +5992,9 @@ class GoogleSheetsGetNotesBlock(Block):
         spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="The spreadsheet to get notes from",
+            credentials_kwarg="credentials",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         range: str = SchemaField(
             default="A1:Z100",
@@ -6135,6 +6147,9 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
         spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="The spreadsheet to share",
+            credentials_kwarg="credentials",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         email: str = SchemaField(
             default="",
@@ -6277,6 +6292,9 @@ class GoogleSheetsSetPublicAccessBlock(Block):
         spreadsheet: GoogleDriveFile = GoogleDriveFileField(
             title="Spreadsheet",
             description="The spreadsheet to modify access for",
+            credentials_kwarg="credentials",
+            allowed_views=["SPREADSHEETS"],
+            allowed_mime_types=["application/vnd.google-apps.spreadsheet"],
         )
         public: bool = SchemaField(
             default=True,
