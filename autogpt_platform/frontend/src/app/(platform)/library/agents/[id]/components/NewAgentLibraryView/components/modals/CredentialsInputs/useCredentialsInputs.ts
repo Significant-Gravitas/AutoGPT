@@ -253,9 +253,7 @@ export function useCredentialsInputs({
   }
 
   function handleCredentialSelect(credentialId: string) {
-    const selectedCreds =
-      savedCredentials.find((c) => c.id === credentialId) ||
-      (selectedCredentials?.id === credentialId ? selectedCredentials : null);
+    const selectedCreds = credentialsToShow.find((c) => c.id === credentialId);
     if (selectedCreds) {
       onSelectCredentials({
         id: selectedCreds.id,

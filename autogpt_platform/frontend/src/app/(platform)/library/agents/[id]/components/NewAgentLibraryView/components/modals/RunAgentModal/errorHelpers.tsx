@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import Link from "next/link";
 import React from "react";
 
@@ -16,7 +17,11 @@ export function formatValidationError(
   error: any,
   agentInfo?: AgentInfo,
 ): string | React.ReactNode {
-  if (!error.isGraphValidationError() || !error.response?.detail) {
+  if (
+    !(error instanceof ApiError) ||
+    !error.isGraphValidationError() ||
+    !error.response?.detail
+  ) {
     return error.message || "An unexpected error occurred.";
   }
 
