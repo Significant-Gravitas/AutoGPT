@@ -26,17 +26,17 @@ External platforms building on AutoGPT need access to user integrations but:
 │                         External Platform (e.g., Lovable)                   │
 │                                                                             │
 │  ┌──────────────────┐              ┌──────────────────────────────────────┐ │
-│  │ "Auth with       │              │ "Connect Google via AutoGPT"        │ │
-│  │  AutoGPT" Button │              │ Button (opens popup window)         │ │
+│  │ "Auth with       │              │ "Connect Google via AutoGPT"         │ │
+│  │  AutoGPT" Button │              │ Button (opens popup window)          │ │
 │  └────────┬─────────┘              └─────────────────┬────────────────────┘ │
 │           │                                          │                      │
 └───────────┼──────────────────────────────────────────┼──────────────────────┘
             │                                          │
             │ redirect                                 │ window.open()
             ▼                                          ▼
-┌───────────────────────────────────────────────────────────────────────────────┐
-│                              AutoGPT Platform                                 │
-│                                                                               │
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              AutoGPT Platform                                │
+│                                                                              │
 │  ┌─────────────────────────┐      ┌─────────────────────────────────────────┐│
 │  │   OAuth Provider        │      │  Integration Connect Popup              ││
 │  │   (AutoGPT as IdP)      │      │  (Separate window - URL visible)        ││
@@ -51,20 +51,14 @@ External platforms building on AutoGPT need access to user integrations but:
 │               │                   └──────────────────┬──────────────────────┘│
 │               │                                      │                       │
 │               ▼                                      ▼                       │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                    Credential Vault (Existing)                         │  │
-│  │                                                                        │  │
-│  │  - Encrypted token storage          - Automatic token refresh          │  │
-│  │  - Secure credential isolation      - Comprehensive audit logging      │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                                                               │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                    Credential Proxy API                                │  │
-│  │                                                                        │  │
-│  │  - Allowlisted API paths only       - Per-credential scope enforcement │  │
-│  │  - Request/response sanitization    - Rate limiting per client         │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────────────────────┘
+│  ┌───────────────────────────────────────────────────────────────────────┐   │
+│  │                    Credential Vault (Existing)                        │   │
+│  │                                                                       │   │
+│  │  - Encrypted token storage          - Automatic token refresh         │   │
+│  │  - Secure credential isolation      - Comprehensive audit logging     │   │
+│  └───────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -92,9 +86,7 @@ External platforms building on AutoGPT need access to user integrations but:
 
 1. **PKCE Required Everywhere**: No client secrets in frontend code
 2. **Explicit Scoped Grants**: External apps request specific integration capabilities, not blanket access
-3. **Proxy Allowlists**: Only pre-defined API paths can be proxied
 4. **Defense in Depth**: Multiple validation layers at each step
-5. **Comprehensive Audit Trail**: Every proxy request logged
 
 ---
 
@@ -169,7 +161,6 @@ class OAuthScopes(str, Enum):
     # AutoGPT-specific scopes
     INTEGRATIONS_LIST = "integrations:list"      # List connected integrations
     INTEGRATIONS_CONNECT = "integrations:connect" # Initiate new integration OAuth
-    INTEGRATIONS_USE = "integrations:use"        # Use integrations via proxy
 ```
 
 #### Authorization Flow (with PKCE)
@@ -373,235 +364,8 @@ window.addEventListener("message", (event) => {
 
 ---
 
-### Component 3: Credential Proxy API
 
-External apps use credentials via a **controlled proxy** - never direct token access.
-
-#### Proxy Allowlists
-
-**Not all API paths are proxied.** Each integration defines allowed operations:
-
-```python
-class ProxyAllowlist:
-    """Defines what API paths can be proxied for each integration"""
-
-    GOOGLE_GMAIL = {
-        "gmail.readonly": [
-            AllowedPath("GET", "/gmail/v1/users/me/messages"),
-            AllowedPath("GET", "/gmail/v1/users/me/messages/{message_id}"),
-            AllowedPath("GET", "/gmail/v1/users/me/threads"),
-            AllowedPath("GET", "/gmail/v1/users/me/labels"),
-        ],
-        "gmail.send": [
-            AllowedPath("POST", "/gmail/v1/users/me/messages/send"),
-        ],
-    }
-
-    GOOGLE_DRIVE = {
-        "drive.readonly": [
-            AllowedPath("GET", "/drive/v3/files"),
-            AllowedPath("GET", "/drive/v3/files/{file_id}"),
-            # Notably MISSING: /drive/v3/files/{file_id}/export (data exfil risk)
-        ],
-        "drive.file": [
-            AllowedPath("POST", "/drive/v3/files"),
-            AllowedPath("PATCH", "/drive/v3/files/{file_id}"),
-            # Notably MISSING: DELETE operations
-        ],
-    }
-
-    GITHUB = {
-        "repo.read": [
-            AllowedPath("GET", "/repos/{owner}/{repo}"),
-            AllowedPath("GET", "/repos/{owner}/{repo}/contents/{path}"),
-        ],
-        "issues.read": [
-            AllowedPath("GET", "/repos/{owner}/{repo}/issues"),
-            AllowedPath("GET", "/repos/{owner}/{repo}/issues/{issue_number}"),
-        ],
-        "issues.write": [
-            AllowedPath("POST", "/repos/{owner}/{repo}/issues"),
-            AllowedPath("PATCH", "/repos/{owner}/{repo}/issues/{issue_number}"),
-        ],
-    }
-
-@dataclass
-class AllowedPath:
-    method: str
-    path_pattern: str  # Supports {param} placeholders
-
-    # Optional restrictions
-    max_body_size: int = 1_000_000  # 1MB default
-    blocked_body_fields: list[str] = field(default_factory=list)
-    rate_limit: Optional[int] = None  # Override default rate limit
-```
-
-#### Proxy Validation Flow
-
-```python
-async def proxy_request(
-    request: Request,
-    grant_id: str,
-    service_path: str,
-    autogpt_token: str,  # From Authorization header
-) -> Response:
-    """
-    Secure proxy with multiple validation layers.
-    """
-
-    # Layer 1: Authenticate the external app's AutoGPT token
-    token_claims = verify_autogpt_token(autogpt_token)
-    client_id = token_claims["client_id"]
-    user_id = token_claims["sub"]
-
-    # Layer 2: Validate the grant exists and is active
-    grant = await get_credential_grant(grant_id)
-    if not grant:
-        raise HTTPException(404, "Grant not found")
-    if grant.revoked_at:
-        raise HTTPException(403, "Grant has been revoked")
-    if grant.expires_at and grant.expires_at < datetime.utcnow():
-        raise HTTPException(403, "Grant has expired")
-    if grant.user_id != user_id:
-        raise HTTPException(403, "Grant belongs to different user")
-    if grant.client_id != client_id:
-        raise HTTPException(403, "Grant belongs to different client")
-
-    # Layer 3: Check if this path is allowed for the granted scopes
-    credential = await get_credential(grant.credential_id)
-    provider = credential.provider
-    allowed_path = find_allowed_path(
-        provider=provider,
-        granted_scopes=grant.granted_scopes,
-        method=request.method,
-        path=service_path,
-    )
-    if not allowed_path:
-        await audit_log.blocked_request(
-            grant_id=grant_id,
-            client_id=client_id,
-            path=service_path,
-            reason="path_not_allowed",
-        )
-        raise HTTPException(403, f"Path not allowed for granted scopes")
-
-    # Layer 4: Validate request body (if applicable)
-    if request.body:
-        body = await request.json()
-        if len(request.body) > allowed_path.max_body_size:
-            raise HTTPException(413, "Request body too large")
-        for blocked_field in allowed_path.blocked_body_fields:
-            if blocked_field in body:
-                raise HTTPException(
-                    400,
-                    f"Field '{blocked_field}' not allowed in request"
-                )
-
-    # Layer 5: Rate limiting
-    rate_limit = allowed_path.rate_limit or DEFAULT_RATE_LIMIT
-    if not await check_rate_limit(grant_id, rate_limit):
-        raise HTTPException(429, "Rate limit exceeded")
-
-    # Layer 6: Get actual token (auto-refresh if needed)
-    access_token = await get_refreshed_token(grant.credential_id)
-
-    # Layer 7: Make proxied request
-    target_url = build_target_url(provider, service_path)
-    proxied_response = await http_client.request(
-        method=request.method,
-        url=target_url,
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            # Forward safe headers only
-            "Content-Type": request.headers.get("Content-Type"),
-            "Accept": request.headers.get("Accept"),
-        },
-        content=request.body if request.body else None,
-    )
-
-    # Layer 8: Sanitize response
-    sanitized_headers = {
-        k: v for k, v in proxied_response.headers.items()
-        if k.lower() not in BLOCKED_RESPONSE_HEADERS
-    }
-
-    # Layer 9: Audit log
-    await audit_log.proxied_request(
-        grant_id=grant_id,
-        client_id=client_id,
-        user_id=user_id,
-        provider=provider,
-        method=request.method,
-        path=service_path,
-        status_code=proxied_response.status_code,
-        response_size=len(proxied_response.content),
-    )
-
-    return Response(
-        content=proxied_response.content,
-        status_code=proxied_response.status_code,
-        headers=sanitized_headers,
-    )
-
-BLOCKED_RESPONSE_HEADERS = {
-    "set-cookie",           # Don't leak cookies
-    "www-authenticate",     # Don't leak auth challenges
-    "x-oauth-scopes",       # Don't leak token scopes
-    "x-ratelimit-*",        # Don't leak rate limit info
-}
-```
-
-#### SSRF Prevention
-
-```python
-class ProxyTargetValidator:
-    """Prevents SSRF attacks via the proxy"""
-
-    # Only these base URLs are valid proxy targets
-    ALLOWED_TARGETS = {
-        "google": [
-            "https://www.googleapis.com",
-            "https://gmail.googleapis.com",
-            "https://sheets.googleapis.com",
-        ],
-        "github": [
-            "https://api.github.com",
-        ],
-        "notion": [
-            "https://api.notion.com",
-        ],
-    }
-
-    @classmethod
-    def validate_target(cls, provider: str, path: str) -> str:
-        """Returns full URL or raises if invalid"""
-
-        # Path traversal check
-        if ".." in path or path.startswith("/"):
-            raise ValueError("Invalid path")
-
-        # Must be known provider
-        if provider not in cls.ALLOWED_TARGETS:
-            raise ValueError(f"Unknown provider: {provider}")
-
-        # Build URL (always first allowed base)
-        base_url = cls.ALLOWED_TARGETS[provider][0]
-        full_url = f"{base_url}/{path}"
-
-        # Validate final URL is still in allowed list
-        parsed = urlparse(full_url)
-        if not any(
-            full_url.startswith(allowed)
-            for allowed in cls.ALLOWED_TARGETS[provider]
-        ):
-            raise ValueError("URL not in allowed targets")
-
-        return full_url
-```
-
----
-
-### Component 4: Audit Logging
+### Component 3: Audit Logging
 
 Every action through the credential broker is logged for security and compliance.
 
@@ -631,11 +395,6 @@ class AuditEventType(str, Enum):
     GRANT_REVOKED = "grant.revoked"
     GRANT_EXPIRED = "grant.expired"
 
-    # Proxy events
-    PROXY_REQUEST = "proxy.request"
-    PROXY_BLOCKED = "proxy.blocked"
-    PROXY_ERROR = "proxy.error"
-    PROXY_RATE_LIMITED = "proxy.rate_limited"
 
 class AuditLog(BaseModel):
     id: str
@@ -657,52 +416,6 @@ class AuditLog(BaseModel):
     # Details (event-specific)
     details: dict
 
-    # For proxy events
-    provider: Optional[str]
-    method: Optional[str]
-    path: Optional[str]
-    status_code: Optional[int]
-    response_time_ms: Optional[int]
-
-# Example audit queries for security monitoring
-async def detect_suspicious_activity():
-    """Run periodically to detect potential abuse"""
-
-    # High volume from single client
-    high_volume = await audit_db.query("""
-        SELECT client_id, COUNT(*) as count
-        FROM audit_logs
-        WHERE event_type = 'proxy.request'
-        AND timestamp > NOW() - INTERVAL '1 hour'
-        GROUP BY client_id
-        HAVING COUNT(*) > 10000
-    """)
-
-    # Many blocked requests (probing)
-    probing = await audit_db.query("""
-        SELECT client_id, COUNT(*) as blocked_count
-        FROM audit_logs
-        WHERE event_type = 'proxy.blocked'
-        AND timestamp > NOW() - INTERVAL '1 hour'
-        GROUP BY client_id
-        HAVING COUNT(*) > 100
-    """)
-
-    # Unusual path patterns
-    unusual_paths = await audit_db.query("""
-        SELECT client_id, path, COUNT(*) as count
-        FROM audit_logs
-        WHERE event_type = 'proxy.request'
-        AND path LIKE '%..%' OR path LIKE '%/etc/%'
-        AND timestamp > NOW() - INTERVAL '24 hours'
-        GROUP BY client_id, path
-    """)
-
-    return {
-        "high_volume_clients": high_volume,
-        "probing_clients": probing,
-        "unusual_path_clients": unusual_paths,
-    }
 ```
 
 ---
@@ -850,14 +563,6 @@ model AuditLog {
     // Event details (JSON)
     details         Json
 
-    // For proxy events specifically
-    provider        String?
-    method          String?
-    path            String?
-    statusCode      Int?
-    responseTimeMs  Int?
-    requestSize     Int?
-    responseSize    Int?
 
     @@index([timestamp])
     @@index([eventType])
@@ -968,45 +673,6 @@ Opens the integration connection popup.
 3. On user approval, initiates Google OAuth
 4. On completion, sends postMessage to opener with grant_id
 5. Closes popup
-
-### Proxy Endpoints
-
-#### ANY /api/v1/proxy/{grant_id}/{path}
-
-Proxy requests to third-party APIs.
-
-**Headers:**
-```
-Authorization: Bearer AUTOGPT_ACCESS_TOKEN
-Content-Type: application/json (if applicable)
-```
-
-**Path Parameters:**
-- `grant_id`: The credential grant ID (from connect flow)
-- `path`: Service path (e.g., `gmail/v1/users/me/messages`)
-
-**Example:**
-```bash
-curl -X GET \
-  "https://autogpt.com/api/v1/proxy/grant_abc123/gmail/v1/users/me/messages?maxResults=10" \
-  -H "Authorization: Bearer agpt_xyz789"
-```
-
-**Response:**
-- Proxied response from target API
-- HTTP status preserved
-- Sensitive headers stripped
-
-**Error Responses:**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 401 | `invalid_token` | AutoGPT token invalid/expired |
-| 403 | `grant_revoked` | User revoked this grant |
-| 403 | `path_not_allowed` | Path not in allowlist for granted scopes |
-| 404 | `grant_not_found` | Grant doesn't exist |
-| 429 | `rate_limited` | Too many requests |
-| 502 | `upstream_error` | Target API returned error |
 
 ---
 
@@ -1264,57 +930,6 @@ function connectGoogleViaAutoGPT(): Promise<{ grantId: string; scopes: string[] 
         }, 500);
     });
 }
-
-// ============================================
-// 3. Use Google via AutoGPT proxy
-// ============================================
-
-async function getGmailMessages(grantId: string, autogptToken: string) {
-    const response = await fetch(
-        `https://autogpt.com/api/v1/proxy/${grantId}/gmail/v1/users/me/messages?maxResults=10`,
-        {
-            headers: {
-                'Authorization': `Bearer ${autogptToken}`,
-            },
-        }
-    );
-
-    if (!response.ok) {
-        const error = await response.json();
-        if (error.error === 'grant_revoked') {
-            // User revoked access - prompt to reconnect
-            await promptReconnect();
-        }
-        throw new Error(error.error_description || error.error);
-    }
-
-    return response.json();
-}
-
-async function sendGmailMessage(grantId: string, autogptToken: string, message: object) {
-    // This will fail if user only granted gmail.readonly
-    const response = await fetch(
-        `https://autogpt.com/api/v1/proxy/${grantId}/gmail/v1/users/me/messages/send`,
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${autogptToken}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(message),
-        }
-    );
-
-    if (response.status === 403) {
-        const error = await response.json();
-        if (error.error === 'path_not_allowed') {
-            // Need additional scopes - prompt user
-            await promptAdditionalScopes(['gmail.send']);
-        }
-    }
-
-    return response.json();
-}
 ```
 
 ---
@@ -1326,9 +941,6 @@ async function sendGmailMessage(grantId: string, autogptToken: string, message: 
 | `GET /oauth/authorize` | 10 | per minute | per IP |
 | `POST /oauth/token` | 20 | per minute | per client |
 | `GET /connect/{provider}` | 10 | per minute | per client + user |
-| `* /api/v1/proxy/*` | 100 | per minute | per grant |
-| `* /api/v1/proxy/*` | 1000 | per hour | per grant |
-| `* /api/v1/proxy/*` | 10000 | per day | per client |
 
 ---
 
@@ -1350,13 +962,6 @@ async function sendGmailMessage(grantId: string, autogptToken: string, message: 
 - [ ] CredentialGrant model and creation
 - [ ] Error handling and user feedback
 
-### Phase 3: Credential Proxy API
-- [ ] Proxy routing infrastructure
-- [ ] Allowlist configuration per provider/scope
-- [ ] Request validation pipeline
-- [ ] SSRF prevention
-- [ ] Response sanitization
-- [ ] Rate limiting per grant
 
 ### Phase 4: Audit & Monitoring
 - [ ] Comprehensive audit logging
@@ -1396,14 +1001,6 @@ async function sendGmailMessage(grantId: string, autogptToken: string, message: 
 - [ ] postMessage origin validation
 - [ ] Nonce to prevent replay attacks
 - [ ] Grant ID (not credential ID) exposed to clients
-
-### Proxy API
-- [ ] Path allowlists per scope
-- [ ] SSRF prevention via strict URL validation
-- [ ] Request body validation
-- [ ] Response header sanitization
-- [ ] Rate limiting per grant
-- [ ] Audit logging for all requests
 
 ### General
 - [ ] All endpoints HTTPS only
@@ -1984,8 +1581,6 @@ async function summarizeUserEmails(userId: string) {
 1. **Client Approval**: Fully automated or manual review for new clients?
 2. **Scope Granularity**: How fine-grained should integration scopes be?
 3. **Grant Expiration**: Should grants expire? If so, what's the default?
-4. **Offline Access**: Should proxy work when user is not actively using AutoGPT?
-5. **Billing**: Meter proxy usage for monetization?
 6. **Webhooks**: Notify clients when grants are revoked?
 
 ---
@@ -2185,49 +1780,6 @@ sequenceDiagram
 
 ---
 
-### Flow 4: Credential Proxy API (Direct API Access)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant ExtApp as External App<br/>(Lovable)
-    participant Proxy as AutoGPT<br/>Proxy API
-    participant Store as Credential<br/>Store
-    participant Google as Google<br/>API
-
-    ExtApp->>Proxy: GET /api/v1/proxy/{grant_id}/gmail/v1/users/me/messages<br/>Authorization: Bearer {autogpt_token}
-
-    Proxy->>Proxy: Layer 1: Validate autogpt_token → client_id, user_id
-    Proxy->>Proxy: Layer 2: Lookup grant, verify (client_id, user_id) match
-    Proxy->>Proxy: Layer 3: Check grant not revoked/expired
-    Proxy->>Proxy: Layer 4: Check path in allowlist for granted scopes
-    Proxy->>Proxy: Layer 5: Rate limit check
-
-    Proxy->>Store: Get credential for grant.credential_id
-    Store->>Store: Auto-refresh if token expiring
-    Store->>Proxy: Decrypted access_token
-
-    Proxy->>Proxy: Layer 6: Build target URL (SSRF prevention)
-
-    Proxy->>Google: GET https://gmail.googleapis.com/gmail/v1/users/me/messages<br/>Authorization: Bearer {google_token}
-
-    Google->>Proxy: Response data
-
-    Proxy->>Proxy: Layer 7: Sanitize response headers
-    Proxy->>Proxy: Layer 8: Audit log
-
-    Proxy->>ExtApp: Proxied response (tokens stripped)
-```
-
-**Data Exchanged:**
-
-| Step | Direction | Data | Sensitive? |
-|------|-----------|------|------------|
-| 1 | ExtApp → Proxy | autogpt_token, grant_id, path | Yes (token) |
-| 8 | Store → Proxy | Google access_token | Yes (internal) |
-| 10-11 | Proxy ↔ Google | API request/response | Yes (internal) |
-| 14 | Proxy → ExtApp | Sanitized response | May contain user data |
-
 ---
 
 ## Complete Endpoint Inventory
@@ -2258,7 +1810,6 @@ sequenceDiagram
 | `/api/v1/agents/{agent_id}/execute` | POST | Execute agent with grants | Bearer + `agents:execute` scope |
 | `/api/v1/executions/{execution_id}` | GET | Poll execution status | Bearer |
 | `/api/v1/executions/{execution_id}/cancel` | POST | Cancel execution | Bearer |
-| `/api/v1/proxy/{grant_id}/**` | ANY | Proxy requests to 3rd party APIs | Bearer + `integrations:use` scope |
 
 ### NEW Endpoints (Admin/Management)
 
@@ -2305,7 +1856,6 @@ sequenceDiagram
 | `email` | User's email address |
 | `integrations:list` | List user's connected integrations |
 | `integrations:connect` | Open integration connect popup |
-| `integrations:use` | Use proxy API |
 | `agents:execute` | Execute agents |
 
 ### Integration Scopes (fine-grained access to 3rd party services)
@@ -2342,7 +1892,6 @@ sequenceDiagram
 |-----------|---------|------------|
 | JWT signing keys | Sign AutoGPT access tokens | Medium |
 | JWKS endpoint | Publish public keys | Low |
-| Proxy routing | Route /proxy/* requests | Medium |
 | Webhook delivery | Async webhook dispatch | Medium |
 | Audit log storage | High-volume write | Medium |
 
@@ -2367,7 +1916,6 @@ sequenceDiagram
 - [ ] Popup window (not iframe)
 - [ ] postMessage origin validation
 - [ ] Nonce for replay prevention
-- [ ] Proxy path allowlists
 - [ ] SSRF prevention
 - [ ] Rate limiting all endpoints
 - [ ] Audit logging all operations
@@ -2381,7 +1929,6 @@ sequenceDiagram
 |-------|-------|--------|
 | 1. OAuth Provider | /oauth/* endpoints, consent UI, token management | Large |
 | 2. Integration Connect | /connect/* popup, CredentialGrant model | Medium |
-| 3. Proxy API | /proxy/* routing, allowlists, SSRF prevention | Medium |
 | 4. Agent Execution | /capabilities, /execute, CredentialResolver | Medium |
 | 5. Audit & Monitoring | Logging, dashboards, alerting | Medium |
 | 6. Developer Portal | Client registration UI, docs, SDKs | Large |
