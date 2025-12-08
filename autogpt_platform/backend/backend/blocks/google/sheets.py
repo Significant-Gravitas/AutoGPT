@@ -2294,7 +2294,7 @@ class GoogleSheetsFilterRowsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f8b2a1c4-5d3e-4f6a-8b9c-0d1e2f3a4b5c",
+            id="582195c2-ccee-4fc2-b646-18f72eb9906c",
             description="Filter rows in a Google Sheet based on a column condition. Returns matching rows and their indices.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsFilterRowsBlock.Input,
@@ -2514,7 +2514,7 @@ class GoogleSheetsLookupRowBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="2784a1b3-eb49-4ce8-bcf1-b92d1c1b5493",
+            id="e58c0bad-6597-400c-9548-d151ec428ffc",
             description="Look up a row by finding a value in a specific column. Returns the first matching row and optionally specific columns.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsLookupRowBlock.Input,
@@ -2725,7 +2725,7 @@ class GoogleSheetsDeleteRowsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="2114f079-0a61-45a7-a862-ecc8fe5ebb49",
+            id="24bcd490-b02d-44c6-847d-b62a2319f5eb",
             description="Delete specific rows from a Google Sheet by their row indices. Works well with FilterRowsBlock output.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsDeleteRowsBlock.Input,
@@ -2889,7 +2889,7 @@ class GoogleSheetsGetColumnBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="0497b030-b432-48b1-9b7d-7083f0d7f3e9",
+            id="108d911f-e109-47fb-addc-2259792ee850",
             description="Extract all values from a specific column. Useful for getting a list of emails, IDs, or any single field.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsGetColumnBlock.Input,
@@ -3077,7 +3077,7 @@ class GoogleSheetsSortBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="70d8641e-dd42-40da-b782-f704d7236f4a",
+            id="a265bd84-c93b-459d-bbe0-94e6addaa38f",
             description="Sort a Google Sheet by one or two columns. The sheet is sorted in-place.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsSortBlock.Input,
@@ -3311,7 +3311,7 @@ class GoogleSheetsGetUniqueValuesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="5b5fc079-c657-4b37-b479-2939f5c192c5",
+            id="0f296c0b-6b6e-4280-b96e-ae1459b98dff",
             description="Get unique values from a column. Useful for building dropdown options or finding distinct categories.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsGetUniqueValuesBlock.Input,
@@ -3489,7 +3489,7 @@ class GoogleSheetsInsertRowBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="82608a1d-d0ce-4fdd-aa38-53b06b5c16a9",
+            id="03eda5df-8080-4ed1-bfdf-212f543d657e",
             description="Insert a single row at a specific position. Existing rows shift down.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsInsertRowBlock.Input,
@@ -3658,7 +3658,7 @@ class GoogleSheetsAddColumnBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="92960a7a-812c-4ff2-ab57-fbcf46dde2f9",
+            id="cac51050-fc9e-4e63-987a-66c2ba2a127b",
             description="Add a new column with a header. Can add at the end or insert at a specific position.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsAddColumnBlock.Input,
@@ -3863,7 +3863,7 @@ class GoogleSheetsGetRowCountBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b8c9d0e1-f234-5678-90ab-cdef12345678",
+            id="080cc84b-a94a-4fb4-90e3-dcc55ee783af",
             description="Get row count and dimensions of a Google Sheet. Useful for knowing where data ends.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsGetRowCountBlock.Input,
@@ -4041,7 +4041,7 @@ class GoogleSheetsRemoveDuplicatesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c9d0e1f2-3456-7890-abcd-ef1234567890",
+            id="6eb50ff7-205b-400e-8ecc-1ce8d50075be",
             description="Remove duplicate rows based on specified columns. Keeps either the first or last occurrence.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsRemoveDuplicatesBlock.Input,
@@ -4281,7 +4281,7 @@ class GoogleSheetsUpdateRowBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d0e1f234-5678-90ab-cdef-123456789012",
+            id="b8a934d5-fca0-4be3-9fc2-a99bf63bd385",
             description="Update a specific row by its index. Can use list or dict format for values.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsUpdateRowBlock.Input,
@@ -4462,7 +4462,7 @@ class GoogleSheetsGetRowBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e1f23456-7890-abcd-ef12-345678901234",
+            id="c4be9390-2431-4682-9769-7025b22a5fa7",
             description="Get a specific row by its index. Returns both list and dict formats.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsGetRowBlock.Input,
@@ -4605,7 +4605,7 @@ class GoogleSheetsDeleteColumnBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f2345678-90ab-cdef-1234-567890abcdef",
+            id="59b266b6-5cce-4661-a1d3-c417e64d68e9",
             description="Delete a column by header name or column letter.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsDeleteColumnBlock.Input,
@@ -4771,7 +4771,7 @@ class GoogleSheetsCreateNamedRangeBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="01234567-89ab-cdef-0123-456789abcdef",
+            id="a2707376-8016-494b-98c4-d0e2752ab9cb",
             description="Create a named range to reference cells by name instead of A1 notation.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsCreateNamedRangeBlock.Input,
@@ -4934,7 +4934,7 @@ class GoogleSheetsListNamedRangesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="12345678-9abc-def0-1234-56789abcdef0",
+            id="b81a9d27-3997-4860-9303-cc68086db13a",
             description="List all named ranges in a spreadsheet.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsListNamedRangesBlock.Input,
@@ -5105,7 +5105,7 @@ class GoogleSheetsAddDropdownBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="23456789-abcd-ef01-2345-6789abcdef01",
+            id="725431c9-71ba-4fce-b829-5a3e495a8a88",
             description="Add a dropdown list (data validation) to cells. Useful for enforcing valid inputs.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsAddDropdownBlock.Input,
@@ -5279,7 +5279,7 @@ class GoogleSheetsCopyToSpreadsheetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="3456789a-bcde-f012-3456-789abcdef012",
+            id="740eec3f-2b51-4e95-b87f-22ce2acafdfa",
             description="Copy a sheet from one spreadsheet to another.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsCopyToSpreadsheetBlock.Input,
@@ -5431,7 +5431,7 @@ class GoogleSheetsProtectRangeBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="456789ab-cdef-0123-4567-89abcdef0123",
+            id="d0e4f5d1-76e7-4082-9be8-e656ec1f432d",
             description="Protect a cell range or entire sheet from editing.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsProtectRangeBlock.Input,
@@ -5601,7 +5601,7 @@ class GoogleSheetsExportCsvBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d8f5e9a2-3b7c-4d1e-9f6a-2c8b5e7d4a3f",
+            id="2617e68a-43b3-441f-8b11-66bb041105b8",
             description="Export a Google Sheet as CSV data",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsExportCsvBlock.Input,
@@ -5744,7 +5744,7 @@ class GoogleSheetsImportCsvBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e9f6a3b2-4c8d-5e2f-0a7b-3d9c6e8f5b4a",
+            id="cb992884-1ff2-450a-8f1b-7650d63e3aa0",
             description="Import CSV data into a Google Sheet",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsImportCsvBlock.Input,
@@ -5889,7 +5889,7 @@ class GoogleSheetsAddNoteBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f0a7b4c3-5d9e-6f3a-1b8c-4e0d7f9a6b5c",
+            id="774ac529-74f9-41da-bbba-6a06a51a5d7e",
             description="Add a note to a cell in a Google Sheet",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsAddNoteBlock.Input,
@@ -6033,7 +6033,7 @@ class GoogleSheetsGetNotesBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b8c5d4-6e0f-7a2b-3c9d-5e1f8a7b6c4d",
+            id="fa16834f-fff4-4d7a-9f7f-531ced90492b",
             description="Get notes from cells in a Google Sheet",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsGetNotesBlock.Input,
@@ -6197,7 +6197,7 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2c9d6e5-7f1a-8b3c-4d0e-6f2a9b8c7d5e",
+            id="3e47e8ac-511a-4eb6-89c5-a6bcedc4236f",
             description="Share a Google Spreadsheet with users or get shareable link",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsShareSpreadsheetBlock.Input,
@@ -6335,7 +6335,7 @@ class GoogleSheetsSetPublicAccessBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d0e7f6-8a2b-9c4d-5e1f-7a3b0c9d8e6f",
+            id="d08d46cd-088b-4ba7-a545-45050f33b889",
             description="Make a Google Spreadsheet public or private",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsSetPublicAccessBlock.Input,
