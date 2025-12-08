@@ -92,7 +92,7 @@ export function Input({
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem]",
+            "-mb-1 h-auto min-h-[2.875rem] rounded-medium",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum
@@ -222,7 +222,7 @@ export function Input({
   ) : (
     <label htmlFor={props.id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="large-medium" as="span" className="text-black">
           {label}
         </Text>
         {hint ? (

@@ -1,8 +1,8 @@
-import { Badge } from "@/components/atoms/Badge/Badge";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Badge } from "@/components/atoms/Badge/Badge";
+import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
-import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 
 interface ModalHeaderProps {
@@ -10,49 +10,56 @@ interface ModalHeaderProps {
 }
 
 export function ModalHeader({ agent }: ModalHeaderProps) {
-  const isUnknownCreator = agent.creator_name === "Unknown";
+  const creator = agent.marketplace_listing?.creator;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Badge variant="info">New Run</Badge>
-      </div>
+    <div className="flex flex-col gap-4">
+      <Badge variant="info" className="w-fit">
+        New Task
+      </Badge>
       <div>
-        <Text variant="h3">{agent.name}</Text>
-        {!isUnknownCreator ? (
-          <Text variant="body-medium">by {agent.creator_name}</Text>
+        <Text variant="h2">{agent.name}</Text>
+        {creator ? (
+          <Link href={`/marketplace/creator/${creator.slug}`} isExternal>
+            by {creator.name}
+          </Link>
         ) : null}
-        <ShowMoreText
-          previewLimit={80}
-          variant="small"
-          className="mt-4 !text-zinc-700"
-        >
-          {agent.description}
-        </ShowMoreText>
 
-        {/* Schedule recommendation tip */}
-        {agent.recommended_schedule_cron && !agent.has_external_trigger && (
-          <div className="mt-4 flex items-center gap-2">
-            <ClockIcon className="h-4 w-4 text-gray-500" />
-            <p className="text-sm text-gray-600">
-              <strong>Tip:</strong> For best results, run this agent{" "}
+        {agent.description ? (
+          <ShowMoreText
+            previewLimit={400}
+            variant="small"
+            className="mt-4 !text-zinc-700"
+          >
+            {agent.description}
+          </ShowMoreText>
+        ) : null}
+
+        {agent.recommended_schedule_cron && !agent.has_external_trigger ? (
+          <div className="flex flex-col gap-4 rounded-medium border border-blue-100 bg-blue-50 p-4">
+            <Text variant="lead-semibold" className="text-blue-600">
+              Tip
+            </Text>
+            <Text variant="body">
+              For best results, run this agent{" "}
               {humanizeCronExpression(
                 agent.recommended_schedule_cron,
               ).toLowerCase()}
-            </p>
+            </Text>
           </div>
-        )}
+        ) : null}
 
-        {/* Setup Instructions */}
-        {agent.instructions && (
-          <div className="mt-4 flex items-start gap-2">
-            <InfoIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
-            <div className="text-sm text-gray-600">
-              <strong>Setup Instructions:</strong>{" "}
-              <span className="whitespace-pre-wrap">{agent.instructions}</span>
-            </div>
+        {agent.instructions ? (
+          <div className="flex flex-col gap-4 rounded-medium border border-purple-100 bg-[#F1EBFE/5] p-4">
+            <Text variant="lead-semibold" className="text-purple-600">
+              Instructions
+            </Text>
+
+            <div className="h-px w-full bg-purple-100" />
+
+            <Text variant="body">{agent.instructions}</Text>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
