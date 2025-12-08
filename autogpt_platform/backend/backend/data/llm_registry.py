@@ -212,5 +212,72 @@ def get_dynamic_model_slugs() -> set[str]:
     return set(_dynamic_models.keys())
 
 
+def get_all_model_slugs_for_validation() -> set[str]:
+    """
+    Get ALL model slugs (both enabled and disabled) for validation purposes.
+
+    This is used for JSON schema enum validation - we need to accept any known
+    model value (even disabled ones) so that existing graphs don't fail validation.
+    The actual fallback/enforcement happens at runtime in llm_call().
+    """
+    all_slugs = set(_dynamic_models.keys())
+    all_slugs.update(_static_metadata.keys())
+    return all_slugs
+
+
 def iter_dynamic_models() -> Iterable[RegistryModel]:
     return tuple(_dynamic_models.values())
+
+
+def get_fallback_model_for_disabled(disabled_model_slug: str) -> RegistryModel | None:
+    """
+    Find a fallback model when the requested model is disabled.
+
+    Looks for an enabled model from the same provider. Prefers models with
+    similar names or capabilities if possible.
+
+    Args:
+        disabled_model_slug: The slug of the disabled model
+
+    Returns:
+        An enabled RegistryModel from the same provider, or None if no fallback found
+    """
+    disabled_model = _dynamic_models.get(disabled_model_slug)
+    if not disabled_model:
+        return None
+
+    provider = disabled_model.metadata.provider
+
+    # Find all enabled models from the same provider
+    candidates = [
+        model
+        for model in _dynamic_models.values()
+        if model.is_enabled and model.metadata.provider == provider
+    ]
+
+    if not candidates:
+        return None
+
+    # Sort by: prefer models with similar context window, then by name
+    candidates.sort(
+        key=lambda m: (
+            abs(m.metadata.context_window - disabled_model.metadata.context_window),
+            m.display_name.lower(),
+        )
+    )
+
+    return candidates[0]
+
+
+def is_model_enabled(model_slug: str) -> bool:
+    """Check if a model is enabled in the registry."""
+    model = _dynamic_models.get(model_slug)
+    if not model:
+        # Model not in registry - assume it's a static/legacy model and allow it
+        return True
+    return model.is_enabled
+
+
+def get_model_info(model_slug: str) -> RegistryModel | None:
+    """Get model info from the registry."""
+    return _dynamic_models.get(model_slug)

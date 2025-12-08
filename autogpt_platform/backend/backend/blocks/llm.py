@@ -337,93 +337,88 @@ async def llm_call(
             - prompt_tokens: The number of tokens used in the prompt.
             - completion_tokens: The number of tokens used in the completion.
     """
-    # Get model metadata - try cache first, then fallback to async lookup
-    # Also check if the model is enabled
-    try:
-        provider = llm_model.metadata.provider
-        context_window = llm_model.context_window
-        model_max_output = llm_model.max_output_tokens or int(2**15)
+    # Get model metadata and check if enabled - with fallback support
+    # The model we'll actually use (may differ if original is disabled)
+    model_to_use = llm_model.value
 
-        # Check if model is enabled - get from registry
-        from backend.data.llm_registry import _dynamic_models
+    # Check if model is in registry and if it's enabled
+    from backend.data.llm_registry import (
+        get_fallback_model_for_disabled,
+        get_model_info,
+    )
 
-        if llm_model.value in _dynamic_models:
-            model_info = _dynamic_models[llm_model.value]
-            if not model_info.is_enabled:
-                raise ValueError(f"LLM model '{llm_model.value}' is disabled.")
-    except ValueError as e:
-        # Re-raise if it's our disabled model error
-        if "is disabled" in str(e):
-            raise
-        # Model not in cache - try refreshing the registry once if we have DB access
-        import logging
+    model_info = get_model_info(llm_model.value)
 
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            "Model %s not found in registry cache",
-            llm_model.value,
-        )
-
-        # Try refreshing the registry if we have database access
-        from backend.data.db import is_connected
-
-        if is_connected():
-            try:
-                logger.info(
-                    "Refreshing LLM registry and retrying lookup for %s",
-                    llm_model.value,
-                )
-                await llm_registry.refresh_llm_registry()
-                # Try again after refresh
-                try:
-                    provider = llm_model.metadata.provider
-                    context_window = llm_model.context_window
-                    model_max_output = llm_model.max_output_tokens or int(2**15)
-
-                    # Check if model is enabled after refresh
-                    from backend.data.llm_registry import _dynamic_models
-
-                    if llm_model.value in _dynamic_models:
-                        model_info = _dynamic_models[llm_model.value]
-                        if not model_info.is_enabled:
-                            raise ValueError(
-                                f"LLM model '{llm_model.value}' is disabled. "
-                                "Please enable it in the LLM registry via the admin UI to use this model."
-                            )
-
-                    logger.info(
-                        "Successfully loaded model %s metadata after registry refresh",
-                        llm_model.value,
-                    )
-                except ValueError as ve:
-                    # Re-raise if it's our disabled model error
-                    if "is disabled" in str(ve):
-                        raise
-                    # Still not found after refresh
-                    raise ValueError(
-                        f"LLM model '{llm_model.value}' not found in registry after refresh. "
-                        "Please ensure the model is added and enabled in the LLM registry via the admin UI."
-                    )
-            except Exception as refresh_exc:
-                logger.error(
-                    "Failed to refresh LLM registry: %s", refresh_exc, exc_info=True
-                )
-                raise ValueError(
-                    f"LLM model '{llm_model.value}' not found in registry and failed to refresh. "
-                    "Please ensure the model is added to the LLM registry via the admin UI."
-                ) from refresh_exc
+    if model_info and not model_info.is_enabled:
+        # Model is disabled - try to find a fallback from the same provider
+        fallback = get_fallback_model_for_disabled(llm_model.value)
+        if fallback:
+            logger.warning(
+                f"Model '{llm_model.value}' is disabled. Using fallback model '{fallback.slug}' from the same provider ({fallback.metadata.provider})."
+            )
+            model_to_use = fallback.slug
+            # Use fallback model's metadata
+            provider = fallback.metadata.provider
+            context_window = fallback.metadata.context_window
+            model_max_output = fallback.metadata.max_output_tokens or int(2**15)
         else:
-            # No DB access (e.g., in executor without direct DB connection)
-            # The registry should have been loaded on startup
+            # No fallback available - raise error
             raise ValueError(
-                f"LLM model '{llm_model.value}' not found in registry cache. "
-                "The registry may need to be refreshed. Please contact support or try again later."
-            ) from e
+                f"LLM model '{llm_model.value}' is disabled and no fallback model "
+                f"from the same provider is available. Please enable the model or "
+                f"select a different model in the block configuration."
+            )
+    else:
+        # Model is enabled or not in registry (legacy/static model)
+        try:
+            provider = llm_model.metadata.provider
+            context_window = llm_model.context_window
+            model_max_output = llm_model.max_output_tokens or int(2**15)
+        except ValueError:
+            # Model not in cache - try refreshing the registry once if we have DB access
+            logger.warning(f"Model {llm_model.value} not found in registry cache")
+
+            # Try refreshing the registry if we have database access
+            from backend.data.db import is_connected
+
+            if is_connected():
+                try:
+                    logger.info(
+                        f"Refreshing LLM registry and retrying lookup for {llm_model.value}"
+                    )
+                    await llm_registry.refresh_llm_registry()
+                    # Try again after refresh
+                    try:
+                        provider = llm_model.metadata.provider
+                        context_window = llm_model.context_window
+                        model_max_output = llm_model.max_output_tokens or int(2**15)
+                        logger.info(
+                            f"Successfully loaded model {llm_model.value} metadata after registry refresh"
+                        )
+                    except ValueError:
+                        # Still not found after refresh
+                        raise ValueError(
+                            f"LLM model '{llm_model.value}' not found in registry after refresh. "
+                            "Please ensure the model is added and enabled in the LLM registry via the admin UI."
+                        )
+                except Exception as refresh_exc:
+                    logger.error(f"Failed to refresh LLM registry: {refresh_exc}")
+                    raise ValueError(
+                        f"LLM model '{llm_model.value}' not found in registry and failed to refresh. "
+                        "Please ensure the model is added to the LLM registry via the admin UI."
+                    ) from refresh_exc
+            else:
+                # No DB access (e.g., in executor without direct DB connection)
+                # The registry should have been loaded on startup
+                raise ValueError(
+                    f"LLM model '{llm_model.value}' not found in registry cache. "
+                    "The registry may need to be refreshed. Please contact support or try again later."
+                )
 
     if compress_prompt_to_fit:
         prompt = compress_prompt(
             messages=prompt,
-            target_tokens=llm_model.context_window // 2,
+            target_tokens=context_window // 2,
             lossy_ok=True,
         )
 
@@ -447,7 +442,7 @@ async def llm_call(
             response_format = {"type": "json_object"}
 
         response = await oai_client.chat.completions.create(
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
@@ -494,7 +489,7 @@ async def llm_call(
         )
         try:
             resp = await client.messages.create(
-                model=llm_model.value,
+                model=model_to_use,
                 system=sysprompt,
                 messages=messages,
                 max_tokens=max_tokens,
@@ -558,7 +553,7 @@ async def llm_call(
         client = AsyncGroq(api_key=credentials.api_key.get_secret_value())
         response_format = {"type": "json_object"} if force_json_output else None
         response = await client.chat.completions.create(
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
@@ -580,7 +575,7 @@ async def llm_call(
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
         response = await client.generate(
-            model=llm_model.value,
+            model=model_to_use,
             prompt=f"{sys_messages}\n\n{usr_messages}",
             stream=False,
             options={"num_ctx": max_tokens},
@@ -610,7 +605,7 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
@@ -652,7 +647,7 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
@@ -690,7 +685,7 @@ async def llm_call(
         )
 
         completion = client.chat.completions.create(
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
         )
@@ -722,7 +717,7 @@ async def llm_call(
         )
 
         response = await client.chat.completions.create(
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,

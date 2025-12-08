@@ -32,25 +32,31 @@ def is_llm_model_field(field_name: str, field_info: Any) -> bool:
 
 def refresh_llm_model_options(field_schema: dict[str, Any]) -> None:
     """
-    Refresh LLM model options and enum values from the registry.
+    Refresh LLM model options from the registry.
 
-    Updates both 'options' (for frontend dropdown) and 'enum' (Pydantic validation)
-    to reflect only currently enabled models.
+    Updates 'options' (for frontend dropdown) to show only enabled models,
+    but keeps the 'enum' (for validation) inclusive of ALL known models.
+
+    This is important because:
+    - Options: What users see in the dropdown (enabled models only)
+    - Enum: What values pass validation (all known models, including disabled)
+
+    Existing graphs may have disabled models selected - they should pass validation
+    and the fallback logic in llm_call() will handle using an alternative model.
     """
     fresh_options = llm_registry.get_llm_model_schema_options()
     if not fresh_options:
         return
 
-    enabled_slugs = {opt.get("value") for opt in fresh_options if isinstance(opt, dict)}
-
-    # Update options array
+    # Update options array (UI dropdown) - only enabled models
     if "options" in field_schema:
         field_schema["options"] = fresh_options
 
-    # Filter enum to only enabled models
-    if "enum" in field_schema and isinstance(field_schema.get("enum"), list):
-        old_enum = field_schema["enum"]
-        field_schema["enum"] = [val for val in old_enum if val in enabled_slugs]
+    all_known_slugs = llm_registry.get_all_model_slugs_for_validation()
+    if all_known_slugs and "enum" in field_schema:
+        existing_enum = set(field_schema.get("enum", []))
+        combined_enum = existing_enum | all_known_slugs
+        field_schema["enum"] = sorted(combined_enum)
 
 
 def refresh_llm_discriminator_mapping(field_schema: dict[str, Any]) -> None:
