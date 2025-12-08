@@ -21,6 +21,7 @@ export function Toaster() {
           info: styles.toastInfo,
         },
       }}
+      className="custom__toast"
       icons={{
         success: <CheckCircle className="h-4 w-4" color="#fff" weight="fill" />,
         error: <XCircle className="h-4 w-4" color="#fff" weight="fill" />,

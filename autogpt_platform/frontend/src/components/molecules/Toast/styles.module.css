@@ -39,7 +39,8 @@ html body .toastDescription {
 }
 
 /* Position close button on the right */
-:global(html body [data-sonner-toast] [data-close-button="true"]) {
+/* stylelint-disable-next-line selector-pseudo-class-no-unknown */
+#root [data-sonner-toast] [data-close-button="true"] {
   left: unset !important;
   right: -18px !important;
   top: -3px !important;
