@@ -66,6 +66,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
+import { useFlowRealtime } from "@/app/(platform)/build/components/FlowEditor/Flow/useFlowRealtime";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -150,6 +151,9 @@ const FlowEditor: React.FC<{
   const [immediateNodePositions, setImmediateNodePositions] = useState<
     Record<string, { x: number; y: number }>
   >(Object.fromEntries(nodes.map((node) => [node.id, node.position])));
+
+  // Add realtime execution status tracking for FloatingReviewsPanel
+  useFlowRealtime();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -931,8 +935,7 @@ const FlowEditor: React.FC<{
           {savedAgent && (
             <FloatingSafeModeToggle
               graph={savedAgent}
-              className="right-4 top-32 p-2"
-              variant="black"
+              className="right-2 top-32 p-2"
             />
           )}
           {isNewBlockEnabled ? (

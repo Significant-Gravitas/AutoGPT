@@ -2,7 +2,6 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   ArrowBendLeftUpIcon,
@@ -102,11 +101,6 @@ export function SelectedRunActions(props: Props) {
           shareToken={props.run.share_token}
         />
       )}
-      <FloatingSafeModeToggle
-        graph={props.agent}
-        variant="white"
-        fullWidth={false}
-      />
       <AgentActionsDropdown
         agent={props.agent}
         run={props.run}

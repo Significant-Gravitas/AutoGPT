@@ -93,9 +93,21 @@ export function SelectedRunView({
             {/* Navigation Links */}
             <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
               <nav className="flex gap-8 px-3 pb-1">
-                {withSummary && (
+                {withReviews && (
                   <button
                     onClick={() => scrollToSection("summary")}
+                    className={anchorStyles}
+                  >
+                    Reviews ({pendingReviews.length})
+                  </button>
+                )}
+                {withSummary && (
+                  <button
+                    onClick={() =>
+                      scrollToSection(
+                        withReviews ? "summary-details" : "summary",
+                      )
+                    }
                     className={anchorStyles}
                   >
                     Summary
@@ -113,20 +125,36 @@ export function SelectedRunView({
                 >
                   Your input
                 </button>
-                {withReviews && (
-                  <button
-                    onClick={() => scrollToSection("reviews")}
-                    className={anchorStyles}
-                  >
-                    Reviews ({pendingReviews.length})
-                  </button>
-                )}
               </nav>
             </div>
 
+            {/* Human-in-the-Loop Reviews Section */}
+            {withReviews && (
+              <div id="summary" className="scroll-mt-4">
+                <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
+                  {reviewsLoading ? (
+                    <div className="text-neutral-500">Loading reviews…</div>
+                  ) : pendingReviews.length > 0 ? (
+                    <PendingReviewsList
+                      reviews={pendingReviews}
+                      onReviewComplete={refetchReviews}
+                      emptyMessage="No pending reviews for this execution"
+                    />
+                  ) : (
+                    <div className="text-neutral-600">
+                      No pending reviews for this execution
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Summary Section */}
             {withSummary && (
-              <div id="summary" className="scroll-mt-4">
+              <div
+                id={withReviews ? "summary-details" : "summary"}
+                className="scroll-mt-4"
+              >
                 <RunDetailCard
                   title={
                     <div className="flex items-center gap-2">
@@ -135,7 +163,7 @@ export function SelectedRunView({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <InfoIcon
-                              size={8}
+                              size={16}
                               className="cursor-help text-neutral-500 hover:text-neutral-700"
                             />
                           </TooltipTrigger>
@@ -183,27 +211,6 @@ export function SelectedRunView({
                 />
               </RunDetailCard>
             </div>
-
-            {/* Reviews Section */}
-            {withReviews && (
-              <div id="reviews" className="scroll-mt-4">
-                <RunDetailCard>
-                  {reviewsLoading ? (
-                    <div className="text-neutral-500">Loading reviews…</div>
-                  ) : pendingReviews.length > 0 ? (
-                    <PendingReviewsList
-                      reviews={pendingReviews}
-                      onReviewComplete={refetchReviews}
-                      emptyMessage="No pending reviews for this execution"
-                    />
-                  ) : (
-                    <div className="text-neutral-600">
-                      No pending reviews for this execution
-                    </div>
-                  )}
-                </RunDetailCard>
-              </div>
-            )}
           </div>
         </SelectedViewLayout>
       </div>

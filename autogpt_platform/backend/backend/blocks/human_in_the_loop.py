@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from prisma.enums import ReviewStatus
 
@@ -45,11 +45,11 @@ class HumanInTheLoopBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        reviewed_data: Any = SchemaField(
-            description="The data after human review (may be modified)"
+        approved_data: Any = SchemaField(
+            description="The data when approved (may be modified by reviewer)"
         )
-        status: Literal["approved", "rejected"] = SchemaField(
-            description="Status of the review: 'approved' or 'rejected'"
+        rejected_data: Any = SchemaField(
+            description="The data when rejected (may be modified by reviewer)"
         )
         review_message: str = SchemaField(
             description="Any message provided by the reviewer", default=""
@@ -69,8 +69,7 @@ class HumanInTheLoopBlock(Block):
                 "editable": True,
             },
             test_output=[
-                ("status", "approved"),
-                ("reviewed_data", {"name": "John Doe", "age": 30}),
+                ("approved_data", {"name": "John Doe", "age": 30}),
             ],
             test_mock={
                 "get_or_create_human_review": lambda *_args, **_kwargs: ReviewResult(
@@ -116,8 +115,7 @@ class HumanInTheLoopBlock(Block):
             logger.info(
                 f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
             )
-            yield "status", "approved"
-            yield "reviewed_data", input_data.data
+            yield "approved_data", input_data.data
             yield "review_message", "Auto-approved (safe mode disabled)"
             return
 
@@ -158,12 +156,11 @@ class HumanInTheLoopBlock(Block):
             )
 
             if result.status == ReviewStatus.APPROVED:
-                yield "status", "approved"
-                yield "reviewed_data", result.data
+                yield "approved_data", result.data
                 if result.message:
                     yield "review_message", result.message
 
             elif result.status == ReviewStatus.REJECTED:
-                yield "status", "rejected"
+                yield "rejected_data", result.data
                 if result.message:
                     yield "review_message", result.message
