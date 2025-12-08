@@ -1990,6 +1990,404 @@ async function summarizeUserEmails(userId: string) {
 
 ---
 
+## Team Summary: Sequence Diagrams & Data Flows
+
+### Flow 1: "Sign in with AutoGPT" (External App Authentication)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant ExtApp as External App<br/>(Lovable)
+    participant AutoGPT as AutoGPT<br/>Backend
+    participant DB as Database
+
+    Note over ExtApp: Generate PKCE pair locally
+    ExtApp->>ExtApp: verifier = random(32 bytes)
+    ExtApp->>ExtApp: challenge = BASE64URL(SHA256(verifier))
+    ExtApp->>ExtApp: state = random(16 bytes)
+    ExtApp->>ExtApp: Store verifier + state in session
+
+    User->>ExtApp: Click "Sign in with AutoGPT"
+
+    ExtApp->>AutoGPT: GET /oauth/authorize?<br/>client_id, redirect_uri, scope,<br/>state, code_challenge, code_challenge_method=S256
+
+    AutoGPT->>AutoGPT: Validate client_id exists
+    AutoGPT->>AutoGPT: Validate redirect_uri in allowlist
+    AutoGPT->>AutoGPT: Validate requested scopes allowed
+
+    AutoGPT->>User: Render consent screen<br/>"Lovable wants to access your account"
+
+    User->>AutoGPT: Click "Allow"
+
+    AutoGPT->>DB: Store authorization code + code_challenge<br/>(expires in 10 min)
+    AutoGPT->>ExtApp: 302 Redirect to redirect_uri?code=XXX&state=YYY
+
+    ExtApp->>ExtApp: Validate state matches stored value
+
+    ExtApp->>AutoGPT: POST /oauth/token<br/>{grant_type, code, redirect_uri,<br/>client_id, code_verifier}
+
+    AutoGPT->>DB: Lookup code, verify not used
+    AutoGPT->>AutoGPT: Verify SHA256(code_verifier) == stored challenge
+    AutoGPT->>DB: Mark code as used
+    AutoGPT->>DB: Create OAuthAuthorization record
+    AutoGPT->>ExtApp: {access_token, refresh_token,<br/>expires_in, token_type, scope}
+
+    Note over ExtApp: Store tokens securely
+
+    ExtApp->>AutoGPT: GET /oauth/userinfo<br/>Authorization: Bearer {access_token}
+    AutoGPT->>ExtApp: {sub, name, email, picture}
+```
+
+**Data Exchanged:**
+
+| Step | Direction | Data | Sensitive? |
+|------|-----------|------|------------|
+| 1-4 | Internal | PKCE verifier, challenge, state | Yes (verifier) |
+| 5 | ExtApp → AutoGPT | client_id, redirect_uri, scope, state, code_challenge | No |
+| 8 | AutoGPT → ExtApp | authorization code, state | Yes |
+| 10 | ExtApp → AutoGPT | code, code_verifier, client_id | Yes |
+| 12 | AutoGPT → ExtApp | access_token, refresh_token | Yes |
+| 14 | AutoGPT → ExtApp | user profile (sub, name, email) | PII |
+
+---
+
+### Flow 2: "Connect Google via AutoGPT" (Integration OAuth Popup)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant ExtApp as External App<br/>(Lovable)
+    participant Popup as AutoGPT Popup<br/>(new window)
+    participant Backend as AutoGPT<br/>Backend
+    participant Google as Google<br/>OAuth
+
+    User->>ExtApp: Click "Connect Google via AutoGPT"
+
+    Note over ExtApp: Generate PKCE + nonce
+    ExtApp->>ExtApp: nonce = random(16 bytes)
+    ExtApp->>ExtApp: Store nonce for validation
+
+    ExtApp->>Popup: window.open(/connect/google?<br/>client_id, scopes, state, code_challenge, nonce)
+
+    Popup->>Backend: GET /connect/google?params
+    Backend->>Backend: Validate client_id is approved
+    Backend->>Backend: Validate scopes allowed for client
+    Backend->>Backend: Validate callback origin
+
+    Popup->>User: Render consent screen<br/>"Lovable wants to access your Gmail"
+
+    User->>Popup: Click "Continue with Google"
+
+    Popup->>Backend: GET /integrations/google/login<br/>(internal, existing endpoint)
+    Backend->>Popup: Google OAuth URL + state_token
+
+    Popup->>Google: Redirect to Google OAuth
+    User->>Google: Authorize AutoGPT
+    Google->>Popup: Redirect with code + state
+
+    Popup->>Backend: POST /integrations/google/callback<br/>{code, state}
+    Backend->>Google: Exchange code for tokens
+    Google->>Backend: {access_token, refresh_token}
+    Backend->>Backend: Store tokens (encrypted)
+    Backend->>Backend: Create CredentialGrant for client
+
+    Backend->>Popup: {grant_id, granted_scopes}
+
+    Popup->>ExtApp: postMessage({<br/>type: "autogpt:oauth_result",<br/>success: true,<br/>grant_id: "xxx",<br/>granted_scopes: [...],<br/>nonce: "yyy"<br/>})
+
+    ExtApp->>ExtApp: Validate nonce matches
+    ExtApp->>ExtApp: Store grant_id for API calls
+
+    Popup->>Popup: window.close()
+```
+
+**Data Exchanged:**
+
+| Step | Direction | Data | Sensitive? |
+|------|-----------|------|------------|
+| 3 | ExtApp → Popup | client_id, scopes, state, code_challenge, nonce | No |
+| 10 | Backend → Popup | Google OAuth URL, state_token | No |
+| 12 | Google → Popup | Google auth code | Yes |
+| 13-15 | Backend ↔ Google | Google tokens | Yes (never leaves backend) |
+| 17 | Popup → ExtApp | grant_id, scopes, nonce | No (grant_id is opaque reference) |
+
+**Key Security Point:** Google tokens NEVER leave AutoGPT backend. External app only receives `grant_id`.
+
+---
+
+### Flow 3: Agent Execution via External App
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ExtApp as External App<br/>(Lovable)
+    participant Backend as AutoGPT<br/>Backend
+    participant Queue as Execution<br/>Queue
+    participant Agent as Agent<br/>Runtime
+    participant Google as Google<br/>API
+
+    ExtApp->>Backend: GET /api/v1/capabilities<br/>Authorization: Bearer {autogpt_token}
+
+    Backend->>Backend: Validate token, extract client_id + user_id
+    Backend->>Backend: Lookup grants for (client_id, user_id)
+
+    Backend->>ExtApp: {grants: [...], available_agents: [...], limits: {...}}
+
+    ExtApp->>Backend: POST /api/v1/agents/{agent_id}/execute<br/>{grants: ["grant_001"], inputs: {...}}
+
+    Backend->>Backend: Layer 1: Validate autogpt_token
+    Backend->>Backend: Layer 2: Check agents:execute scope
+    Backend->>Backend: Layer 3: Validate each grant belongs to (client, user)
+    Backend->>Backend: Layer 4: Check agent allows external execution
+    Backend->>Backend: Layer 5: Verify grants satisfy agent requirements
+    Backend->>Backend: Layer 6-7: Check rate limits
+    Backend->>Backend: Layer 8: Validate webhook URL
+    Backend->>Backend: Layer 9: Create execution record
+    Backend->>Backend: Layer 10: Audit log
+
+    Backend->>Queue: Enqueue execution with GrantBasedCredentialResolver
+
+    Backend->>ExtApp: {execution_id, status: "queued", poll_url}
+
+    Queue->>Agent: Start execution
+
+    Agent->>Agent: Need Google credential for gmail.readonly
+    Agent->>Backend: CredentialResolver.get_credential("google", ["gmail.readonly"])
+    Backend->>Backend: Check grant includes gmail.readonly scope
+    Backend->>Backend: Audit log credential access
+    Backend->>Agent: Return decrypted Google token
+
+    Agent->>Google: GET /gmail/v1/users/me/messages<br/>Authorization: Bearer {google_token}
+    Google->>Agent: Email data
+
+    Agent->>Agent: Process emails with LLM
+
+    Agent->>Backend: Update execution result
+
+    Backend->>ExtApp: Webhook: {event: "execution.completed", result: {...}}
+
+    Note over ExtApp: Or poll GET /api/v1/executions/{id}
+```
+
+**Data Exchanged:**
+
+| Step | Direction | Data | Sensitive? |
+|------|-----------|------|------------|
+| 1 | ExtApp → Backend | autogpt_token | Yes |
+| 3 | Backend → ExtApp | capabilities, grants (IDs only), limits | No |
+| 4 | ExtApp → Backend | agent_id, grant_ids, inputs | inputs may be sensitive |
+| 14 | Backend → ExtApp | execution_id | No |
+| 18 | Backend → Agent | Google access_token | Yes (internal only) |
+| 19-20 | Agent ↔ Google | API request/response | Yes (internal only) |
+| 23 | Backend → ExtApp | execution result | May contain user data |
+
+---
+
+### Flow 4: Credential Proxy API (Direct API Access)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ExtApp as External App<br/>(Lovable)
+    participant Proxy as AutoGPT<br/>Proxy API
+    participant Store as Credential<br/>Store
+    participant Google as Google<br/>API
+
+    ExtApp->>Proxy: GET /api/v1/proxy/{grant_id}/gmail/v1/users/me/messages<br/>Authorization: Bearer {autogpt_token}
+
+    Proxy->>Proxy: Layer 1: Validate autogpt_token → client_id, user_id
+    Proxy->>Proxy: Layer 2: Lookup grant, verify (client_id, user_id) match
+    Proxy->>Proxy: Layer 3: Check grant not revoked/expired
+    Proxy->>Proxy: Layer 4: Check path in allowlist for granted scopes
+    Proxy->>Proxy: Layer 5: Rate limit check
+
+    Proxy->>Store: Get credential for grant.credential_id
+    Store->>Store: Auto-refresh if token expiring
+    Store->>Proxy: Decrypted access_token
+
+    Proxy->>Proxy: Layer 6: Build target URL (SSRF prevention)
+
+    Proxy->>Google: GET https://gmail.googleapis.com/gmail/v1/users/me/messages<br/>Authorization: Bearer {google_token}
+
+    Google->>Proxy: Response data
+
+    Proxy->>Proxy: Layer 7: Sanitize response headers
+    Proxy->>Proxy: Layer 8: Audit log
+
+    Proxy->>ExtApp: Proxied response (tokens stripped)
+```
+
+**Data Exchanged:**
+
+| Step | Direction | Data | Sensitive? |
+|------|-----------|------|------------|
+| 1 | ExtApp → Proxy | autogpt_token, grant_id, path | Yes (token) |
+| 8 | Store → Proxy | Google access_token | Yes (internal) |
+| 10-11 | Proxy ↔ Google | API request/response | Yes (internal) |
+| 14 | Proxy → ExtApp | Sanitized response | May contain user data |
+
+---
+
+## Complete Endpoint Inventory
+
+### NEW Endpoints (OAuth Provider)
+
+| Endpoint | Method | Purpose | Auth |
+|----------|--------|---------|------|
+| `/oauth/authorize` | GET | Initiate OAuth flow, show consent | Session |
+| `/oauth/token` | POST | Exchange code for tokens | Client credentials |
+| `/oauth/token` | POST | Refresh access token | Refresh token |
+| `/oauth/userinfo` | GET | Get user profile | Bearer token |
+| `/oauth/revoke` | POST | Revoke tokens | Bearer token |
+| `/.well-known/openid-configuration` | GET | OIDC discovery | None |
+| `/.well-known/jwks.json` | GET | Public keys for token verification | None |
+
+### NEW Endpoints (Integration Connect)
+
+| Endpoint | Method | Purpose | Auth |
+|----------|--------|---------|------|
+| `/connect/{provider}` | GET | Render integration connect popup | Session + client validation |
+
+### NEW Endpoints (External API)
+
+| Endpoint | Method | Purpose | Auth |
+|----------|--------|---------|------|
+| `/api/v1/capabilities` | GET | List what client can do | Bearer (AutoGPT token) |
+| `/api/v1/agents/{agent_id}/execute` | POST | Execute agent with grants | Bearer + `agents:execute` scope |
+| `/api/v1/executions/{execution_id}` | GET | Poll execution status | Bearer |
+| `/api/v1/executions/{execution_id}/cancel` | POST | Cancel execution | Bearer |
+| `/api/v1/proxy/{grant_id}/**` | ANY | Proxy requests to 3rd party APIs | Bearer + `integrations:use` scope |
+
+### NEW Endpoints (Admin/Management)
+
+| Endpoint | Method | Purpose | Auth |
+|----------|--------|---------|------|
+| `/api/v1/oauth/clients` | GET | List registered OAuth clients | Admin |
+| `/api/v1/oauth/clients` | POST | Register new OAuth client | Admin (or self-service) |
+| `/api/v1/oauth/clients/{client_id}` | GET | Get client details | Admin |
+| `/api/v1/oauth/clients/{client_id}` | PATCH | Update client | Admin |
+| `/api/v1/oauth/clients/{client_id}/approve` | POST | Approve pending client | Admin |
+| `/api/v1/oauth/clients/{client_id}/suspend` | POST | Suspend client | Admin |
+
+### EXISTING Endpoints (Used Internally)
+
+| Endpoint | Method | Used By | Notes |
+|----------|--------|---------|-------|
+| `/integrations/{provider}/login` | GET | Integration Connect popup | Returns OAuth URL |
+| `/integrations/{provider}/callback` | POST | Integration Connect popup | Exchanges code for tokens |
+| `/integrations/credentials` | GET | Capabilities endpoint | Lists user credentials |
+
+---
+
+## New Database Tables
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `OAuthClient` | Registered external applications | client_id, client_secret_hash, redirect_uris, allowed_scopes, status |
+| `OAuthAuthorization` | User-granted authorizations | user_id, client_id, access_token_hash, refresh_token_hash, scopes |
+| `OAuthAuthorizationCode` | Short-lived auth codes | code, client_id, user_id, code_challenge, expires_at |
+| `CredentialGrant` | Links client to user credential | client_id, user_id, credential_id, granted_scopes |
+| `AgentExecution` | External-triggered agent runs | agent_id, client_id, user_id, grant_ids, status, result |
+| `AuditLog` | Security audit trail | event_type, client_id, user_id, grant_id, details |
+
+---
+
+## New Scopes
+
+### AutoGPT OAuth Scopes (what external apps request)
+
+| Scope | Description |
+|-------|-------------|
+| `openid` | Required for OIDC |
+| `profile` | User's name and picture |
+| `email` | User's email address |
+| `integrations:list` | List user's connected integrations |
+| `integrations:connect` | Open integration connect popup |
+| `integrations:use` | Use proxy API |
+| `agents:execute` | Execute agents |
+
+### Integration Scopes (fine-grained access to 3rd party services)
+
+| Provider | Scope | Description |
+|----------|-------|-------------|
+| Google | `google:gmail.readonly` | Read emails |
+| Google | `google:gmail.send` | Send emails |
+| Google | `google:drive.readonly` | Read Drive files |
+| Google | `google:drive.file` | Create/edit Drive files |
+| Google | `google:calendar.readonly` | Read calendar |
+| Google | `google:sheets.readonly` | Read spreadsheets |
+| GitHub | `github:repos.read` | Read repository contents |
+| GitHub | `github:repos.write` | Push to repositories |
+| GitHub | `github:issues.read` | Read issues/PRs |
+| GitHub | `github:issues.write` | Create/edit issues |
+
+---
+
+## Implementation Dependencies
+
+### Depends On (Existing)
+
+| Component | Location | Used For |
+|-----------|----------|----------|
+| IntegrationCredentialsStore | `backend/integrations/credentials_store.py` | Storing/retrieving credentials |
+| OAuth Handlers | `backend/integrations/oauth/*.py` | Google, GitHub, etc. OAuth |
+| User model | `backend/data/user.py` | User identity |
+| Supabase Auth | Frontend | Session management |
+
+### New Infrastructure Needed
+
+| Component | Purpose | Complexity |
+|-----------|---------|------------|
+| JWT signing keys | Sign AutoGPT access tokens | Medium |
+| JWKS endpoint | Publish public keys | Low |
+| Proxy routing | Route /proxy/* requests | Medium |
+| Webhook delivery | Async webhook dispatch | Medium |
+| Audit log storage | High-volume write | Medium |
+
+---
+
+## Migration Considerations
+
+1. **No breaking changes** to existing integration OAuth flows
+2. **New tables only** - no schema changes to existing tables
+3. **Feature flag** recommended for rollout
+4. **Client registration** can start with admin-only, expand to self-service later
+
+---
+
+## Security Review Checklist
+
+- [ ] PKCE mandatory (no implicit flow)
+- [ ] Token hashing (not plaintext storage)
+- [ ] Redirect URI exact match (no wildcards)
+- [ ] Authorization code single-use
+- [ ] State parameter required
+- [ ] Popup window (not iframe)
+- [ ] postMessage origin validation
+- [ ] Nonce for replay prevention
+- [ ] Proxy path allowlists
+- [ ] SSRF prevention
+- [ ] Rate limiting all endpoints
+- [ ] Audit logging all operations
+- [ ] Grant revocation propagates
+
+---
+
+## Estimated Effort by Phase
+
+| Phase | Scope | Effort |
+|-------|-------|--------|
+| 1. OAuth Provider | /oauth/* endpoints, consent UI, token management | Large |
+| 2. Integration Connect | /connect/* popup, CredentialGrant model | Medium |
+| 3. Proxy API | /proxy/* routing, allowlists, SSRF prevention | Medium |
+| 4. Agent Execution | /capabilities, /execute, CredentialResolver | Medium |
+| 5. Audit & Monitoring | Logging, dashboards, alerting | Medium |
+| 6. Developer Portal | Client registration UI, docs, SDKs | Large |
+
+---
+
 ## References
 
 - [OAuth 2.0 RFC 6749](https://tools.ietf.org/html/rfc6749)
