@@ -235,6 +235,12 @@ class PublicAccessRole(str, Enum):
     COMMENTER = "commenter"
 
 
+class ShareRole(str, Enum):
+    READER = "reader"
+    WRITER = "writer"
+    COMMENTER = "commenter"
+
+
 class BatchOperation(BlockSchemaInput):
     type: BatchOperationType = SchemaField(
         description="The type of operation to perform"
@@ -4157,10 +4163,18 @@ class GoogleSheetsRemoveDuplicatesBlock(Block):
                 if col.isalpha() and len(col) <= 2:
                     col_indices.append(_column_letter_to_index(col))
                 else:
+                    # Find column by name - raise error if not found
+                    found = False
                     for idx, col_name in enumerate(header):
                         if col_name.lower() == col.lower():
                             col_indices.append(idx)
+                            found = True
                             break
+                    if not found:
+                        raise ValueError(
+                            f"Column '{col}' not found in sheet. "
+                            f"Available columns: {', '.join(header)}"
+                        )
         else:
             col_indices = list(range(len(header)))
 
@@ -4183,8 +4197,9 @@ class GoogleSheetsRemoveDuplicatesBlock(Block):
                     # Delete this row (keep the first one we saw)
                     rows_to_delete.append(row_idx + 2)  # +2 for 1-based and header
                 else:
-                    # Delete the previous row (keep this one)
-                    rows_to_delete.append(seen[key])
+                    # Delete the previous row, then update seen to keep this one
+                    prev_row = seen[key]
+                    rows_to_delete.append(prev_row)
                     seen[key] = row_idx + 2
             else:
                 seen[key] = row_idx + 2
@@ -5591,6 +5606,7 @@ class GoogleSheetsExportCsvBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsExportCsvBlock.Input,
             output_schema=GoogleSheetsExportCsvBlock.Output,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
@@ -5733,6 +5749,7 @@ class GoogleSheetsImportCsvBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsImportCsvBlock.Input,
             output_schema=GoogleSheetsImportCsvBlock.Output,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
@@ -5877,6 +5894,7 @@ class GoogleSheetsAddNoteBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsAddNoteBlock.Input,
             output_schema=GoogleSheetsAddNoteBlock.Output,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
@@ -6020,6 +6038,7 @@ class GoogleSheetsGetNotesBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsGetNotesBlock.Input,
             output_schema=GoogleSheetsGetNotesBlock.Output,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
@@ -6155,9 +6174,9 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
             default="",
             description="Email address to share with. Leave empty for link sharing.",
         )
-        role: str = SchemaField(
-            default="reader",
-            description="Permission role: reader, writer, or commenter",
+        role: ShareRole = SchemaField(
+            default=ShareRole.READER,
+            description="Permission role for the user",
         )
         send_notification: bool = SchemaField(
             default=True,
@@ -6183,6 +6202,7 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsShareSpreadsheetBlock.Input,
             output_schema=GoogleSheetsShareSpreadsheetBlock.Output,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
@@ -6320,6 +6340,7 @@ class GoogleSheetsSetPublicAccessBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsSetPublicAccessBlock.Input,
             output_schema=GoogleSheetsSetPublicAccessBlock.Output,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet": {
                     "id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
