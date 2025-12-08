@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Iterator, Literal
 
@@ -64,6 +65,7 @@ class RedditComment(BaseModel):
 
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 def get_praw(creds: RedditCredentials) -> praw.Reddit:
@@ -77,7 +79,7 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
     me = client.user.me()
     if not me:
         raise ValueError("Invalid Reddit credentials.")
-    print(f"Logged in as Reddit user: {me.name}")
+    logger.info(f"Logged in as Reddit user: {me.name}")
     return client
 
 

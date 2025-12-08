@@ -100,6 +100,7 @@ export function AgentScheduleDetailsView({
           graph.version,
           schedule.input_data,
           schedule.input_credentials,
+          "library",
         )
         .then((run) => onForcedRun(run.id))
         .catch(toastOnFail("execute agent")),

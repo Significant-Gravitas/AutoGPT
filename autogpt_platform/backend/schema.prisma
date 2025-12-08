@@ -701,10 +701,11 @@ view StoreAgent {
   storeListingVersionId String
   updated_at            DateTime
 
-  slug        String
-  agent_name  String
-  agent_video String?
-  agent_image String[]
+  slug                String
+  agent_name          String
+  agent_video         String?
+  agent_output_demo   String?
+  agent_image         String[]
 
   featured         Boolean                  @default(false)
   creator_username String?
@@ -833,13 +834,14 @@ model StoreListingVersion {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // Content fields
-  name         String
-  subHeading   String
-  videoUrl     String?
-  imageUrls    String[]
-  description  String
-  instructions String?
-  categories   String[]
+  name                String
+  subHeading          String
+  videoUrl            String?
+  agentOutputDemoUrl  String?
+  imageUrls           String[]
+  description         String
+  instructions        String?
+  categories          String[]
 
   isFeatured Boolean @default(false)
 

@@ -22,7 +22,7 @@ from typing import (
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType
+from prisma.enums import CreditTransactionType, OnboardingStep
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -868,3 +868,20 @@ class UserExecutionSummaryStats(BaseModel):
     total_execution_time: float = Field(default=0)
     average_execution_time: float = Field(default=0)
     cost_breakdown: dict[str, float] = Field(default_factory=dict)
+
+
+class UserOnboarding(BaseModel):
+    userId: str
+    completedSteps: list[OnboardingStep]
+    walletShown: bool
+    notified: list[OnboardingStep]
+    rewardedFor: list[OnboardingStep]
+    usageReason: Optional[str]
+    integrations: list[str]
+    otherIntegrations: Optional[str]
+    selectedStoreListingVersionId: Optional[str]
+    agentInput: Optional[dict[str, Any]]
+    onboardingAgentExecutionId: Optional[str]
+    agentRuns: int
+    lastRunAt: Optional[datetime]
+    consecutiveRunDays: int

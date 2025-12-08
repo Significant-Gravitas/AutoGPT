@@ -1,5 +1,6 @@
 import datetime
 import json
+from unittest.mock import AsyncMock
 
 import fastapi.testclient
 import pytest
@@ -225,6 +226,10 @@ def test_add_agent_to_library_success(
         "backend.server.v2.library.db.add_store_agent_to_library"
     )
     mock_db_call.return_value = mock_library_agent
+    mock_complete_onboarding = mocker.patch(
+        "backend.server.v2.library.routes.agents.complete_onboarding_step",
+        new_callable=AsyncMock,
+    )
 
     response = client.post(
         "/agents", json={"store_listing_version_id": "test-version-id"}
@@ -239,6 +244,7 @@ def test_add_agent_to_library_success(
     mock_db_call.assert_called_once_with(
         store_listing_version_id="test-version-id", user_id=test_user_id
     )
+    mock_complete_onboarding.assert_awaited_once()
 
 
 def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture, test_user_id: str):

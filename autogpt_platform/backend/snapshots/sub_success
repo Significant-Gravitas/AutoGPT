@@ -23,6 +23,7 @@
       "reviewed_at": null,
       "changes_summary": null,
       "video_url": "test.mp4",
+      "agent_output_demo_url": null,
       "categories": [
         "test-category"
       ]

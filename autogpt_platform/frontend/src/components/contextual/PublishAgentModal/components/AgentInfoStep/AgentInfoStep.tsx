@@ -1,16 +1,17 @@
 "use client";
 
-import * as React from "react";
+import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { Button } from "@/components/atoms/Button/Button";
-import { StepHeader } from "../StepHeader";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
-import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { Text } from "@/components/atoms/Text/Text";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { CalendarClockIcon } from "lucide-react";
-import { Props, useAgentInfoStep } from "./useAgentInfoStep";
+import * as React from "react";
+import { StepHeader } from "../StepHeader";
 import { ThumbnailImages } from "./components/ThumbnailImages";
+import { Props, useAgentInfoStep } from "./useAgentInfoStep";
 
 export function AgentInfoStep({
   onBack,
@@ -165,6 +166,21 @@ export function AgentInfoStep({
 
           <FormField
             control={form.control}
+            name="agentOutputDemo"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="Agent Output Demo"
+                type="url"
+                placeholder="Add a short video showing the agent's results in action."
+                error={form.formState.errors.agentOutputDemo?.message}
+                {...field}
+              />
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name="instructions"
             render={({ field }) => (
               <Input
@@ -182,10 +198,8 @@ export function AgentInfoStep({
             control={form.control}
             name="recommendedScheduleCron"
             render={({ field }) => (
-              <div className="flex flex-col space-y-2">
-                <label className="text-sm font-medium">
-                  Recommended Schedule
-                </label>
+              <div className="mb-8 flex flex-col space-y-2">
+                <Text variant="large-medium">Recommended Schedule</Text>
                 <p className="text-xs text-gray-600">
                   Suggest when users should run this agent for best results
                 </p>

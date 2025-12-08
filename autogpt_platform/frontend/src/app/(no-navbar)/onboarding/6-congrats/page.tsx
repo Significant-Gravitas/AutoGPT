@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import * as party from "party-js";
 import { useEffect, useRef, useState } from "react";
 import { useOnboarding } from "../../../../providers/onboarding/onboarding-provider";
+import { resolveResponse } from "@/app/api/helpers";
+import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import { postV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
 
 export default function Page() {
   const { completeStep } = useOnboarding(7, "AGENT_INPUT");
@@ -37,11 +40,15 @@ export default function Page() {
       completeStep("CONGRATS");
 
       try {
-        const onboarding = await api.getUserOnboarding();
+        const onboarding = await resolveResponse(getV1OnboardingState());
         if (onboarding?.selectedStoreListingVersionId) {
           try {
-            const libraryAgent = await api.addMarketplaceAgentToLibrary(
-              onboarding.selectedStoreListingVersionId,
+            const libraryAgent = await resolveResponse(
+              postV2AddMarketplaceAgent({
+                store_listing_version_id:
+                  onboarding.selectedStoreListingVersionId,
+                source: "onboarding",
+              }),
             );
             router.replace(`/library/agents/${libraryAgent.id}`);
           } catch (error) {

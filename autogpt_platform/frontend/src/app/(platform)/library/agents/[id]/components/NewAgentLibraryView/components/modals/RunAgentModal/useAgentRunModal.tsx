@@ -1,23 +1,23 @@
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import {
+  getGetV1ListGraphExecutionsInfiniteQueryOptions,
+  usePostV1ExecuteGraphAgent,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
+import {
+  getGetV1ListExecutionSchedulesForAGraphQueryKey,
+  usePostV1CreateExecutionSchedule as useCreateSchedule,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useState, useCallback, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
-import {
-  usePostV1ExecuteGraphAgent,
-  getGetV1ListGraphExecutionsInfiniteQueryOptions,
-} from "@/app/api/__generated__/endpoints/graphs/graphs";
-import {
-  usePostV1CreateExecutionSchedule as useCreateSchedule,
-  getGetV1ListExecutionSchedulesForAGraphQueryKey,
-} from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
-import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { analytics } from "@/services/analytics";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =
   | "manual"
@@ -50,7 +50,6 @@ export function useAgentRunModal(
   const [cronExpression, setCronExpression] = useState(
     agent.recommended_schedule_cron || "0 9 * * 1",
   );
-  const { completeStep: completeOnboardingStep } = useOnboarding();
 
   // Get user timezone for scheduling
   const { data: userTimezone } = useGetV1GetUserTimezone({
@@ -87,14 +86,9 @@ export function useAgentRunModal(
         }
       },
       onError: (error: any) => {
-        const errorMessage = error.isGraphValidationError()
-          ? error.response.detail.message
-          : error.message;
-
-        toast({
-          title: "❌ Failed to execute agent",
-          description: errorMessage || "An unexpected error occurred.",
-          variant: "destructive",
+        showExecutionErrorToast(toast, error, {
+          graph_id: agent.graph_id,
+          graph_version: agent.graph_version,
         });
       },
     },
@@ -290,6 +284,7 @@ export function useAgentRunModal(
         data: {
           inputs: inputValues,
           credentials_inputs: inputCredentials,
+          source: "library",
         },
       });
     }
@@ -335,8 +330,6 @@ export function useAgentRunModal(
           userTimezone && userTimezone !== "not-set" ? userTimezone : undefined,
       },
     });
-
-    completeOnboardingStep("SCHEDULE_AGENT");
   }, [
     allRequiredInputsAreSet,
     scheduleName,

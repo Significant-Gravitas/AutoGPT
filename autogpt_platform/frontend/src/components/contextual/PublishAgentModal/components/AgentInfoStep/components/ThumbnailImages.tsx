@@ -1,12 +1,11 @@
 "use client";
 
-import * as React from "react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { MagicWand } from "@phosphor-icons/react";
 import Image from "next/image";
 import { IconCross, IconPlus } from "../../../../../__legacy__/ui/icons";
-import { Button } from "@/components/atoms/Button/Button";
-import { MagicWand } from "@phosphor-icons/react";
 import { useThumbnailImages } from "./useThumbnailImages";
-import { Text } from "@/components/atoms/Text/Text";
 
 interface ThumbnailImagesProps {
   agentId: string | null;
@@ -43,9 +42,9 @@ export function ThumbnailImages({
   return (
     <div className="space-y-2.5">
       <div className="flex flex-col items-start justify-start gap-1">
-        <label className="text-sm font-medium leading-tight text-slate-950">
+        <Text variant="large-medium" className="leading-tight">
           Thumbnail images
-        </label>
+        </Text>
         <Text variant="body" className="!text-zinc-500">
           The first image will be used as the thumbnail for your agent.
         </Text>
@@ -68,7 +67,7 @@ export function ThumbnailImages({
       </div>
       <div
         ref={thumbnailsContainerRef}
-        className="flex items-center space-x-2 overflow-x-auto pb-6"
+        className="relative z-10 flex items-center space-x-2 pb-4"
       >
         {images.length === 0 ? (
           <div className="flex w-full items-center justify-start gap-2 pl-2">
@@ -108,15 +107,13 @@ export function ThumbnailImages({
                 key={index}
                 className="relative flex-shrink-0 overflow-visible"
               >
-                <Button
-                  type="button"
-                  size="small"
+                <button
                   onClick={() => handleRemoveImage(index)}
-                  className="absolute right-0 top-0 z-50 h-6 w-6 p-0"
+                  className="absolute -right-2 -top-2 z-50 inline-flex size-6 items-center justify-center rounded-full bg-slate-900"
                   aria-label="Remove image"
                 >
                   <IconCross className="h-2 w-2 text-white" />
-                </Button>
+                </button>
                 <div
                   className={`relative aspect-video h-16 w-24 overflow-hidden rounded-md border-2 transition-colors ${
                     selectedImage === src

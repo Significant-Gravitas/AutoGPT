@@ -1,13 +1,11 @@
 "use client";
 
-import React from "react";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { toDisplayName } from "@/providers/agent-credentials/helper";
+import { CredentialsInput } from "../CredentialsInputs/CredentialsInputs";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
-  getCredentialTypeDisplayName,
   renderValue,
 } from "./helpers";
 
@@ -54,32 +52,18 @@ export function AgentInputsReadOnly({
       {hasCredentials && (
         <div className="flex flex-col gap-6">
           {hasInputs && <div className="border-t border-neutral-200 pt-4" />}
-          {credentialEntries.map(([key, _sub]) => {
+          {credentialEntries.map(([key, inputSubSchema]) => {
             const credential = credentialInputs![key];
             if (!credential) return null;
 
             return (
-              <div key={key} className="flex flex-col gap-4">
-                <h3 className="text-lg font-medium text-neutral-900">
-                  {toDisplayName(credential.provider)} credentials
-                </h3>
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-neutral-600">Name</span>
-                    <span className="text-neutral-600">
-                      {getCredentialTypeDisplayName(credential.type)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-neutral-900">
-                      {credential.title || "Untitled"}
-                    </span>
-                    <span className="font-mono text-neutral-400">
-                      {"*".repeat(25)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+              <CredentialsInput
+                key={key}
+                schema={{ ...inputSubSchema, discriminator: undefined } as any}
+                selectedCredentials={credential}
+                onSelectCredentials={() => {}}
+                readOnly={true}
+              />
             );
           })}
         </div>

@@ -116,7 +116,7 @@ export const useRunGraph = () => {
       await executeGraph({
         graphId: flowID ?? "",
         graphVersion: flowVersion || null,
-        data: { inputs: {}, credentials_inputs: {} },
+        data: { inputs: {}, credentials_inputs: {}, source: "builder" },
       });
     }
   };

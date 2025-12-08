@@ -1,15 +1,15 @@
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Input } from "@/components/atoms/Input/Input";
-import { Button } from "@/components/atoms/Button/Button";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import useCredentials from "@/hooks/useCredentials";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
@@ -85,7 +85,7 @@ export function PasswordCredentialsModal({
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-2 pt-4"
+            className="w-[98%] space-y-2 pt-4"
           >
             <FormField
               control={form.control}
@@ -96,7 +96,6 @@ export function PasswordCredentialsModal({
                   label="Username"
                   type="text"
                   placeholder="Enter username..."
-                  size="small"
                   {...field}
                 />
               )}
@@ -110,7 +109,6 @@ export function PasswordCredentialsModal({
                   label="Password"
                   type="password"
                   placeholder="Enter password..."
-                  size="small"
                   {...field}
                 />
               )}
@@ -124,12 +122,12 @@ export function PasswordCredentialsModal({
                   label="Name"
                   type="text"
                   placeholder="Enter a name for this user login..."
-                  size="small"
+                  className="mb-8"
                   {...field}
                 />
               )}
             />
-            <Button type="submit" size="small" className="min-w-68">
+            <Button type="submit" className="w-full">
               Save & use this user login
             </Button>
           </form>

@@ -1,4 +1,4 @@
-.PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend
+.PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend load-store-agents
 
 # Run just Supabase + Redis + RabbitMQ
 start-core:
@@ -42,7 +42,10 @@ run-frontend:
 
 test-data:
 	cd backend && poetry run python test/test_data_creator.py
-	
+
+load-store-agents:
+	cd backend && poetry run load-store-agents
+
 help:
 	@echo "Usage: make <target>"
 	@echo "Targets:"
@@ -55,3 +58,4 @@ help:
 	@echo "  run-backend - Run the backend FastAPI server"
 	@echo "  run-frontend - Run the frontend Next.js development server"
 	@echo "  test-data - Run the test data creator"
+	@echo "  load-store-agents - Load store agents from agents/ folder into test database"

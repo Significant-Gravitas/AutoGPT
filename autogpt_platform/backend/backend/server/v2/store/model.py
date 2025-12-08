@@ -44,6 +44,7 @@ class StoreAgentDetails(pydantic.BaseModel):
     slug: str
     agent_name: str
     agent_video: str
+    agent_output_demo: str
     agent_image: list[str]
     creator: str
     creator_avatar: str
@@ -121,6 +122,7 @@ class StoreSubmission(pydantic.BaseModel):
 
     # Additional fields for editing
     video_url: str | None = None
+    agent_output_demo_url: str | None = None
     categories: list[str] = []
 
 
@@ -157,6 +159,7 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     name: str
     sub_heading: str
     video_url: str | None = None
+    agent_output_demo_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
     instructions: str | None = None
@@ -169,6 +172,7 @@ class StoreSubmissionEditRequest(pydantic.BaseModel):
     name: str
     sub_heading: str
     video_url: str | None = None
+    agent_output_demo_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
     instructions: str | None = None

@@ -1,0 +1,242 @@
+listing_id,storeListingVersionId,slug,agent_name,agent_video,agent_image,featured,sub_heading,description,categories,useForOnboarding,is_available
+6e60a900-9d7d-490e-9af2-a194827ed632,d85882b8-633f-44ce-a315-c20a8c123d19,flux-ai-image-generator,Flux AI Image Generator,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/ca154dd1-140e-454c-91bd-2d8a00de3f08.jpg"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/577d995d-bc38-40a9-a23f-1f30f5774bdb.jpg"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/415db1b7-115c-43ab-bd6c-4e9f7ef95be1.jpg""]",false,Transform ideas into breathtaking images,"Transform ideas into breathtaking images with this AI-powered Image Generator. Using cutting-edge Flux AI technology, the tool crafts highly detailed, photorealistic visuals from simple text prompts. Perfect for artists, marketers, and content creators, this generator produces unique images tailored to user specifications. From fantastical scenes to lifelike portraits, users can unleash creativity with professional-quality results in seconds. Easy to use and endlessly versatile, bring imagination to life with the AI Image Generator today!","[""creative""]",false,true
+f11fc6e9-6166-4676-ac5d-f07127b270c1,c775f60d-b99f-418b-8fe0-53172258c3ce,youtube-transcription-scraper,YouTube Transcription Scraper,https://youtu.be/H8S3pU68lGE,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/65bce54b-0124-4b0d-9e3e-f9b89d0dc99e.jpg""]",false,Fetch the transcriptions from the most popular YouTube videos in your chosen topic,"Effortlessly gather transcriptions from multiple YouTube videos with this agent. It scrapes and compiles video transcripts into a clean, organized list, making it easy to extract insights, quotes, or content from various sources in one go. Ideal for researchers, content creators, and marketers looking to quickly analyze or repurpose video content.","[""writing""]",false,true
+17908889-b599-4010-8e4f-bed19b8f3446,6e16e65a-ad34-4108-b4fd-4a23fced5ea2,business-ownerceo-finder,Decision Maker Lead Finder,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/1020d94e-b6a2-4fa7-bbdf-2c218b0de563.jpg""]",false,Contact CEOs today,"Find the key decision-makers you need, fast.
+
+This agent identifies business owners or CEOs of local companies in any area you choose. Simply enter what kind of businesses you’re looking for and where, and it will:
+
+* Search the area and gather public information
+* Return names, roles, and contact details when available
+* Provide smart Google search suggestions if details aren’t found
+
+Perfect for:
+
+* B2B sales teams seeking verified leads
+* Recruiters sourcing local talent
+* Researchers looking to connect with business leaders
+
+Save hours of manual searching and get straight to the people who matter most.","[""business""]",true,true
+72beca1d-45ea-4403-a7ce-e2af168ee428,415b7352-0dc6-4214-9d87-0ad3751b711d,smart-meeting-brief,Smart Meeting Prep,https://youtu.be/9ydZR2hkxaY,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/2f116ce1-63ae-4d39-a5cd-f514defc2b97.png"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/0a71a60a-2263-4f12-9836-9c76ab49f155.png"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/95327695-9184-403c-907a-a9d3bdafa6a5.png"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/2bc77788-790b-47d4-8a61-ce97b695e9f5.png""]",true,Business meeting briefings delivered daily,"Never walk into a meeting unprepared again. Every day at 4 pm, the Smart Meeting Prep Agent scans your calendar for tomorrow's external meetings. It reviews your past email exchanges, researches each participant's background and role, and compiles the insights into a concise briefing, so you can close your workday ready for tomorrow's calls.
+
+How It Works
+1. At 4 pm, the agent scans your calendar and identifies external meetings scheduled for the next day.
+2. It reviews recent email threads with each participant to surface key relationship history and communication context.
+3. It conducts online research to gather publicly available information on roles, company backgrounds, and relevant professional data.
+4. It produces a unified briefing for each participant, including past exchange highlights, profile notes, and strategic conversation points.","[""personal""]",true,true
+9fa5697a-617b-4fae-aea0-7dbbed279976,b8ceb480-a7a2-4c90-8513-181a49f7071f,automated-support-ai,Automated Support Agent,https://youtu.be/nBMfu_5sgDA,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/ed56febc-2205-4179-9e7e-505d8500b66c.png""]",true,Automate up to 80 percent of inbound support emails,"Overview:
+Support teams spend countless hours on basic tickets. This agent automates repetitive customer support tasks. It reads incoming requests, researches your knowledge base, and responds automatically when confident. When unsure, it escalates to a human for final resolution.
+
+How it Works:
+New support emails are routed to the agent.
+The agent checks internal documentation for answers.
+It measures confidence in the answer found and either replies directly or escalates to a human.
+
+Business Value:
+Automating the easy 80 percent of support tickets allows your team to focus on high-value, complex customer issues, improving efficiency and response times.","[""business""]",false,true
+2bdac92b-a12c-4131-bb46-0e3b89f61413,31daf49d-31d3-476b-aa4c-099abc59b458,unspirational-poster-maker,Unspirational Poster Maker,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/6a490dac-27e5-405f-a4c4-8d1c55b85060.jpg"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/d343fbb5-478c-4e38-94df-4337293b61f1.jpg""]",false,Because adulting is hard,"This witty AI agent generates hilariously relatable ""motivational"" posters that tackle the everyday struggles of procrastination, overthinking, and workplace chaos with a blend of absurdity and sarcasm. From goldfish facing impossible tasks to cats in existential crises, The Unspirational Poster Maker designs tongue-in-cheek graphics and captions that mock productivity clichés and embrace our collective struggles to ""get it together."" Perfect for adding a touch of humour to the workday, these posters remind us that sometimes, all we can do is laugh at the chaos.","[""creative""]",false,true
+9adf005e-2854-4cc7-98cf-f7103b92a7b7,a03b0d8c-4751-43d6-a54e-c3b7856ba4e3,ai-shortform-video-generator-create-viral-ready-content,AI Video Generator,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/8d2670b9-fea5-4966-a597-0a4511bffdc3.png"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/aabe8aec-0110-4ce7-a259-4f86fe8fe07d.png""]",false,Create Viral-Ready Shorts Content in Seconds,"OVERVIEW
+Transform any trending headline or broad topic into a polished, vertical short-form video in a single run.  
+The agent automates research, scriptwriting, metadata creation, and Revid.ai rendering, returning one ready-to-publish MP4 plus its title, script and hashtags.
+
+HOW IT WORKS
+1. Input a topic or an exact news headline.  
+2. The agent fetches live search results and selects the most engaging related story.  
+3. Key facts are summarised into concise research notes.  
+4. Claude writes a 30–35 second script with visual cues, a three-second hook, tension loops, and a call-to-action.  
+5. GPT-4o generates an eye-catching title and one or two discoverability hashtags.  
+6. The script is sent to a state-of-the-art AI video generator to render a single 9:16 MP4 (default: 720 p, 30 fps, voice “Brian”, style “movingImage”, music “Bladerunner 2049”).  
+   – All voice, style and resolution settings can be adjusted in the Builder before you press ""Run"".  
+7. Output delivered: Title, Script, Hashtags, Video URL.
+
+KEY USE CASES
+- Broad-topic explainers (e.g. “Artificial Intelligence” or “Climate Tech”).  
+- Real-time newsjacking with a specific breaking headline.  
+- Product-launch spotlights and quick event recaps while interest is high.  
+
+BUSINESS VALUE
+- One-click speed: from idea to finished video in minutes.  
+- Consistent brand look: Revid presets keep voice, style and aspect ratio on spec.  
+- No-code workflow: marketers create social video without design or development queues.  
+- Cloud convenience: Auto-GPT Cloud users are pre-configured with all required keys.  
+  Self-hosted users simply add OpenAI, Anthropic, Perplexity (OpenRouter/Jina) and Revid keys once.
+
+IMPORTANT NOTES
+- The agent outputs exactly one video per execution. Run it again for additional shorts.  
+- Video rendering time varies; AI-generated footage may take several minutes.","[""writing""]",false,true
+864e48ef-fee5-42c1-b6a4-2ae139db9fc1,55d40473-0f31-4ada-9e40-d3a7139fcbd4,automated-blog-writer,Automated SEO Blog Writer,https://youtu.be/nKcDCbDVobs,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/2dd5f95b-5b30-4bf8-a11b-bac776c5141a.jpg""]",true,"Automate research, writing, and publishing for high-ranking blog posts","Scale your blog with a fully automated content engine. The Automated SEO Blog Writer learns your brand voice, finds high-demand keywords, and creates SEO-optimized articles that attract organic traffic and boost visibility.
+
+How it works:
+
+1. Share your pitch, website, and values.
+2. The agent studies your site and uncovers proven SEO opportunities.
+3. It spends two hours researching and drafting each post.
+4. You set the cadence—publishing runs on autopilot.
+
+Business value: Consistently publish research-backed, optimized posts that build domain authority, rankings, and thought leadership while you focus on what matters most.
+
+Use cases:
+• Founders: Keep your blog active with no time drain.
+• Agencies: Deliver scalable SEO content for clients.
+• Strategists: Automate execution, focus on strategy.
+• Marketers: Drive steady organic growth.
+• Local businesses: Capture nearby search traffic.","[""writing""]",false,true
+6046f42e-eb84-406f-bae0-8e052064a4fa,a548e507-09a7-4b30-909c-f63fcda10fff,lead-finder-local-businesses,Lead Finder,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/abd6605f-d5f8-426b-af36-052e8ba5044f.webp""]",false,Auto-Prospect Like a Pro,"Turbo-charge your local lead generation with the AutoGPT Marketplace’s top Google Maps prospecting agent. “Lead Finder: Local Businesses” delivers verified, ready-to-contact prospects in any niche and city—so you can focus on closing, not searching.
+
+**WHAT IT DOES**
+• Searches Google Maps via the official API (no scraping)
+• Prompts like “dentists in Chicago” or “coffee shops near me”
+• Returns: Name, Website, Rating, Reviews, **Phone & Address**
+• Exports instantly to your CRM, sheet, or outreach workflow
+
+**WHY YOU’LL LOVE IT**
+✓ Hyper-targeted leads in minutes
+✓ Unlimited searches & locations
+✓ Zero CAPTCHAs or IP blocks
+✓ Works on AutoGPT Cloud or self-hosted (with your API key)
+✓ Cut prospecting time by 90%
+
+**PERFECT FOR**
+— Marketers & PPC agencies
+— SEO consultants & designers
+— SaaS founders & sales teams
+
+Stop scrolling directories—start filling your pipeline. Start now and let AI prospect while you profit.
+
+→ Click *Add to Library* and own your market today.","[""business""]",true,true
+f623c862-24e9-44fc-8ce8-d8282bb51ad2,eafa21d3-bf14-4f63-a97f-a5ee41df83b3,linkedin-post-generator,LinkedIn Post Generator,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/297f6a8e-81a8-43e2-b106-c7ad4a5662df.png"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/fceebdc1-aef6-4000-97fc-4ef587f56bda.png""]",false,Auto‑craft LinkedIn gold,"Create research‑driven, high‑impact LinkedIn posts in minutes. This agent searches YouTube for the best videos on your chosen topic, pulls their transcripts, and distils the most valuable insights into a polished post ready for your company page or personal feed.  
+
+FEATURES  
+• Automated YouTube research – discovers and analyses top‑ranked videos so you don’t have to  
+• AI‑curated synthesis – combines multiple transcripts into one authoritative narrative  
+• Full creative control – adjust style, tone, objective, opinion, clarity, target word count and number of videos  
+• LinkedIn‑optimised output – hook, 2‑3 key points, CTA, strategic line breaks, 3‑5 hashtags, no markdown  
+• One‑click publish – returns a ready‑to‑post text block (≤1 300 characters)  
+
+HOW IT WORKS  
+1. Enter a topic and your preferred writing parameters.  
+2. The agent builds a YouTube search, fetches the page, and extracts the top N video URLs.  
+3. It pulls each transcript, then feeds them—plus your settings—into Claude 3.5 Sonnet.  
+4. The model writes a concise, engaging post designed for maximum LinkedIn engagement.  
+
+USE CASES  
+• Thought‑leadership updates backed by fresh video research  
+• Rapid industry summaries after major events, webinars, or conferences  
+• Consistent LinkedIn content for busy founders, marketers, and creators  
+
+WHY YOU’LL LOVE IT  
+Save hours of manual research, avoid surface‑level hot‑takes, and publish posts that showcase real expertise—without the heavy lift.","[""writing""]",true,true
+7d4120ad-b6b3-4419-8bdb-7dd7d350ef32,e7bb29a1-23c7-4fee-aa3b-5426174b8c52,youtube-to-linkedin-post-converter,YouTube to LinkedIn Post Converter,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/f084b326-a708-4396-be51-7ba59ad2ef32.png""]",false,Transform Your YouTube Videos into Engaging LinkedIn Posts with AI,"WHAT IT DOES: 
+This agent converts YouTube video content into a LinkedIn post by analyzing the video's transcript. It provides you with a tailored post that reflects the core ideas, key takeaways, and tone of the original video, optimizing it for engagement on LinkedIn.
+
+HOW IT WORKS:
+- You provide the URL to the YouTube video (required)
+- You can choose the structure for the LinkedIn post (e.g., Personal Achievement Story, Lesson Learned, Thought Leadership, etc.)
+- You can also select the tone (e.g., Inspirational, Analytical, Conversational, etc.)
+- The transcript of the video is analyzed by the GPT-4 model and the Claude 3.5 Sonnet model
+- The models extract key insights, memorable quotes, and the main points from the video
+- You’ll receive a LinkedIn post, formatted according to your chosen structure and tone, optimized for professional engagement
+
+INPUTS:
+- Source YouTube Video – Provide the URL to the YouTube video
+- Structure – Choose the post format (e.g., Personal Achievement Story, Thought Leadership, etc.)
+- Content – Specify the main message or idea of the post (e.g., Hot Take, Key Takeaways, etc.)
+- Tone – Select the tone for the post (e.g., Conversational, Inspirational, etc.)
+
+OUTPUT:
+- LinkedIn Post – A well-crafted, AI-generated LinkedIn post with a professional tone, based on the video content and your specified preferences
+
+Perfect for content creators, marketers, and professionals who want to repurpose YouTube videos for LinkedIn and boost their professional branding.","[""writing""]",false,true
+c61d6a83-ea48-4df8-b447-3da2d9fe5814,00fdd42c-a14c-4d19-a567-65374ea0e87f,personalized-morning-coffee-newsletter,Personal Newsletter,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/f4b38e4c-8166-4caf-9411-96c9c4c82d4c.png""]",false,Start your day with personalized AI newsletters that deliver credibility and context for every interest or mood.,"This Personal Newsletter Agent provides a bespoke daily digest on your favorite topics and tone. Whether you prefer industry insights, lighthearted reads, or breaking news, this agent crafts your own unique newsletter to keep you informed and entertained.
+
+
+How It Works
+1. Enter your favorite topics, industries, or areas of interest.
+2. Choose your tone—professional, casual, or humorous.
+3. Set your preferred delivery cadence: daily or weekly.
+4. The agent scans top sources and compiles 3–5 engaging stories, insights, and fun facts into a conversational newsletter.
+
+Skip the morning scroll and enjoy a thoughtfully curated newsletter designed just for you. Stay ahead of trends, spark creative ideas, and enjoy an effortless, informed start to your day.
+
+
+Use Cases
+• Executives: Get a daily digest of market updates and leadership insights.
+• Marketers: Receive curated creative trends and campaign inspiration.
+• Entrepreneurs: Stay updated on your industry without information overload.","[""research""]",true,true
+e2e49cfc-4a39-4d62-a6b3-c095f6d025ff,fc2c9976-0962-4625-a27b-d316573a9e7f,email-address-finder,Email Scout - Contact Finder Assistant,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/da8a690a-7a8b-4c1d-b6f8-e2f840c0205d.jpg"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/6a2ac25c-1609-4881-8140-e6da2421afb3.jpg"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/26179263-fe06-45bd-b6a0-0754660a0a46.jpg""]",false,Find contact details from name and location using AI search,"Finding someone's professional email address can be time-consuming and frustrating. Manual searching across multiple websites, social profiles, and business directories often leads to dead ends or outdated information.
+
+Email Scout automates this process by intelligently searching across publicly available sources when you provide a person's name and location. Simply input basic information like ""Tim Cook, USA"" or ""Sarah Smith, London"" and let the AI assistant do the work of finding potential contact details.
+
+Key Features:
+- Quick search from just name and location
+- Scans multiple public sources
+- Automated AI-powered search process
+- Easy to use with simple inputs
+
+Perfect for recruiters, business development professionals, researchers, and anyone needing to establish professional contact.
+
+Note: This tool searches only publicly available information. Search results depend on what contact information people have made public. Some searches may not yield results if the information isn't publicly accessible.","[""""]",false,true
+81bcc372-0922-4a36-bc35-f7b1e51d6939,e437cc95-e671-489d-b915-76561fba8c7f,ai-youtube-to-blog-converter,YouTube Video to SEO Blog Writer,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/239e5a41-2515-4e1c-96ef-31d0d37ecbeb.webp"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/c7d96966-786f-4be6-ad7d-3a51c84efc0e.png"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/0275a74c-e2c2-4e29-a6e4-3a616c3c35dd.png""]",false,One link. One click. One powerful blog post.,"Effortlessly transform your YouTube videos into high-quality, SEO-optimized blog posts.
+
+Your videos deserve a second life—in writing.  
+Make your content work twice as hard by repurposing it into engaging, searchable articles.
+
+Perfect for content creators, marketers, and bloggers, this tool analyzes video content and generates well-structured blog posts tailored to your tone, audience, and word count. Just paste a YouTube URL and let the AI handle the rest.
+
+FEATURES
+
+• CONTENT ANALYSIS  
+  Extracts key points from the video while preserving your message and intent.
+
+• CUSTOMIZABLE OUTPUT  
+  Select a tone that fits your audience: casual, professional, educational, or formal.
+
+• SEO OPTIMIZATION  
+  Automatically creates engaging titles and structured subheadings for better search visibility.
+
+• USER-FRIENDLY  
+  Repurpose your videos into written content to expand your reach and improve accessibility.
+
+Whether you're looking to grow your blog, boost SEO, or simply get more out of your content, the AI YouTube-to-Blog Converter makes it effortless.
+","[""writing""]",true,true
+5c3510d2-fc8b-4053-8e19-67f53c86eb1a,f2cc74bb-f43f-4395-9c35-ecb30b5b4fc9,ai-webpage-copy-improver,AI Webpage Copy Improver,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/d562d26f-5891-4b09-8859-fbb205972313.jpg""]",false,Boost Your Website's Search Engine Performance,"Elevate your web content with this powerful AI Webpage Copy Improver. Designed for marketers, SEO specialists, and web developers, this tool analyses and enhances website copy for maximum impact. Using advanced language models, it optimizes text for better clarity, SEO performance, and increased conversion rates. The AI examines your existing content, identifies areas for improvement, and generates refined copy that maintains your brand voice while boosting engagement. From homepage headlines to product descriptions, transform your web presence with AI-driven insights. Improve readability, incorporate targeted keywords, and craft compelling calls-to-action - all with the click of a button. Take your digital marketing to the next level with the AI Webpage Copy Improver.","[""marketing""]",true,true
+94d03bd3-7d44-4d47-b60c-edb2f89508d6,b6f6f0d3-49f4-4e3b-8155-ffe9141b32c0,domain-name-finder,Domain Name Finder,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/28545e09-b2b8-4916-b4c6-67f982510a78.jpeg""]",false,Instantly generate brand-ready domain names that are actually available,"Overview:
+Finding a domain name that fits your brand shouldn’t take hours of searching and failed checks. The Domain Name Finder Agent turns your pitch into hundreds of creative, brand-ready domain ideas—filtered by live availability so every result is actionable.
+
+How It Works
+1. Input your product pitch, company name, or core keywords.
+2. The agent analyzes brand tone, audience, and industry context.
+3. It generates a list of unique, memorable domains that match your criteria.
+4. All names are pre-filtered for real-time availability, so you can register immediately.
+
+
+Business Value
+Save hours of guesswork and eliminate dead ends. Accelerate brand launches, startup naming, and campaign creation with ready-to-claim domains.
+
+
+Key Use Cases
+• Startup Founders: Quickly find brand-ready domains for MVP launches or rebrands.
+• Marketers: Test name options across campaigns with instant availability data.
+• Entrepreneurs: Validate ideas faster with instant domain options.","[""business""]",false,true
+7a831906-daab-426f-9d66-bcf98d869426,516d813b-d1bc-470f-add7-c63a4b2c2bad,ai-function,AI Function,,"[""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/620e8117-2ee1-4384-89e6-c2ef4ec3d9c9.webp"",""https://storage.googleapis.com/agpt-prod-website-artifacts/users/b3e41ea4-2f4c-4964-927c-fe682d857bad/images/476259e2-5a79-4a7b-8e70-deeebfca70d7.png""]",false,Never Code Again,"AI FUNCTION MAGIC  
+Your AI‑powered assistant for turning plain‑English descriptions into working Python functions.  
+
+HOW IT WORKS  
+1. Describe what the function should do.  
+2. Specify the inputs it needs.  
+3. Receive the generated Python code.  
+
+FEATURES  
+- Effortless Function Generation: convert natural‑language specs into complete functions.  
+- Customizable Inputs: define the parameters that matter to you.  
+- Versatile Use Cases: simulate data, automate tasks, prototype ideas.  
+- Seamless Integration: add the generated function directly to your codebase.  
+
+EXAMPLE  
+Request: “Create a function that generates 20 examples of fake people, each with a name, date of birth, job title, and age.”  
+Input parameter: number_of_people (default 20)  
+Result: a list of dictionaries such as  
+[  
+  { ""name"": ""Emma Martinez"",  ""date_of_birth"": ""1992‑11‑03"", ""job_title"": ""Data Analyst"",        ""age"": 32 },  
+  { ""name"": ""Liam O’Connor"",  ""date_of_birth"": ""1985‑07‑19"", ""job_title"": ""Marketing Manager"",  ""age"": 39 },  
+  …18 more entries…  
+]","[""development""]",false,true

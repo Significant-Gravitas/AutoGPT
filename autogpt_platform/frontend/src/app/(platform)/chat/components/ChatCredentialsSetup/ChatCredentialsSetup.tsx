@@ -141,7 +141,6 @@ export function ChatCredentialsSetup({
                     onSelectCredentials={(credMeta) =>
                       handleCredentialSelect(cred.provider, credMeta)
                     }
-                    hideIfSingleCredentialAvailable={false}
                   />
                 </div>
               );

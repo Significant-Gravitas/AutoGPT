@@ -62,7 +62,7 @@ export const AgentImportForm: React.FC<
     };
 
     api
-      .createGraph(payload)
+      .createGraph(payload, "upload")
       .then((response) => {
         const qID = "flowID";
         window.location.href = `/build?${qID}=${response.id}`;

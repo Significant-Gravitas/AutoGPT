@@ -31,7 +31,6 @@ export function GoogleDrivePicker(props: Props) {
         schema={credentials.schema}
         selectedCredentials={selectedCredential}
         onSelectCredentials={setSelectedCredential}
-        hideIfSingleCredentialAvailable
       />
     );
   }
@@ -46,7 +45,6 @@ export function GoogleDrivePicker(props: Props) {
           schema={credentials.schema}
           selectedCredentials={selectedCredential}
           onSelectCredentials={setSelectedCredential}
-          hideIfSingleCredentialAvailable={false}
         />
       )}
       <Button

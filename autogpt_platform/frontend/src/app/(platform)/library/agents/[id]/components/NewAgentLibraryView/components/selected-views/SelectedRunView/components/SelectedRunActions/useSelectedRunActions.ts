@@ -77,6 +77,7 @@ export function useSelectedRunActions(args: Args) {
         data: {
           inputs: args.run.inputs || {},
           credentials_inputs: args.run.credential_inputs || {},
+          source: "library",
         },
       });
 

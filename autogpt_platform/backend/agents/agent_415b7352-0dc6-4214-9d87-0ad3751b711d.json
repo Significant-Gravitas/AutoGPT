@@ -1,0 +1,4953 @@
+{
+  "id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+  "version": 145,
+  "is_active": true,
+  "name": "Smart Meeting Prep",
+  "description": "Never walk into a meeting unprepared again. Every day at 4 pm, the Smart Meeting Prep Agent scans your calendar for tomorrow's external meetings. It reviews your past email exchanges, researches each participant's background and role, and compiles the insights into a concise briefing, so you can close your workday ready for tomorrow's calls.\n\nHow It Works\n1. At 4 pm, the agent scans your calendar and identifies external meetings scheduled for the next day.\n2. It reviews recent email threads with each participant to surface key relationship history and communication context.\n3. It conducts online research to gather publicly available information on roles, company backgrounds, and relevant professional data.\n4. It produces a unified briefing for each participant, including past exchange highlights, profile notes, and strategic conversation points.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+      "block_id": "80bc3ed1-e9a4-449e-8163-a8fc86f74f6a",
+      "input_default": {
+        "max_events": 10,
+        "start_time": "2025-06-03T23:00:00.000Z",
+        "calendar_id": "primary",
+        "time_range_days": 1,
+        "include_declined_events": false
+      },
+      "metadata": {
+        "position": {
+          "x": -4695.248227566036,
+          "y": 1025.6785924803073
+        }
+      },
+      "input_links": [
+        {
+          "id": "13f0408a-ff6f-46e3-8bc2-d0494affd0be",
+          "source_id": "2f36814e-5346-4495-a690-114392c69e5a",
+          "sink_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "source_name": "output",
+          "sink_name": "start_time",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "df28bad4-d719-4c70-abb0-3c9f205c36a1",
+          "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "sink_id": "140fbcac-7b0a-4e31-97b8-f82d40aba8ad",
+          "source_name": "events",
+          "sink_name": "collection",
+          "is_static": false
+        },
+        {
+          "id": "db5ab8be-2ba6-48e9-bb60-7e1c1357b2ca",
+          "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0d38c2f5-7ff2-4245-937d-ed196f340e62",
+          "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "sink_id": "375fbdcf-1401-472d-a3ee-44626f9e324b",
+          "source_name": "event_#_attendees",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "375fbdcf-1401-472d-a3ee-44626f9e324b",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "string"
+      },
+      "metadata": {
+        "position": {
+          "x": -1919.2965406426972,
+          "y": 517.5094962063698
+        }
+      },
+      "input_links": [
+        {
+          "id": "0d38c2f5-7ff2-4245-937d-ed196f340e62",
+          "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "sink_id": "375fbdcf-1401-472d-a3ee-44626f9e324b",
+          "source_name": "event_#_attendees",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5778d55e-6c46-4e08-a4fc-47aefe562a9a",
+          "source_id": "375fbdcf-1401-472d-a3ee-44626f9e324b",
+          "sink_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "source_name": "value",
+          "sink_name": "Attendees List",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "36a914b3-f48c-4fd5-bc85-abcef3ab8ece",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Meeting Prep Report Text",
+        "secret": false,
+        "advanced": false,
+        "description": "Plain Text Report, the full report was emailed to you."
+      },
+      "metadata": {
+        "position": {
+          "x": 3275.241152538072,
+          "y": 867.6720519460005
+        }
+      },
+      "input_links": [
+        {
+          "id": "da7a8692-42d4-426b-a5e8-fc08b49416d1",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "36a914b3-f48c-4fd5-bc85-abcef3ab8ece",
+          "source_name": "Attendee Research",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error",
+        "secret": false,
+        "advanced": false
+      },
+      "metadata": {
+        "position": {
+          "x": -2720.993908836589,
+          "y": 8787.545599772538
+        }
+      },
+      "input_links": [
+        {
+          "id": "db5ab8be-2ba6-48e9-bb60-7e1c1357b2ca",
+          "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "ff44a42d-6510-409c-bb7c-5d2b435f98b9",
+          "source_id": "b38b33ea-1751-4f8e-932c-bde5ba898a6a",
+          "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": true
+        },
+        {
+          "id": "bb4aeae7-66d3-45ce-9219-e0922b0388dc",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b38b33ea-1751-4f8e-932c-bde5ba898a6a",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "Invalid email. Please enter your email address in the format: your@email.com."
+      },
+      "metadata": {
+        "position": {
+          "x": -4672.316992893083,
+          "y": -1035.715960747806
+        }
+      },
+      "input_links": [
+        {
+          "id": "2fd790d9-537c-4638-9317-c98fcae93100",
+          "source_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "sink_id": "b38b33ea-1751-4f8e-932c-bde5ba898a6a",
+          "source_name": "negative",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "ff44a42d-6510-409c-bb7c-5d2b435f98b9",
+          "source_id": "b38b33ea-1751-4f8e-932c-bde5ba898a6a",
+          "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": true
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "72c7f3e2-f1d2-4e1f-a9e0-8c44e0b7a20f",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Internal Only Meeting",
+        "secret": false,
+        "advanced": false,
+        "description": "At least one internal meeting was detected, I won't brief you for it as I'm assuming you already have background info on your colleagues."
+      },
+      "metadata": {
+        "position": {
+          "x": 3227.3962414727475,
+          "y": 2548.626128665094
+        }
+      },
+      "input_links": [
+        {
+          "id": "358195c9-34ed-4842-8fe8-711520b1f43f",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "72c7f3e2-f1d2-4e1f-a9e0-8c44e0b7a20f",
+          "source_name": "Internal Only Meeting",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c2b870d0-c997-4246-b4e5-db5032c9a964",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Email Status",
+        "secret": false,
+        "advanced": false,
+        "description": "Whether or not the briefing was successfully sent"
+      },
+      "metadata": {
+        "position": {
+          "x": 3893.5172040435923,
+          "y": -973.2636913682546
+        }
+      },
+      "input_links": [
+        {
+          "id": "882efe40-7e50-4303-9996-8c8761466dc2",
+          "source_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "sink_id": "c2b870d0-c997-4246-b4e5-db5032c9a964",
+          "source_name": "Email Status",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "86aefe01-bc1b-4143-b37c-d970fc161616",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "You have no meetings on your calendar tomorrow, so I haven\u2019t sent an email \u2014 enjoy the peace and quiet!\n"
+      },
+      "metadata": {
+        "position": {
+          "x": -2683.159978461873,
+          "y": 3832.233478029798
+        }
+      },
+      "input_links": [
+        {
+          "id": "4861e4c3-1772-477b-9f39-1e71f5b3b14b",
+          "source_id": "81999510-7240-4f04-9e2e-b8b838b6ae04",
+          "sink_id": "86aefe01-bc1b-4143-b37c-d970fc161616",
+          "source_name": "yes_output",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "a81255d1-6707-442d-9fac-5814ec801a81",
+          "source_id": "86aefe01-bc1b-4143-b37c-d970fc161616",
+          "sink_id": "c8184979-92dc-4a66-8e4c-6eac1eaaeb1f",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": true
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c8184979-92dc-4a66-8e4c-6eac1eaaeb1f",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "No Meetings Found",
+        "secret": false,
+        "advanced": false
+      },
+      "metadata": {
+        "position": {
+          "x": -2119.3676563329755,
+          "y": 3831.7669244753833
+        }
+      },
+      "input_links": [
+        {
+          "id": "a81255d1-6707-442d-9fac-5814ec801a81",
+          "source_id": "86aefe01-bc1b-4143-b37c-d970fc161616",
+          "sink_id": "c8184979-92dc-4a66-8e4c-6eac1eaaeb1f",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": true
+        }
+      ],
+      "output_links": [],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "140fbcac-7b0a-4e31-97b8-f82d40aba8ad",
+      "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -3797.5359658821435,
+          "y": 3827.3338921781456
+        }
+      },
+      "input_links": [
+        {
+          "id": "df28bad4-d719-4c70-abb0-3c9f205c36a1",
+          "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "sink_id": "140fbcac-7b0a-4e31-97b8-f82d40aba8ad",
+          "source_name": "events",
+          "sink_name": "collection",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "7f63a53a-1b74-4cc4-99a5-c698f3eebcd1",
+          "source_id": "140fbcac-7b0a-4e31-97b8-f82d40aba8ad",
+          "sink_id": "81999510-7240-4f04-9e2e-b8b838b6ae04",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "81999510-7240-4f04-9e2e-b8b838b6ae04",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "value2": "0",
+        "operator": "=="
+      },
+      "metadata": {
+        "position": {
+          "x": -3250.822170585202,
+          "y": 3831.6129255495543
+        }
+      },
+      "input_links": [
+        {
+          "id": "7f63a53a-1b74-4cc4-99a5-c698f3eebcd1",
+          "source_id": "140fbcac-7b0a-4e31-97b8-f82d40aba8ad",
+          "sink_id": "81999510-7240-4f04-9e2e-b8b838b6ae04",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "4861e4c3-1772-477b-9f39-1e71f5b3b14b",
+          "source_id": "81999510-7240-4f04-9e2e-b8b838b6ae04",
+          "sink_id": "86aefe01-bc1b-4143-b37c-d970fc161616",
+          "source_name": "yes_output",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "591bee73-2d6e-4420-a142-6343d5c08628",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Check if there are just no meetings tomorrow."
+      },
+      "metadata": {
+        "position": {
+          "x": -3796.3852666270996,
+          "y": 3431.8497318339414
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c2ec43d3-fbd8-444c-8e63-d8f449f092e3",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Meeting Prep Report Error",
+        "secret": false,
+        "advanced": false,
+        "description": "Error generating or emailing the final report - please email contact@agpt.co"
+      },
+      "metadata": {
+        "position": {
+          "x": 3216.287190359684,
+          "y": -988.0598836224085
+        }
+      },
+      "input_links": [
+        {
+          "id": "a88ffe8a-b611-49c8-9fb9-46bce891e023",
+          "source_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "sink_id": "c2ec43d3-fbd8-444c-8e63-d8f449f092e3",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -5232.793780572323,
+          "y": -1033.1249675080244
+        }
+      },
+      "input_links": [
+        {
+          "id": "fe88b71c-6d4e-4c79-8fb6-5dfbde952653",
+          "source_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "sink_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+          "source_name": "positive",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d6451364-3742-4506-a111-da24f71da2ce",
+          "source_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+          "sink_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "source_name": "output",
+          "sink_name": "User's Email",
+          "is_static": true
+        },
+        {
+          "id": "23393c58-1bd1-4fa9-91d8-8c3d7a9bd887",
+          "source_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+          "sink_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "source_name": "output",
+          "sink_name": "Recipient Email",
+          "is_static": true
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "39c9af7e-2380-49b3-87e2-72ed10e00c4c",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "Your email address",
+        "secret": false,
+        "advanced": false,
+        "description": "The work email address you use for your meetings. \nYour daily briefings will be sent to you here.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -6422.331283936919,
+          "y": -1031.7516197244809
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "a7fc2437-d157-42e8-9cd5-6e6f2365dc8a",
+          "source_id": "39c9af7e-2380-49b3-87e2-72ed10e00c4c",
+          "sink_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "source_name": "result",
+          "sink_name": "data",
+          "is_static": true
+        },
+        {
+          "id": "09284cc3-7322-4f26-b181-783910ba3d40",
+          "source_id": "39c9af7e-2380-49b3-87e2-72ed10e00c4c",
+          "sink_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "source_name": "result",
+          "sink_name": "text",
+          "is_static": true
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "22f95a78-f6b1-470a-8d07-36661accce5b",
+      "block_id": "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1",
+      "input_default": {
+        "offset": "-1",
+        "trigger": "go",
+        "format_type": {
+          "discriminator": "iso8601"
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": -5818.802520787647,
+          "y": 1028.6722992737089
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "8762d87d-972e-4413-860c-c8f5fa5ef7a4",
+          "source_id": "22f95a78-f6b1-470a-8d07-36661accce5b",
+          "sink_id": "2f36814e-5346-4495-a690-114392c69e5a",
+          "source_name": "date",
+          "sink_name": "values_#_date",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2f36814e-5346-4495-a690-114392c69e5a",
+      "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+      "input_default": {
+        "format": "{{date | safe}}T00:00:00Z",
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -5268.141757324583,
+          "y": 1027.1597337120993
+        }
+      },
+      "input_links": [
+        {
+          "id": "8762d87d-972e-4413-860c-c8f5fa5ef7a4",
+          "source_id": "22f95a78-f6b1-470a-8d07-36661accce5b",
+          "sink_id": "2f36814e-5346-4495-a690-114392c69e5a",
+          "source_name": "date",
+          "sink_name": "values_#_date",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "13f0408a-ff6f-46e3-8bc2-d0494affd0be",
+          "source_id": "2f36814e-5346-4495-a690-114392c69e5a",
+          "sink_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+          "source_name": "output",
+          "sink_name": "start_time",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+      "block_id": "3060088f-6ed9-4928-9ba7-9c92823a7ccd",
+      "input_default": {
+        "match": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+        "dot_all": false,
+        "case_sensitive": false
+      },
+      "metadata": {
+        "position": {
+          "x": -5777.840158296072,
+          "y": -1031.5404577040745
+        }
+      },
+      "input_links": [
+        {
+          "id": "a7fc2437-d157-42e8-9cd5-6e6f2365dc8a",
+          "source_id": "39c9af7e-2380-49b3-87e2-72ed10e00c4c",
+          "sink_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "source_name": "result",
+          "sink_name": "data",
+          "is_static": true
+        },
+        {
+          "id": "09284cc3-7322-4f26-b181-783910ba3d40",
+          "source_id": "39c9af7e-2380-49b3-87e2-72ed10e00c4c",
+          "sink_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "source_name": "result",
+          "sink_name": "text",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "fe88b71c-6d4e-4c79-8fb6-5dfbde952653",
+          "source_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "sink_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+          "source_name": "positive",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "2fd790d9-537c-4638-9317-c98fcae93100",
+          "source_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+          "sink_id": "b38b33ea-1751-4f8e-932c-bde5ba898a6a",
+          "source_name": "negative",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+      "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+      "input_default": {
+        "inputs": {},
+        "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+        "graph_id": "4ab85485-082c-4131-a594-9d822b23d9d4",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "Attendees List",
+            "User's Email"
+          ],
+          "properties": {
+            "User's Email": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "short-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User's Email",
+              "secret": false,
+              "advanced": false
+            },
+            "Attendees List": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "long-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attendees List",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        },
+        "graph_version": 32,
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "Attendee Research",
+            "Error",
+            "Internal Only Meeting"
+          ],
+          "properties": {
+            "Error": {
+              "title": "Error",
+              "secret": false,
+              "advanced": false
+            },
+            "Attendee Research": {
+              "title": "Attendee Research",
+              "secret": false,
+              "advanced": false
+            },
+            "Internal Only Meeting": {
+              "title": "Internal Only Meeting",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": -611.1639892104845,
+          "y": 997.9458693057281
+        }
+      },
+      "input_links": [
+        {
+          "id": "d6451364-3742-4506-a111-da24f71da2ce",
+          "source_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+          "sink_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "source_name": "output",
+          "sink_name": "User's Email",
+          "is_static": true
+        },
+        {
+          "id": "5778d55e-6c46-4e08-a4fc-47aefe562a9a",
+          "source_id": "375fbdcf-1401-472d-a3ee-44626f9e324b",
+          "sink_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "source_name": "value",
+          "sink_name": "Attendees List",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "90c1597e-2cd9-4866-8a1c-7caec0d408db",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "source_name": "Attendee Research",
+          "sink_name": "Report Text",
+          "is_static": false
+        },
+        {
+          "id": "bb4aeae7-66d3-45ce-9219-e0922b0388dc",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "da7a8692-42d4-426b-a5e8-fc08b49416d1",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "36a914b3-f48c-4fd5-bc85-abcef3ab8ece",
+          "source_name": "Attendee Research",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "358195c9-34ed-4842-8fe8-711520b1f43f",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "72c7f3e2-f1d2-4e1f-a9e0-8c44e0b7a20f",
+          "source_name": "Internal Only Meeting",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+      "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+      "input_default": {
+        "inputs": {
+          "Email Subject": "Attendee Backgrounds for your Meeting Tomorrow",
+          "Report Design Brief": "# Email Report Design Prompt (for a Meeting Prep Agent)\n\n**Mood & Tone**\nProfessional, calm, high-trust, low-noise. Minimal but powerful decoration; whitespace does the heavy lifting.\n\n**Design Tokens (Hex)**\n\n* **Primary**: `#2F6FED` (actions, links, highlights)\n* **Accent**: `#10B981` (positive highlights, subtle KPIs)\n* **Text/Neutrals**:\n\n  * Text-Strong: `#0B1220`\n  * Text-Muted: `#5B6472`\n  * Border: `#E6EAF2`\n  * Surface: `#FFFFFF`\n  * Canvas: `#F6F8FB`\n* **Semantic**:\n\n  * Success: `#14804A`\n  * Warning: `#B45309`\n  * Danger: `#B91C1C`\n  * Info: `#2563EB`\n\n**Typography (System Fonts only)**\n\n* Font stack: `-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Arial, sans-serif`\n* Heading scale (tight, bold): H1 20px/26px, H2 16px/22px, H3 14px/20px\n* Body: 14px/20px; Muted: 13px/18px\n* Links: Primary color, always underlined, no hover effects (email-safe)\n\n**Layout & Spacing**\n\n* Outer wrapper: 100% width with Canvas background; center a 600px card with Surface background.\n* Padding: 24px outer, 16px inner blocks.\n* Spacing system: 4/8/16/24px; default gap between blocks: 16px.\n* Dividers: 1px Border color, full width, 16px vertical margin.\n\n**Core Components**\n\n* **Header Bar**:\n\n  * Background: Surface\n  * Title (H1) left-aligned; optional tiny muted subtitle beneath.\n  * Optional small Primary top-border (3px) spanning the card for a branded touch.\n* **KPI Tiles (3\u20134 across on desktop, stacked in mobile)**:\n\n  * Container: tinted Surface (Primary at 6% tint \u2192 `#E8F0FF`) with 8px radius, 12px padding, 1px Border.\n  * Value: 20px bold; Label: 12\u201313px muted.\n  * Use Accent tint (`#EAF7F2`) for \u201cgood\u201d metrics; Warning/Danger tints for issues.\n* **Tables (for lists & comparisons)**:\n\n  * Header row: Text-Strong, 12px uppercase, letter-spacing 0.5px, bottom border.\n  * Rows: 14px body; zebra striping with `#FAFBFE` every other row.\n  * Cell padding: 12px; Grid lines: Border color.\n  * Numeric columns right-aligned; status columns use chips.\n* **Status Chips**:\n\n  * Pill (14px text, 6px vertical padding, 10px horizontal, 999px radius).\n  * Success/Warning/Danger/Info use semantic colors with very light background tint and solid text/border in the same hue.\n* **Callouts**:\n\n  * Left border 3px in semantic color; background a very light corresponding tint; 12px padding; 8px radius.\n* **Buttons (Bulletproof)**:\n\n  * Primary: Primary background, white text, 6\u20138px radius, 14px medium weight, 14\u201316px vertical padding.\n  * Secondary: White background, 1px Border, Text-Strong, same padding.\n  * Use `<a>` styled as a button (no images).\n* **Tags/Badges**:\n\n  * Small pill, uppercase 11px, muted text, light tint background; used sparingly.\n* **Footer**:\n\n  * Muted 12px text, high spacing above (24px), no heavy borders.\n\n**Accessibility**\n\n* Body text contrast \u2265 4.5:1.\n* Do not rely on color alone\u2014pair status color with label text.\n* Links always underlined. Minimum touch target height 36\u201340px for buttons.\n\n**Email-Safe Constraints (enforce)**\n\n* Inline CSS only; table-based layout; avoid flex/grid.\n* No web fonts, background images, or box shadows; use borders and tints instead.\n* Avoid absolute positioning; keep max width 600px; make buttons and chips pure HTML/CSS.\n* Provide meaningful alt text for any images.\n\n**Micro-Patterns**\n\n* **Section Lead-In**: tiny uppercase kicker (11px, Primary), then H2.\n* **Key Number**: 28px bold number with small muted caption below.\n* **Inline Label\u2013Value**: Label muted 12px, value 14px strong, separated by 8px."
+        },
+        "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+        "graph_id": "b29bb8a9-d0ab-4858-adfa-af6baa7a81d9",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "Report Text",
+            "Recipient Email",
+            "Email Subject"
+          ],
+          "properties": {
+            "Report Text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "long-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report Text",
+              "secret": false,
+              "advanced": false
+            },
+            "Email Subject": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "short-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email Subject",
+              "secret": false,
+              "advanced": false,
+              "description": "The subject line for the email. i.e. \"Your Report\""
+            },
+            "Recipient Email": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "short-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recipient Email",
+              "secret": false,
+              "advanced": false,
+              "description": "The Email Address to send the report to. i.e. your@email.com"
+            },
+            "Report Design Brief": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "long-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report Design Brief",
+              "secret": false,
+              "default": "default",
+              "advanced": true,
+              "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\""
+            }
+          }
+        },
+        "graph_version": 6,
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "Error",
+            "Raw HTML",
+            "Email Status"
+          ],
+          "properties": {
+            "Error": {
+              "title": "Error",
+              "secret": false,
+              "advanced": false
+            },
+            "Raw HTML": {
+              "title": "Raw HTML",
+              "secret": false,
+              "advanced": false
+            },
+            "Email Status": {
+              "title": "Email Status",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 2317.4492213928424,
+          "y": -942.2912786229219
+        }
+      },
+      "input_links": [
+        {
+          "id": "90c1597e-2cd9-4866-8a1c-7caec0d408db",
+          "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+          "sink_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "source_name": "Attendee Research",
+          "sink_name": "Report Text",
+          "is_static": false
+        },
+        {
+          "id": "23393c58-1bd1-4fa9-91d8-8c3d7a9bd887",
+          "source_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+          "sink_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "source_name": "output",
+          "sink_name": "Recipient Email",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "882efe40-7e50-4303-9996-8c8761466dc2",
+          "source_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "sink_id": "c2b870d0-c997-4246-b4e5-db5032c9a964",
+          "source_name": "Email Status",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "a88ffe8a-b611-49c8-9fb9-46bce891e023",
+          "source_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+          "sink_id": "c2ec43d3-fbd8-444c-8e63-d8f449f092e3",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "5231292e-9f27-4ac0-bda6-b67daf1fa765",
+      "graph_version": 145,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "358195c9-34ed-4842-8fe8-711520b1f43f",
+      "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+      "sink_id": "72c7f3e2-f1d2-4e1f-a9e0-8c44e0b7a20f",
+      "source_name": "Internal Only Meeting",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "da7a8692-42d4-426b-a5e8-fc08b49416d1",
+      "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+      "sink_id": "36a914b3-f48c-4fd5-bc85-abcef3ab8ece",
+      "source_name": "Attendee Research",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "7f63a53a-1b74-4cc4-99a5-c698f3eebcd1",
+      "source_id": "140fbcac-7b0a-4e31-97b8-f82d40aba8ad",
+      "sink_id": "81999510-7240-4f04-9e2e-b8b838b6ae04",
+      "source_name": "count",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "a88ffe8a-b611-49c8-9fb9-46bce891e023",
+      "source_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+      "sink_id": "c2ec43d3-fbd8-444c-8e63-d8f449f092e3",
+      "source_name": "Error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "0d38c2f5-7ff2-4245-937d-ed196f340e62",
+      "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+      "sink_id": "375fbdcf-1401-472d-a3ee-44626f9e324b",
+      "source_name": "event_#_attendees",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "db5ab8be-2ba6-48e9-bb60-7e1c1357b2ca",
+      "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+      "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "13f0408a-ff6f-46e3-8bc2-d0494affd0be",
+      "source_id": "2f36814e-5346-4495-a690-114392c69e5a",
+      "sink_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+      "source_name": "output",
+      "sink_name": "start_time",
+      "is_static": false
+    },
+    {
+      "id": "23393c58-1bd1-4fa9-91d8-8c3d7a9bd887",
+      "source_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+      "sink_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+      "source_name": "output",
+      "sink_name": "Recipient Email",
+      "is_static": true
+    },
+    {
+      "id": "5778d55e-6c46-4e08-a4fc-47aefe562a9a",
+      "source_id": "375fbdcf-1401-472d-a3ee-44626f9e324b",
+      "sink_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+      "source_name": "value",
+      "sink_name": "Attendees List",
+      "is_static": false
+    },
+    {
+      "id": "fe88b71c-6d4e-4c79-8fb6-5dfbde952653",
+      "source_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+      "sink_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+      "source_name": "positive",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "8762d87d-972e-4413-860c-c8f5fa5ef7a4",
+      "source_id": "22f95a78-f6b1-470a-8d07-36661accce5b",
+      "sink_id": "2f36814e-5346-4495-a690-114392c69e5a",
+      "source_name": "date",
+      "sink_name": "values_#_date",
+      "is_static": false
+    },
+    {
+      "id": "ff44a42d-6510-409c-bb7c-5d2b435f98b9",
+      "source_id": "b38b33ea-1751-4f8e-932c-bde5ba898a6a",
+      "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": true
+    },
+    {
+      "id": "4861e4c3-1772-477b-9f39-1e71f5b3b14b",
+      "source_id": "81999510-7240-4f04-9e2e-b8b838b6ae04",
+      "sink_id": "86aefe01-bc1b-4143-b37c-d970fc161616",
+      "source_name": "yes_output",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "09284cc3-7322-4f26-b181-783910ba3d40",
+      "source_id": "39c9af7e-2380-49b3-87e2-72ed10e00c4c",
+      "sink_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+      "source_name": "result",
+      "sink_name": "text",
+      "is_static": true
+    },
+    {
+      "id": "a7fc2437-d157-42e8-9cd5-6e6f2365dc8a",
+      "source_id": "39c9af7e-2380-49b3-87e2-72ed10e00c4c",
+      "sink_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+      "source_name": "result",
+      "sink_name": "data",
+      "is_static": true
+    },
+    {
+      "id": "d6451364-3742-4506-a111-da24f71da2ce",
+      "source_id": "23598a96-f6b4-497e-b6f2-2094a0686e47",
+      "sink_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+      "source_name": "output",
+      "sink_name": "User's Email",
+      "is_static": true
+    },
+    {
+      "id": "df28bad4-d719-4c70-abb0-3c9f205c36a1",
+      "source_id": "292f5bea-5d68-4ba7-9ce7-dc357caa662e",
+      "sink_id": "140fbcac-7b0a-4e31-97b8-f82d40aba8ad",
+      "source_name": "events",
+      "sink_name": "collection",
+      "is_static": false
+    },
+    {
+      "id": "bb4aeae7-66d3-45ce-9219-e0922b0388dc",
+      "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+      "sink_id": "e0b6c552-d7bb-47ca-811c-586b1d64dfa8",
+      "source_name": "Error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "2fd790d9-537c-4638-9317-c98fcae93100",
+      "source_id": "bc5b090b-4250-4a82-ac1a-9ad43a4682c4",
+      "sink_id": "b38b33ea-1751-4f8e-932c-bde5ba898a6a",
+      "source_name": "negative",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "882efe40-7e50-4303-9996-8c8761466dc2",
+      "source_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+      "sink_id": "c2b870d0-c997-4246-b4e5-db5032c9a964",
+      "source_name": "Email Status",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "90c1597e-2cd9-4866-8a1c-7caec0d408db",
+      "source_id": "39a1e6f2-8a30-46bd-a8f4-9faeb9013033",
+      "sink_id": "1b300455-fc85-42fd-b007-c1383d08ada1",
+      "source_name": "Attendee Research",
+      "sink_name": "Report Text",
+      "is_static": false
+    },
+    {
+      "id": "a81255d1-6707-442d-9fac-5814ec801a81",
+      "source_id": "86aefe01-bc1b-4143-b37c-d970fc161616",
+      "sink_id": "c8184979-92dc-4a66-8e4c-6eac1eaaeb1f",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": true
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [
+    {
+      "id": "28a7169e-e0e9-4c0f-b1b5-388373ea57f9",
+      "version": 32,
+      "is_active": true,
+      "name": "Research External Meeting Attendees",
+      "description": "",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "8d6e4f8f-0103-4ffb-bf19-7b604a21c8c1",
+          "block_id": "a912d5c7-6e00-4542-b2a9-8034136930e4",
+          "input_default": {
+            "values": [
+              "Items"
+            ],
+            "max_size": null
+          },
+          "metadata": {
+            "position": {
+              "x": 990.9274568525307,
+              "y": -151.77627995804914
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "66ae58a0-f8dd-4632-9603-ad6577608910",
+              "source_id": "8d6e4f8f-0103-4ffb-bf19-7b604a21c8c1",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "d7d0eee3-d82a-4d90-b7f5-b0c197a1f8e8",
+              "source_id": "8d6e4f8f-0103-4ffb-bf19-7b604a21c8c1",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "list",
+              "sink_name": "list",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+          "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+          "input_default": {
+            "type": "list"
+          },
+          "metadata": {
+            "position": {
+              "x": -4057.6792066765515,
+              "y": 733.3237429158124
+            }
+          },
+          "input_links": [
+            {
+              "id": "12637b65-a018-423f-b1df-e650b72f4f6a",
+              "source_id": "41b55485-236d-4e58-b788-f085fccd2688",
+              "sink_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "source_name": "result",
+              "sink_name": "value",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "ba6f64a6-b123-47e2-9f12-8b9fd366c4c0",
+              "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "sink_id": "e68c03d3-eb89-49ec-b197-4620e69bed80",
+              "source_name": "value",
+              "sink_name": "collection",
+              "is_static": false
+            },
+            {
+              "id": "f3fb5449-3d3c-4458-9f69-a85bc8c56337",
+              "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "dd5a7337-95bb-463b-8bc0-1e502f669374",
+              "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "sink_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "source_name": "value",
+              "sink_name": "items",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "41b55485-236d-4e58-b788-f085fccd2688",
+          "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+          "input_default": {
+            "name": "Attendees List",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -4939.766796585129,
+              "y": 729.3642963116179
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "12637b65-a018-423f-b1df-e650b72f4f6a",
+              "source_id": "41b55485-236d-4e58-b788-f085fccd2688",
+              "sink_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "source_name": "result",
+              "sink_name": "value",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "e68c03d3-eb89-49ec-b197-4620e69bed80",
+          "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": -2820.142700065319,
+              "y": 1413.8900415776243
+            }
+          },
+          "input_links": [
+            {
+              "id": "ba6f64a6-b123-47e2-9f12-8b9fd366c4c0",
+              "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "sink_id": "e68c03d3-eb89-49ec-b197-4620e69bed80",
+              "source_name": "value",
+              "sink_name": "collection",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "db1812f4-f46f-4c7d-9ad3-37453d04f170",
+              "source_id": "e68c03d3-eb89-49ec-b197-4620e69bed80",
+              "sink_id": "13fb3e82-8098-42bb-b37e-38e63ffdf93e",
+              "source_name": "count",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "13fb3e82-8098-42bb-b37e-38e63ffdf93e",
+          "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+          "input_default": {
+            "data": null
+          },
+          "metadata": {
+            "position": {
+              "x": 2389.064482139841,
+              "y": 1446.115279044648
+            }
+          },
+          "input_links": [
+            {
+              "id": "db1812f4-f46f-4c7d-9ad3-37453d04f170",
+              "source_id": "e68c03d3-eb89-49ec-b197-4620e69bed80",
+              "sink_id": "13fb3e82-8098-42bb-b37e-38e63ffdf93e",
+              "source_name": "count",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "8113ecf0-38b8-4540-b3f8-0780531737a0",
+              "source_id": "13fb3e82-8098-42bb-b37e-38e63ffdf93e",
+              "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "source_name": "output",
+              "sink_name": "value2",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+          "block_id": "6dbbc4b3-ca6c-42b6-b508-da52d23e13f2",
+          "input_default": {
+            "no_value": null,
+            "yes_value": null
+          },
+          "metadata": {
+            "position": {
+              "x": -1053.732606369223,
+              "y": 46.018177536569056
+            }
+          },
+          "input_links": [
+            {
+              "id": "7cea7f65-9768-4a19-8d5a-0244b36dc224",
+              "source_id": "7b343208-476f-4c79-8745-43fbbc5f12a6",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "positive",
+              "sink_name": "input",
+              "is_static": false
+            },
+            {
+              "id": "0fa405e9-0f78-4fc6-92d3-e58bc0aa3d9a",
+              "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "item",
+              "sink_name": "no_value",
+              "is_static": false
+            },
+            {
+              "id": "3d29605c-d46d-405f-b552-dbc4ef7fd7d2",
+              "source_id": "5d98d672-00fe-4843-a744-b3f2be26d705",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "output",
+              "sink_name": "value",
+              "is_static": true
+            },
+            {
+              "id": "08b6ee07-24d8-4d8c-928a-c7d3d840251e",
+              "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "item",
+              "sink_name": "yes_value",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "ae6561b3-6fc1-47f5-88c0-10eade2aa223",
+              "source_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "sink_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "source_name": "no_output",
+              "sink_name": "Email to Research",
+              "is_static": false
+            },
+            {
+              "id": "f89e59ba-64e1-485b-be15-282c4f6055fa",
+              "source_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "sink_id": "f11e61f1-4851-49f6-9660-44c9d85b51d4",
+              "source_name": "yes_output",
+              "sink_name": "values_#_email",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+          "block_id": "f66a3543-28d3-4ab5-8945-9b336371e2ce",
+          "input_default": {
+            "items": [],
+            "items_str": "",
+            "items_object": {}
+          },
+          "metadata": {
+            "position": {
+              "x": -2818.4348689810117,
+              "y": 150.89764218147366
+            }
+          },
+          "input_links": [
+            {
+              "id": "dd5a7337-95bb-463b-8bc0-1e502f669374",
+              "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "sink_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "source_name": "value",
+              "sink_name": "items",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "0fa405e9-0f78-4fc6-92d3-e58bc0aa3d9a",
+              "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "item",
+              "sink_name": "no_value",
+              "is_static": false
+            },
+            {
+              "id": "6c88dbfb-0af2-4fe0-9948-e06cf7f0d33e",
+              "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "sink_id": "7b343208-476f-4c79-8745-43fbbc5f12a6",
+              "source_name": "item",
+              "sink_name": "text",
+              "is_static": false
+            },
+            {
+              "id": "08b6ee07-24d8-4d8c-928a-c7d3d840251e",
+              "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "item",
+              "sink_name": "yes_value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "defcbcd0-2df6-43d7-becd-7e3bcc4d7740",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "User's Email",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -4937.255061338332,
+              "y": -415.4362088144616
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "ad7b4785-df90-4f38-96fe-af38676873e7",
+              "source_id": "defcbcd0-2df6-43d7-becd-7e3bcc4d7740",
+              "sink_id": "dadb1ee3-1672-4b1a-a6fd-587194f2643b",
+              "source_name": "result",
+              "sink_name": "text",
+              "is_static": true
+            },
+            {
+              "id": "453bb451-58d8-472c-a5a2-c47ff6bff038",
+              "source_id": "defcbcd0-2df6-43d7-becd-7e3bcc4d7740",
+              "sink_id": "aa4b36f5-34f0-4853-b079-ea5a5a84bd63",
+              "source_name": "result",
+              "sink_name": "input",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+          "input_default": {
+            "list": [],
+            "entry": null,
+            "entries": [],
+            "position": null
+          },
+          "metadata": {
+            "position": {
+              "x": 1682.4780488544197,
+              "y": 448.7751892519923
+            }
+          },
+          "input_links": [
+            {
+              "id": "d7d0eee3-d82a-4d90-b7f5-b0c197a1f8e8",
+              "source_id": "8d6e4f8f-0103-4ffb-bf19-7b604a21c8c1",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "list",
+              "sink_name": "list",
+              "is_static": false
+            },
+            {
+              "id": "1cf0ad99-d112-4e23-9e5f-769a62c7cc4f",
+              "source_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "output",
+              "sink_name": "entry",
+              "is_static": false
+            },
+            {
+              "id": "e94bc214-33c2-4a6a-bb2e-dd3dab125dc1",
+              "source_id": "f11e61f1-4851-49f6-9660-44c9d85b51d4",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "output",
+              "sink_name": "entry",
+              "is_static": false
+            },
+            {
+              "id": "60ea725d-0dde-4ad0-92d6-8af386acd094",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "updated_list",
+              "sink_name": "list",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "7afabefa-38e0-4920-8bd8-ca9885dd7be6",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "0cdc884c-e5b0-4e34-8816-8aa420e93227",
+              "source_name": "updated_list",
+              "sink_name": "collection",
+              "is_static": false
+            },
+            {
+              "id": "16b1ce43-4173-4309-8bd1-dca65b72567f",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "36aa1d66-cb53-43a4-8dab-f85040473227",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "source_name": "updated_list",
+              "sink_name": "yes_value",
+              "is_static": false
+            },
+            {
+              "id": "60ea725d-0dde-4ad0-92d6-8af386acd094",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "updated_list",
+              "sink_name": "list",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "0cdc884c-e5b0-4e34-8816-8aa420e93227",
+          "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": 2301.3488365407675,
+              "y": 509.9912999793819
+            }
+          },
+          "input_links": [
+            {
+              "id": "7afabefa-38e0-4920-8bd8-ca9885dd7be6",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "0cdc884c-e5b0-4e34-8816-8aa420e93227",
+              "source_name": "updated_list",
+              "sink_name": "collection",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "c5660895-3e68-466d-b4fb-6a182796bedb",
+              "source_id": "0cdc884c-e5b0-4e34-8816-8aa420e93227",
+              "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "source_name": "count",
+              "sink_name": "value1",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "f9569ab7-cc2a-4c65-ba5f-83d35ddf5c3f",
+          "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+          "input_default": {
+            "text": "Check if attendees are internal"
+          },
+          "metadata": {
+            "position": {
+              "x": -954.8210420231826,
+              "y": -327.66424109765137
+            }
+          },
+          "input_links": [],
+          "output_links": []
+        },
+        {
+          "id": "7b343208-476f-4c79-8745-43fbbc5f12a6",
+          "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+          "input_default": {
+            "group": 0,
+            "dot_all": true,
+            "pattern": "(?<=@)[^@\\s]+",
+            "find_all": false,
+            "case_sensitive": true
+          },
+          "metadata": {
+            "position": {
+              "x": -2178.1796684448254,
+              "y": 552.8838690923096
+            }
+          },
+          "input_links": [
+            {
+              "id": "6c88dbfb-0af2-4fe0-9948-e06cf7f0d33e",
+              "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+              "sink_id": "7b343208-476f-4c79-8745-43fbbc5f12a6",
+              "source_name": "item",
+              "sink_name": "text",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "7cea7f65-9768-4a19-8d5a-0244b36dc224",
+              "source_id": "7b343208-476f-4c79-8745-43fbbc5f12a6",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "positive",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+          "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+          "input_default": {
+            "no_value": null,
+            "operator": ">",
+            "yes_value": null
+          },
+          "metadata": {
+            "position": {
+              "x": 2946.0378579705966,
+              "y": 685.2750616626113
+            }
+          },
+          "input_links": [
+            {
+              "id": "8113ecf0-38b8-4540-b3f8-0780531737a0",
+              "source_id": "13fb3e82-8098-42bb-b37e-38e63ffdf93e",
+              "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "source_name": "output",
+              "sink_name": "value2",
+              "is_static": true
+            },
+            {
+              "id": "36aa1d66-cb53-43a4-8dab-f85040473227",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "source_name": "updated_list",
+              "sink_name": "yes_value",
+              "is_static": false
+            },
+            {
+              "id": "c5660895-3e68-466d-b4fb-6a182796bedb",
+              "source_id": "0cdc884c-e5b0-4e34-8816-8aa420e93227",
+              "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "source_name": "count",
+              "sink_name": "value1",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "ed218477-ceb8-4d08-a45f-e26365b26ebd",
+              "source_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "sink_id": "4fa775c1-4084-4ece-81eb-def0c652dc13",
+              "source_name": "yes_output",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "a064476a-2126-4beb-9730-46765d9a13fa",
+          "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+          "input_default": {
+            "text": "= Accumulator =\n\nHere we combine all the outputs back into one list."
+          },
+          "metadata": {
+            "position": {
+              "x": 2127.858354521276,
+              "y": 66.26566251729537
+            }
+          },
+          "input_links": [],
+          "output_links": []
+        },
+        {
+          "id": "2aa667fa-e64f-4c0c-b23e-cb34faa8d50d",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Attendee Research",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 6853.688660071529,
+              "y": 247.66871541131957
+            }
+          },
+          "input_links": [
+            {
+              "id": "2e72d3f5-43dc-409f-8475-26cec5358c69",
+              "source_id": "23404c1a-b71b-4ebb-8009-7b1049e85e22",
+              "sink_id": "2aa667fa-e64f-4c0c-b23e-cb34faa8d50d",
+              "source_name": "output",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "36bb85e6-d85f-4135-ae30-15680b9e2da0",
+          "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+          "input_default": {
+            "text": "Limitation: currently you need to append an extra item onto the list to kick things off"
+          },
+          "metadata": {
+            "position": {
+              "x": 1076.7993596989909,
+              "y": -514.1152790446481
+            }
+          },
+          "input_links": [],
+          "output_links": []
+        },
+        {
+          "id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "claude-sonnet-4-20250514",
+            "retry": 3,
+            "prompt": "You are tasked with creating an executive preparation brief for The User (\"{{user_email | safe}}\") regarding an upcoming meeting. This email should provide an overview of the key individuals attending the meeting, highlighting their relevant experience, current roles, and any significant achievements or areas of expertise, along with reminding The User of any prior relationship they have with the attendees and briefing them on key information that you think they should know.\n\nHere is the attendee information:\n\n<attendee_info>\n{{ATTENDEE_INFO}}\n</attendee_info>\n\nAnalyze the provided information carefully. Focus on extracting the most relevant and current details about each attendee. Pay particular attention to information that you think it is important for The User to know before this meetiing.\n\nStructure your executive briefing as follows:\n0. Do not include a subject or title, you are providing the email body only.\n1. A brief introduction stating the purpose of the briefing\n2. For each attendee:\n   a. Name and current position\n   b. Brief professional background\n   c. Key achievements or contributions in their field\n   d. Any recent notable activities or publications\n   e. Areas of expertise relevant to the meeting\n   f. Relationship notes and important relevant reminders/info.\n3. A concise conclusion highlighting the collective expertise of the attendees\n\nInclude the following content in your briefing:\n- Current roles and responsibilities\n- Significant past positions or experiences\n- Major contributions to their field\n- Recent publications or projects\n- Awards or recognition\n- Areas of specialization or expert knowledge\n\nFormat your briefing in a clear, professional manner, using plaintext only (no markdown). Use bullet points or short paragraphs for easy, quick readability. Ensure that the information is presented in a logical order, typically starting with the most important or relevant details.\n\nRemember to focus on the most pertinent information for the meeting context. Maintain a professional tone throughout the briefing, avoiding personal opinions or unnecessary details. Keep it short and dense in genuine value for the receiver.\n\nProvide your final executive briefing within <executive_briefing> tags. Your output should consist of only the executive briefing; do not include any additional commentary or notes.\n\nFormat only in plaintext as the result will be sent as an email body which doesn't support any formatting languages.\n\nIMPORTANT NOTE: If ALL attendees are internal, skip everything and instead respond with: <internal_meeting>All attendees are internal, no prep required.</internal_meeting>",
+            "sys_prompt": "",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 4519.657069242934,
+              "y": 678.7856719692923
+            }
+          },
+          "input_links": [
+            {
+              "id": "8de21195-5685-487c-9cbd-3bed51542ebf",
+              "source_id": "4fa775c1-4084-4ece-81eb-def0c652dc13",
+              "sink_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+              "source_name": "value",
+              "sink_name": "prompt_values_#_ATTENDEE_INFO",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "b6bb609d-d07a-4265-917a-612bb80d97e1",
+              "source_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+              "sink_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "source_name": "response",
+              "sink_name": "input_xml",
+              "is_static": false
+            },
+            {
+              "id": "67c22769-3b27-4e73-8ddf-7121c831bb55",
+              "source_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 1842.7434457237568,
+              "y": 4458.016728696583
+            }
+          },
+          "input_links": [
+            {
+              "id": "66ae58a0-f8dd-4632-9603-ad6577608910",
+              "source_id": "8d6e4f8f-0103-4ffb-bf19-7b604a21c8c1",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "1638dc72-7f9e-48f5-8984-42434eb65a08",
+              "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "16b1ce43-4173-4309-8bd1-dca65b72567f",
+              "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "67c22769-3b27-4e73-8ddf-7121c831bb55",
+              "source_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "f3fb5449-3d3c-4458-9f69-a85bc8c56337",
+              "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "da9160bc-c2ba-426a-a889-4eb98b594669",
+              "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "Error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "f11e61f1-4851-49f6-9660-44c9d85b51d4",
+          "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+          "input_default": {
+            "format": "Known internal attendee, do not research or brief on: {{email}}",
+            "values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 168.07272266110272,
+              "y": 935.4561425646702
+            }
+          },
+          "input_links": [
+            {
+              "id": "f89e59ba-64e1-485b-be15-282c4f6055fa",
+              "source_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "sink_id": "f11e61f1-4851-49f6-9660-44c9d85b51d4",
+              "source_name": "yes_output",
+              "sink_name": "values_#_email",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "e94bc214-33c2-4a6a-bb2e-dd3dab125dc1",
+              "source_id": "f11e61f1-4851-49f6-9660-44c9d85b51d4",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "output",
+              "sink_name": "entry",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "4fa775c1-4084-4ece-81eb-def0c652dc13",
+          "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+          "input_default": {
+            "type": "string"
+          },
+          "metadata": {
+            "position": {
+              "x": 3824.1548682955167,
+              "y": 728.9822152581054
+            }
+          },
+          "input_links": [
+            {
+              "id": "ed218477-ceb8-4d08-a45f-e26365b26ebd",
+              "source_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+              "sink_id": "4fa775c1-4084-4ece-81eb-def0c652dc13",
+              "source_name": "yes_output",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "8de21195-5685-487c-9cbd-3bed51542ebf",
+              "source_id": "4fa775c1-4084-4ece-81eb-def0c652dc13",
+              "sink_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+              "source_name": "value",
+              "sink_name": "prompt_values_#_ATTENDEE_INFO",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+          "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": 5238.836948897109,
+              "y": 955.402047669719
+            }
+          },
+          "input_links": [
+            {
+              "id": "b6bb609d-d07a-4265-917a-612bb80d97e1",
+              "source_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+              "sink_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "source_name": "response",
+              "sink_name": "input_xml",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "0380f22e-d7cc-4572-9b32-9e159a137603",
+              "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "sink_id": "edf2a105-c95a-4cca-8d87-c5aa987ef890",
+              "source_name": "parsed_xml",
+              "sink_name": "input",
+              "is_static": false
+            },
+            {
+              "id": "1638dc72-7f9e-48f5-8984-42434eb65a08",
+              "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "6362d278-da61-488f-8b24-3a1e9cc6ca31",
+              "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "sink_id": "23404c1a-b71b-4ebb-8009-7b1049e85e22",
+              "source_name": "parsed_xml",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "23404c1a-b71b-4ebb-8009-7b1049e85e22",
+          "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+          "input_default": {
+            "key": "executive_briefing"
+          },
+          "metadata": {
+            "position": {
+              "x": 6038.208459885578,
+              "y": 248.22785259740084
+            }
+          },
+          "input_links": [
+            {
+              "id": "6362d278-da61-488f-8b24-3a1e9cc6ca31",
+              "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "sink_id": "23404c1a-b71b-4ebb-8009-7b1049e85e22",
+              "source_name": "parsed_xml",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "2e72d3f5-43dc-409f-8475-26cec5358c69",
+              "source_id": "23404c1a-b71b-4ebb-8009-7b1049e85e22",
+              "sink_id": "2aa667fa-e64f-4c0c-b23e-cb34faa8d50d",
+              "source_name": "output",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "edf2a105-c95a-4cca-8d87-c5aa987ef890",
+          "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+          "input_default": {
+            "key": "internal_meeting"
+          },
+          "metadata": {
+            "position": {
+              "x": 6027.189757186089,
+              "y": 1205.559857532105
+            }
+          },
+          "input_links": [
+            {
+              "id": "0380f22e-d7cc-4572-9b32-9e159a137603",
+              "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+              "sink_id": "edf2a105-c95a-4cca-8d87-c5aa987ef890",
+              "source_name": "parsed_xml",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "6a582b2e-1cb3-417d-b755-76e40b80b464",
+              "source_id": "edf2a105-c95a-4cca-8d87-c5aa987ef890",
+              "sink_id": "5035ad59-ddaa-4579-9c14-8a89efbab4ff",
+              "source_name": "output",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "5035ad59-ddaa-4579-9c14-8a89efbab4ff",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Internal Only Meeting",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 6854.284061920448,
+              "y": 1214.1889470912665
+            }
+          },
+          "input_links": [
+            {
+              "id": "6a582b2e-1cb3-417d-b755-76e40b80b464",
+              "source_id": "edf2a105-c95a-4cca-8d87-c5aa987ef890",
+              "sink_id": "5035ad59-ddaa-4579-9c14-8a89efbab4ff",
+              "source_name": "output",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "dadb1ee3-1672-4b1a-a6fd-587194f2643b",
+          "block_id": "3146e4fe-2cdd-4f29-bd12-0c9d5bb4deb0",
+          "input_default": {
+            "group": 0,
+            "dot_all": true,
+            "pattern": "(?<=@)[^@\\s]+",
+            "find_all": false,
+            "case_sensitive": true
+          },
+          "metadata": {
+            "position": {
+              "x": -2894.8860470671607,
+              "y": -643.0069162291081
+            }
+          },
+          "input_links": [
+            {
+              "id": "ad7b4785-df90-4f38-96fe-af38676873e7",
+              "source_id": "defcbcd0-2df6-43d7-becd-7e3bcc4d7740",
+              "sink_id": "dadb1ee3-1672-4b1a-a6fd-587194f2643b",
+              "source_name": "result",
+              "sink_name": "text",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "015357e3-7a02-4c1e-95f8-65c4bff0c598",
+              "source_id": "dadb1ee3-1672-4b1a-a6fd-587194f2643b",
+              "sink_id": "5d98d672-00fe-4843-a744-b3f2be26d705",
+              "source_name": "positive",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "5d98d672-00fe-4843-a744-b3f2be26d705",
+          "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+          "input_default": {
+            "data": null
+          },
+          "metadata": {
+            "position": {
+              "x": -2334.8859194235783,
+              "y": -643.0068956909276
+            }
+          },
+          "input_links": [
+            {
+              "id": "015357e3-7a02-4c1e-95f8-65c4bff0c598",
+              "source_id": "dadb1ee3-1672-4b1a-a6fd-587194f2643b",
+              "sink_id": "5d98d672-00fe-4843-a744-b3f2be26d705",
+              "source_name": "positive",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "3d29605c-d46d-405f-b552-dbc4ef7fd7d2",
+              "source_id": "5d98d672-00fe-4843-a744-b3f2be26d705",
+              "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "source_name": "output",
+              "sink_name": "value",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "aa4b36f5-34f0-4853-b079-ea5a5a84bd63",
+          "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+          "input_default": {
+            "data": null
+          },
+          "metadata": {
+            "position": {
+              "x": -514.19902675328,
+              "y": -505.60565239229214
+            }
+          },
+          "input_links": [
+            {
+              "id": "453bb451-58d8-472c-a5a2-c47ff6bff038",
+              "source_id": "defcbcd0-2df6-43d7-becd-7e3bcc4d7740",
+              "sink_id": "aa4b36f5-34f0-4853-b079-ea5a5a84bd63",
+              "source_name": "result",
+              "sink_name": "input",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "27fcfa16-47d1-4cde-bc75-c898af48d9f6",
+              "source_id": "aa4b36f5-34f0-4853-b079-ea5a5a84bd63",
+              "sink_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "source_name": "output",
+              "sink_name": "Your Email",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+          "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+          "input_default": {
+            "inputs": {},
+            "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+            "graph_id": "71e4d0d9-9c6c-45ea-a3ad-e1441faf7c55",
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "Email to Research",
+                "Your Email"
+              ],
+              "properties": {
+                "Your Email": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "short-text"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Your Email",
+                  "secret": false,
+                  "advanced": false
+                },
+                "Email to Research": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "short-text"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Email to Research",
+                  "secret": false,
+                  "advanced": false
+                }
+              }
+            },
+            "graph_version": 36,
+            "output_schema": {
+              "type": "object",
+              "required": [
+                "Research Result",
+                "Error",
+                "Relationship Info"
+              ],
+              "properties": {
+                "Error": {
+                  "title": "Error",
+                  "secret": false,
+                  "advanced": false
+                },
+                "Research Result": {
+                  "title": "Research Result",
+                  "secret": false,
+                  "advanced": false
+                },
+                "Relationship Info": {
+                  "title": "Relationship Info",
+                  "secret": false,
+                  "advanced": false
+                }
+              }
+            }
+          },
+          "metadata": {
+            "position": {
+              "x": 95.9200514228832,
+              "y": 139.6163830028459
+            }
+          },
+          "input_links": [
+            {
+              "id": "ae6561b3-6fc1-47f5-88c0-10eade2aa223",
+              "source_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+              "sink_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "source_name": "no_output",
+              "sink_name": "Email to Research",
+              "is_static": false
+            },
+            {
+              "id": "27fcfa16-47d1-4cde-bc75-c898af48d9f6",
+              "source_id": "aa4b36f5-34f0-4853-b079-ea5a5a84bd63",
+              "sink_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "source_name": "output",
+              "sink_name": "Your Email",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "16a96716-9a6a-4249-92b7-6d1c8920e618",
+              "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "sink_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+              "source_name": "Relationship Info",
+              "sink_name": "values_#_relationship_info",
+              "is_static": false
+            },
+            {
+              "id": "da9160bc-c2ba-426a-a889-4eb98b594669",
+              "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+              "source_name": "Error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "71d7c814-d27d-4a10-a6c2-37eeaaea8d97",
+              "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "sink_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+              "source_name": "Research Result",
+              "sink_name": "values_#_research",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+          "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+          "input_default": {
+            "format": "# Next Attendee\n\n## Research\n{{research | safe}}\n\n## Relationship Info\n{{relationship_info | safe}}\n\n---",
+            "values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 997.9674189914142,
+              "y": 888.7526528403145
+            }
+          },
+          "input_links": [
+            {
+              "id": "16a96716-9a6a-4249-92b7-6d1c8920e618",
+              "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "sink_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+              "source_name": "Relationship Info",
+              "sink_name": "values_#_relationship_info",
+              "is_static": false
+            },
+            {
+              "id": "71d7c814-d27d-4a10-a6c2-37eeaaea8d97",
+              "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+              "sink_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+              "source_name": "Research Result",
+              "sink_name": "values_#_research",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "1cf0ad99-d112-4e23-9e5f-769a62c7cc4f",
+              "source_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+              "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+              "source_name": "output",
+              "sink_name": "entry",
+              "is_static": false
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "ae6561b3-6fc1-47f5-88c0-10eade2aa223",
+          "source_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+          "sink_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+          "source_name": "no_output",
+          "sink_name": "Email to Research",
+          "is_static": false
+        },
+        {
+          "id": "71d7c814-d27d-4a10-a6c2-37eeaaea8d97",
+          "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+          "sink_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+          "source_name": "Research Result",
+          "sink_name": "values_#_research",
+          "is_static": false
+        },
+        {
+          "id": "ba6f64a6-b123-47e2-9f12-8b9fd366c4c0",
+          "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+          "sink_id": "e68c03d3-eb89-49ec-b197-4620e69bed80",
+          "source_name": "value",
+          "sink_name": "collection",
+          "is_static": false
+        },
+        {
+          "id": "6c88dbfb-0af2-4fe0-9948-e06cf7f0d33e",
+          "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+          "sink_id": "7b343208-476f-4c79-8745-43fbbc5f12a6",
+          "source_name": "item",
+          "sink_name": "text",
+          "is_static": false
+        },
+        {
+          "id": "e94bc214-33c2-4a6a-bb2e-dd3dab125dc1",
+          "source_id": "f11e61f1-4851-49f6-9660-44c9d85b51d4",
+          "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "source_name": "output",
+          "sink_name": "entry",
+          "is_static": false
+        },
+        {
+          "id": "f89e59ba-64e1-485b-be15-282c4f6055fa",
+          "source_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+          "sink_id": "f11e61f1-4851-49f6-9660-44c9d85b51d4",
+          "source_name": "yes_output",
+          "sink_name": "values_#_email",
+          "is_static": false
+        },
+        {
+          "id": "16a96716-9a6a-4249-92b7-6d1c8920e618",
+          "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+          "sink_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+          "source_name": "Relationship Info",
+          "sink_name": "values_#_relationship_info",
+          "is_static": false
+        },
+        {
+          "id": "c5660895-3e68-466d-b4fb-6a182796bedb",
+          "source_id": "0cdc884c-e5b0-4e34-8816-8aa420e93227",
+          "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        },
+        {
+          "id": "da9160bc-c2ba-426a-a889-4eb98b594669",
+          "source_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+          "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0fa405e9-0f78-4fc6-92d3-e58bc0aa3d9a",
+          "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+          "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+          "source_name": "item",
+          "sink_name": "no_value",
+          "is_static": false
+        },
+        {
+          "id": "36aa1d66-cb53-43a4-8dab-f85040473227",
+          "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+          "source_name": "updated_list",
+          "sink_name": "yes_value",
+          "is_static": false
+        },
+        {
+          "id": "8113ecf0-38b8-4540-b3f8-0780531737a0",
+          "source_id": "13fb3e82-8098-42bb-b37e-38e63ffdf93e",
+          "sink_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+          "source_name": "output",
+          "sink_name": "value2",
+          "is_static": true
+        },
+        {
+          "id": "0380f22e-d7cc-4572-9b32-9e159a137603",
+          "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+          "sink_id": "edf2a105-c95a-4cca-8d87-c5aa987ef890",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "dd5a7337-95bb-463b-8bc0-1e502f669374",
+          "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+          "sink_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+          "source_name": "value",
+          "sink_name": "items",
+          "is_static": false
+        },
+        {
+          "id": "6362d278-da61-488f-8b24-3a1e9cc6ca31",
+          "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+          "sink_id": "23404c1a-b71b-4ebb-8009-7b1049e85e22",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "60ea725d-0dde-4ad0-92d6-8af386acd094",
+          "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "source_name": "updated_list",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "16b1ce43-4173-4309-8bd1-dca65b72567f",
+          "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "2e72d3f5-43dc-409f-8475-26cec5358c69",
+          "source_id": "23404c1a-b71b-4ebb-8009-7b1049e85e22",
+          "sink_id": "2aa667fa-e64f-4c0c-b23e-cb34faa8d50d",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "12637b65-a018-423f-b1df-e650b72f4f6a",
+          "source_id": "41b55485-236d-4e58-b788-f085fccd2688",
+          "sink_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": true
+        },
+        {
+          "id": "1638dc72-7f9e-48f5-8984-42434eb65a08",
+          "source_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+          "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "d7d0eee3-d82a-4d90-b7f5-b0c197a1f8e8",
+          "source_id": "8d6e4f8f-0103-4ffb-bf19-7b604a21c8c1",
+          "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "source_name": "list",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "3d29605c-d46d-405f-b552-dbc4ef7fd7d2",
+          "source_id": "5d98d672-00fe-4843-a744-b3f2be26d705",
+          "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": true
+        },
+        {
+          "id": "6a582b2e-1cb3-417d-b755-76e40b80b464",
+          "source_id": "edf2a105-c95a-4cca-8d87-c5aa987ef890",
+          "sink_id": "5035ad59-ddaa-4579-9c14-8a89efbab4ff",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "015357e3-7a02-4c1e-95f8-65c4bff0c598",
+          "source_id": "dadb1ee3-1672-4b1a-a6fd-587194f2643b",
+          "sink_id": "5d98d672-00fe-4843-a744-b3f2be26d705",
+          "source_name": "positive",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "db1812f4-f46f-4c7d-9ad3-37453d04f170",
+          "source_id": "e68c03d3-eb89-49ec-b197-4620e69bed80",
+          "sink_id": "13fb3e82-8098-42bb-b37e-38e63ffdf93e",
+          "source_name": "count",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "f3fb5449-3d3c-4458-9f69-a85bc8c56337",
+          "source_id": "5bc2a8c7-45f9-4067-9480-04d98a876252",
+          "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "7cea7f65-9768-4a19-8d5a-0244b36dc224",
+          "source_id": "7b343208-476f-4c79-8745-43fbbc5f12a6",
+          "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+          "source_name": "positive",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "08b6ee07-24d8-4d8c-928a-c7d3d840251e",
+          "source_id": "bf994e32-3222-4272-ae05-022d07acf2a8",
+          "sink_id": "9d9d702e-137c-416f-aac5-5f5b5473d875",
+          "source_name": "item",
+          "sink_name": "yes_value",
+          "is_static": false
+        },
+        {
+          "id": "67c22769-3b27-4e73-8ddf-7121c831bb55",
+          "source_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+          "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "8de21195-5685-487c-9cbd-3bed51542ebf",
+          "source_id": "4fa775c1-4084-4ece-81eb-def0c652dc13",
+          "sink_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+          "source_name": "value",
+          "sink_name": "prompt_values_#_ATTENDEE_INFO",
+          "is_static": false
+        },
+        {
+          "id": "66ae58a0-f8dd-4632-9603-ad6577608910",
+          "source_id": "8d6e4f8f-0103-4ffb-bf19-7b604a21c8c1",
+          "sink_id": "bb652b0a-02b8-44b2-9829-88fc516dba35",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "b6bb609d-d07a-4265-917a-612bb80d97e1",
+          "source_id": "9b870197-d821-4397-8ac5-58a5b140a8b4",
+          "sink_id": "e90c4687-0af5-4ff7-8998-5a6357ae351e",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "7afabefa-38e0-4920-8bd8-ca9885dd7be6",
+          "source_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "sink_id": "0cdc884c-e5b0-4e34-8816-8aa420e93227",
+          "source_name": "updated_list",
+          "sink_name": "collection",
+          "is_static": false
+        },
+        {
+          "id": "ed218477-ceb8-4d08-a45f-e26365b26ebd",
+          "source_id": "51a2b1a4-9624-4efc-9a2a-955962e9261a",
+          "sink_id": "4fa775c1-4084-4ece-81eb-def0c652dc13",
+          "source_name": "yes_output",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "27fcfa16-47d1-4cde-bc75-c898af48d9f6",
+          "source_id": "aa4b36f5-34f0-4853-b079-ea5a5a84bd63",
+          "sink_id": "3fa806a2-e5b1-44c8-9128-8a59b8ce4cd2",
+          "source_name": "output",
+          "sink_name": "Your Email",
+          "is_static": true
+        },
+        {
+          "id": "ad7b4785-df90-4f38-96fe-af38676873e7",
+          "source_id": "defcbcd0-2df6-43d7-becd-7e3bcc4d7740",
+          "sink_id": "dadb1ee3-1672-4b1a-a6fd-587194f2643b",
+          "source_name": "result",
+          "sink_name": "text",
+          "is_static": true
+        },
+        {
+          "id": "453bb451-58d8-472c-a5a2-c47ff6bff038",
+          "source_id": "defcbcd0-2df6-43d7-becd-7e3bcc4d7740",
+          "sink_id": "aa4b36f5-34f0-4853-b079-ea5a5a84bd63",
+          "source_name": "result",
+          "sink_name": "input",
+          "is_static": true
+        },
+        {
+          "id": "1cf0ad99-d112-4e23-9e5f-769a62c7cc4f",
+          "source_id": "e70f8f56-1f99-4d90-b3f4-1dbbb6e36c84",
+          "sink_id": "aac1cef5-f505-43b2-a529-411710bcea7d",
+          "source_name": "output",
+          "sink_name": "entry",
+          "is_static": false
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Attendees List": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "long-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Attendees List"
+          },
+          "User's Email": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "User's Email"
+          }
+        },
+        "required": [
+          "Attendees List",
+          "User's Email"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "Attendee Research": {
+            "advanced": false,
+            "secret": false,
+            "title": "Attendee Research"
+          },
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          },
+          "Internal Only Meeting": {
+            "advanced": false,
+            "secret": false,
+            "title": "Internal Only Meeting"
+          }
+        },
+        "required": [
+          "Attendee Research",
+          "Error",
+          "Internal Only Meeting"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    },
+    {
+      "id": "8b712b87-c350-40de-a1f8-4869b4f40103",
+      "version": 6,
+      "is_active": true,
+      "name": "Text to Email Report",
+      "description": "Input your text, and get a beautifully designed email sent straight to your inbox",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 955.6287333350833,
+              "y": 1415.5500101046268
+            }
+          },
+          "input_links": [
+            {
+              "id": "17cdcfa7-0c24-4991-9798-dd0cad48444c",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "claude-sonnet-4-20250514",
+            "retry": 3,
+            "prompt": "Make this into a high-quality html email report. \n\nThe user made the following design style request:\n```\n{{design | safe}}\n```\nDo not mention or reference this style design request in the rendered html report.\n\n\nHere is the report. do not change any of it's written content, your job is just to present it exactly as written:\n```\n{{report | safe}}\n```\n\nDo not include any functional buttons, animations, or any elements that would be non functional or out of place in a static offline report.\n\nRespond with just the html, no additional commentary or decoration. No code blocks, just the html.\n",
+            "sys_prompt": "",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 347.6321405130907,
+              "y": -554.8904332378107
+            }
+          },
+          "input_links": [
+            {
+              "id": "d95bf708-63ac-4105-ad72-25c49294d3d9",
+              "source_id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_report",
+              "is_static": true
+            },
+            {
+              "id": "0bd1be01-c6b7-4a4e-b294-9d583868e8fa",
+              "source_id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_design",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "17cdcfa7-0c24-4991-9798-dd0cad48444c",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "d4ffb3bc-e397-4a38-a269-7fd4bd6a8bb2",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "d7844d48-631a-4747-a3cc-df18fde200e3",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "response",
+              "sink_name": "body",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+          "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+          "input_default": {
+            "name": "Report Text",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -811.4705680247006,
+              "y": -548.7174009963832
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "d95bf708-63ac-4105-ad72-25c49294d3d9",
+              "source_id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_report",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Raw HTML",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 908.7018239625986,
+              "y": -541.959658221456
+            }
+          },
+          "input_links": [
+            {
+              "id": "d4ffb3bc-e397-4a38-a269-7fd4bd6a8bb2",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+          "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+          "input_default": {
+            "name": "Report Design Brief",
+            "title": null,
+            "value": "default",
+            "secret": false,
+            "advanced": true,
+            "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\"",
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -243.38695621119234,
+              "y": -549.2030784531711
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "0bd1be01-c6b7-4a4e-b294-9d583868e8fa",
+              "source_id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_design",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "block_id": "6c27abc2-e51d-499e-a85f-5a0041ba94f0",
+          "input_default": {
+            "cc": [],
+            "to": [
+              ""
+            ],
+            "bcc": [],
+            "attachments": [],
+            "content_type": null
+          },
+          "metadata": {
+            "position": {
+              "x": 2529.745828367755,
+              "y": -535.7360458512633
+            }
+          },
+          "input_links": [
+            {
+              "id": "93a95de7-4234-4ba8-84c6-24c1ebcb9298",
+              "source_id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "to_$_0",
+              "is_static": true
+            },
+            {
+              "id": "67f30c70-e93e-418f-904a-5efc38e3149d",
+              "source_id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "subject",
+              "is_static": true
+            },
+            {
+              "id": "d7844d48-631a-4747-a3cc-df18fde200e3",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "response",
+              "sink_name": "body",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "0bf1bb7f-ab0c-4e58-9d9b-3e51c7c0bedd",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "a3f80ad6-5f2d-45e6-a58d-8312cbb62b66",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "result_#_status",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Recipient Email",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": "The Email Address to send the report to. i.e. your@email.com",
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 1439.6291079216235,
+              "y": -533.8659891630703
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "93a95de7-4234-4ba8-84c6-24c1ebcb9298",
+              "source_id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "to_$_0",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Email Status",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 3123.908492421893,
+              "y": 119.90445391424203
+            }
+          },
+          "input_links": [
+            {
+              "id": "0bf1bb7f-ab0c-4e58-9d9b-3e51c7c0bedd",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "a3f80ad6-5f2d-45e6-a58d-8312cbb62b66",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "result_#_status",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Email Subject",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": "The subject line for the email. i.e. \"Your Report\"",
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 1974.0298117846444,
+              "y": -540.8747751530805
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "67f30c70-e93e-418f-904a-5efc38e3149d",
+              "source_id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "subject",
+              "is_static": true
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "0bd1be01-c6b7-4a4e-b294-9d583868e8fa",
+          "source_id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+          "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_design",
+          "is_static": true
+        },
+        {
+          "id": "d95bf708-63ac-4105-ad72-25c49294d3d9",
+          "source_id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+          "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_report",
+          "is_static": true
+        },
+        {
+          "id": "a3f80ad6-5f2d-45e6-a58d-8312cbb62b66",
+          "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+          "source_name": "result_#_status",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "d4ffb3bc-e397-4a38-a269-7fd4bd6a8bb2",
+          "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "sink_id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0bf1bb7f-ab0c-4e58-9d9b-3e51c7c0bedd",
+          "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "d7844d48-631a-4747-a3cc-df18fde200e3",
+          "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "source_name": "response",
+          "sink_name": "body",
+          "is_static": false
+        },
+        {
+          "id": "67f30c70-e93e-418f-904a-5efc38e3149d",
+          "source_id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+          "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "source_name": "result",
+          "sink_name": "subject",
+          "is_static": true
+        },
+        {
+          "id": "17cdcfa7-0c24-4991-9798-dd0cad48444c",
+          "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "sink_id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "93a95de7-4234-4ba8-84c6-24c1ebcb9298",
+          "source_id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+          "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "source_name": "result",
+          "sink_name": "to_$_0",
+          "is_static": true
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Report Text": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "long-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Report Text"
+          },
+          "Report Design Brief": {
+            "advanced": true,
+            "anyOf": [
+              {
+                "format": "long-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Report Design Brief",
+            "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\"",
+            "default": "default"
+          },
+          "Recipient Email": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Recipient Email",
+            "description": "The Email Address to send the report to. i.e. your@email.com"
+          },
+          "Email Subject": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Email Subject",
+            "description": "The subject line for the email. i.e. \"Your Report\""
+          }
+        },
+        "required": [
+          "Report Text",
+          "Recipient Email",
+          "Email Subject"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          },
+          "Raw HTML": {
+            "advanced": false,
+            "secret": false,
+            "title": "Raw HTML"
+          },
+          "Email Status": {
+            "advanced": false,
+            "secret": false,
+            "title": "Email Status"
+          }
+        },
+        "required": [
+          "Error",
+          "Raw HTML",
+          "Email Status"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    },
+    {
+      "id": "78e74323-a3d9-4b8c-ad3a-a7c416b5b00d",
+      "version": 36,
+      "is_active": true,
+      "name": "Research Person by Email",
+      "description": "",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "0c8e7071-4424-409b-af01-4892ddc5b4fa",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Research Result",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": -296.1798996216345,
+              "y": 2233.711614935227
+            }
+          },
+          "input_links": [
+            {
+              "id": "cb61f771-fc15-4aba-852d-6e0984f26c41",
+              "source_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+              "sink_id": "0c8e7071-4424-409b-af01-4892ddc5b4fa",
+              "source_name": "Answer",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Email to Research",
+            "secret": false,
+            "advanced": false,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -6108.709260576726,
+              "y": 1228.4257716255026
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "7ffdbe78-88fd-4a53-83ce-7c04d146afef",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "9b83fe30-6887-438a-816f-a03eb0910bc3",
+              "source_name": "result",
+              "sink_name": "values_#_email",
+              "is_static": true
+            },
+            {
+              "id": "d03d0f61-8d43-4285-b460-ede1ef85706b",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_target_email",
+              "is_static": true
+            },
+            {
+              "id": "90f08627-a930-4405-8053-f2d6175d5386",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_target_email",
+              "is_static": true
+            },
+            {
+              "id": "32a2b355-8c6a-4872-8902-e7bbd8e11a8b",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_target_email",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+          "block_id": "25310c70-b89b-43ba-b25c-4dfa7e2a481c",
+          "input_default": {
+            "query": "is:unread",
+            "max_results": 30
+          },
+          "metadata": {
+            "position": {
+              "x": -4643.9226948203395,
+              "y": 2172.989467947373
+            }
+          },
+          "input_links": [
+            {
+              "id": "20e29442-d609-48b5-918e-919ff87280c5",
+              "source_id": "9b83fe30-6887-438a-816f-a03eb0910bc3",
+              "sink_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+              "source_name": "output",
+              "sink_name": "query",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "596f14d0-7270-429b-b779-479c8fc978be",
+              "source_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+              "sink_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "source_name": "emails",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "c614173a-9b4e-4e52-987b-dc60118bb2e4",
+              "source_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "gpt-5-2025-08-07",
+            "retry": 3,
+            "prompt": "Identify the owner of \"{{target_email | safe}}\" from the following data. \n\nProvide their full name and any additional information that can be gleaned about their identity from the data (i.e role, company, skills/characteristics, accounts/online profile links etc). \n\nDo not make any assumptions when doing this, provide only what you can verify. \n\nIf there are any meeting notes or written emails present, use them to provide notes on the relationship between me (\"{{user_email | safe}}\") and \"{{target_email | safe}}\", and to remind me of things that it would be beneficial for me to remember regarding them and things they've told me.\n\n<raw_gmail_search_data>\n{{RAW_DATA | safe}}\n</raw_gmail_search_data>",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": -3445.1320373310455,
+              "y": 2153.301716589669
+            }
+          },
+          "input_links": [
+            {
+              "id": "fb24b852-da8d-4cb7-bd2d-e92ff4c3ef9b",
+              "source_id": "a906c063-c42f-4535-b607-c21ec0ff3ea2",
+              "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_user_email",
+              "is_static": true
+            },
+            {
+              "id": "6706cc77-d18c-4a5d-a27c-583648482d9d",
+              "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "source_name": "value",
+              "sink_name": "prompt_values_#_RAW_DATA",
+              "is_static": false
+            },
+            {
+              "id": "90f08627-a930-4405-8053-f2d6175d5386",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_target_email",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "5b703b2d-36ec-46dd-8a52-e5ee7bb415c1",
+              "source_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "e46395fa-cc9e-4e41-9f01-2a38bee74bb3",
+              "source_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "sink_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "source_name": "response",
+              "sink_name": "prompt_values_#_research",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+          "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+          "input_default": {
+            "type": "string"
+          },
+          "metadata": {
+            "position": {
+              "x": -4044.709675038533,
+              "y": 2154.011502560513
+            }
+          },
+          "input_links": [
+            {
+              "id": "596f14d0-7270-429b-b779-479c8fc978be",
+              "source_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+              "sink_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "source_name": "emails",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "6706cc77-d18c-4a5d-a27c-583648482d9d",
+              "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "source_name": "value",
+              "sink_name": "prompt_values_#_RAW_DATA",
+              "is_static": false
+            },
+            {
+              "id": "0ed18996-cb91-4cf6-b55c-af2a94daad78",
+              "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "531d9ab3-cdd2-4f8c-ac54-9065db1647ed",
+              "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "source_name": "value",
+              "sink_name": "prompt_values_#_RAW_DATA",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "9b83fe30-6887-438a-816f-a03eb0910bc3",
+          "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+          "input_default": {
+            "format": "from:{{email | safe}} OR to:{{email | safe}} OR \"{{email | safe}}\"",
+            "values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": -5261.837850853275,
+              "y": 2145.29281130474
+            }
+          },
+          "input_links": [
+            {
+              "id": "7ffdbe78-88fd-4a53-83ce-7c04d146afef",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "9b83fe30-6887-438a-816f-a03eb0910bc3",
+              "source_name": "result",
+              "sink_name": "values_#_email",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "20e29442-d609-48b5-918e-919ff87280c5",
+              "source_id": "9b83fe30-6887-438a-816f-a03eb0910bc3",
+              "sink_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+              "source_name": "output",
+              "sink_name": "query",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "a906c063-c42f-4535-b607-c21ec0ff3ea2",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Your Email",
+            "secret": false,
+            "advanced": false,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -6011.4052138380575,
+              "y": 2147.1415239684898
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "fb24b852-da8d-4cb7-bd2d-e92ff4c3ef9b",
+              "source_id": "a906c063-c42f-4535-b607-c21ec0ff3ea2",
+              "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_user_email",
+              "is_static": true
+            },
+            {
+              "id": "3dd822a9-10c7-4b42-b925-b983185adcc2",
+              "source_id": "a906c063-c42f-4535-b607-c21ec0ff3ea2",
+              "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_user_email",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "gpt-5-2025-08-07",
+            "retry": 3,
+            "prompt": "You are a brilliant prompt-writer. \nYour job is to WRITE a Deep Research prompt for Perplexity\u2019s Deep Research Agent in order to identify the owner of \"email\" that will only produce a dossier if identity is verified to a high bar.\n\nWHAT WE KNOW SO FAR (FROM THE USER'S INBOX)\n<email_research_results>\n{{research | safe}}\n</email_research_results>\n\nGOAL\nFrom the research above, extract {{target_email | safe}}'s identity, then GENERATE a ready-to-send Perplexity request that:\n1) Forces identity confirmation first (no guessing; return AMBIGUOUS if unsure).\n2) Avoids revealing or using private emails/meeting links in the public search.\n3) Pins the search to the correct human (disambiguates homonyms).\n4) If verified, finds out as much VERIFIABLY accurate information about the person as possible.\n\nDO NOT do any web research yourself. Only WRITE the Perplexity request.\n\nDISAMBIGUATION HEURISTICS (for the request you write)\nHave Perplexity accept a candidate ONLY if \u22652 of:\n1) The public profile is clearly software/AI/engineering related (exclude unrelated homonyms like musicians unless they ALSO meet #2).  \n2) Signals of agents/LLMs/dev tooling/startups or affiliation with a named org you infer from public sources.  \n3) Geography consistent with hints (time zone/region) \u2014 weak alone; must pair with #1 or #2.  \n4) Cross-source agreement across \u22652 reputable, independent sources (e.g., LinkedIn + GitHub, company site + conf bio).\n\nWHAT TO OUTPUT (Prompt ONLY, no prose, no markdown)\n- A single set of <prompt>...</prompt> xml tags containing your given prompt text for the deep research request.\n- DO NOT include any xml tags inside of these <prompt>...</prompt> tags. Any additional use of <tags> whatsoever will break the xml parsing setup.",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": -2797.215927245378,
+              "y": 2141.7155411686153
+            }
+          },
+          "input_links": [
+            {
+              "id": "d03d0f61-8d43-4285-b460-ede1ef85706b",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_target_email",
+              "is_static": true
+            },
+            {
+              "id": "e46395fa-cc9e-4e41-9f01-2a38bee74bb3",
+              "source_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "sink_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "source_name": "response",
+              "sink_name": "prompt_values_#_research",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "56fa8329-98d3-4ac4-aafc-80b26767f45f",
+              "source_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "eec6a3b5-7f34-49ae-9d49-231c7fa31b9d",
+              "source_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "sink_id": "0835f399-b960-4adb-8ea0-316a61632106",
+              "source_name": "response",
+              "sink_name": "input_xml",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+          "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+          "input_default": {
+            "inputs": {},
+            "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+            "graph_id": "f89ac5a2-fbd0-476e-8666-23e2574236ca",
+            "input_schema": {
+              "type": "object",
+              "required": [
+                "Question"
+              ],
+              "properties": {
+                "Question": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "short-text"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Question",
+                  "secret": false,
+                  "advanced": false
+                }
+              }
+            },
+            "graph_version": 4,
+            "output_schema": {
+              "type": "object",
+              "required": [
+                "Answer",
+                "Error"
+              ],
+              "properties": {
+                "Error": {
+                  "title": "Error",
+                  "secret": false,
+                  "advanced": false
+                },
+                "Answer": {
+                  "title": "Answer",
+                  "secret": false,
+                  "advanced": false
+                }
+              }
+            }
+          },
+          "metadata": {
+            "position": {
+              "x": -1028.193817200345,
+              "y": 2166.664113149024
+            }
+          },
+          "input_links": [
+            {
+              "id": "dec10a13-fcd8-40dd-abdd-3cc8f61df5f5",
+              "source_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+              "sink_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+              "source_name": "output",
+              "sink_name": "Question",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "cb61f771-fc15-4aba-852d-6e0984f26c41",
+              "source_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+              "sink_id": "0c8e7071-4424-409b-af01-4892ddc5b4fa",
+              "source_name": "Answer",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "c09a29f7-e91a-416d-bfb4-6d4da3047133",
+              "source_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "Error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "0835f399-b960-4adb-8ea0-316a61632106",
+          "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": -2198.193790964403,
+              "y": 2141.6640881280887
+            }
+          },
+          "input_links": [
+            {
+              "id": "eec6a3b5-7f34-49ae-9d49-231c7fa31b9d",
+              "source_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "sink_id": "0835f399-b960-4adb-8ea0-316a61632106",
+              "source_name": "response",
+              "sink_name": "input_xml",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "f79a3f6a-f6ad-4d5a-adc9-c2abed207d30",
+              "source_id": "0835f399-b960-4adb-8ea0-316a61632106",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "2ff7d45e-269d-4321-8c43-00532892dd0d",
+              "source_id": "0835f399-b960-4adb-8ea0-316a61632106",
+              "sink_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+              "source_name": "parsed_xml",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+          "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+          "input_default": {
+            "key": "prompt"
+          },
+          "metadata": {
+            "position": {
+              "x": -1610.6939610788666,
+              "y": 2149.4975376460748
+            }
+          },
+          "input_links": [
+            {
+              "id": "2ff7d45e-269d-4321-8c43-00532892dd0d",
+              "source_id": "0835f399-b960-4adb-8ea0-316a61632106",
+              "sink_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+              "source_name": "parsed_xml",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "cb24ba08-20f6-478c-8827-e6d26e83aa4a",
+              "source_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "missing",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "dec10a13-fcd8-40dd-abdd-3cc8f61df5f5",
+              "source_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+              "sink_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+              "source_name": "output",
+              "sink_name": "Question",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "secret": false,
+            "advanced": false
+          },
+          "metadata": {
+            "position": {
+              "x": -2630.3106778315464,
+              "y": 6817.635342158574
+            }
+          },
+          "input_links": [
+            {
+              "id": "cb24ba08-20f6-478c-8827-e6d26e83aa4a",
+              "source_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "missing",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "56fa8329-98d3-4ac4-aafc-80b26767f45f",
+              "source_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "c614173a-9b4e-4e52-987b-dc60118bb2e4",
+              "source_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "f79a3f6a-f6ad-4d5a-adc9-c2abed207d30",
+              "source_id": "0835f399-b960-4adb-8ea0-316a61632106",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "0ed18996-cb91-4cf6-b55c-af2a94daad78",
+              "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "5b703b2d-36ec-46dd-8a52-e5ee7bb415c1",
+              "source_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "c09a29f7-e91a-416d-bfb4-6d4da3047133",
+              "source_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "Error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "4b7cb407-2ed6-41c5-8926-9c923368920b",
+              "source_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "gpt-5-2025-08-07",
+            "retry": 3,
+            "prompt": "Analyse the relationship between The User (\"{{user_email | safe}}\") and the owner of \"{{target_email | safe}}\" from the following data. \n\nDo not make any assumptions when doing this, provide only what you can verify. \n\nIf there are any meeting notes or written emails present, use them to provide notes on the relationship between The User (\"{{user_email | safe}}\") and \"{{target_email | safe}}\", and to remind The User of things that it would be beneficial for them to remember regarding \"{{target_email | safe}}\" and things they've previously discussed, asked of them or informed them of.\n\nEven things like \"Last time you spoke (date), Joe said he was going on holiday to Italy on holiday_date, you could ask him how his trip was.\" are Beneficial.\n\n<raw_gmail_search_data>\n{{RAW_DATA | safe}}\n</raw_gmail_search_data>",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": -3390.9822535560816,
+              "y": 4168.765045893363
+            }
+          },
+          "input_links": [
+            {
+              "id": "531d9ab3-cdd2-4f8c-ac54-9065db1647ed",
+              "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+              "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "source_name": "value",
+              "sink_name": "prompt_values_#_RAW_DATA",
+              "is_static": false
+            },
+            {
+              "id": "32a2b355-8c6a-4872-8902-e7bbd8e11a8b",
+              "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+              "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_target_email",
+              "is_static": true
+            },
+            {
+              "id": "3dd822a9-10c7-4b42-b925-b983185adcc2",
+              "source_id": "a906c063-c42f-4535-b607-c21ec0ff3ea2",
+              "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_user_email",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "87069362-a720-4455-b8a1-d3741dd8eac0",
+              "source_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "sink_id": "476a3170-08be-4a26-a099-2019946e7aab",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "4b7cb407-2ed6-41c5-8926-9c923368920b",
+              "source_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "476a3170-08be-4a26-a099-2019946e7aab",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Relationship Info",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": -2608.660922077564,
+              "y": 4180.504053779745
+            }
+          },
+          "input_links": [
+            {
+              "id": "87069362-a720-4455-b8a1-d3741dd8eac0",
+              "source_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+              "sink_id": "476a3170-08be-4a26-a099-2019946e7aab",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        }
+      ],
+      "links": [
+        {
+          "id": "5b703b2d-36ec-46dd-8a52-e5ee7bb415c1",
+          "source_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "4b7cb407-2ed6-41c5-8926-9c923368920b",
+          "source_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "531d9ab3-cdd2-4f8c-ac54-9065db1647ed",
+          "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+          "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+          "source_name": "value",
+          "sink_name": "prompt_values_#_RAW_DATA",
+          "is_static": false
+        },
+        {
+          "id": "596f14d0-7270-429b-b779-479c8fc978be",
+          "source_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+          "sink_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+          "source_name": "emails",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "dec10a13-fcd8-40dd-abdd-3cc8f61df5f5",
+          "source_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+          "sink_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+          "source_name": "output",
+          "sink_name": "Question",
+          "is_static": false
+        },
+        {
+          "id": "d03d0f61-8d43-4285-b460-ede1ef85706b",
+          "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+          "sink_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_target_email",
+          "is_static": true
+        },
+        {
+          "id": "cb61f771-fc15-4aba-852d-6e0984f26c41",
+          "source_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+          "sink_id": "0c8e7071-4424-409b-af01-4892ddc5b4fa",
+          "source_name": "Answer",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "cb24ba08-20f6-478c-8827-e6d26e83aa4a",
+          "source_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "32a2b355-8c6a-4872-8902-e7bbd8e11a8b",
+          "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+          "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_target_email",
+          "is_static": true
+        },
+        {
+          "id": "87069362-a720-4455-b8a1-d3741dd8eac0",
+          "source_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+          "sink_id": "476a3170-08be-4a26-a099-2019946e7aab",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "7ffdbe78-88fd-4a53-83ce-7c04d146afef",
+          "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+          "sink_id": "9b83fe30-6887-438a-816f-a03eb0910bc3",
+          "source_name": "result",
+          "sink_name": "values_#_email",
+          "is_static": true
+        },
+        {
+          "id": "fb24b852-da8d-4cb7-bd2d-e92ff4c3ef9b",
+          "source_id": "a906c063-c42f-4535-b607-c21ec0ff3ea2",
+          "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_user_email",
+          "is_static": true
+        },
+        {
+          "id": "20e29442-d609-48b5-918e-919ff87280c5",
+          "source_id": "9b83fe30-6887-438a-816f-a03eb0910bc3",
+          "sink_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+          "source_name": "output",
+          "sink_name": "query",
+          "is_static": false
+        },
+        {
+          "id": "c614173a-9b4e-4e52-987b-dc60118bb2e4",
+          "source_id": "8ae2698f-1bd8-42fc-976a-3167717ce8d2",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "6706cc77-d18c-4a5d-a27c-583648482d9d",
+          "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+          "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+          "source_name": "value",
+          "sink_name": "prompt_values_#_RAW_DATA",
+          "is_static": false
+        },
+        {
+          "id": "3dd822a9-10c7-4b42-b925-b983185adcc2",
+          "source_id": "a906c063-c42f-4535-b607-c21ec0ff3ea2",
+          "sink_id": "8101e732-9400-42b6-84c1-235dfcc7274c",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_user_email",
+          "is_static": true
+        },
+        {
+          "id": "0ed18996-cb91-4cf6-b55c-af2a94daad78",
+          "source_id": "5356c145-be3d-4b38-a553-78ec99fb7261",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "56fa8329-98d3-4ac4-aafc-80b26767f45f",
+          "source_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "2ff7d45e-269d-4321-8c43-00532892dd0d",
+          "source_id": "0835f399-b960-4adb-8ea0-316a61632106",
+          "sink_id": "c3fc4d6d-8ae7-44b4-a4cb-771f20a2f448",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "c09a29f7-e91a-416d-bfb4-6d4da3047133",
+          "source_id": "cdac63f1-eee2-4e99-818d-c7c9f2560d18",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f79a3f6a-f6ad-4d5a-adc9-c2abed207d30",
+          "source_id": "0835f399-b960-4adb-8ea0-316a61632106",
+          "sink_id": "347fad9f-d49f-46f3-8c49-cbcf67387052",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "e46395fa-cc9e-4e41-9f01-2a38bee74bb3",
+          "source_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+          "sink_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_research",
+          "is_static": false
+        },
+        {
+          "id": "eec6a3b5-7f34-49ae-9d49-231c7fa31b9d",
+          "source_id": "f26280fe-3296-4ce6-83ab-3c5213a43716",
+          "sink_id": "0835f399-b960-4adb-8ea0-316a61632106",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "90f08627-a930-4405-8053-f2d6175d5386",
+          "source_id": "480fb04f-089a-42f4-ba0a-04903d90c953",
+          "sink_id": "e007dd2d-6b22-42d6-b1d7-f955017e0830",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_target_email",
+          "is_static": true
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Email to Research": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Email to Research"
+          },
+          "Your Email": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Your Email"
+          }
+        },
+        "required": [
+          "Email to Research",
+          "Your Email"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "Research Result": {
+            "advanced": false,
+            "secret": false,
+            "title": "Research Result"
+          },
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          },
+          "Relationship Info": {
+            "advanced": false,
+            "secret": false,
+            "title": "Relationship Info"
+          }
+        },
+        "required": [
+          "Research Result",
+          "Error",
+          "Relationship Info"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    },
+    {
+      "id": "2a2c337b-67cf-46b3-8b7d-6bce5e605ddf",
+      "version": 4,
+      "is_active": true,
+      "name": "Deep Research Question",
+      "description": "Deeply researches to find the answer to the given question on the web and returns the answer/research based on results.",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "perplexity/sonar-deep-research",
+            "retry": 3,
+            "sys_prompt": "",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 846.9587455711553,
+              "y": 442.607698478585
+            }
+          },
+          "input_links": [
+            {
+              "id": "8cf832f2-d113-4e48-a443-c1842bde9335",
+              "source_id": "231ed59c-eb30-436f-bdb4-52c1512518cf",
+              "sink_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+              "source_name": "result",
+              "sink_name": "prompt",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "fb0ae75f-c995-485a-97e2-2eef5ca6ff13",
+              "source_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+              "sink_id": "55232481-5336-4046-a7e7-f1ba843698c9",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "094fa24b-5634-4bc8-9a5e-2222ab433c11",
+              "source_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+              "sink_id": "7e7a642f-f1e9-4a28-82ae-fa133bafa28b",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "231ed59c-eb30-436f-bdb4-52c1512518cf",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Question",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 279.82167298214586,
+              "y": 447.4426854847086
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "8cf832f2-d113-4e48-a443-c1842bde9335",
+              "source_id": "231ed59c-eb30-436f-bdb4-52c1512518cf",
+              "sink_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+              "source_name": "result",
+              "sink_name": "prompt",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "7e7a642f-f1e9-4a28-82ae-fa133bafa28b",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Answer",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 1402.1783270178541,
+              "y": 905.0573145152914
+            }
+          },
+          "input_links": [
+            {
+              "id": "094fa24b-5634-4bc8-9a5e-2222ab433c11",
+              "source_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+              "sink_id": "7e7a642f-f1e9-4a28-82ae-fa133bafa28b",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "55232481-5336-4046-a7e7-f1ba843698c9",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 1397.2500000000002,
+              "y": 427.5
+            }
+          },
+          "input_links": [
+            {
+              "id": "fb0ae75f-c995-485a-97e2-2eef5ca6ff13",
+              "source_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+              "sink_id": "55232481-5336-4046-a7e7-f1ba843698c9",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        }
+      ],
+      "links": [
+        {
+          "id": "fb0ae75f-c995-485a-97e2-2eef5ca6ff13",
+          "source_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+          "sink_id": "55232481-5336-4046-a7e7-f1ba843698c9",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "8cf832f2-d113-4e48-a443-c1842bde9335",
+          "source_id": "231ed59c-eb30-436f-bdb4-52c1512518cf",
+          "sink_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+          "source_name": "result",
+          "sink_name": "prompt",
+          "is_static": true
+        },
+        {
+          "id": "094fa24b-5634-4bc8-9a5e-2222ab433c11",
+          "source_id": "e4d9c513-ab2d-4435-ba54-62545932710a",
+          "sink_id": "7e7a642f-f1e9-4a28-82ae-fa133bafa28b",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Question": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Question"
+          }
+        },
+        "required": [
+          "Question"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "Answer": {
+            "advanced": false,
+            "secret": false,
+            "title": "Answer"
+          },
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          }
+        },
+        "required": [
+          "Answer",
+          "Error"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    }
+  ],
+  "user_id": "",
+  "created_at": "2025-08-30T10:24:03.147Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Your email address": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Your email address",
+        "description": "The work email address you use for your meetings. \nYour daily briefings will be sent to you here."
+      }
+    },
+    "required": [
+      "Your email address"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Meeting Prep Report Text": {
+        "advanced": false,
+        "secret": false,
+        "title": "Meeting Prep Report Text",
+        "description": "Plain Text Report, the full report was emailed to you."
+      },
+      "Error": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error"
+      },
+      "Internal Only Meeting": {
+        "advanced": false,
+        "secret": false,
+        "title": "Internal Only Meeting",
+        "description": "At least one internal meeting was detected, I won't brief you for it as I'm assuming you already have background info on your colleagues."
+      },
+      "Email Status": {
+        "advanced": false,
+        "secret": false,
+        "title": "Email Status",
+        "description": "Whether or not the briefing was successfully sent"
+      },
+      "No Meetings Found": {
+        "advanced": false,
+        "secret": false,
+        "title": "No Meetings Found"
+      },
+      "Meeting Prep Report Error": {
+        "advanced": false,
+        "secret": false,
+        "title": "Meeting Prep Report Error",
+        "description": "Error generating or emailing the final report - please email contact@agpt.co"
+      }
+    },
+    "required": [
+      "Meeting Prep Report Text",
+      "Error",
+      "Internal Only Meeting",
+      "Email Status",
+      "No Meetings Found",
+      "Meeting Prep Report Error"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "google_oauth2_credentials": {
+        "credentials_provider": [
+          "google"
+        ],
+        "credentials_types": [
+          "oauth2"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "google",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "oauth2",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.GOOGLE: 'google'>], Literal['oauth2']]",
+        "type": "object",
+        "credentials_scopes": [
+          "https://www.googleapis.com/auth/gmail.send",
+          "https://www.googleapis.com/auth/calendar.readonly",
+          "https://www.googleapis.com/auth/gmail.readonly"
+        ],
+        "discriminator_values": []
+      },
+      "anthropic_api_key_credentials": {
+        "credentials_provider": [
+          "anthropic"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "anthropic",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.ANTHROPIC: 'anthropic'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "claude-sonnet-4-20250514"
+        ]
+      },
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-5-2025-08-07"
+        ]
+      },
+      "open_router_api_key_credentials": {
+        "credentials_provider": [
+          "open_router"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "open_router",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPEN_ROUTER: 'open_router'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "perplexity/sonar-deep-research"
+        ]
+      }
+    },
+    "required": [
+      "google_oauth2_credentials",
+      "anthropic_api_key_credentials",
+      "openai_api_key_credentials",
+      "open_router_api_key_credentials"
+    ],
+    "title": "SmartMeetingPrepCredentialsInputSchema",
+    "type": "object"
+  }
+}
