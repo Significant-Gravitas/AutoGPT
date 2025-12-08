@@ -25,13 +25,15 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
           </Link>
         ) : null}
 
-        <ShowMoreText
-          previewLimit={400}
-          variant="small"
-          className="mt-4 !text-zinc-700"
-        >
-          {agent.description}
-        </ShowMoreText>
+        {agent.description ? (
+          <ShowMoreText
+            previewLimit={400}
+            variant="small"
+            className="mt-4 !text-zinc-700"
+          >
+            {agent.description}
+          </ShowMoreText>
+        ) : null}
 
         {agent.recommended_schedule_cron && !agent.has_external_trigger ? (
           <div className="flex flex-col gap-4 rounded-medium border border-blue-100 bg-blue-50 p-4">

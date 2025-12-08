@@ -8,7 +8,6 @@ import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBann
 
 export function ModalRunSection() {
   const {
-    agent,
     defaultRunType,
     presetName,
     setPresetName,
@@ -68,35 +67,6 @@ export function ModalRunSection() {
         </ModalSection>
       ) : null}
 
-      {credentialFields.length > 0 ? (
-        <ModalSection
-          title="Task Credentials"
-          subtitle="These are the credentials the agent will use to perform this task"
-        >
-          <div className="space-y-6">
-            {Object.entries(agentCredentialsInputFields || {}).map(
-              ([key, inputSubSchema]) => (
-                <CredentialsInput
-                  key={key}
-                  schema={
-                    { ...inputSubSchema, discriminator: undefined } as any
-                  }
-                  selectedCredentials={
-                    (inputCredentials && inputCredentials[key]) ??
-                    inputSubSchema.default
-                  }
-                  onSelectCredentials={(value) =>
-                    setInputCredentialsValue(key, value)
-                  }
-                  siblingInputs={inputValues}
-                  hideIfSingleCredentialAvailable={!agent.has_external_trigger}
-                />
-              ),
-            )}
-          </div>
-        </ModalSection>
-      ) : null}
-
       {inputFields.length > 0 ? (
         <ModalSection
           title="Task Setup"
@@ -119,6 +89,34 @@ export function ModalRunSection() {
               />
             </div>
           ))}
+        </ModalSection>
+      ) : null}
+
+      {credentialFields.length > 0 ? (
+        <ModalSection
+          title="Task Credentials"
+          subtitle="These are the credentials the agent will use to perform this task"
+        >
+          <div className="space-y-6">
+            {Object.entries(agentCredentialsInputFields || {}).map(
+              ([key, inputSubSchema]) => (
+                <CredentialsInput
+                  key={key}
+                  schema={
+                    { ...inputSubSchema, discriminator: undefined } as any
+                  }
+                  selectedCredentials={
+                    (inputCredentials && inputCredentials[key]) ??
+                    inputSubSchema.default
+                  }
+                  onSelectCredentials={(value) =>
+                    setInputCredentialsValue(key, value)
+                  }
+                  siblingInputs={inputValues}
+                />
+              ),
+            )}
+          </div>
         </ModalSection>
       ) : null}
     </div>
