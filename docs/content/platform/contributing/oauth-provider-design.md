@@ -218,7 +218,7 @@ A **popup window** flow for connecting third-party integrations through AutoGPT.
 │   │  │         [AutoGPT Logo]                      │   │
 │   │  │                                             │   │
 │   │  │  "Lovable" wants to access your             │   │
-│   │  │  Google account through AutoGPT            │   │
+│   │  │  Google account through AutoGPT             │   │
 │   │  │                                             │   │
 │   │  │  This will allow Lovable to:                │   │
 │   │  │  ✓ Read your Gmail messages                 │   │ ← Explicit scope list
@@ -231,8 +231,8 @@ A **popup window** flow for connecting third-party integrations through AutoGPT.
 │   │  │                                             │   │
 │   │  │  [Cancel]  [Connect with Google]            │   │
 │   │  └─────────────────────────────────────────────┘   │
-│   │                                                     │
-│   └─────────────────────────────────────────────────────┘
+│   │                                                    │
+│   └────────────────────────────────────────────────────┘
 │                                     │
 │   Waits for postMessage...          │
 │   Receives: { credential_id, scopes }
@@ -703,9 +703,9 @@ Opens the integration connection popup.
 │     By continuing, you agree to Lovable's                   │
 │     Terms of Service and Privacy Policy                     │
 │                                                             │
-│     ┌─────────────┐       ┌─────────────────────┐          │
-│     │   Cancel    │       │   Allow Access      │          │
-│     └─────────────┘       └─────────────────────┘          │
+│     ┌─────────────┐       ┌─────────────────────┐           │
+│     │   Cancel    │       │   Allow Access      │           │
+│     └─────────────┘       └─────────────────────┘           │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -743,9 +743,9 @@ Opens the integration connection popup.
 │     • Lovable will NOT receive your Google tokens           │
 │     • You can revoke access anytime in AutoGPT settings     │
 │                                                             │
-│     ┌─────────────┐    ┌────────────────────────────┐      │
-│     │   Cancel    │    │  Continue with Google  →   │      │
-│     └─────────────┘    └────────────────────────────┘      │
+│     ┌─────────────┐    ┌────────────────────────────┐       │
+│     │   Cancel    │    │  Continue with Google  →   │       │
+│     └─────────────┘    └────────────────────────────┘       │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -759,7 +759,7 @@ Opens the integration connection popup.
 │                                                             │
 │  Applications with access to your account:                  │
 │                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
+│  ┌──────────────────────────────────────────────────────┐   │
 │  │ [Lovable Logo]  Lovable                              │   │
 │  │                                                      │   │
 │  │ Permissions:                                         │   │
@@ -774,7 +774,7 @@ Opens the integration connection popup.
 │  │ Last used: 2 hours ago                               │   │
 │  │                                                      │   │
 │  │ [Manage Permissions]  [Revoke Access]                │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
