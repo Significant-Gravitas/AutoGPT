@@ -67,7 +67,7 @@ async def get_store_agents(
             offset = (page - 1) * page_size
 
             # Generate embedding for search query
-            embedding_service = await get_embedding_service()
+            embedding_service = get_embedding_service()
             query_embedding = await embedding_service.generate_embedding(search_query)
             # Convert embedding to PostgreSQL array format
             embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
@@ -291,7 +291,7 @@ async def _generate_and_store_embedding(
         description: The agent description.
     """
     try:
-        embedding_service = await get_embedding_service()
+        embedding_service = get_embedding_service()
         search_text = create_search_text(name, sub_heading, description)
 
         if not search_text:

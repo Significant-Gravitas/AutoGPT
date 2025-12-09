@@ -423,7 +423,7 @@ async def test_get_store_agents_vector_search_mocked(mocker):
     )
     mocker.patch(
         "backend.server.v2.store.db.get_embedding_service",
-        mocker.AsyncMock(return_value=mock_embedding_service),
+        mocker.MagicMock(return_value=mock_embedding_service),
     )
 
     # Mock query_raw_with_schema to return empty results
@@ -456,7 +456,7 @@ async def test_get_store_agents_vector_search_with_results(mocker):
     )
     mocker.patch(
         "backend.server.v2.store.db.get_embedding_service",
-        mocker.AsyncMock(return_value=mock_embedding_service),
+        mocker.MagicMock(return_value=mock_embedding_service),
     )
 
     # Mock query results
@@ -508,7 +508,7 @@ async def test_get_store_agents_vector_search_with_filters(mocker):
     )
     mocker.patch(
         "backend.server.v2.store.db.get_embedding_service",
-        mocker.AsyncMock(return_value=mock_embedding_service),
+        mocker.MagicMock(return_value=mock_embedding_service),
     )
 
     # Mock query_raw_with_schema
@@ -554,7 +554,7 @@ async def test_generate_and_store_embedding_success(mocker):
     )
     mocker.patch(
         "backend.server.v2.store.db.get_embedding_service",
-        mocker.AsyncMock(return_value=mock_embedding_service),
+        mocker.MagicMock(return_value=mock_embedding_service),
     )
 
     # Mock query_raw_with_schema
@@ -592,7 +592,7 @@ async def test_generate_and_store_embedding_empty_text(mocker):
     mock_embedding_service.generate_embedding = mocker.AsyncMock()
     mocker.patch(
         "backend.server.v2.store.db.get_embedding_service",
-        mocker.AsyncMock(return_value=mock_embedding_service),
+        mocker.MagicMock(return_value=mock_embedding_service),
     )
 
     # Mock query_raw_with_schema
@@ -626,7 +626,7 @@ async def test_generate_and_store_embedding_handles_error(mocker):
     )
     mocker.patch(
         "backend.server.v2.store.db.get_embedding_service",
-        mocker.AsyncMock(return_value=mock_embedding_service),
+        mocker.MagicMock(return_value=mock_embedding_service),
     )
 
     # Call should not raise - errors are logged but not propagated

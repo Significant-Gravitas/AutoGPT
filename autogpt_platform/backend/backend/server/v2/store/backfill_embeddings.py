@@ -16,7 +16,7 @@ import logging
 import sys
 
 from backend.data.db import connect, disconnect, query_raw_with_schema
-from backend.integrations.embeddings import EmbeddingService, create_search_text
+from backend.integrations.embeddings import create_search_text, get_embedding_service
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,7 +48,7 @@ async def backfill_embeddings(
     await connect()
 
     try:
-        embedding_service = EmbeddingService()
+        embedding_service = get_embedding_service()
 
         # Get all versions without embeddings
         versions = await query_raw_with_schema(

@@ -1,3 +1,4 @@
+import functools
 import logging
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -32,7 +33,12 @@ from backend.util.exceptions import NotFoundError
 logger = logging.getLogger(__name__)
 
 config = backend.server.v2.chat.config.ChatConfig()
-client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+
+
+@functools.cache
+def get_openai_client() -> AsyncOpenAI:
+    """Lazily create the OpenAI client singleton."""
+    return AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
 async def create_chat_session(
@@ -355,7 +361,7 @@ async def _stream_chat_chunks(
             logger.info("Creating OpenAI chat completion stream...")
 
             # Create the stream with proper types
-            stream = await client.chat.completions.create(
+            stream = await get_openai_client().chat.completions.create(
                 model=model,
                 messages=session.to_openai_messages(),
                 tools=tools,

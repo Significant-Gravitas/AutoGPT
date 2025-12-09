@@ -76,19 +76,25 @@ class TestEmbeddingServiceValidation:
     @pytest.fixture
     def service(self, mock_settings):
         """Create an EmbeddingService instance with mocked settings."""
-        with patch("backend.integrations.embeddings.openai.AsyncOpenAI"):
-            return EmbeddingService()
+        service = EmbeddingService()
+        # Inject a mock client directly to avoid lazy initialization errors
+        service._client = MagicMock()
+        return service
 
-    def test_init_requires_api_key(self):
-        """Test that initialization fails without an API key."""
+    def test_client_access_requires_api_key(self):
+        """Test that accessing client fails without an API key."""
         with patch("backend.integrations.embeddings.Settings") as mock:
             mock_instance = MagicMock()
             mock_instance.secrets.openai_internal_api_key = ""
             mock_instance.secrets.openai_api_key = ""
             mock.return_value = mock_instance
 
+            # Service creation should succeed
+            service = EmbeddingService()
+
+            # But accessing client should fail
             with pytest.raises(ValueError, match="OpenAI API key not configured"):
-                EmbeddingService()
+                _ = service.client
 
     def test_init_accepts_explicit_api_key(self):
         """Test that explicit API key overrides settings."""
@@ -167,12 +173,10 @@ class TestEmbeddingServiceAPI:
             mock_instance.secrets.openai_api_key = ""
             mock_settings.return_value = mock_instance
 
-            with patch(
-                "backend.integrations.embeddings.openai.AsyncOpenAI"
-            ) as mock_openai:
-                mock_openai.return_value = mock_openai_client
-                service = EmbeddingService()
-                return service, mock_openai_client
+            service = EmbeddingService()
+            # Directly inject mock client to bypass lazy initialization
+            service._client = mock_openai_client
+            return service, mock_openai_client
 
     @pytest.mark.asyncio
     async def test_generate_embedding_success(self, service_with_mock_client):
