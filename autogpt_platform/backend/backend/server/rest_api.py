@@ -21,6 +21,7 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
+import backend.server.integrations.connect_router
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
@@ -44,6 +45,7 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
+from backend.server.oauth import client_router, discovery_router, oauth_router
 from backend.server.utils.cors import build_cors_params
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
@@ -299,6 +301,18 @@ app.include_router(
 )
 
 app.mount("/external-api", external_app)
+
+# OAuth Provider routes
+app.include_router(oauth_router, tags=["oauth"], prefix="")
+app.include_router(discovery_router, tags=["oidc-discovery"], prefix="")
+app.include_router(client_router, tags=["oauth-clients"], prefix="")
+
+# Integration Connect popup routes (for Credential Broker)
+app.include_router(
+    backend.server.integrations.connect_router.connect_router,
+    tags=["integration-connect"],
+    prefix="",
+)
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])

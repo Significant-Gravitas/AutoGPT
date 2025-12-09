@@ -60,6 +60,14 @@ model User {
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
+
+  // OAuth Provider relations
+  OAuthClientsOwned       OAuthClient[]            @relation("OAuthClientOwner")
+  OAuthAuthorizations     OAuthAuthorization[]
+  OAuthAuthorizationCodes OAuthAuthorizationCode[]
+  OAuthAccessTokens       OAuthAccessToken[]
+  OAuthRefreshTokens      OAuthRefreshToken[]
+  CredentialGrants        CredentialGrant[]
 }
 
 enum OnboardingStep {
@@ -960,4 +968,226 @@ enum APIKeyStatus {
   ACTIVE
   REVOKED
   SUSPENDED
+}
+
+// ============================================================
+// OAuth Provider & Credential Broker Models
+// ============================================================
+
+enum OAuthClientStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum CredentialGrantPermission {
+  USE    // Can use credential for agent execution
+  DELETE // Can delete the credential
+}
+
+// OAuth Client - Registered external applications
+model OAuthClient {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Client identification
+  clientId         String  @unique // Public identifier (e.g., "app_abc123")
+  clientSecretHash String? // Hashed (null for public clients)
+  clientSecretSalt String?
+  clientType       String // "public" or "confidential"
+
+  // Metadata (shown on consent screen)
+  name              String
+  description       String?
+  logoUrl           String?
+  homepageUrl       String?
+  privacyPolicyUrl  String?
+  termsOfServiceUrl String?
+
+  // Configuration
+  redirectUris   String[]
+  allowedScopes  String[]
+  webhookDomains String[] // For webhook URL validation
+
+  // Security
+  requirePkce              Boolean @default(true)
+  tokenLifetimeSecs        Int     @default(3600)
+  refreshTokenLifetimeSecs Int     @default(2592000) // 30 days
+
+  // Status
+  status OAuthClientStatus @default(ACTIVE)
+
+  // Owner
+  ownerId String
+  Owner   User   @relation("OAuthClientOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Relations
+  Authorizations     OAuthAuthorization[]
+  AuthorizationCodes OAuthAuthorizationCode[]
+  AccessTokens       OAuthAccessToken[]
+  RefreshTokens      OAuthRefreshToken[]
+  CredentialGrants   CredentialGrant[]
+
+  @@index([clientId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+// OAuth Authorization - User consent record
+model OAuthAuthorization {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId String
+  Client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  scopes    String[]
+  revokedAt DateTime?
+
+  @@unique([userId, clientId])
+  @@index([userId])
+  @@index([clientId])
+}
+
+// OAuth Authorization Code - Short-lived, single-use
+model OAuthAuthorizationCode {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  codeHash String @unique
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId String
+  Client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  redirectUri String
+  scopes      String[]
+  nonce       String? // OIDC nonce
+
+  // PKCE
+  codeChallenge       String
+  codeChallengeMethod String @default("S256")
+
+  expiresAt DateTime // 10 minutes
+  usedAt    DateTime?
+
+  @@index([codeHash])
+  @@index([expiresAt])
+}
+
+// OAuth Access Token
+model OAuthAccessToken {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  tokenHash String @unique // SHA256 of token
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId String
+  Client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  scopes     String[]
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  @@index([tokenHash])
+  @@index([userId, clientId])
+  @@index([expiresAt])
+}
+
+// OAuth Refresh Token
+model OAuthRefreshToken {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  tokenHash String @unique
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId String
+  Client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  scopes    String[]
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+// Credential Grant - Links external app to user's credential with scoped access
+model CredentialGrant {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clientId String
+  Client   OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  credentialId String // Reference to credential in User.integrations
+  provider     String
+
+  // Fine-grained integration scopes (e.g., "google:gmail.readonly")
+  grantedScopes String[]
+
+  // Permissions for the credential itself
+  permissions CredentialGrantPermission[]
+
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+
+  @@unique([userId, clientId, credentialId])
+  @@index([userId, clientId])
+  @@index([clientId])
+}
+
+// OAuth Audit Log
+model OAuthAuditLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  eventType String // e.g., "token.issued", "grant.created"
+
+  userId   String?
+  clientId String?
+  grantId  String?
+
+  ipAddress String?
+  userAgent String?
+
+  details Json @default("{}")
+
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([userId])
+  @@index([clientId])
+}
+
+// Execution Webhook - Webhook registration for external API executions
+model ExecutionWebhook {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  executionId String // The graph execution ID
+  webhookUrl  String // URL to send notifications to
+  clientId    String // The OAuth client database ID
+  userId      String // The user who started the execution
+  secret      String? // Optional webhook secret for HMAC signing
+
+  @@index([executionId])
+  @@index([clientId])
 }

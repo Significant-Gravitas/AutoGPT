@@ -71,6 +71,13 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+class GrantResolverContext(BaseModel):
+    """Context for grant-based credential resolution in external API executions."""
+
+    client_db_id: str  # The OAuth client database UUID
+    grant_ids: list[str]  # List of grant IDs to use for credential resolution
+
+
 class ExecutionContext(BaseModel):
     """
     Unified context that carries execution-level data throughout the entire execution flow.
@@ -81,6 +88,8 @@ class ExecutionContext(BaseModel):
     user_timezone: str = "UTC"
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+    # For external API executions using credential grants
+    grant_resolver_context: Optional[GrantResolverContext] = None
 
 
 # -------------------------- Models -------------------------- #

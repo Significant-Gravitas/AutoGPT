@@ -221,11 +221,31 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     input_model = cast(type[BlockSchema], node_block.input_schema)
 
+    # Check if this is an external API execution using grant-based credential resolution
+    grant_resolver = None
+    if execution_context and execution_context.grant_resolver_context:
+        from backend.integrations.grant_resolver import GrantBasedCredentialResolver
+
+        grant_ctx = execution_context.grant_resolver_context
+        grant_resolver = GrantBasedCredentialResolver(
+            user_id=user_id,
+            client_id=grant_ctx.client_db_id,
+            grant_ids=grant_ctx.grant_ids,
+        )
+        await grant_resolver.initialize()
+
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         credentials_meta = input_type(**input_data[field_name])
-        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
-        creds_locks.append(lock)
+        if grant_resolver:
+            # External API execution - use grant resolver (no locking needed)
+            credentials = await grant_resolver.resolve_credential(credentials_meta.id)
+        else:
+            # Normal execution - use credentials manager with locking
+            credentials, lock = await creds_manager.acquire(
+                user_id, credentials_meta.id
+            )
+            creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
 
     # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
@@ -243,10 +263,17 @@ async def execute_node(
                     )
                     file_name = field_data.get("name", "selected file")
                     try:
-                        credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
-                        creds_locks.append(lock)
+                        if grant_resolver:
+                            # External API execution - use grant resolver
+                            credentials = await grant_resolver.resolve_credential(
+                                cred_id
+                            )
+                        else:
+                            # Normal execution - use credentials manager
+                            credentials, lock = await creds_manager.acquire(
+                                user_id, cred_id
+                            )
+                            creds_locks.append(lock)
                         extra_exec_kwargs[kwarg_name] = credentials
                     except ValueError:
                         # Credential was deleted or doesn't exist
