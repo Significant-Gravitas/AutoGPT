@@ -172,7 +172,7 @@ class OAuthService:
             raise InvalidClientError(f"Client '{client_id}' not found")
 
         await prisma.oauthauthorizationcode.create(
-            data={
+            data={  # type: ignore[typeddict-item]
                 "codeHash": code_hash,
                 "userId": user_id,
                 "clientId": client.id,
@@ -375,7 +375,7 @@ class OAuthService:
 
         # Store access token hash
         await prisma.oauthaccesstoken.create(
-            data={
+            data={  # type: ignore[typeddict-item]
                 "tokenHash": self.token_service.hash_token(access_token),
                 "userId": user_id,
                 "clientId": client.id,
@@ -391,7 +391,7 @@ class OAuthService:
         )
 
         await prisma.oauthrefreshtoken.create(
-            data={
+            data={  # type: ignore[typeddict-item]
                 "tokenHash": self.token_service.hash_token(refresh_token),
                 "userId": user_id,
                 "clientId": client.id,
@@ -576,7 +576,7 @@ class OAuthService:
             )
         else:
             await prisma.oauthauthorization.create(
-                data={
+                data={  # type: ignore[typeddict-item]
                     "userId": user_id,
                     "clientId": client_db_id,
                     "scopes": scopes,

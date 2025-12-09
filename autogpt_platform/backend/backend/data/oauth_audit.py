@@ -82,7 +82,7 @@ async def log_oauth_event(
         from prisma import Json
 
         audit_entry = await prisma.oauthauditlog.create(
-            data={
+            data={  # type: ignore[typeddict-item]
                 "eventType": event_type.value,
                 "userId": user_id,
                 "clientId": client_id,

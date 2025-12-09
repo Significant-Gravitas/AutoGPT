@@ -39,7 +39,7 @@ async def create_credential_grant(
         Created CredentialGrant
     """
     return await prisma.credentialgrant.create(
-        data={
+        data={  # type: ignore[typeddict-item]
             "userId": user_id,
             "clientId": client_id,
             "credentialId": credential_id,

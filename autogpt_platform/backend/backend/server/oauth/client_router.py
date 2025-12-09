@@ -101,7 +101,7 @@ async def register_client(
 
     # Create client
     await prisma.oauthclient.create(
-        data={
+        data={  # type: ignore[typeddict-item]
             "clientId": client_id,
             "clientSecretHash": client_secret_hash,
             "clientSecretSalt": client_secret_salt,

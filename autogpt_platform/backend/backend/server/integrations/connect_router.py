@@ -11,6 +11,7 @@ Flow:
 4. Popup sends postMessage with grant_id back to opener
 """
 
+import html
 import logging
 from typing import Annotated, Optional
 
@@ -481,9 +482,11 @@ async def connect_page(
     valid, invalid = validate_integration_scopes(requested_scopes)
 
     if not valid:
+        # HTML escape user input to prevent XSS
+        escaped_invalid = html.escape(", ".join(invalid))
         return HTMLResponse(
             _render_error_page(
-                "invalid_scope", f"Invalid scopes requested: {', '.join(invalid)}"
+                "invalid_scope", f"Invalid scopes requested: {escaped_invalid}"
             ),
             status_code=400,
         )
@@ -492,10 +495,12 @@ async def connect_page(
     for scope in requested_scopes:
         scope_provider = get_provider_for_scope(scope)
         if scope_provider != provider:
+            # HTML escape user input to prevent XSS
+            escaped_scope = html.escape(scope)
             return HTMLResponse(
                 _render_error_page(
                     "invalid_scope",
-                    f"Scope '{scope}' is not for provider '{provider.value}'",
+                    f"Scope '{escaped_scope}' is not for provider '{provider.value}'",
                 ),
                 status_code=400,
             )
