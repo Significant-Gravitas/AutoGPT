@@ -129,7 +129,8 @@ export function SelectedRunView({
               <div id="summary" className="scroll-mt-4">
                 <RunDetailCard
                   title={
-                    <div>
+                    <div className="flex items-center gap-2">
+                      <Text variant="lead-semibold">Summary</Text>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
