@@ -7,11 +7,13 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   ArrowBendLeftUpIcon,
   ArrowBendRightDownIcon,
+  CardsThreeIcon,
   EyeIcon,
   StopIcon,
 } from "@phosphor-icons/react";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";
+import { CreateTemplateModal } from "../CreateTemplateModal/CreateTemplateModal";
 import { useSelectedRunActions } from "./useSelectedRunActions";
 
 type Props = {
@@ -30,9 +32,13 @@ export function SelectedRunActions(props: Props) {
     canStop,
     isStopping,
     openInBuilderHref,
+    handleCreateTemplate,
+    isCreateTemplateModalOpen,
+    setIsCreateTemplateModalOpen,
   } = useSelectedRunActions({
     agentGraphId: props.agent.graph_id,
     run: props.run,
+    agent: props.agent,
     onSelectRun: props.onSelectRun,
     onClearSelectedRun: props.onClearSelectedRun,
   });
@@ -107,11 +113,26 @@ export function SelectedRunActions(props: Props) {
         variant="white"
         fullWidth={false}
       />
+      <Button
+        variant="icon"
+        size="icon"
+        aria-label="Save task as template"
+        onClick={() => setIsCreateTemplateModalOpen(true)}
+        title="Create template"
+      >
+        <CardsThreeIcon weight="bold" size={18} className="text-zinc-700" />
+      </Button>
       <AgentActionsDropdown
         agent={props.agent}
         run={props.run}
         agentGraphId={props.agent.graph_id}
         onClearSelectedRun={props.onClearSelectedRun}
+      />
+      <CreateTemplateModal
+        isOpen={isCreateTemplateModalOpen}
+        onClose={() => setIsCreateTemplateModalOpen(false)}
+        onCreate={handleCreateTemplate}
+        run={props.run}
       />
     </div>
   );

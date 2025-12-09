@@ -45,6 +45,7 @@ export function useNewAgentLibraryView() {
   const [sidebarCounts, setSidebarCounts] = useState({
     runsCount: 0,
     schedulesCount: 0,
+    templatesCount: 0,
   });
 
   const [sidebarLoading, setSidebarLoading] = useState(true);
@@ -52,7 +53,8 @@ export function useNewAgentLibraryView() {
   const hasAnyItems = useMemo(
     () =>
       (sidebarCounts.runsCount ?? 0) > 0 ||
-      (sidebarCounts.schedulesCount ?? 0) > 0,
+      (sidebarCounts.schedulesCount ?? 0) > 0 ||
+      (sidebarCounts.templatesCount ?? 0) > 0,
     [sidebarCounts],
   );
 
@@ -65,7 +67,10 @@ export function useNewAgentLibraryView() {
     }
   }, [response]);
 
-  function handleSelectRun(id: string, tab?: "runs" | "scheduled") {
+  function handleSelectRun(
+    id: string,
+    tab?: "runs" | "scheduled" | "templates",
+  ) {
     setQueryStates({
       activeItem: id,
       activeTab: tab ?? "runs",
@@ -88,11 +93,13 @@ export function useNewAgentLibraryView() {
     (counts: {
       runsCount: number;
       schedulesCount: number;
+      templatesCount: number;
       loading?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
         schedulesCount: counts.schedulesCount,
+        templatesCount: counts.templatesCount,
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);

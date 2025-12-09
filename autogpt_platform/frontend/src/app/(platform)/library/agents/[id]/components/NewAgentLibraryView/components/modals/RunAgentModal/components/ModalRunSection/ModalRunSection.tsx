@@ -69,8 +69,8 @@ export function ModalRunSection() {
 
       {inputFields.length > 0 ? (
         <ModalSection
-          title="Task Setup"
-          subtitle="Enter the information needed for the agent to run this task"
+          title="Task Inputs"
+          subtitle="Enter the information you want to provide to the agent for this task"
         >
           {/* Regular inputs */}
           {inputFields.map(([key, inputSubSchema]) => (

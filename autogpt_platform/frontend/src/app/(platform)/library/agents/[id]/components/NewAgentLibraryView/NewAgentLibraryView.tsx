@@ -14,6 +14,7 @@ import { SectionWrap } from "./components/other/SectionWrap";
 import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
+import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
@@ -108,6 +109,13 @@ export function NewAgentLibraryView() {
             agent={agent}
             scheduleId={activeItem}
             onClearSelectedRun={handleClearSelectedRun}
+          />
+        ) : activeTab === "templates" ? (
+          <SelectedTemplateView
+            agent={agent}
+            templateId={activeItem}
+            onClearSelectedRun={handleClearSelectedRun}
+            onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
           />
         ) : (
           <SelectedRunView

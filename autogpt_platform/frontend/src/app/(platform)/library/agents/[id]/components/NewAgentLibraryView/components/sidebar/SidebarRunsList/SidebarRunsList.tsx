@@ -16,17 +16,19 @@ import { cn } from "@/lib/utils";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunListItem } from "./components/RunListItem";
 import { ScheduleListItem } from "./components/ScheduleListItem";
+import { TemplateListItem } from "./components/TemplateListItem";
 import { useSidebarRunsList } from "./useSidebarRunsList";
 
 interface Props {
   agent: LibraryAgent;
   selectedRunId?: string;
-  onSelectRun: (id: string, tab?: "runs" | "scheduled") => void;
+  onSelectRun: (id: string, tab?: "runs" | "scheduled" | "templates") => void;
   onClearSelectedRun?: () => void;
   onTabChange?: (tab: "runs" | "scheduled" | "templates") => void;
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
+    templatesCount: number;
     loading?: boolean;
   }) => void;
 }
@@ -42,8 +44,10 @@ export function SidebarRunsList({
   const {
     runs,
     schedules,
+    templates,
     runsCount,
     schedulesCount,
+    templatesCount,
     error,
     loading,
     fetchMoreRuns,
@@ -107,7 +111,7 @@ export function SidebarRunsList({
           Scheduled <span className="ml-3 inline-block">{schedulesCount}</span>
         </TabsLineTrigger>
         <TabsLineTrigger value="templates">
-          Templates <span className="ml-3 inline-block">0</span>
+          Templates <span className="ml-3 inline-block">{templatesCount}</span>
         </TabsLineTrigger>
       </TabsLineList>
 
@@ -173,11 +177,23 @@ export function SidebarRunsList({
           )}
         >
           <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
-            <div className="flex min-h-[50vh] flex-col items-center justify-center">
-              <Text variant="large" className="text-zinc-700">
-                No templates saved
-              </Text>
-            </div>
+            {templates.length > 0 ? (
+              templates.map((template) => (
+                <div className="w-[15rem] lg:w-full" key={template.id}>
+                  <TemplateListItem
+                    template={template}
+                    selected={selectedRunId === template.id}
+                    onClick={() => onSelectRun(template.id, "templates")}
+                  />
+                </div>
+              ))
+            ) : (
+              <div className="flex min-h-[50vh] flex-col items-center justify-center">
+                <Text variant="large" className="text-zinc-700">
+                  No templates saved
+                </Text>
+              </div>
+            )}
           </div>
         </TabsLineContent>
       </>
