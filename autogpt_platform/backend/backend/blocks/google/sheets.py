@@ -2424,6 +2424,12 @@ class GoogleSheetsFilterRowsBlock(Block):
         # Check if filter_column is a column letter (A, B, C, etc.)
         if filter_column.isalpha() and len(filter_column) <= 2:
             filter_col_idx = _column_letter_to_index(filter_column)
+            # Validate column letter is within data range
+            if filter_col_idx >= len(header):
+                raise ValueError(
+                    f"Column '{filter_column}' (index {filter_col_idx}) is out of range. "
+                    f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                )
         else:
             # Look for header name match
             for idx, col_name in enumerate(header):
@@ -2630,6 +2636,12 @@ class GoogleSheetsLookupRowBlock(Block):
         lookup_col_idx = -1
         if lookup_column.isalpha() and len(lookup_column) <= 2:
             lookup_col_idx = _column_letter_to_index(lookup_column)
+            # Validate column letter is within data range
+            if lookup_col_idx >= len(header):
+                raise ValueError(
+                    f"Column '{lookup_column}' (index {lookup_col_idx}) is out of range. "
+                    f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                )
         else:
             for idx, col_name in enumerate(header):
                 if (match_case and col_name == lookup_column) or (
@@ -2650,10 +2662,14 @@ class GoogleSheetsLookupRowBlock(Block):
             for ret_col in return_columns:
                 if ret_col.isalpha() and len(ret_col) <= 2:
                     idx = _column_letter_to_index(ret_col)
+                    # Validate column letter is within data range
+                    if idx >= len(header):
+                        raise ValueError(
+                            f"Return column '{ret_col}' (index {idx}) is out of range. "
+                            f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                        )
                     return_col_indices.append(idx)
-                    return_col_headers.append(
-                        header[idx] if idx < len(header) else ret_col
-                    )
+                    return_col_headers.append(header[idx])
                 else:
                     for idx, col_name in enumerate(header):
                         if (match_case and col_name == ret_col) or (
@@ -3006,6 +3022,12 @@ class GoogleSheetsGetColumnBlock(Block):
         col_idx = -1
         if column.isalpha() and len(column) <= 2:
             col_idx = _column_letter_to_index(column)
+            # Validate column letter is within data range
+            if col_idx >= len(header):
+                raise ValueError(
+                    f"Column '{column}' (index {col_idx}) is out of range. "
+                    f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                )
         else:
             for idx, col_name in enumerate(header):
                 if col_name.lower() == column.lower():
@@ -3199,6 +3221,12 @@ class GoogleSheetsSortBlock(Block):
         sort_col_idx = -1
         if sort_column.isalpha() and len(sort_column) <= 2:
             sort_col_idx = _column_letter_to_index(sort_column)
+            # Validate column letter is within data range
+            if sort_col_idx >= len(header):
+                raise ValueError(
+                    f"Sort column '{sort_column}' (index {sort_col_idx}) is out of range. "
+                    f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                )
         else:
             for idx, col_name in enumerate(header):
                 if col_name.lower() == sort_column.lower():
@@ -3225,6 +3253,12 @@ class GoogleSheetsSortBlock(Block):
             sec_col_idx = -1
             if secondary_column.isalpha() and len(secondary_column) <= 2:
                 sec_col_idx = _column_letter_to_index(secondary_column)
+                # Validate column letter is within data range
+                if sec_col_idx >= len(header):
+                    raise ValueError(
+                        f"Secondary sort column '{secondary_column}' (index {sec_col_idx}) is out of range. "
+                        f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                    )
             else:
                 for idx, col_name in enumerate(header):
                     if col_name.lower() == secondary_column.lower():
@@ -3420,6 +3454,12 @@ class GoogleSheetsGetUniqueValuesBlock(Block):
         col_idx = -1
         if column.isalpha() and len(column) <= 2:
             col_idx = _column_letter_to_index(column)
+            # Validate column letter is within data range
+            if col_idx >= len(header):
+                raise ValueError(
+                    f"Column '{column}' (index {col_idx}) is out of range. "
+                    f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                )
         else:
             for idx, col_name in enumerate(header):
                 if col_name.lower() == column.lower():
@@ -4688,24 +4728,28 @@ class GoogleSheetsDeleteColumnBlock(Block):
         if sheet_id is None:
             raise ValueError(f"Sheet '{target_sheet}' not found")
 
+        # Get header to find column by name or validate column letter
+        header_result = (
+            service.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=f"{formatted_sheet}!1:1")
+            .execute()
+        )
+        header = (
+            header_result.get("values", [[]])[0] if header_result.get("values") else []
+        )
+
         # Find column index
         col_idx = -1
         if column.isalpha() and len(column) <= 2:
             col_idx = _column_letter_to_index(column)
+            # Validate column letter is within data range
+            if col_idx >= len(header):
+                raise ValueError(
+                    f"Column '{column}' (index {col_idx}) is out of range. "
+                    f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
+                )
         else:
-            # Get header to find column by name
-            header_result = (
-                service.spreadsheets()
-                .values()
-                .get(spreadsheetId=spreadsheet_id, range=f"{formatted_sheet}!1:1")
-                .execute()
-            )
-            header = (
-                header_result.get("values", [[]])[0]
-                if header_result.get("values")
-                else []
-            )
-
             for idx, h in enumerate(header):
                 if h.lower() == column.lower():
                     col_idx = idx
@@ -6301,6 +6345,13 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
                 kwargs["emailMessage"] = message
 
             service.permissions().create(**kwargs).execute()
+        else:
+            # Get shareable link
+            permission = {"type": "anyone", "role": role}
+            service.permissions().create(
+                fileId=spreadsheet_id, body=permission
+            ).execute()
+            share_link += "?usp=sharing"
 
         return {"success": True, "share_link": share_link}
 
