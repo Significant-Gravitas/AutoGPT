@@ -48,8 +48,8 @@ export function CredentialsSelect({
         onValueChange={(value) => onSelectCredential(value)}
       >
         <SelectTrigger className="h-auto min-h-12 w-full rounded-medium border-zinc-200 p-0 pr-4 shadow-none">
-          <SelectValue asChild>
-            {selectedCredentials ? (
+          {selectedCredentials ? (
+            <SelectValue key={selectedCredentials.id} asChild>
               <CredentialRow
                 credential={{
                   id: selectedCredentials.id,
@@ -64,10 +64,10 @@ export function CredentialsSelect({
                 readOnly={readOnly}
                 asSelectTrigger={true}
               />
-            ) : (
-              <Text variant="large">Select credential</Text>
-            )}
-          </SelectValue>
+            </SelectValue>
+          ) : (
+            <SelectValue key="placeholder" placeholder="Select credential" />
+          )}
         </SelectTrigger>
         <SelectContent>
           {credentials.map((credential) => (

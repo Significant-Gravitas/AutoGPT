@@ -1465,3 +1465,35 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+async def get_frequently_executed_graphs(
+    days_back: int = 30,
+    min_executions: int = 10,
+) -> list[dict]:
+    """Get graphs that have been frequently executed for monitoring."""
+    query_template = """
+    SELECT DISTINCT 
+        e."agentGraphId" as graph_id,
+        e."userId" as user_id,
+        COUNT(*) as execution_count
+    FROM {schema_prefix}"AgentGraphExecution" e
+    WHERE e."createdAt" >= $1::timestamp
+        AND e."isDeleted" = false
+        AND e."executionStatus" IN ('COMPLETED', 'FAILED', 'TERMINATED')
+    GROUP BY e."agentGraphId", e."userId"
+    HAVING COUNT(*) >= $2
+    ORDER BY execution_count DESC
+    """
+
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    result = await query_raw_with_schema(query_template, start_date, min_executions)
+
+    return [
+        {
+            "graph_id": row["graph_id"],
+            "user_id": row["user_id"],
+            "execution_count": int(row["execution_count"]),
+        }
+        for row in result
+    ]

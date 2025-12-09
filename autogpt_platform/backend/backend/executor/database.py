@@ -3,12 +3,17 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.data import db
+from backend.data.analytics import (
+    get_accuracy_trends_and_alerts,
+    get_marketplace_graphs_for_monitoring,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
     get_child_graph_executions,
     get_execution_kv_data,
+    get_frequently_executed_graphs,
     get_graph_execution_meta,
     get_graph_executions,
     get_graph_executions_count,
@@ -145,6 +150,9 @@ class DatabaseManager(AppService):
     get_execution_kv_data = _(get_execution_kv_data)
     set_execution_kv_data = _(set_execution_kv_data)
     get_block_error_stats = _(get_block_error_stats)
+    get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
 
     # Graphs
     get_node = _(get_node)
@@ -226,6 +234,10 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
+    # Execution accuracy monitoring
+    get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
     # Human In The Loop
     has_pending_reviews_for_graph_exec = _(d.has_pending_reviews_for_graph_exec)
