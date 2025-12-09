@@ -12,29 +12,25 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { FloppyDiskIcon, PlayIcon, TrashIcon } from "@phosphor-icons/react";
+import { FloppyDiskIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 interface Props {
   agent: LibraryAgent;
-  templateId: string;
+  triggerId: string;
   onDeleted?: () => void;
   onSaveChanges?: () => void;
-  onStartTask?: () => void;
   isSaving?: boolean;
-  isStarting?: boolean;
   onSwitchToRunsTab?: () => void;
 }
 
-export function SelectedTemplateActions({
+export function SelectedTriggerActions({
   agent,
-  templateId,
+  triggerId,
   onDeleted,
   onSaveChanges,
-  onStartTask,
   isSaving,
-  isStarting,
   onSwitchToRunsTab,
 }: Props) {
   const { toast } = useToast();
@@ -45,7 +41,7 @@ export function SelectedTemplateActions({
     mutation: {
       onSuccess: async () => {
         toast({
-          title: "Template deleted",
+          title: "Trigger deleted",
         });
         const queryKey = getGetV2ListPresetsQueryKey({
           graph_id: agent.graph_id,
@@ -61,20 +57,20 @@ export function SelectedTemplateActions({
 
         const presets =
           okData<LibraryAgentPresetResponse>(queryData)?.presets ?? [];
-        const templates = presets.filter(
-          (preset) => !preset.webhook_id || !preset.webhook,
+        const triggers = presets.filter(
+          (preset) => preset.webhook_id && preset.webhook,
         );
 
         setShowDeleteDialog(false);
         onDeleted?.();
 
-        if (templates.length === 0 && onSwitchToRunsTab) {
+        if (triggers.length === 0 && onSwitchToRunsTab) {
           onSwitchToRunsTab();
         }
       },
       onError: (error: any) => {
         toast({
-          title: "Failed to delete template",
+          title: "Failed to delete trigger",
           description: error.message || "An unexpected error occurred.",
           variant: "destructive",
         });
@@ -83,7 +79,7 @@ export function SelectedTemplateActions({
   });
 
   function handleDelete() {
-    deleteMutation.mutate({ presetId: templateId });
+    deleteMutation.mutate({ presetId: triggerId });
   }
 
   return (
@@ -94,7 +90,7 @@ export function SelectedTemplateActions({
           size="icon"
           aria-label="Save changes"
           onClick={onSaveChanges}
-          disabled={isSaving || isStarting || deleteMutation.isPending}
+          disabled={isSaving || deleteMutation.isPending}
         >
           {isSaving ? (
             <LoadingSpinner size="small" />
@@ -102,31 +98,12 @@ export function SelectedTemplateActions({
             <FloppyDiskIcon weight="bold" size={18} className="text-zinc-700" />
           )}
         </Button>
-        {onStartTask && (
-          <Button
-            variant="icon"
-            size="icon"
-            aria-label="Start task from template"
-            onClick={onStartTask}
-            disabled={isSaving || isStarting || deleteMutation.isPending}
-          >
-            {isStarting ? (
-              <>
-                <LoadingSpinner size="small" />
-              </>
-            ) : (
-              <>
-                <PlayIcon weight="bold" size={16} />
-              </>
-            )}
-          </Button>
-        )}
         <Button
           variant="icon"
           size="icon"
-          aria-label="Delete template"
+          aria-label="Delete trigger"
           onClick={() => setShowDeleteDialog(true)}
-          disabled={isSaving || isStarting || deleteMutation.isPending}
+          disabled={isSaving || deleteMutation.isPending}
         >
           {deleteMutation.isPending ? (
             <LoadingSpinner size="small" />
@@ -142,11 +119,11 @@ export function SelectedTemplateActions({
           set: setShowDeleteDialog,
         }}
         styling={{ maxWidth: "32rem" }}
-        title="Delete template"
+        title="Delete trigger"
       >
         <Dialog.Content>
           <Text variant="large">
-            Are you sure you want to delete this template? This action cannot be
+            Are you sure you want to delete this trigger? This action cannot be
             undone.
           </Text>
           <Dialog.Footer>

@@ -17,18 +17,23 @@ import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunListItem } from "./components/RunListItem";
 import { ScheduleListItem } from "./components/ScheduleListItem";
 import { TemplateListItem } from "./components/TemplateListItem";
+import { TriggerListItem } from "./components/TriggerListItem";
 import { useSidebarRunsList } from "./useSidebarRunsList";
 
 interface Props {
   agent: LibraryAgent;
   selectedRunId?: string;
-  onSelectRun: (id: string, tab?: "runs" | "scheduled" | "templates") => void;
+  onSelectRun: (
+    id: string,
+    tab?: "runs" | "scheduled" | "templates" | "triggers",
+  ) => void;
   onClearSelectedRun?: () => void;
-  onTabChange?: (tab: "runs" | "scheduled" | "templates") => void;
+  onTabChange?: (tab: "runs" | "scheduled" | "templates" | "triggers") => void;
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
     templatesCount: number;
+    triggersCount: number;
     loading?: boolean;
   }) => void;
 }
@@ -45,9 +50,11 @@ export function SidebarRunsList({
     runs,
     schedules,
     templates,
+    triggers,
     runsCount,
     schedulesCount,
     templatesCount,
+    triggersCount,
     error,
     loading,
     fetchMoreRuns,
@@ -83,7 +90,7 @@ export function SidebarRunsList({
     <TabsLine
       value={tabValue}
       onValueChange={(v) => {
-        const value = v as "runs" | "scheduled" | "templates";
+        const value = v as "runs" | "scheduled" | "templates" | "triggers";
         onTabChange?.(value);
         if (value === "runs") {
           if (runs && runs.length) {
@@ -99,6 +106,8 @@ export function SidebarRunsList({
           }
         } else if (value === "templates") {
           onClearSelectedRun?.();
+        } else if (value === "triggers") {
+          onClearSelectedRun?.();
         }
       }}
       className="flex min-h-0 flex-col overflow-hidden"
@@ -110,6 +119,11 @@ export function SidebarRunsList({
         <TabsLineTrigger value="scheduled">
           Scheduled <span className="ml-3 inline-block">{schedulesCount}</span>
         </TabsLineTrigger>
+        {triggersCount > 0 && (
+          <TabsLineTrigger value="triggers">
+            Triggers <span className="ml-3 inline-block">{triggersCount}</span>
+          </TabsLineTrigger>
+        )}
         <TabsLineTrigger value="templates">
           Templates <span className="ml-3 inline-block">{templatesCount}</span>
         </TabsLineTrigger>
@@ -169,6 +183,35 @@ export function SidebarRunsList({
             )}
           </div>
         </TabsLineContent>
+        {triggersCount > 0 && (
+          <TabsLineContent
+            value="triggers"
+            className={cn(
+              "mt-0 flex min-h-0 flex-1 flex-col",
+              AGENT_LIBRARY_SECTION_PADDING_X,
+            )}
+          >
+            <div className="flex h-full flex-nowrap items-center justify-start gap-4 overflow-x-scroll px-1 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 lg:flex-col lg:gap-3 lg:overflow-y-auto lg:overflow-x-hidden">
+              {triggers.length > 0 ? (
+                triggers.map((trigger) => (
+                  <div className="w-[15rem] lg:w-full" key={trigger.id}>
+                    <TriggerListItem
+                      trigger={trigger}
+                      selected={selectedRunId === trigger.id}
+                      onClick={() => onSelectRun(trigger.id, "triggers")}
+                    />
+                  </div>
+                ))
+              ) : (
+                <div className="flex min-h-[50vh] flex-col items-center justify-center">
+                  <Text variant="large" className="text-zinc-700">
+                    No triggers set up
+                  </Text>
+                </div>
+              )}
+            </div>
+          </TabsLineContent>
+        )}
         <TabsLineContent
           value="templates"
           className={cn(

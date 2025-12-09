@@ -17,8 +17,15 @@ import {
   getNextRunsPageParam,
 } from "./helpers";
 
-function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
-  if (value === "runs" || value === "scheduled" || value === "templates") {
+function parseTab(
+  value: string | null,
+): "runs" | "scheduled" | "templates" | "triggers" {
+  if (
+    value === "runs" ||
+    value === "scheduled" ||
+    value === "templates" ||
+    value === "triggers"
+  ) {
     return value;
   }
   return "runs";
@@ -28,12 +35,13 @@ type Args = {
   graphId?: string;
   onSelectRun: (
     runId: string,
-    tab?: "runs" | "scheduled" | "templates",
+    tab?: "runs" | "scheduled" | "templates" | "triggers",
   ) => void;
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
     templatesCount: number;
+    triggersCount: number;
     loading?: boolean;
   }) => void;
 };
@@ -89,11 +97,20 @@ export function useSidebarRunsList({
   );
 
   const schedules = schedulesQuery.data || [];
-  const templates = presetsQuery.data || [];
+  const allPresets = presetsQuery.data || [];
+  const triggers = useMemo(
+    () => allPresets.filter((preset) => preset.webhook_id && preset.webhook),
+    [allPresets],
+  );
+  const templates = useMemo(
+    () => allPresets.filter((preset) => !preset.webhook_id || !preset.webhook),
+    [allPresets],
+  );
 
   const runsCount = computeRunsCount(runsQuery.data, runs.length);
   const schedulesCount = schedules.length;
   const templatesCount = templates.length;
+  const triggersCount = triggers.length;
   const loading =
     !schedulesQuery.isSuccess ||
     !runsQuery.isSuccess ||
@@ -115,9 +132,22 @@ export function useSidebarRunsList({
   // Notify parent about counts and loading state
   useEffect(() => {
     if (onCountsChange) {
-      onCountsChange({ runsCount, schedulesCount, templatesCount, loading });
+      onCountsChange({
+        runsCount,
+        schedulesCount,
+        templatesCount,
+        triggersCount,
+        loading,
+      });
     }
-  }, [runsCount, schedulesCount, templatesCount, loading, onCountsChange]);
+  }, [
+    runsCount,
+    schedulesCount,
+    templatesCount,
+    triggersCount,
+    loading,
+    onCountsChange,
+  ]);
 
   useEffect(() => {
     if (runs.length > 0 && tabValue === "runs" && !activeItem) {
@@ -138,10 +168,17 @@ export function useSidebarRunsList({
     }
   }, [templates, activeItem, tabValue, onSelectRun]);
 
+  useEffect(() => {
+    if (triggers.length > 0 && tabValue === "triggers" && !activeItem) {
+      onSelectRun(triggers[0].id, "triggers");
+    }
+  }, [triggers, activeItem, tabValue, onSelectRun]);
+
   return {
     runs,
     schedules,
     templates,
+    triggers,
     error: schedulesQuery.error || runsQuery.error || presetsQuery.error,
     loading,
     runsQuery,
@@ -149,6 +186,7 @@ export function useSidebarRunsList({
     runsCount,
     schedulesCount,
     templatesCount,
+    triggersCount,
     fetchMoreRuns: runsQuery.fetchNextPage,
     hasMoreRuns: runsQuery.hasNextPage,
     isFetchingMoreRuns: runsQuery.isFetchingNextPage,

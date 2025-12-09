@@ -1,6 +1,5 @@
 "use client";
 
-import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -14,28 +13,26 @@ import { RunAgentInputs } from "../../modals/RunAgentInputs/RunAgentInputs";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
+import { WebhookTriggerCard } from "../SelectedTemplateView/components/WebhookTriggerCard";
 import { SelectedViewLayout } from "../SelectedViewLayout";
-import { SelectedTemplateActions } from "./components/SelectedTemplateActions";
-import { WebhookTriggerCard } from "./components/WebhookTriggerCard";
-import { useSelectedTemplateView } from "./useSelectedTemplateView";
+import { SelectedTriggerActions } from "./components/SelectedTriggerActions";
+import { useSelectedTriggerView } from "./useSelectedTriggerView";
 
 interface Props {
   agent: LibraryAgent;
-  templateId: string;
+  triggerId: string;
   onClearSelectedRun?: () => void;
-  onRunCreated?: (execution: GraphExecutionMeta) => void;
   onSwitchToRunsTab?: () => void;
 }
 
-export function SelectedTemplateView({
+export function SelectedTriggerView({
   agent,
-  templateId,
+  triggerId,
   onClearSelectedRun,
-  onRunCreated,
   onSwitchToRunsTab,
 }: Props) {
   const {
-    template,
+    trigger,
     isLoading,
     error,
     name,
@@ -47,13 +44,10 @@ export function SelectedTemplateView({
     credentials,
     setCredentialValue,
     handleSaveChanges,
-    handleStartTask,
     isSaving,
-    isStarting,
-  } = useSelectedTemplateView({
-    templateId,
+  } = useSelectedTriggerView({
+    triggerId,
     graphId: agent.graph_id,
-    onRunCreated,
   });
 
   const agentInputFields = getAgentInputFields(agent);
@@ -69,7 +63,7 @@ export function SelectedTemplateView({
             ? {
                 message: String(
                   (error as unknown as { message?: string })?.message ||
-                    "Failed to load template",
+                    "Failed to load trigger",
                 ),
               }
             : undefined
@@ -82,20 +76,20 @@ export function SelectedTemplateView({
               }
             : undefined
         }
-        context="template"
+        context="trigger"
       />
     );
   }
 
-  if (isLoading && !template) {
+  if (isLoading && !trigger) {
     return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
   }
 
-  if (!template) {
+  if (!trigger) {
     return null;
   }
 
-  const hasWebhook = !!template.webhook_id && template.webhook;
+  const hasWebhook = !!trigger.webhook_id && trigger.webhook;
 
   return (
     <div className="flex h-full w-full gap-4">
@@ -104,34 +98,34 @@ export function SelectedTemplateView({
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={undefined} />
 
-            {hasWebhook && agent.trigger_setup_info && (
-              <WebhookTriggerCard
-                template={template}
-                triggerSetupInfo={agent.trigger_setup_info}
-              />
-            )}
-
-            <RunDetailCard title="Template Details">
+            <RunDetailCard title="Trigger Details">
               <div className="flex flex-col gap-2">
                 <Input
-                  id="template-name"
+                  id="trigger-name"
                   label="Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter template name"
+                  placeholder="Enter trigger name"
                 />
 
                 <Input
-                  id="template-description"
+                  id="trigger-description"
                   label="Description"
                   type="textarea"
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Enter template description"
+                  placeholder="Enter trigger description"
                 />
               </div>
             </RunDetailCard>
+
+            {hasWebhook && agent.trigger_setup_info && (
+              <WebhookTriggerCard
+                template={trigger}
+                triggerSetupInfo={agent.trigger_setup_info}
+              />
+            )}
 
             {inputFields.length > 0 && (
               <RunDetailCard title="Your Input">
@@ -185,16 +179,14 @@ export function SelectedTemplateView({
           </div>
         </SelectedViewLayout>
       </div>
-      {template ? (
+      {trigger ? (
         <div className="-mt-2 max-w-[3.75rem] flex-shrink-0">
-          <SelectedTemplateActions
+          <SelectedTriggerActions
             agent={agent}
-            templateId={template.id}
+            triggerId={trigger.id}
             onDeleted={onClearSelectedRun}
             onSaveChanges={handleSaveChanges}
-            onStartTask={handleStartTask}
             isSaving={isSaving}
-            isStarting={isStarting}
             onSwitchToRunsTab={onSwitchToRunsTab}
           />
         </div>
