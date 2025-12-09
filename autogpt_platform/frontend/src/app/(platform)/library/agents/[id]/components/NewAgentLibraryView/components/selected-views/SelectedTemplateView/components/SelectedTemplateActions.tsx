@@ -15,6 +15,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { FloppyDiskIcon, PlayIcon, TrashIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { AgentActionsDropdown } from "../../AgentActionsDropdown";
 
 interface Props {
   agent: LibraryAgent;
@@ -134,6 +135,7 @@ export function SelectedTemplateActions({
             <TrashIcon weight="bold" size={18} />
           )}
         </Button>
+        <AgentActionsDropdown agent={agent} />
       </div>
 
       <Dialog
