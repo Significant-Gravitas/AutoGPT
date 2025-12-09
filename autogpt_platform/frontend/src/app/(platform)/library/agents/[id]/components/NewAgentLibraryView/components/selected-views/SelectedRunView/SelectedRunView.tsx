@@ -24,6 +24,7 @@ import { SelectedViewLayout } from "../SelectedViewLayout";
 import { RunOutputs } from "./components/RunOutputs";
 import { RunSummary } from "./components/RunSummary";
 import { SelectedRunActions } from "./components/SelectedRunActions/SelectedRunActions";
+import { WebhookTriggerSection } from "./components/WebhookTriggerSection";
 import { useSelectedRunView } from "./useSelectedRunView";
 
 const anchorStyles =
@@ -42,10 +43,8 @@ export function SelectedRunView({
   onSelectRun,
   onClearSelectedRun,
 }: Props) {
-  const { run, isLoading, responseError, httpError } = useSelectedRunView(
-    agent.graph_id,
-    runId,
-  );
+  const { run, preset, isLoading, responseError, httpError } =
+    useSelectedRunView(agent.graph_id, runId);
 
   const {
     pendingReviews,
@@ -89,6 +88,16 @@ export function SelectedRunView({
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={run} />
+
+            {preset &&
+              agent.trigger_setup_info &&
+              preset.webhook_id &&
+              preset.webhook && (
+                <WebhookTriggerSection
+                  preset={preset}
+                  triggerSetupInfo={agent.trigger_setup_info}
+                />
+              )}
 
             {/* Navigation Links */}
             <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
@@ -135,7 +144,7 @@ export function SelectedRunView({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <InfoIcon
-                              size={8}
+                              size={16}
                               className="cursor-help text-neutral-500 hover:text-neutral-700"
                             />
                           </TooltipTrigger>
