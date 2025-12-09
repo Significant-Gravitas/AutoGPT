@@ -5,8 +5,15 @@ import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
-  if (value === "runs" || value === "scheduled" || value === "templates") {
+function parseTab(
+  value: string | null,
+): "runs" | "scheduled" | "templates" | "triggers" {
+  if (
+    value === "runs" ||
+    value === "scheduled" ||
+    value === "templates" ||
+    value === "triggers"
+  ) {
     return value;
   }
   return "runs";
@@ -45,6 +52,8 @@ export function useNewAgentLibraryView() {
   const [sidebarCounts, setSidebarCounts] = useState({
     runsCount: 0,
     schedulesCount: 0,
+    templatesCount: 0,
+    triggersCount: 0,
   });
 
   const [sidebarLoading, setSidebarLoading] = useState(true);
@@ -52,7 +61,9 @@ export function useNewAgentLibraryView() {
   const hasAnyItems = useMemo(
     () =>
       (sidebarCounts.runsCount ?? 0) > 0 ||
-      (sidebarCounts.schedulesCount ?? 0) > 0,
+      (sidebarCounts.schedulesCount ?? 0) > 0 ||
+      (sidebarCounts.templatesCount ?? 0) > 0 ||
+      (sidebarCounts.triggersCount ?? 0) > 0,
     [sidebarCounts],
   );
 
@@ -65,7 +76,22 @@ export function useNewAgentLibraryView() {
     }
   }, [response]);
 
-  function handleSelectRun(id: string, tab?: "runs" | "scheduled") {
+  useEffect(() => {
+    if (
+      activeTab === "triggers" &&
+      sidebarCounts.triggersCount === 0 &&
+      !sidebarLoading
+    ) {
+      setQueryStates({
+        activeTab: "runs",
+      });
+    }
+  }, [activeTab, sidebarCounts.triggersCount, sidebarLoading, setQueryStates]);
+
+  function handleSelectRun(
+    id: string,
+    tab?: "runs" | "scheduled" | "templates" | "triggers",
+  ) {
     setQueryStates({
       activeItem: id,
       activeTab: tab ?? "runs",
@@ -78,7 +104,9 @@ export function useNewAgentLibraryView() {
     });
   }
 
-  function handleSetActiveTab(tab: "runs" | "scheduled" | "templates") {
+  function handleSetActiveTab(
+    tab: "runs" | "scheduled" | "templates" | "triggers",
+  ) {
     setQueryStates({
       activeTab: tab,
     });
@@ -88,11 +116,15 @@ export function useNewAgentLibraryView() {
     (counts: {
       runsCount: number;
       schedulesCount: number;
+      templatesCount: number;
+      triggersCount: number;
       loading?: boolean;
     }) => {
       setSidebarCounts({
         runsCount: counts.runsCount,
         schedulesCount: counts.schedulesCount,
+        templatesCount: counts.templatesCount,
+        triggersCount: counts.triggersCount,
       });
       if (counts.loading !== undefined) {
         setSidebarLoading(counts.loading);

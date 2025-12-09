@@ -10,10 +10,13 @@ import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
+import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { SectionWrap } from "./components/other/SectionWrap";
 import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
+import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
+import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
@@ -109,6 +112,21 @@ export function NewAgentLibraryView() {
             scheduleId={activeItem}
             onClearSelectedRun={handleClearSelectedRun}
           />
+        ) : activeTab === "templates" ? (
+          <SelectedTemplateView
+            agent={agent}
+            templateId={activeItem}
+            onClearSelectedRun={handleClearSelectedRun}
+            onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
+            onSwitchToRunsTab={() => setActiveTab("runs")}
+          />
+        ) : activeTab === "triggers" ? (
+          <SelectedTriggerView
+            agent={agent}
+            triggerId={activeItem}
+            onClearSelectedRun={handleClearSelectedRun}
+            onSwitchToRunsTab={() => setActiveTab("runs")}
+          />
         ) : (
           <SelectedRunView
             agent={agent}
@@ -126,6 +144,10 @@ export function NewAgentLibraryView() {
       ) : activeTab === "templates" ? (
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
           <EmptyTemplates />
+        </SelectedViewLayout>
+      ) : activeTab === "triggers" ? (
+        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <EmptyTriggers />
         </SelectedViewLayout>
       ) : (
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>

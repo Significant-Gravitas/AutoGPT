@@ -75,11 +75,11 @@ export function getActionButtonText(
   hasExistingCredentials: boolean,
 ): string {
   if (hasExistingCredentials) {
-    if (supportsOAuth2) return "Connect a different account";
-    if (supportsApiKey) return "Use a different API key";
-    if (supportsUserPassword) return "Use a different username and password";
-    if (supportsHostScoped) return "Use different headers";
-    return "Add credentials";
+    if (supportsOAuth2) return "Connect another account";
+    if (supportsApiKey) return "Use a new API key";
+    if (supportsUserPassword) return "Add a new username and password";
+    if (supportsHostScoped) return "Add new headers";
+    return "Add new credentials";
   } else {
     if (supportsOAuth2) return "Add account";
     if (supportsApiKey) return "Add API key";
