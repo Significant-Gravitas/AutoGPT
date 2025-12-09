@@ -1,5 +1,6 @@
 import {
   IconBuilder,
+  IconCode,
   IconEdit,
   IconLibrary,
   IconLogOut,
@@ -130,10 +131,15 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
     });
   }
 
-  // Add settings and logout
+  // Add developer settings and settings
   baseMenuItems.push(
     {
       items: [
+        {
+          icon: IconType.Code,
+          text: "Developer",
+          href: "/profile/developer",
+        },
         {
           icon: IconType.Settings,
           text: "Settings",
@@ -177,6 +183,8 @@ export function getAccountMenuOptionIcon(icon: IconType) {
       return <IconSliders className={iconClass} />;
     case IconType.Chat:
       return <ChatsIcon className={iconClass} />;
+    case IconType.Code:
+      return <IconCode className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }
