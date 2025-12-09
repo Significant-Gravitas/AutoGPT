@@ -67,6 +67,7 @@ from backend.executor.utils import (
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.webhook_notifier import get_webhook_notifier
 from backend.notifications.notifications import queue_notification
 from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
@@ -812,6 +813,7 @@ class ExecutionProcessor:
                 graph_exec_id=graph_exec.graph_exec_id,
                 status=exec_meta.status,
                 stats=exec_stats,
+                event_loop=self.node_execution_loop,
             )
 
     def _charge_usage(
@@ -1943,6 +1945,53 @@ def update_node_execution_status(
     return exec_update
 
 
+async def _notify_execution_webhook(
+    execution_id: str,
+    agent_id: str,
+    status: ExecutionStatus,
+    outputs: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    """
+    Send webhook notification for execution completion if registered.
+
+    This is a fire-and-forget operation that checks if a webhook was registered
+    for this execution and sends the appropriate notification.
+    """
+    from backend.data.db import prisma
+
+    try:
+        webhook = await prisma.executionwebhook.find_first(
+            where={"executionId": execution_id}
+        )
+        if not webhook:
+            return
+
+        notifier = get_webhook_notifier()
+
+        if status == ExecutionStatus.COMPLETED:
+            await notifier.notify_execution_completed(
+                execution_id=execution_id,
+                agent_id=agent_id,
+                client_id=webhook.clientId,
+                webhook_url=webhook.webhookUrl,
+                outputs=outputs or {},
+                webhook_secret=webhook.secret,
+            )
+        elif status == ExecutionStatus.FAILED:
+            await notifier.notify_execution_failed(
+                execution_id=execution_id,
+                agent_id=agent_id,
+                client_id=webhook.clientId,
+                webhook_url=webhook.webhookUrl,
+                error=error or "Execution failed",
+                webhook_secret=webhook.secret,
+            )
+    except Exception as e:
+        # Don't let webhook failures affect execution state updates
+        logger.warning(f"Failed to send webhook notification for {execution_id}: {e}")
+
+
 async def async_update_graph_execution_state(
     db_client: "DatabaseManagerAsyncClient",
     graph_exec_id: str,
@@ -1955,6 +2004,17 @@ async def async_update_graph_execution_state(
     )
     if graph_update:
         await send_async_execution_update(graph_update)
+
+        # Send webhook notification for terminal states
+        if status == ExecutionStatus.COMPLETED or status == ExecutionStatus.FAILED:
+            await _notify_execution_webhook(
+                execution_id=graph_exec_id,
+                agent_id=graph_update.graph_id,
+                status=status,
+                outputs=(
+                    graph_update.outputs if hasattr(graph_update, "outputs") else None
+                ),
+            )
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
     return graph_update
@@ -1965,11 +2025,33 @@ def update_graph_execution_state(
     graph_exec_id: str,
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
+    event_loop: asyncio.AbstractEventLoop | None = None,
 ) -> GraphExecution | None:
     """Sets status and fetches+broadcasts the latest state of the graph execution"""
     graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
     if graph_update:
         send_execution_update(graph_update)
+
+        # Send webhook notification for terminal states (fire-and-forget)
+        if (
+            status == ExecutionStatus.COMPLETED or status == ExecutionStatus.FAILED
+        ) and event_loop:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    _notify_execution_webhook(
+                        execution_id=graph_exec_id,
+                        agent_id=graph_update.graph_id,
+                        status=status,
+                        outputs=(
+                            graph_update.outputs
+                            if hasattr(graph_update, "outputs")
+                            else None
+                        ),
+                    ),
+                    event_loop,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to schedule webhook notification: {e}")
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
     return graph_update

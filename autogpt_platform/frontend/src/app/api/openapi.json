@@ -5359,6 +5359,764 @@
         }
       }
     },
+    "/oauth/authorize": {
+      "get": {
+        "tags": ["oauth", "oauth"],
+        "summary": "Authorize",
+        "description": "OAuth 2.0 Authorization Endpoint.\n\nValidates the request, checks user authentication, and either:\n- Redirects to login if user is not authenticated\n- Shows consent page if user hasn't authorized these scopes\n- Redirects with authorization code if already authorized",
+        "operationId": "getOauthAuthorize",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "response_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Must be 'code'",
+              "title": "Response Type"
+            },
+            "description": "Must be 'code'"
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Client identifier",
+              "title": "Client Id"
+            },
+            "description": "Client identifier"
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Redirect URI",
+              "title": "Redirect Uri"
+            },
+            "description": "Redirect URI"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "CSRF state parameter",
+              "title": "State"
+            },
+            "description": "CSRF state parameter"
+          },
+          {
+            "name": "code_challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "PKCE code challenge",
+              "title": "Code Challenge"
+            },
+            "description": "PKCE code challenge"
+          },
+          {
+            "name": "code_challenge_method",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "PKCE method",
+              "default": "S256",
+              "title": "Code Challenge Method"
+            },
+            "description": "PKCE method"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Space-separated scopes",
+              "default": "",
+              "title": "Scope"
+            },
+            "description": "Space-separated scopes"
+          },
+          {
+            "name": "nonce",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "OIDC nonce",
+              "title": "Nonce"
+            },
+            "description": "OIDC nonce"
+          },
+          {
+            "name": "prompt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Prompt behavior",
+              "title": "Prompt"
+            },
+            "description": "Prompt behavior"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/authorize/consent": {
+      "post": {
+        "tags": ["oauth", "oauth"],
+        "summary": "Submit Consent",
+        "description": "Process consent form submission.\n\nCreates authorization code and redirects to client's redirect_uri.",
+        "operationId": "postOauthSubmitConsent",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postOauthSubmitConsent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": ["oauth", "oauth"],
+        "summary": "Token",
+        "description": "OAuth 2.0 Token Endpoint.\n\nSupports:\n- authorization_code grant (with PKCE)\n- refresh_token grant",
+        "operationId": "postOauthToken",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/Body_postOauthToken" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TokenResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/userinfo": {
+      "get": {
+        "tags": ["oauth", "oauth"],
+        "summary": "Userinfo",
+        "description": "OIDC UserInfo Endpoint.\n\nReturns user profile information based on the granted scopes.",
+        "operationId": "getOauthUserinfo",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserInfoResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "tags": ["oauth", "oauth"],
+        "summary": "Revoke",
+        "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009).\n\nRevokes an access token or refresh token.",
+        "operationId": "postOauthRevoke",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": { "$ref": "#/components/schemas/Body_postOauthRevoke" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/openid-configuration": {
+      "get": {
+        "tags": ["oidc-discovery", "oidc-discovery"],
+        "summary": "Openid Configuration",
+        "description": "OIDC Discovery Document.\n\nReturns metadata about the OAuth 2.0 authorization server including\nendpoints, supported features, and algorithms.",
+        "operationId": "getOidc-discoveryOpenidConfiguration",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OpenIDConfiguration" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/jwks.json": {
+      "get": {
+        "tags": ["oidc-discovery", "oidc-discovery"],
+        "summary": "Jwks",
+        "description": "JSON Web Key Set (JWKS).\n\nReturns the public key(s) used to verify JWT signatures.\nExternal applications can use these keys to verify access tokens\nand ID tokens issued by this authorization server.",
+        "operationId": "getOidc-discoveryJwks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/JWKS" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/clients/": {
+      "get": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "List Clients",
+        "description": "List all OAuth clients owned by the current user.",
+        "operationId": "getOauth-clientsListClients",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/ClientResponse" },
+                  "type": "array",
+                  "title": "Response Getoauth-Clientslistclients"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Register Client",
+        "description": "Register a new OAuth client.\n\nThe client is immediately active (no admin approval required).\nFor confidential clients, the client_secret is returned only once.",
+        "operationId": "postOauth-clientsRegisterClient",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterClientRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientSecretResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/oauth/clients/{client_id}": {
+      "get": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Get Client",
+        "description": "Get details of a specific OAuth client.",
+        "operationId": "getOauth-clientsGetClient",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClientResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "patch": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Update Client",
+        "description": "Update an OAuth client.",
+        "operationId": "patchOauth-clientsUpdateClient",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateClientRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClientResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Delete Client",
+        "description": "Delete an OAuth client.\n\nThis will also revoke all tokens and authorizations for this client.",
+        "operationId": "deleteOauth-clientsDeleteClient",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Deleteoauth-Clientsdeleteclient"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/oauth/clients/{client_id}/rotate-secret": {
+      "post": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Rotate Client Secret",
+        "description": "Rotate the client secret for a confidential client.\n\nThe new secret is returned only once. All existing tokens remain valid.",
+        "operationId": "postOauth-clientsRotateClientSecret",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientSecretResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/oauth/clients/{client_id}/suspend": {
+      "post": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Suspend Client",
+        "description": "Suspend an OAuth client (prevents new authorizations).",
+        "operationId": "postOauth-clientsSuspendClient",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClientResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/oauth/clients/{client_id}/activate": {
+      "post": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Activate Client",
+        "description": "Reactivate a suspended OAuth client.",
+        "operationId": "postOauth-clientsActivateClient",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClientResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/connect/{provider}": {
+      "get": {
+        "tags": ["integration-connect", "integration-connect"],
+        "summary": "Connect Page",
+        "description": "Render the connect consent page.\n\nThis page allows users to select an existing credential or connect a new one\nfor use by an external application.",
+        "operationId": "getIntegration-connectConnectPage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names.",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "OAuth client ID",
+              "title": "Client Id"
+            },
+            "description": "OAuth client ID"
+          },
+          {
+            "name": "scopes",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated integration scopes",
+              "title": "Scopes"
+            },
+            "description": "Comma-separated integration scopes"
+          },
+          {
+            "name": "nonce",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Nonce for replay protection",
+              "title": "Nonce"
+            },
+            "description": "Nonce for replay protection"
+          },
+          {
+            "name": "redirect_origin",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Origin for postMessage",
+              "title": "Redirect Origin"
+            },
+            "description": "Origin for postMessage"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/connect/{provider}/approve": {
+      "post": {
+        "tags": ["integration-connect", "integration-connect"],
+        "summary": "Approve Connect",
+        "description": "Process the connect form submission.\n\nCreates a credential grant and returns a page that sends postMessage to opener.",
+        "operationId": "postIntegration-connectApproveConnect",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names.",
+              "title": "Provider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postIntegration-connectApproveConnect"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/connect/{provider}/callback": {
+      "get": {
+        "tags": ["integration-connect", "integration-connect"],
+        "summary": "Connect Oauth Callback",
+        "description": "Handle OAuth callback after user authorizes a new connection.\n\nThis endpoint is called after the OAuth provider redirects back with an\nauthorization code. It exchanges the code for tokens, creates the credential,\ncreates the grant, and returns a page that sends postMessage to the opener.",
+        "operationId": "getIntegration-connectConnectOauthCallback",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names.",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Code" }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "State" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
@@ -5852,6 +6610,73 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
+      "Body_postIntegration-connectApproveConnect": {
+        "properties": {
+          "connect_token": { "type": "string", "title": "Connect Token" },
+          "action": { "type": "string", "title": "Action" },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          }
+        },
+        "type": "object",
+        "required": ["connect_token", "action"],
+        "title": "Body_postIntegration-connectApproveConnect"
+      },
+      "Body_postOauthRevoke": {
+        "properties": {
+          "token": { "type": "string", "title": "Token" },
+          "token_type_hint": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Token Type Hint"
+          }
+        },
+        "type": "object",
+        "required": ["token"],
+        "title": "Body_postOauthRevoke"
+      },
+      "Body_postOauthSubmitConsent": {
+        "properties": {
+          "consent_token": { "type": "string", "title": "Consent Token" },
+          "authorize": { "type": "string", "title": "Authorize" }
+        },
+        "type": "object",
+        "required": ["consent_token", "authorize"],
+        "title": "Body_postOauthSubmitConsent"
+      },
+      "Body_postOauthToken": {
+        "properties": {
+          "grant_type": { "type": "string", "title": "Grant Type" },
+          "code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Code"
+          },
+          "redirect_uri": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Redirect Uri"
+          },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_secret": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Client Secret"
+          },
+          "code_verifier": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Code Verifier"
+          },
+          "refresh_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Refresh Token"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "required": ["grant_type", "client_id"],
+        "title": "Body_postOauthToken"
+      },
       "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
           "code": {
@@ -5994,6 +6819,94 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
+      },
+      "ClientResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_type": { "type": "string", "title": "Client Type" },
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "homepage_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Homepage Url"
+          },
+          "privacy_policy_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Privacy Policy Url"
+          },
+          "terms_of_service_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Of Service Url"
+          },
+          "redirect_uris": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Redirect Uris"
+          },
+          "allowed_scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Allowed Scopes"
+          },
+          "webhook_domains": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Webhook Domains"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "client_id",
+          "client_type",
+          "name",
+          "description",
+          "logo_url",
+          "homepage_url",
+          "privacy_policy_url",
+          "terms_of_service_url",
+          "redirect_uris",
+          "allowed_scopes",
+          "webhook_domains",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClientResponse",
+        "description": "OAuth client response."
+      },
+      "ClientSecretResponse": {
+        "properties": {
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_secret": {
+            "type": "string",
+            "title": "Client Secret",
+            "description": "Client secret (only shown once, store securely)"
+          }
+        },
+        "type": "object",
+        "required": ["client_id", "client_secret"],
+        "title": "ClientSecretResponse",
+        "description": "Response containing newly generated client secret."
       },
       "CountResponse": {
         "properties": {
@@ -7102,6 +8015,47 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
+      "JWK": {
+        "properties": {
+          "kty": {
+            "type": "string",
+            "title": "Kty",
+            "description": "Key type (RSA)"
+          },
+          "use": {
+            "type": "string",
+            "title": "Use",
+            "description": "Key use (signature)",
+            "default": "sig"
+          },
+          "kid": { "type": "string", "title": "Kid", "description": "Key ID" },
+          "alg": {
+            "type": "string",
+            "title": "Alg",
+            "description": "Algorithm",
+            "default": "RS256"
+          },
+          "n": { "type": "string", "title": "N", "description": "RSA modulus" },
+          "e": { "type": "string", "title": "E", "description": "RSA exponent" }
+        },
+        "type": "object",
+        "required": ["kty", "kid", "n", "e"],
+        "title": "JWK",
+        "description": "JSON Web Key."
+      },
+      "JWKS": {
+        "properties": {
+          "keys": {
+            "items": { "$ref": "#/components/schemas/JWK" },
+            "type": "array",
+            "title": "Keys"
+          }
+        },
+        "type": "object",
+        "required": ["keys"],
+        "title": "JWKS",
+        "description": "JSON Web Key Set."
+      },
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -7871,6 +8825,78 @@
         ],
         "title": "OnboardingStep"
       },
+      "OpenIDConfiguration": {
+        "properties": {
+          "issuer": { "type": "string", "title": "Issuer" },
+          "authorization_endpoint": {
+            "type": "string",
+            "title": "Authorization Endpoint"
+          },
+          "token_endpoint": { "type": "string", "title": "Token Endpoint" },
+          "userinfo_endpoint": {
+            "type": "string",
+            "title": "Userinfo Endpoint"
+          },
+          "revocation_endpoint": {
+            "type": "string",
+            "title": "Revocation Endpoint"
+          },
+          "jwks_uri": { "type": "string", "title": "Jwks Uri" },
+          "scopes_supported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes Supported"
+          },
+          "response_types_supported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Response Types Supported"
+          },
+          "grant_types_supported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Grant Types Supported"
+          },
+          "token_endpoint_auth_methods_supported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Token Endpoint Auth Methods Supported"
+          },
+          "code_challenge_methods_supported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Code Challenge Methods Supported"
+          },
+          "subject_types_supported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Subject Types Supported"
+          },
+          "id_token_signing_alg_values_supported": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Id Token Signing Alg Values Supported"
+          }
+        },
+        "type": "object",
+        "required": [
+          "issuer",
+          "authorization_endpoint",
+          "token_endpoint",
+          "userinfo_endpoint",
+          "revocation_endpoint",
+          "jwks_uri",
+          "scopes_supported",
+          "response_types_supported",
+          "grant_types_supported",
+          "token_endpoint_auth_methods_supported",
+          "code_challenge_methods_supported",
+          "subject_types_supported",
+          "id_token_signing_alg_values_supported"
+        ],
+        "title": "OpenIDConfiguration",
+        "description": "OIDC Discovery Document."
+      },
       "Pagination": {
         "properties": {
           "total_items": {
@@ -8470,6 +9496,101 @@
           "updated_at"
         ],
         "title": "RefundRequest"
+      },
+      "RegisterClientRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Client name"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Description",
+            "description": "Client description"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Logo Url",
+            "description": "Logo URL"
+          },
+          "homepage_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Homepage Url",
+            "description": "Homepage URL"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Privacy Policy Url",
+            "description": "Privacy policy URL"
+          },
+          "terms_of_service_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Terms Of Service Url",
+            "description": "Terms of service URL"
+          },
+          "redirect_uris": {
+            "items": { "type": "string" },
+            "type": "array",
+            "minItems": 1,
+            "title": "Redirect Uris",
+            "description": "Allowed redirect URIs"
+          },
+          "client_type": {
+            "type": "string",
+            "enum": ["public", "confidential"],
+            "title": "Client Type",
+            "description": "Client type",
+            "default": "public"
+          },
+          "webhook_domains": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Webhook Domains",
+            "description": "Allowed webhook domains"
+          }
+        },
+        "type": "object",
+        "required": ["name", "redirect_uris"],
+        "title": "RegisterClientRequest",
+        "description": "Request to register a new OAuth client."
       },
       "RequestTopUp": {
         "properties": {
@@ -9842,6 +10963,46 @@
         "required": ["timezone"],
         "title": "TimezoneResponse"
       },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "Access token"
+          },
+          "token_type": {
+            "type": "string",
+            "const": "Bearer",
+            "title": "Token Type",
+            "description": "Token type",
+            "default": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In",
+            "description": "Token lifetime in seconds"
+          },
+          "refresh_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Refresh Token",
+            "description": "Refresh token"
+          },
+          "scope": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Scope",
+            "description": "Granted scopes"
+          },
+          "id_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id Token",
+            "description": "OIDC ID token"
+          }
+        },
+        "type": "object",
+        "required": ["access_token", "expires_in"],
+        "title": "TokenResponse",
+        "description": "OAuth 2.0 Token Response (RFC 6749 Section 5.1)."
+      },
       "TransactionHistory": {
         "properties": {
           "transactions": {
@@ -9887,6 +11048,89 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "UpdateClientRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 100, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Logo Url"
+          },
+          "homepage_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Homepage Url"
+          },
+          "privacy_policy_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Privacy Policy Url"
+          },
+          "terms_of_service_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2083,
+                "minLength": 1,
+                "format": "uri"
+              },
+              { "type": "null" }
+            ],
+            "title": "Terms Of Service Url"
+          },
+          "redirect_uris": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Redirect Uris"
+          },
+          "webhook_domains": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Webhook Domains"
+          }
+        },
+        "type": "object",
+        "title": "UpdateClientRequest",
+        "description": "Request to update an OAuth client."
       },
       "UpdatePermissionsRequest": {
         "properties": {
@@ -10543,6 +11787,39 @@
         "title": "UserHistoryResponse",
         "description": "Response model for listings with version history"
       },
+      "UserInfoResponse": {
+        "properties": {
+          "sub": {
+            "type": "string",
+            "title": "Sub",
+            "description": "User ID (subject)"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email",
+            "description": "User email"
+          },
+          "email_verified": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Email Verified",
+            "description": "Whether email is verified"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name",
+            "description": "User display name"
+          },
+          "updated_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Updated At",
+            "description": "Last profile update timestamp"
+          }
+        },
+        "type": "object",
+        "required": ["sub"],
+        "title": "UserInfoResponse",
+        "description": "OIDC UserInfo Response."
+      },
       "UserOnboarding": {
         "properties": {
           "userId": { "type": "string", "title": "Userid" },
@@ -10844,7 +12121,8 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
-      }
+      },
+      "HTTPBearer": { "type": "http", "scheme": "bearer" }
     },
     "responses": {
       "HTTP401NotAuthenticatedError": {

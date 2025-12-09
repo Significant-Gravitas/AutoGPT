@@ -34,6 +34,7 @@ from backend.server.oauth.errors import (
 from backend.server.oauth.models import TokenResponse, UserInfoResponse
 from backend.server.oauth.service import get_oauth_service
 from backend.server.oauth.token_service import get_token_service
+from backend.util.rate_limiter import check_rate_limit
 from backend.util.settings import Settings
 
 oauth_router = APIRouter(prefix="/oauth", tags=["oauth"])
@@ -85,6 +86,18 @@ async def authorize(
     - Shows consent page if user hasn't authorized these scopes
     - Redirects with authorization code if already authorized
     """
+    # Rate limiting - use client IP as identifier for authorize endpoint
+    client_ip = _get_client_ip(request)
+    rate_result = await check_rate_limit(client_ip, "oauth_authorize")
+    if not rate_result.allowed:
+        return HTMLResponse(
+            render_error_page(
+                "rate_limit_exceeded",
+                "Too many authorization requests. Please try again later.",
+            ),
+            status_code=429,
+        )
+
     oauth_service = get_oauth_service()
     settings = Settings()
 
@@ -274,6 +287,19 @@ async def token(
     - authorization_code grant (with PKCE)
     - refresh_token grant
     """
+    # Rate limiting - use client_id as identifier
+    rate_result = await check_rate_limit(client_id, "oauth_token")
+    if not rate_result.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={
+                "Retry-After": str(int(rate_result.retry_after or 60)),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(int(rate_result.reset_at)),
+            },
+        )
+
     oauth_service = get_oauth_service()
 
     try:
