@@ -93,98 +93,42 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
-    # OpenAI models
-    O3_MINI = "o3-mini"
-    O3 = "o3-2025-04-16"
-    O1 = "o1"
-    O1_MINI = "o1-mini"
-    # GPT-5 models
-    GPT5 = "gpt-5-2025-08-07"
-    GPT5_1 = "gpt-5.1-2025-11-13"
-    GPT5_MINI = "gpt-5-mini-2025-08-07"
-    GPT5_NANO = "gpt-5-nano-2025-08-07"
-    GPT5_CHAT = "gpt-5-chat-latest"
-    GPT41 = "gpt-4.1-2025-04-14"
-    GPT41_MINI = "gpt-4.1-mini-2025-04-14"
-    GPT4O_MINI = "gpt-4o-mini"
-    GPT4O = "gpt-4o"
-    GPT4_TURBO = "gpt-4-turbo"
-    GPT3_5_TURBO = "gpt-3.5-turbo"
-    # Anthropic models
-    CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
-    CLAUDE_4_OPUS = "claude-opus-4-20250514"
-    CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
-    CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
-    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
-    CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
-    CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
-    CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
-    # AI/ML API models
-    AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
-    AIML_API_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
-    AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
-    AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
-    # Groq models
-    LLAMA3_3_70B = "llama-3.3-70b-versatile"
-    LLAMA3_1_8B = "llama-3.1-8b-instant"
-    # Ollama models
-    OLLAMA_LLAMA3_3 = "llama3.3"
-    OLLAMA_LLAMA3_2 = "llama3.2"
-    OLLAMA_LLAMA3_8B = "llama3"
-    OLLAMA_LLAMA3_405B = "llama3.1:405b"
-    OLLAMA_DOLPHIN = "dolphin-mistral:latest"
-    # OpenRouter models
-    OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
-    OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
-    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
-    GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
-    GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
-    GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
-    GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
-    MISTRAL_NEMO = "mistralai/mistral-nemo"
-    COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
-    COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
-    DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
-    DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
-    PERPLEXITY_SONAR = "perplexity/sonar"
-    PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
-    PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
-    NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
-    NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
-    AMAZON_NOVA_LITE_V1 = "amazon/nova-lite-v1"
-    AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
-    AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
-    MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
-    GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
-    META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
-    META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
-    GROK_4 = "x-ai/grok-4"
-    GROK_4_FAST = "x-ai/grok-4-fast"
-    GROK_4_1_FAST = "x-ai/grok-4.1-fast"
-    GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
-    KIMI_K2 = "moonshotai/kimi-k2"
-    QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
-    QWEN3_CODER = "qwen/qwen3-coder"
-    # Llama API models
-    LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
-    LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
-    LLAMA_API_LLAMA3_3_8B = "Llama-3.3-8B-Instruct"
-    LLAMA_API_LLAMA3_3_70B = "Llama-3.3-70B-Instruct"
-    # v0 by Vercel models
-    V0_1_5_MD = "v0-1.5-md"
-    V0_1_5_LG = "v0-1.5-lg"
-    V0_1_0_MD = "v0-1.0-md"
+    """
+    Dynamic LLM model enum that accepts any model slug from the registry.
+    
+    This enum no longer contains hardcoded model values. All models are now
+    managed via the LLM Registry in the database. The _missing_() method allows
+    any string value to be used, making it fully dynamic.
+    
+    For backwards compatibility and type hints, you can still use this enum,
+    but model slugs should come from the registry, not hardcoded enum members.
+    """
 
     @classmethod
     def _missing_(cls, value):
+        """
+        Allow any string value to be used as an LlmModel enum member.
+        
+        This makes the enum fully dynamic - it accepts any model slug from
+        the database registry, not just hardcoded values.
+        """
         if isinstance(value, str):
             pseudo_member = str.__new__(cls, value)
-            pseudo_member._name_ = value.upper().replace("-", "_")
+            pseudo_member._name_ = value.upper().replace("-", "_").replace("/", "_").replace(".", "_")
             pseudo_member._value_ = value
             return pseudo_member
         return super()._missing_(value)
+    
+    @classmethod
+    def default(cls) -> "LlmModel":
+        """
+        Get the default model from the registry.
+        
+        Returns the preferred default model (gpt-4o if available and enabled,
+        otherwise the first enabled model from the registry).
+        """
+        from backend.data.llm_registry import get_default_model_slug
+        return cls(get_default_model_slug())
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -768,7 +712,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default_factory=LlmModel.default,
             description="The language model to use for answering the prompt.",
             advanced=False,
             json_schema_extra=llm_model_schema_extra(),
@@ -834,7 +778,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             input_schema=AIStructuredResponseGeneratorBlock.Input,
             output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
-                "model": LlmModel.GPT4O,
+                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expected_format": {
                     "key1": "value1",
@@ -1200,7 +1144,7 @@ class AITextGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default_factory=LlmModel.default,
             description="The language model to use for answering the prompt.",
             advanced=False,
             json_schema_extra=llm_model_schema_extra(),
@@ -1297,7 +1241,7 @@ class AITextSummarizerBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default_factory=LlmModel.default,
             description="The language model to use for summarizing the text.",
             json_schema_extra=llm_model_schema_extra(),
         )
@@ -1515,7 +1459,7 @@ class AIConversationBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default_factory=LlmModel.default,
             description="The language model to use for the conversation.",
             json_schema_extra=llm_model_schema_extra(),
         )
@@ -1554,7 +1498,7 @@ class AIConversationBlock(AIBlockBase):
                     },
                     {"role": "user", "content": "Where was it played?"},
                 ],
-                "model": LlmModel.GPT4O,
+                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -1617,7 +1561,7 @@ class AIListGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default_factory=LlmModel.default,
             description="The language model to use for generating the list.",
             advanced=True,
             json_schema_extra=llm_model_schema_extra(),
@@ -1675,7 +1619,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of "
                     "fictional worlds."
                 ),
-                "model": LlmModel.GPT4O,
+                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
                 "force_json_output": False,

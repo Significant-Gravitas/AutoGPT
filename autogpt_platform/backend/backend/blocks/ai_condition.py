@@ -50,7 +50,7 @@ class AIConditionBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default_factory=LlmModel.default,
             description="The language model to use for evaluating the condition.",
             advanced=False,
             json_schema_extra=llm_model_schema_extra(),
@@ -83,7 +83,7 @@ class AIConditionBlock(AIBlockBase):
                 "condition": "the input is an email address",
                 "yes_value": "Valid email",
                 "no_value": "Not an email",
-                "model": LlmModel.GPT4O,
+                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,

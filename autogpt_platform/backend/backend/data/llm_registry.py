@@ -281,3 +281,25 @@ def is_model_enabled(model_slug: str) -> bool:
 def get_model_info(model_slug: str) -> RegistryModel | None:
     """Get model info from the registry."""
     return _dynamic_models.get(model_slug)
+
+
+def get_default_model_slug() -> str:
+    """
+    Get the default model slug to use for block defaults.
+    
+    Prefers "gpt-4o" if it exists and is enabled, otherwise returns
+    the first enabled model from the registry, or "gpt-4o" as fallback.
+    """
+    # Prefer gpt-4o if available and enabled
+    preferred_slug = "gpt-4o"
+    preferred_model = _dynamic_models.get(preferred_slug)
+    if preferred_model and preferred_model.is_enabled:
+        return preferred_slug
+    
+    # Find first enabled model
+    for model in sorted(_dynamic_models.values(), key=lambda m: m.display_name.lower()):
+        if model.is_enabled:
+            return model.slug
+    
+    # Fallback to preferred slug even if not in registry (for backwards compatibility)
+    return preferred_slug
