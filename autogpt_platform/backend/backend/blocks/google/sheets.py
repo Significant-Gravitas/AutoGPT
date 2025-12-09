@@ -2871,7 +2871,7 @@ class GoogleSheetsDeleteRowsBlock(Block):
             spreadsheetId=spreadsheet_id, body={"requests": requests}
         ).execute()
 
-        return {"success": True, "deleted_count": len(row_indices)}
+        return {"success": True, "deleted_count": len(sorted_indices)}
 
 
 class GoogleSheetsGetColumnBlock(Block):
@@ -3287,17 +3287,21 @@ class GoogleSheetsSortBlock(Block):
                         f"Sheet only has {len(header)} columns (A-{_index_to_column_letter(len(header) - 1)})."
                     )
 
-            if sec_col_idx >= 0:
-                sort_specs.append(
-                    {
-                        "dimensionIndex": sec_col_idx,
-                        "sortOrder": (
-                            "ASCENDING"
-                            if secondary_order == SortOrder.ASCENDING
-                            else "DESCENDING"
-                        ),
-                    }
+            if sec_col_idx < 0:
+                raise ValueError(
+                    f"Secondary sort column '{secondary_column}' not found. Available: {header}"
                 )
+
+            sort_specs.append(
+                {
+                    "dimensionIndex": sec_col_idx,
+                    "sortOrder": (
+                        "ASCENDING"
+                        if secondary_order == SortOrder.ASCENDING
+                        else "DESCENDING"
+                    ),
+                }
+            )
 
         # Build sort range request
         start_row = 1 if has_header else 0  # Skip header if present
@@ -4478,7 +4482,20 @@ class GoogleSheetsUpdateRowBlock(Block):
             while len(current_row) < len(header):
                 current_row.append("")
 
-            # Update specific columns from dict
+            # Update specific columns from dict - validate all column names first
+            for col_name in dict_values.keys():
+                found = False
+                for h in header:
+                    if h.lower() == col_name.lower():
+                        found = True
+                        break
+                if not found:
+                    raise ValueError(
+                        f"Column '{col_name}' not found in sheet. "
+                        f"Available columns: {', '.join(header)}"
+                    )
+
+            # Now apply updates
             updated_count = 0
             for col_name, value in dict_values.items():
                 for idx, h in enumerate(header):
