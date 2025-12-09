@@ -1,11 +1,10 @@
 "use client";
 
-import React from "react";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import moment from "moment";
-import { RunSidebarCard } from "./RunSidebarCard";
-import { IconWrapper } from "./RunIconWrapper";
 import { ClockClockwiseIcon } from "@phosphor-icons/react";
+import moment from "moment";
+import { IconWrapper } from "./RunIconWrapper";
+import { RunSidebarCard } from "./RunSidebarCard";
 
 interface ScheduleListItemProps {
   schedule: GraphExecutionJobInfo;
@@ -25,10 +24,10 @@ export function ScheduleListItem({
       onClick={onClick}
       selected={selected}
       icon={
-        <IconWrapper className="border-slate-50 bg-slate-50">
+        <IconWrapper className="border-slate-50 bg-yellow-50">
           <ClockClockwiseIcon
             size={16}
-            className="text-slate-700"
+            className="text-yellow-700"
             weight="bold"
           />
         </IconWrapper>

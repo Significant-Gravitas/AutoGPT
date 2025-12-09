@@ -83,19 +83,17 @@ export function SelectedScheduleView({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
           <div className="flex flex-col gap-4">
-            <div>
-              <div className="flex w-full items-center justify-between">
-                <div className="flex w-full flex-col gap-0">
-                  <RunDetailHeader
-                    agent={agent}
-                    run={undefined}
-                    scheduleRecurrence={
-                      schedule
-                        ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
-                        : undefined
-                    }
-                  />
-                </div>
+            <div className="flex w-full items-center justify-between">
+              <div className="flex w-full flex-col gap-0">
+                <RunDetailHeader
+                  agent={agent}
+                  run={undefined}
+                  scheduleRecurrence={
+                    schedule
+                      ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
+                      : undefined
+                  }
+                />
               </div>
             </div>
 
