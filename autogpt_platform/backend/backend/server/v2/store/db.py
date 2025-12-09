@@ -248,7 +248,9 @@ async def log_search_term(search_query: str):
     date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     try:
         await prisma.models.SearchTerms.prisma().create(
-            data={"searchTerm": search_query, "createdDate": date}
+            data=prisma.types.SearchTermsCreateInput(
+                searchTerm=search_query, createdDate=date
+            )
         )
     except Exception as e:
         # Fail silently here so that logging search terms doesn't break the app
@@ -1430,13 +1432,10 @@ async def _approve_sub_agent(
 
     # Create new version if no matching version found
     next_version = max((v.version for v in listing.Versions or []), default=0) + 1
-    await prisma.models.StoreListingVersion.prisma(tx).create(
-        data={
-            **_create_sub_agent_version_data(sub_graph, heading, main_agent_name),
-            "version": next_version,
-            "storeListingId": listing.id,
-        }
-    )
+    sub_agent_data = _create_sub_agent_version_data(sub_graph, heading, main_agent_name)
+    sub_agent_data["version"] = next_version
+    sub_agent_data["storeListingId"] = listing.id
+    await prisma.models.StoreListingVersion.prisma(tx).create(data=sub_agent_data)
     await prisma.models.StoreListing.prisma(tx).update(
         where={"id": listing.id}, data={"hasApprovedVersion": True}
     )

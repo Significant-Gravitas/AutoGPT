@@ -7,7 +7,11 @@ import prisma
 import pydantic
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
-from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
+from prisma.types import (
+    UserOnboardingCreateInput,
+    UserOnboardingUpdateInput,
+    UserOnboardingUpsertInput,
+)
 
 from backend.data import execution as execution_db
 from backend.data.credit import get_user_credit_model
@@ -112,10 +116,10 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
-        data={
-            "create": {"userId": user_id, **update},
-            "update": update,
-        },
+        data=UserOnboardingUpsertInput(
+            create=UserOnboardingCreateInput(userId=user_id, **update),
+            update=update,
+        ),
     )
 
 

@@ -12,6 +12,7 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
+from prisma.types import UserBalanceCreateInput, UserBalanceUpsertInput, UserCreateInput
 
 from backend.data.credit import POSTGRES_INT_MIN, UserCredit
 from backend.util.test import SpinTestServer
@@ -21,11 +22,11 @@ async def create_test_user(user_id: str) -> None:
     """Create a test user for underflow tests."""
     try:
         await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"test-{user_id}@example.com",
-                "name": f"Test User {user_id[:8]}",
-            }
+            data=UserCreateInput(
+                id=user_id,
+                email=f"test-{user_id}@example.com",
+                name=f"Test User {user_id[:8]}",
+            )
         )
     except UniqueViolationError:
         # User already exists, continue
@@ -33,7 +34,10 @@ async def create_test_user(user_id: str) -> None:
 
     await UserBalance.prisma().upsert(
         where={"userId": user_id},
-        data={"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        data=UserBalanceUpsertInput(
+            create=UserBalanceCreateInput(userId=user_id, balance=0),
+            update={"balance": 0},
+        ),
     )
 
 
@@ -66,14 +70,14 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
         initial_balance_target = POSTGRES_INT_MIN + 100
 
         # Use direct database update to set the balance close to underflow
-        from prisma.models import UserBalance
-
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": initial_balance_target},
-                "update": {"balance": initial_balance_target},
-            },
+            data=UserBalanceUpsertInput(
+                create=UserBalanceCreateInput(
+                    userId=user_id, balance=initial_balance_target
+                ),
+                update={"balance": initial_balance_target},
+            ),
         )
 
         current_balance = await credit_system.get_credits(user_id)
@@ -110,10 +114,10 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
         # Set balance to exactly POSTGRES_INT_MIN
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": POSTGRES_INT_MIN},
-                "update": {"balance": POSTGRES_INT_MIN},
-            },
+            data=UserBalanceUpsertInput(
+                create=UserBalanceCreateInput(userId=user_id, balance=POSTGRES_INT_MIN),
+                update={"balance": POSTGRES_INT_MIN},
+            ),
         )
 
         edge_balance = await credit_system.get_credits(user_id)
@@ -147,15 +151,13 @@ async def test_underflow_protection_large_refunds(server: SpinTestServer):
         # Set up balance close to underflow threshold to test the protection
         # Set balance to POSTGRES_INT_MIN + 1000, then try to subtract 2000
         # This should trigger underflow protection
-        from prisma.models import UserBalance
-
         test_balance = POSTGRES_INT_MIN + 1000
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": test_balance},
-                "update": {"balance": test_balance},
-            },
+            data=UserBalanceUpsertInput(
+                create=UserBalanceCreateInput(userId=user_id, balance=test_balance),
+                update={"balance": test_balance},
+            ),
         )
 
         current_balance = await credit_system.get_credits(user_id)
@@ -212,15 +214,13 @@ async def test_multiple_large_refunds_cumulative_underflow(server: SpinTestServe
 
     try:
         # Set up balance close to underflow threshold
-        from prisma.models import UserBalance
-
         initial_balance = POSTGRES_INT_MIN + 500  # Close to minimum but with some room
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": initial_balance},
-                "update": {"balance": initial_balance},
-            },
+            data=UserBalanceUpsertInput(
+                create=UserBalanceCreateInput(userId=user_id, balance=initial_balance),
+                update={"balance": initial_balance},
+            ),
         )
 
         # Apply multiple refunds that would cumulatively underflow
@@ -290,15 +290,13 @@ async def test_concurrent_large_refunds_no_underflow(server: SpinTestServer):
 
     try:
         # Set up balance close to underflow threshold
-        from prisma.models import UserBalance
-
         initial_balance = POSTGRES_INT_MIN + 1000  # Close to minimum
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": initial_balance},
-                "update": {"balance": initial_balance},
-            },
+            data=UserBalanceUpsertInput(
+                create=UserBalanceCreateInput(userId=user_id, balance=initial_balance),
+                update={"balance": initial_balance},
+            ),
         )
 
         async def large_refund(amount: int, label: str):

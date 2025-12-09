@@ -12,6 +12,12 @@ import pytest
 import stripe
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
+from prisma.types import (
+    CreditRefundRequestCreateInput,
+    CreditTransactionCreateInput,
+    UserBalanceCreateInput,
+    UserCreateInput,
+)
 
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
@@ -35,32 +41,32 @@ async def setup_test_user_with_topup():
 
     # Create user
     await User.prisma().create(
-        data={
-            "id": REFUND_TEST_USER_ID,
-            "email": f"{REFUND_TEST_USER_ID}@example.com",
-            "name": "Refund Test User",
-        }
+        data=UserCreateInput(
+            id=REFUND_TEST_USER_ID,
+            email=f"{REFUND_TEST_USER_ID}@example.com",
+            name="Refund Test User",
+        )
     )
 
     # Create user balance
     await UserBalance.prisma().create(
-        data={
-            "userId": REFUND_TEST_USER_ID,
-            "balance": 1000,  # $10
-        }
+        data=UserBalanceCreateInput(
+            userId=REFUND_TEST_USER_ID,
+            balance=1000,  # $10
+        )
     )
 
     # Create a top-up transaction that can be refunded
     topup_tx = await CreditTransaction.prisma().create(
-        data={
-            "userId": REFUND_TEST_USER_ID,
-            "amount": 1000,
-            "type": CreditTransactionType.TOP_UP,
-            "transactionKey": "pi_test_12345",
-            "runningBalance": 1000,
-            "isActive": True,
-            "metadata": SafeJson({"stripe_payment_intent": "pi_test_12345"}),
-        }
+        data=CreditTransactionCreateInput(
+            userId=REFUND_TEST_USER_ID,
+            amount=1000,
+            type=CreditTransactionType.TOP_UP,
+            transactionKey="pi_test_12345",
+            runningBalance=1000,
+            isActive=True,
+            metadata=SafeJson({"stripe_payment_intent": "pi_test_12345"}),
+        )
     )
 
     return topup_tx
@@ -93,12 +99,12 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
 
         # Create refund request record (simulating webhook flow)
         await CreditRefundRequest.prisma().create(
-            data={
-                "userId": REFUND_TEST_USER_ID,
-                "amount": 500,
-                "transactionKey": topup_tx.transactionKey,  # Should match the original transaction
-                "reason": "Test refund",
-            }
+            data=CreditRefundRequestCreateInput(
+                userId=REFUND_TEST_USER_ID,
+                amount=500,
+                transactionKey=topup_tx.transactionKey,  # Should match the original transaction
+                reason="Test refund",
+            )
         )
 
         # Call deduct_credits
@@ -286,12 +292,12 @@ async def test_concurrent_refunds(server: SpinTestServer):
         refund_requests = []
         for i in range(5):
             req = await CreditRefundRequest.prisma().create(
-                data={
-                    "userId": REFUND_TEST_USER_ID,
-                    "amount": 100,  # $1 each
-                    "transactionKey": topup_tx.transactionKey,
-                    "reason": f"Test refund {i}",
-                }
+                data=CreditRefundRequestCreateInput(
+                    userId=REFUND_TEST_USER_ID,
+                    amount=100,  # $1 each
+                    transactionKey=topup_tx.transactionKey,
+                    reason=f"Test refund {i}",
+                )
             )
             refund_requests.append(req)
 

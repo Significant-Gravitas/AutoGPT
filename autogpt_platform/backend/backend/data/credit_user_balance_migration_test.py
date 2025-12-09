@@ -14,6 +14,7 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
+from prisma.types import UserBalanceCreateInput, UserCreateInput
 
 from backend.data.credit import UsageTransactionMetadata, UserCredit
 from backend.util.json import SafeJson
@@ -24,11 +25,11 @@ async def create_test_user(user_id: str) -> None:
     """Create a test user for migration tests."""
     try:
         await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"test-{user_id}@example.com",
-                "name": f"Test User {user_id[:8]}",
-            }
+            data=UserCreateInput(
+                id=user_id,
+                email=f"test-{user_id}@example.com",
+                name=f"Test User {user_id[:8]}",
+            )
         )
     except UniqueViolationError:
         # User already exists, continue
@@ -121,7 +122,7 @@ async def test_detect_stale_user_balance_queries(server: SpinTestServer):
     try:
         # Create UserBalance with specific value
         await UserBalance.prisma().create(
-            data={"userId": user_id, "balance": 5000}  # $50
+            data=UserBalanceCreateInput(userId=user_id, balance=5000)  # $50
         )
 
         # Verify that get_credits returns UserBalance value (5000), not any stale User.balance value
@@ -160,7 +161,9 @@ async def test_concurrent_operations_use_userbalance_only(server: SpinTestServer
 
     try:
         # Set initial balance in UserBalance
-        await UserBalance.prisma().create(data={"userId": user_id, "balance": 1000})
+        await UserBalance.prisma().create(
+            data=UserBalanceCreateInput(userId=user_id, balance=1000)
+        )
 
         # Run concurrent operations to ensure they all use UserBalance atomic operations
         async def concurrent_spend(amount: int, label: str):
