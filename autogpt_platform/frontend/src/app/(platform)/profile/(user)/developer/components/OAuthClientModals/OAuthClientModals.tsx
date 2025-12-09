@@ -36,6 +36,7 @@ export function OAuthClientModals() {
     handleCreateClient,
     handleCopyClientId,
     handleCopyClientSecret,
+    handleCopyWebhookSecret,
     resetForm,
   } = useOAuthClientModals();
 
@@ -211,12 +212,12 @@ export function OAuthClientModals() {
       </Dialog>
 
       <Dialog open={isSecretDialogOpen} onOpenChange={setIsSecretDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[525px]">
           <DialogHeader>
             <DialogTitle>OAuth Client Created</DialogTitle>
             <DialogDescription>
-              Please copy your client credentials now. The client secret will
-              not be shown again!
+              Please copy your client credentials now. These secrets will not be
+              shown again!
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -226,7 +227,11 @@ export function OAuthClientModals() {
                 <code className="flex-1 rounded-md bg-secondary p-2 font-mono text-sm">
                   {newClientSecret?.client_id}
                 </code>
-                <Button size="icon" variant="outline" onClick={handleCopyClientId}>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleCopyClientId}
+                >
                   <LuCopy className="h-4 w-4" />
                 </Button>
               </div>
@@ -246,11 +251,31 @@ export function OAuthClientModals() {
                     <LuCopy className="h-4 w-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-destructive">
-                  This secret will only be shown once. Store it securely!
+              </div>
+            )}
+            {newClientSecret?.webhook_secret && (
+              <div className="space-y-2">
+                <Label>Webhook Secret</Label>
+                <div className="flex items-center space-x-2">
+                  <code className="flex-1 break-all rounded-md bg-secondary p-2 font-mono text-sm">
+                    {newClientSecret.webhook_secret}
+                  </code>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={handleCopyWebhookSecret}
+                  >
+                    <LuCopy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Use this secret to verify webhook signatures (HMAC-SHA256)
                 </p>
               </div>
             )}
+            <p className="text-xs text-destructive">
+              These secrets will only be shown once. Store them securely!
+            </p>
           </div>
           <DialogFooter>
             <Button onClick={() => setIsSecretDialogOpen(false)}>Close</Button>

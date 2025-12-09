@@ -238,13 +238,14 @@ async def execute_agent(
                         detail="Webhook URL not in allowed domains for this client",
                     )
 
-                # Store webhook registration
+                # Store webhook registration with client's webhook secret
                 await prisma.executionwebhook.create(
                     data={  # type: ignore[typeddict-item]
                         "executionId": graph_exec.id,
                         "webhookUrl": request.webhook_url,
                         "clientId": client.id,
                         "userId": token.user_id,
+                        "secret": client.webhookSecret,
                     }
                 )
                 logger.info(

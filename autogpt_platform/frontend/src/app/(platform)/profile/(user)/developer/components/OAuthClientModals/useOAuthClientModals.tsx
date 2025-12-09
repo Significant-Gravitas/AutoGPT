@@ -12,6 +12,11 @@ import { useState } from "react";
 
 type ClientType = "public" | "confidential";
 
+// Extended type to include webhook_secret (will be in generated types after API regeneration)
+interface ClientSecretResponseWithWebhook extends ClientSecretResponse {
+  webhook_secret?: string;
+}
+
 interface ClientFormState {
   name: string;
   description: string;
@@ -36,7 +41,8 @@ export function useOAuthClientModals() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSecretDialogOpen, setIsSecretDialogOpen] = useState(false);
   const [formState, setFormState] = useState<ClientFormState>(initialFormState);
-  const [newClientSecret, setNewClientSecret] = useState<ClientSecretResponse | null>(null);
+  const [newClientSecret, setNewClientSecret] =
+    useState<ClientSecretResponseWithWebhook | null>(null);
 
   const queryClient = getQueryClient();
   const { toast } = useToast();
@@ -117,7 +123,7 @@ export function useOAuthClientModals() {
       });
 
       if (response.status === 200) {
-        const secretData = response.data as ClientSecretResponse;
+        const secretData = response.data as ClientSecretResponseWithWebhook;
         setNewClientSecret(secretData);
         setIsCreateOpen(false);
         setIsSecretDialogOpen(true);
@@ -140,7 +146,7 @@ export function useOAuthClientModals() {
     try {
       const response = await rotateSecret({ clientId });
       if (response.status === 200) {
-        const secretData = response.data as ClientSecretResponse;
+        const secretData = response.data as ClientSecretResponseWithWebhook;
         setNewClientSecret(secretData);
         setIsSecretDialogOpen(true);
         toast({
@@ -177,6 +183,16 @@ export function useOAuthClientModals() {
     }
   }
 
+  function handleCopyWebhookSecret() {
+    if (newClientSecret?.webhook_secret) {
+      navigator.clipboard.writeText(newClientSecret.webhook_secret);
+      toast({
+        title: "Copied",
+        description: "Webhook secret copied to clipboard",
+      });
+    }
+  }
+
   function handleSecretDialogChange(open: boolean) {
     setIsSecretDialogOpen(open);
     if (!open) {
@@ -198,6 +214,7 @@ export function useOAuthClientModals() {
     handleRotateSecret,
     handleCopyClientId,
     handleCopyClientSecret,
+    handleCopyWebhookSecret,
     resetForm,
   };
 }

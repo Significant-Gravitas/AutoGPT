@@ -236,11 +236,15 @@ class ClientResponse(BaseModel):
 
 
 class ClientSecretResponse(BaseModel):
-    """Response containing newly generated client secret."""
+    """Response containing newly generated client credentials."""
 
     client_id: str
     client_secret: str = Field(
         ..., description="Client secret (only shown once, store securely)"
+    )
+    webhook_secret: str = Field(
+        ...,
+        description="Webhook secret for HMAC signing (only shown once, store securely)",
     )
 
 

@@ -1008,6 +1008,7 @@ model OAuthClient {
   redirectUris   String[]
   allowedScopes  String[]
   webhookDomains String[] // For webhook URL validation
+  webhookSecret  String?  // Secret for HMAC signing webhooks
 
   // Security
   requirePkce              Boolean @default(true)

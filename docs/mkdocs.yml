@@ -24,6 +24,9 @@ nav:
     - Using D-ID: platform/d_id.md
     - Blocks: platform/blocks/blocks.md
     - External API Integration: platform/external-api-integration.md
+    - Framework Integrations:
+        - Next.js: platform/integrations/nextjs.md
+        - Ruby on Rails: platform/integrations/rails.md
     - Contributing:
         - Tests: platform/contributing/tests.md
         - OAuth Flows: platform/contributing/oauth-integration-flow.md

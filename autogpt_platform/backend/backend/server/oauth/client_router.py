@@ -16,6 +16,7 @@ import secrets
 from autogpt_libs.auth import get_user_id
 from fastapi import APIRouter, HTTPException, Security
 from prisma.enums import OAuthClientStatus
+from pydantic import BaseModel
 
 from backend.data.db import prisma
 from backend.server.oauth.models import (
@@ -39,6 +40,11 @@ def _generate_client_secret() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _generate_webhook_secret() -> str:
+    """Generate a secure webhook secret for HMAC signing."""
+    return secrets.token_urlsafe(32)
+
+
 def _hash_secret(secret: str, salt: str) -> str:
     """Hash a client secret with salt."""
     return hashlib.sha256(f"{salt}{secret}".encode()).hexdigest()
@@ -59,7 +65,7 @@ def _client_to_response(client) -> ClientResponse:
         redirect_uris=client.redirectUris,
         allowed_scopes=client.allowedScopes,
         webhook_domains=client.webhookDomains,
-        status=client.status.value,
+        status=client.status,
         created_at=client.createdAt,
         updated_at=client.updatedAt,
     )
@@ -87,6 +93,7 @@ async def register_client(
 
     The client is immediately active (no admin approval required).
     For confidential clients, the client_secret is returned only once.
+    The webhook_secret is always generated and returned only once.
     """
     # Generate client credentials
     client_id = _generate_client_id()
@@ -98,6 +105,9 @@ async def register_client(
         client_secret = _generate_client_secret()
         client_secret_salt = secrets.token_urlsafe(16)
         client_secret_hash = _hash_secret(client_secret, client_secret_salt)
+
+    # Generate webhook secret for HMAC signing
+    webhook_secret = _generate_webhook_secret()
 
     # Create client
     await prisma.oauthclient.create(
@@ -121,6 +131,7 @@ async def register_client(
             "redirectUris": request.redirect_uris,
             "allowedScopes": DEFAULT_ALLOWED_SCOPES,
             "webhookDomains": request.webhook_domains,
+            "webhookSecret": webhook_secret,
             "status": OAuthClientStatus.ACTIVE,
             "ownerId": user_id,
         }
@@ -129,6 +140,7 @@ async def register_client(
     return ClientSecretResponse(
         client_id=client_id,
         client_secret=client_secret or "",
+        webhook_secret=webhook_secret,
     )
 
 
@@ -236,6 +248,7 @@ async def rotate_client_secret(
     Rotate the client secret for a confidential client.
 
     The new secret is returned only once. All existing tokens remain valid.
+    Also rotates the webhook secret for security.
     """
     client = await prisma.oauthclient.find_first(
         where={"clientId": client_id, "ownerId": user_id}
@@ -250,22 +263,65 @@ async def rotate_client_secret(
             detail="Cannot rotate secret for public clients",
         )
 
-    # Generate new secret
+    # Generate new secrets
     new_secret = _generate_client_secret()
     new_salt = secrets.token_urlsafe(16)
     new_hash = _hash_secret(new_secret, new_salt)
+    new_webhook_secret = _generate_webhook_secret()
 
     await prisma.oauthclient.update(
         where={"id": client.id},
         data={
             "clientSecretHash": new_hash,
             "clientSecretSalt": new_salt,
+            "webhookSecret": new_webhook_secret,
         },
     )
 
     return ClientSecretResponse(
         client_id=client_id,
         client_secret=new_secret,
+        webhook_secret=new_webhook_secret,
+    )
+
+
+class WebhookSecretResponse(BaseModel):
+    """Response containing newly generated webhook secret."""
+
+    client_id: str
+    webhook_secret: str
+
+
+@client_router.post(
+    "/{client_id}/rotate-webhook-secret", response_model=WebhookSecretResponse
+)
+async def rotate_webhook_secret(
+    client_id: str,
+    user_id: str = Security(get_user_id),
+) -> WebhookSecretResponse:
+    """
+    Rotate only the webhook secret for a client.
+
+    The new webhook secret is returned only once.
+    """
+    client = await prisma.oauthclient.find_first(
+        where={"clientId": client_id, "ownerId": user_id}
+    )
+
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Generate new webhook secret
+    new_webhook_secret = _generate_webhook_secret()
+
+    await prisma.oauthclient.update(
+        where={"id": client.id},
+        data={"webhookSecret": new_webhook_secret},
+    )
+
+    return WebhookSecretResponse(
+        client_id=client_id,
+        webhook_secret=new_webhook_secret,
     )
 
 

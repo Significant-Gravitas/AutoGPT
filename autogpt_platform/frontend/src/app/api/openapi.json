@@ -5663,7 +5663,7 @@
       "post": {
         "tags": ["oauth-clients", "oauth-clients"],
         "summary": "Register Client",
-        "description": "Register a new OAuth client.\n\nThe client is immediately active (no admin approval required).\nFor confidential clients, the client_secret is returned only once.",
+        "description": "Register a new OAuth client.\n\nThe client is immediately active (no admin approval required).\nFor confidential clients, the client_secret is returned only once.\nThe webhook_secret is always generated and returned only once.",
         "operationId": "postOauth-clientsRegisterClient",
         "requestBody": {
           "content": {
@@ -5825,7 +5825,7 @@
       "post": {
         "tags": ["oauth-clients", "oauth-clients"],
         "summary": "Rotate Client Secret",
-        "description": "Rotate the client secret for a confidential client.\n\nThe new secret is returned only once. All existing tokens remain valid.",
+        "description": "Rotate the client secret for a confidential client.\n\nThe new secret is returned only once. All existing tokens remain valid.\nAlso rotates the webhook secret for security.",
         "operationId": "postOauth-clientsRotateClientSecret",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5843,6 +5843,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ClientSecretResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/oauth/clients/{client_id}/rotate-webhook-secret": {
+      "post": {
+        "tags": ["oauth-clients", "oauth-clients"],
+        "summary": "Rotate Webhook Secret",
+        "description": "Rotate only the webhook secret for a client.\n\nThe new webhook secret is returned only once.",
+        "operationId": "postOauth-clientsRotateWebhookSecret",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecretResponse"
                 }
               }
             }
@@ -6901,12 +6941,17 @@
             "type": "string",
             "title": "Client Secret",
             "description": "Client secret (only shown once, store securely)"
+          },
+          "webhook_secret": {
+            "type": "string",
+            "title": "Webhook Secret",
+            "description": "Webhook secret for HMAC signing (only shown once, store securely)"
           }
         },
         "type": "object",
-        "required": ["client_id", "client_secret"],
+        "required": ["client_id", "client_secret", "webhook_secret"],
         "title": "ClientSecretResponse",
-        "description": "Response containing newly generated client secret."
+        "description": "Response containing newly generated client credentials."
       },
       "CountResponse": {
         "properties": {
@@ -12109,6 +12154,16 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WebhookSecretResponse": {
+        "properties": {
+          "client_id": { "type": "string", "title": "Client Id" },
+          "webhook_secret": { "type": "string", "title": "Webhook Secret" }
+        },
+        "type": "object",
+        "required": ["client_id", "webhook_secret"],
+        "title": "WebhookSecretResponse",
+        "description": "Response containing newly generated webhook secret."
       }
     },
     "securitySchemes": {
