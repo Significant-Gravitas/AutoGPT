@@ -2,7 +2,10 @@ import {
   getGetV1ListGraphExecutionsInfiniteQueryOptions,
   usePostV1ExecuteGraphAgent,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { usePostV2SetupTrigger } from "@/app/api/__generated__/endpoints/presets/presets";
+import {
+  getGetV2ListPresetsQueryKey,
+  usePostV2SetupTrigger,
+} from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -84,6 +87,11 @@ export function useAgentRunModal(
             title: "Trigger setup complete",
           });
           callbacks?.onSetupTrigger?.(response.data);
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListPresetsQueryKey({
+              graph_id: agent.graph_id,
+            }),
+          });
           setIsOpen(false);
         }
       },

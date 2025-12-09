@@ -51,7 +51,7 @@ export function SelectedTemplateActions({
           graph_id: agent.graph_id,
         });
 
-        await queryClient.refetchQueries({
+        queryClient.invalidateQueries({
           queryKey,
         });
 
