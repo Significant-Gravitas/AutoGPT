@@ -472,14 +472,44 @@ export class BuildPage extends BasePage {
     );
   }
 
-  async getGithubTriggerBlockDetails(): Promise<Block> {
-    return {
-      id: "6c60ec01-8128-419e-988f-96a063ee2fea",
-      name: "Github Trigger",
-      description:
-        "This block triggers on pull request events and outputs the event type and payload.",
-      type: "Standard",
-    };
+  async getGithubTriggerBlockDetails(): Promise<Block[]> {
+    return [
+      {
+        id: "6c60ec01-8128-419e-988f-96a063ee2fea",
+        name: "Github Trigger",
+        description:
+          "This block triggers on pull request events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "551e0a35-100b-49b7-89b8-3031322239b6",
+        name: "Github Star Trigger",
+        description:
+          "This block triggers on star events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "2052dd1b-74e1-46ac-9c87-c7a0e057b60b",
+        name: "Github Release Trigger",
+        description:
+          "This block triggers on release events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "b2605464-e486-4bf4-aad3-d8a213c8a48a",
+        name: "Github Issue Trigger",
+        description:
+          "This block triggers on issue events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "87f847b3-d81a-424e-8e89-acadb5c9d52b",
+        name: "Github Discussion Trigger",
+        description:
+          "This block triggers on discussion events and outputs the event type and payload.",
+        type: "Standard",
+      },
+    ];
   }
 
   async nextTutorialStep(): Promise<void> {
@@ -488,7 +518,9 @@ export class BuildPage extends BasePage {
   }
 
   async getBlocksToSkip(): Promise<string[]> {
-    return [(await this.getGithubTriggerBlockDetails()).id];
+    return [
+      (await this.getGithubTriggerBlockDetails()).map((b) => b.id),
+    ].flat();
   }
 
   async createDummyAgent() {
