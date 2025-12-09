@@ -334,8 +334,8 @@ class GithubReleaseTriggerBlock(GitHubTriggerBase, Block):
         yield "release", release
         yield "release_url", release["html_url"]
         yield "tag_name", release["tag_name"]
-        yield "release_name", release["name"]
-        yield "body", release["body"]
+        yield "release_name", release.get("name", "")
+        yield "body", release.get("body", "")
         yield "prerelease", release["prerelease"]
         yield "draft", release["draft"]
         yield "assets", release["assets"]
