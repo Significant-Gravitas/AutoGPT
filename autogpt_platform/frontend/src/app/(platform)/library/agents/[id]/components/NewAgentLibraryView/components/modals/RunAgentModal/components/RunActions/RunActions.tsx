@@ -26,7 +26,7 @@ export function RunActions({
       >
         {defaultRunType === "automatic-trigger"
           ? "Set up Trigger"
-          : "Run Agent"}
+          : "Start Task"}
       </Button>
     </div>
   );

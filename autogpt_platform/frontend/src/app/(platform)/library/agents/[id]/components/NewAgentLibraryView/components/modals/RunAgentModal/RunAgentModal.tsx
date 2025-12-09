@@ -5,12 +5,8 @@ import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutio
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { AlarmIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
-import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
-import { AgentDetails } from "./components/AgentDetails/AgentDetails";
-import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -122,59 +118,34 @@ export function RunAgentModal({
       >
         <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
         <Dialog.Content>
-          <div className="flex h-full flex-col pb-4">
-            {/* Header */}
-            <div className="flex-shrink-0">
-              <ModalHeader agent={agent} />
-              <AgentCostSection flowId={agent.graph_id} />
-            </div>
+          {/* Header */}
+          <ModalHeader agent={agent} />
 
-            {/* Scrollable content */}
-            <div className="flex-1 pr-1" style={{ scrollbarGutter: "stable" }}>
-              {/* Setup Section */}
-              <div className="mt-10">
-                {hasAnySetupFields ? (
-                  <RunAgentModalContextProvider
-                    value={{
-                      agent,
-                      defaultRunType,
-                      presetName,
-                      setPresetName,
-                      presetDescription,
-                      setPresetDescription,
-                      inputValues,
-                      setInputValue: handleInputChange,
-                      agentInputFields,
-                      inputCredentials,
-                      setInputCredentialsValue: handleCredentialsChange,
-                      agentCredentialsInputFields,
-                    }}
-                  >
-                    <>
-                      <AgentSectionHeader
-                        title={
-                          defaultRunType === "automatic-trigger"
-                            ? "Trigger Setup"
-                            : "Agent Setup"
-                        }
-                      />
-                      <ModalRunSection />
-                    </>
-                  </RunAgentModalContextProvider>
-                ) : null}
-              </div>
-
-              {/* Agent Details Section */}
-              <div className="mt-8">
-                <AgentSectionHeader title="Agent Details" />
-                <AgentDetails agent={agent} />
-              </div>
+          {/* Content */}
+          {hasAnySetupFields ? (
+            <div className="mt-10">
+              <RunAgentModalContextProvider
+                value={{
+                  agent,
+                  defaultRunType,
+                  presetName,
+                  setPresetName,
+                  presetDescription,
+                  setPresetDescription,
+                  inputValues,
+                  setInputValue: handleInputChange,
+                  agentInputFields,
+                  inputCredentials,
+                  setInputCredentialsValue: handleCredentialsChange,
+                  agentCredentialsInputFields,
+                }}
+              >
+                <ModalRunSection />
+              </RunAgentModalContextProvider>
             </div>
-          </div>
-          <Dialog.Footer
-            className="fixed bottom-1 left-0 z-10 w-full bg-white p-4"
-            style={{ boxShadow: "0px -8px 10px white" }}
-          >
+          ) : null}
+
+          <Dialog.Footer className="mt-6 bg-white pt-4">
             <div className="flex items-center justify-end gap-3">
               <Button
                 variant="secondary"
@@ -183,8 +154,7 @@ export function RunAgentModal({
                   isExecuting || isSettingUpTrigger || !allRequiredInputsAreSet
                 }
               >
-                <AlarmIcon size={16} />
-                Schedule Agent
+                Schedule Task
               </Button>
               <RunActions
                 defaultRunType={defaultRunType}

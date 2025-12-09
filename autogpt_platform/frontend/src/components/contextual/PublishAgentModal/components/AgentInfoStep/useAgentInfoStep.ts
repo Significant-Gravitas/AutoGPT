@@ -46,6 +46,7 @@ export function useAgentInfoStep({
       description: "",
       recommendedScheduleCron: "",
       instructions: "",
+      agentOutputDemo: "",
     },
   });
 
@@ -68,6 +69,7 @@ export function useAgentInfoStep({
         description: initialData.description,
         recommendedScheduleCron: initialData.recommendedScheduleCron || "",
         instructions: initialData.instructions || "",
+        agentOutputDemo: initialData.agentOutputDemo || "",
       });
     }
   }, [initialData, form]);
@@ -99,12 +101,13 @@ export function useAgentInfoStep({
         instructions: data.instructions || null,
         image_urls: images,
         video_url: data.youtubeLink || "",
+        agent_output_demo_url: data.agentOutputDemo || "",
         agent_id: selectedAgentId || "",
         agent_version: selectedAgentVersion || 0,
         slug: data.slug.replace(/\s+/g, "-"),
         categories: filteredCategories,
         recommended_schedule_cron: data.recommendedScheduleCron || null,
-      });
+      } as any);
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListMySubmissionsQueryKey(),
