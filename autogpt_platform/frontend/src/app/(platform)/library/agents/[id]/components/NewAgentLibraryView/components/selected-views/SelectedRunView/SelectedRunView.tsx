@@ -135,7 +135,7 @@ export function SelectedRunView({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <InfoIcon
-                              size={8}
+                              size={16}
                               className="cursor-help text-neutral-500 hover:text-neutral-700"
                             />
                           </TooltipTrigger>
