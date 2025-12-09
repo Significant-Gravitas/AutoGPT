@@ -1,24 +1,30 @@
 "use client";
 
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ClockClockwiseIcon } from "@phosphor-icons/react";
 import moment from "moment";
-import { IconWrapper } from "./RunIconWrapper";
-import { RunSidebarCard } from "./RunSidebarCard";
+import { IconWrapper } from "./IconWrapper";
+import { ScheduleActionsDropdown } from "./ScheduleActionsDropdown";
+import { SidebarItemCard } from "./SidebarItemCard";
 
-interface ScheduleListItemProps {
+interface Props {
   schedule: GraphExecutionJobInfo;
+  agent: LibraryAgent;
   selected?: boolean;
   onClick?: () => void;
+  onDeleted?: () => void;
 }
 
 export function ScheduleListItem({
   schedule,
+  agent,
   selected,
   onClick,
-}: ScheduleListItemProps) {
+  onDeleted,
+}: Props) {
   return (
-    <RunSidebarCard
+    <SidebarItemCard
       title={schedule.name}
       description={moment(schedule.next_run_time).fromNow()}
       onClick={onClick}
@@ -31,6 +37,13 @@ export function ScheduleListItem({
             weight="bold"
           />
         </IconWrapper>
+      }
+      actions={
+        <ScheduleActionsDropdown
+          agent={agent}
+          schedule={schedule}
+          onDeleted={onDeleted}
+        />
       }
     />
   );

@@ -2,6 +2,7 @@
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -12,8 +13,9 @@ import {
 } from "@phosphor-icons/react";
 import moment from "moment";
 import React from "react";
-import { IconWrapper } from "./RunIconWrapper";
-import { RunSidebarCard } from "./RunSidebarCard";
+import { IconWrapper } from "./IconWrapper";
+import { SidebarItemCard } from "./SidebarItemCard";
+import { TaskActionsDropdown } from "./TaskActionsDropdown";
 
 const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   INCOMPLETE: (
@@ -53,26 +55,33 @@ const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
   ),
 };
 
-interface RunListItemProps {
+interface Props {
   run: GraphExecutionMeta;
   title: string;
+  agent: LibraryAgent;
   selected?: boolean;
   onClick?: () => void;
+  onDeleted?: () => void;
 }
 
-export function RunListItem({
+export function TaskListItem({
   run,
   title,
+  agent,
   selected,
   onClick,
-}: RunListItemProps) {
+  onDeleted,
+}: Props) {
   return (
-    <RunSidebarCard
+    <SidebarItemCard
       icon={statusIconMap[run.status]}
       title={title}
       description={moment(run.started_at).fromNow()}
       onClick={onClick}
       selected={selected}
+      actions={
+        <TaskActionsDropdown agent={agent} run={run} onDeleted={onDeleted} />
+      }
     />
   );
 }

@@ -14,8 +14,8 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { cn } from "@/lib/utils";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
-import { RunListItem } from "./components/RunListItem";
 import { ScheduleListItem } from "./components/ScheduleListItem";
+import { TaskListItem } from "./components/TaskListItem";
 import { TemplateListItem } from "./components/TemplateListItem";
 import { TriggerListItem } from "./components/TriggerListItem";
 import { useSidebarRunsList } from "./useSidebarRunsList";
@@ -112,22 +112,32 @@ export function SidebarRunsList({
       }}
       className="flex min-h-0 flex-col overflow-hidden"
     >
-      <TabsLineList className={AGENT_LIBRARY_SECTION_PADDING_X}>
-        <TabsLineTrigger value="runs">
-          Tasks <span className="ml-3 inline-block">{runsCount}</span>
-        </TabsLineTrigger>
-        <TabsLineTrigger value="scheduled">
-          Scheduled <span className="ml-3 inline-block">{schedulesCount}</span>
-        </TabsLineTrigger>
-        {triggersCount > 0 && (
-          <TabsLineTrigger value="triggers">
-            Triggers <span className="ml-3 inline-block">{triggersCount}</span>
-          </TabsLineTrigger>
-        )}
-        <TabsLineTrigger value="templates">
-          Templates <span className="ml-3 inline-block">{templatesCount}</span>
-        </TabsLineTrigger>
-      </TabsLineList>
+      <div className="relative overflow-hidden">
+        <div className="pointer-events-none absolute right-0 top-0 z-10 h-[46px] w-12 bg-gradient-to-l from-[#FAFAFA] to-transparent" />
+        <div className="scrollbar-hide overflow-x-auto">
+          <TabsLineList
+            className={cn(AGENT_LIBRARY_SECTION_PADDING_X, "min-w-max")}
+          >
+            <TabsLineTrigger value="runs">
+              Tasks <span className="ml-3 inline-block">{runsCount}</span>
+            </TabsLineTrigger>
+            <TabsLineTrigger value="scheduled">
+              Scheduled{" "}
+              <span className="ml-3 inline-block">{schedulesCount}</span>
+            </TabsLineTrigger>
+            {triggersCount > 0 && (
+              <TabsLineTrigger value="triggers">
+                Triggers{" "}
+                <span className="ml-3 inline-block">{triggersCount}</span>
+              </TabsLineTrigger>
+            )}
+            <TabsLineTrigger value="templates">
+              Templates{" "}
+              <span className="ml-3 inline-block">{templatesCount}</span>
+            </TabsLineTrigger>
+          </TabsLineList>
+        </div>
+      </div>
 
       <>
         <TabsLineContent
@@ -146,9 +156,10 @@ export function SidebarRunsList({
             itemWrapperClassName="w-auto lg:w-full"
             renderItem={(run) => (
               <div className="w-[15rem] lg:w-full">
-                <RunListItem
+                <TaskListItem
                   run={run}
                   title={agent.name}
+                  agent={agent}
                   selected={selectedRunId === run.id}
                   onClick={() => onSelectRun && onSelectRun(run.id, "runs")}
                 />
@@ -169,6 +180,7 @@ export function SidebarRunsList({
                 <div className="w-[15rem] lg:w-full" key={s.id}>
                   <ScheduleListItem
                     schedule={s}
+                    agent={agent}
                     selected={selectedRunId === s.id}
                     onClick={() => onSelectRun(s.id, "scheduled")}
                   />
@@ -197,6 +209,7 @@ export function SidebarRunsList({
                   <div className="w-[15rem] lg:w-full" key={trigger.id}>
                     <TriggerListItem
                       trigger={trigger}
+                      agent={agent}
                       selected={selectedRunId === trigger.id}
                       onClick={() => onSelectRun(trigger.id, "triggers")}
                     />
@@ -225,6 +238,7 @@ export function SidebarRunsList({
                 <div className="w-[15rem] lg:w-full" key={template.id}>
                   <TemplateListItem
                     template={template}
+                    agent={agent}
                     selected={selectedRunId === template.id}
                     onClick={() => onSelectRun(template.id, "templates")}
                   />
