@@ -1,24 +1,25 @@
 import { useCallback } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { Key, storage } from "@/services/storage/local-storage";
 import { v4 as uuidv4 } from "uuid";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { CustomNode } from "../nodes/CustomNode/CustomNode";
 import { CustomEdge } from "../edges/CustomEdge";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface CopyableData {
   nodes: CustomNode[];
   edges: CustomEdge[];
 }
 
+const CLIPBOARD_PREFIX = "autogpt-flow-data:";
+
 export function useCopyPaste() {
-  // Only use useReactFlow for viewport (not managed by stores)
   const { getViewport } = useReactFlow();
+  const { toast } = useToast();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
-      // Prevent copy/paste if any modal is open or if the focus is on an input element
       const activeElement = document.activeElement;
       const isInputField =
         activeElement?.tagName === "INPUT" ||
@@ -28,7 +29,6 @@ export function useCopyPaste() {
       if (isInputField) return;
 
       if (event.ctrlKey || event.metaKey) {
-        // COPY: Ctrl+C or Cmd+C
         if (event.key === "c" || event.key === "C") {
           const { nodes } = useNodeStore.getState();
           const { edges } = useEdgeStore.getState();
@@ -53,81 +53,102 @@ export function useCopyPaste() {
             edges: selectedEdges,
           };
 
-          storage.set(Key.COPIED_FLOW_DATA, JSON.stringify(copiedData));
+          const clipboardText = `${CLIPBOARD_PREFIX}${JSON.stringify(copiedData)}`;
+          navigator.clipboard
+            .writeText(clipboardText)
+            .then(() => {
+              toast({
+                title: "Copied successfully",
+                description: `${selectedNodes.length} node(s) copied to clipboard`,
+              });
+            })
+            .catch((error) => {
+              console.error("Failed to copy to clipboard:", error);
+            });
         }
 
-        // PASTE: Ctrl+V or Cmd+V
         if (event.key === "v" || event.key === "V") {
-          const copiedDataString = storage.get(Key.COPIED_FLOW_DATA);
-          if (copiedDataString) {
-            const copiedData = JSON.parse(copiedDataString) as CopyableData;
-            const oldToNewIdMap: Record<string, string> = {};
+          navigator.clipboard
+            .readText()
+            .then((clipboardText) => {
+              if (!clipboardText.startsWith(CLIPBOARD_PREFIX)) {
+                return; // Not our data, ignore
+              }
 
-            // Get fresh viewport values at paste time to ensure correct positioning
-            const { x, y, zoom } = getViewport();
-            const viewportCenter = {
-              x: (window.innerWidth / 2 - x) / zoom,
-              y: (window.innerHeight / 2 - y) / zoom,
-            };
+              const jsonString = clipboardText.slice(CLIPBOARD_PREFIX.length);
+              const copiedData = JSON.parse(jsonString) as CopyableData;
+              const oldToNewIdMap: Record<string, string> = {};
 
-            let minX = Infinity,
-              minY = Infinity,
-              maxX = -Infinity,
-              maxY = -Infinity;
-            copiedData.nodes.forEach((node) => {
-              minX = Math.min(minX, node.position.x);
-              minY = Math.min(minY, node.position.y);
-              maxX = Math.max(maxX, node.position.x);
-              maxY = Math.max(maxY, node.position.y);
-            });
-
-            const offsetX = viewportCenter.x - (minX + maxX) / 2;
-            const offsetY = viewportCenter.y - (minY + maxY) / 2;
-
-            // Deselect existing nodes first
-            useNodeStore.setState((state) => ({
-              nodes: state.nodes.map((node) => ({ ...node, selected: false })),
-            }));
-
-            // Create and add new nodes with UNIQUE IDs using UUID
-            copiedData.nodes.forEach((node) => {
-              const newNodeId = uuidv4();
-              oldToNewIdMap[node.id] = newNodeId;
-
-              const newNode: CustomNode = {
-                ...node,
-                id: newNodeId,
-                selected: true,
-                position: {
-                  x: node.position.x + offsetX,
-                  y: node.position.y + offsetY,
-                },
+              const { x, y, zoom } = getViewport();
+              const viewportCenter = {
+                x: (window.innerWidth / 2 - x) / zoom,
+                y: (window.innerHeight / 2 - y) / zoom,
               };
 
-              useNodeStore.getState().addNode(newNode);
-            });
-
-            // Add edges with updated source/target IDs
-            const { addEdge } = useEdgeStore.getState();
-            copiedData.edges.forEach((edge) => {
-              const newSourceId = oldToNewIdMap[edge.source] ?? edge.source;
-              const newTargetId = oldToNewIdMap[edge.target] ?? edge.target;
-
-              addEdge({
-                source: newSourceId,
-                target: newTargetId,
-                sourceHandle: edge.sourceHandle ?? "",
-                targetHandle: edge.targetHandle ?? "",
-                data: {
-                  ...edge.data,
-                },
+              let minX = Infinity,
+                minY = Infinity,
+                maxX = -Infinity,
+                maxY = -Infinity;
+              copiedData.nodes.forEach((node) => {
+                minX = Math.min(minX, node.position.x);
+                minY = Math.min(minY, node.position.y);
+                maxX = Math.max(maxX, node.position.x);
+                maxY = Math.max(maxY, node.position.y);
               });
+
+              const offsetX = viewportCenter.x - (minX + maxX) / 2;
+              const offsetY = viewportCenter.y - (minY + maxY) / 2;
+
+              // Deselect existing nodes first
+              useNodeStore.setState((state) => ({
+                nodes: state.nodes.map((node) => ({
+                  ...node,
+                  selected: false,
+                })),
+              }));
+
+              // Create and add new nodes with UNIQUE IDs using UUID
+              copiedData.nodes.forEach((node) => {
+                const newNodeId = uuidv4();
+                oldToNewIdMap[node.id] = newNodeId;
+
+                const newNode: CustomNode = {
+                  ...node,
+                  id: newNodeId,
+                  selected: true,
+                  position: {
+                    x: node.position.x + offsetX,
+                    y: node.position.y + offsetY,
+                  },
+                };
+
+                useNodeStore.getState().addNode(newNode);
+              });
+
+              // Add edges with updated source/target IDs
+              const { addEdge } = useEdgeStore.getState();
+              copiedData.edges.forEach((edge) => {
+                const newSourceId = oldToNewIdMap[edge.source] ?? edge.source;
+                const newTargetId = oldToNewIdMap[edge.target] ?? edge.target;
+
+                addEdge({
+                  source: newSourceId,
+                  target: newTargetId,
+                  sourceHandle: edge.sourceHandle ?? "",
+                  targetHandle: edge.targetHandle ?? "",
+                  data: {
+                    ...edge.data,
+                  },
+                });
+              });
+            })
+            .catch((error) => {
+              console.error("Failed to read from clipboard:", error);
             });
-          }
         }
       }
     },
-    [getViewport],
+    [getViewport, toast],
   );
 
   return handleCopyPaste;
