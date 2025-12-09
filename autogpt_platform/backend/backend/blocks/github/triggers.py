@@ -440,7 +440,7 @@ class GithubIssuesTriggerBlock(GitHubTriggerBase, Block):
         yield "issue", issue
         yield "issue_url", issue["html_url"]
         yield "issue_title", issue["title"]
-        yield "issue_body", issue["body"]
+        yield "issue_body", issue.get("body") or ""
         yield "labels", issue["labels"]
         yield "assignees", issue["assignees"]
         yield "state", issue["state"]
