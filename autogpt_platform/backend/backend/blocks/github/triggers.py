@@ -543,7 +543,7 @@ class GithubDiscussionTriggerBlock(GitHubTriggerBase, Block):
         yield "discussion", discussion
         yield "discussion_url", discussion["html_url"]
         yield "title", discussion["title"]
-        yield "body", discussion["body"]
+        yield "body", discussion.get("body") or ""
         yield "category", discussion["category"]
         yield "category_name", discussion["category"]["name"]
         yield "state", discussion["state"]
