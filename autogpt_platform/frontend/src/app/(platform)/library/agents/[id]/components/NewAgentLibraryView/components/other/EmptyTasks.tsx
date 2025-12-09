@@ -45,7 +45,6 @@ export function EmptyTasks({ agent }: Props) {
                 </Button>
               }
               agent={agent}
-              agentId={agent.id.toString()}
             />
           </div>
         </div>

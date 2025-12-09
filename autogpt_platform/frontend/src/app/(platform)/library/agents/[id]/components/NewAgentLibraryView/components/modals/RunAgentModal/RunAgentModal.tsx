@@ -22,8 +22,6 @@ import { useAgentRunModal } from "./useAgentRunModal";
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
-  agentId: string;
-  agentVersion?: number;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
