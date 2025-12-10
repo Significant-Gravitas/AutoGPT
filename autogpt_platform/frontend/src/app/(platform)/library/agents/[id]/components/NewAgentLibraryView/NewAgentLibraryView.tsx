@@ -1,5 +1,6 @@
 "use client";
 
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -40,6 +41,12 @@ export function NewAgentLibraryView() {
     handleClearSelectedRun,
   } = useNewAgentLibraryView();
 
+  function onTriggerSetup(newTrigger: LibraryAgentPreset) {
+    if (!agent) return;
+
+    handleSelectRun(newTrigger.id, "triggers");
+  }
+
   if (error) {
     return (
       <ErrorCard
@@ -67,7 +74,7 @@ export function NewAgentLibraryView() {
           />
         </div>
         <div className="flex min-h-0 flex-1">
-          <EmptyTasks agent={agent} />
+          <EmptyTasks agent={agent} onTriggerSetup={onTriggerSetup} />
         </div>
       </div>
     );
@@ -98,6 +105,7 @@ export function NewAgentLibraryView() {
             onScheduleCreated={(schedule) =>
               handleSelectRun(schedule.id, "scheduled")
             }
+            onTriggerSetup={onTriggerSetup}
             initialInputValues={activeTemplate?.inputs}
             initialInputCredentials={activeTemplate?.credentials}
           />
@@ -159,7 +167,7 @@ export function NewAgentLibraryView() {
         </SelectedViewLayout>
       ) : (
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
-          <EmptyTasks agent={agent} />
+          <EmptyTasks agent={agent} onTriggerSetup={onTriggerSetup} />
         </SelectedViewLayout>
       )}
     </div>
