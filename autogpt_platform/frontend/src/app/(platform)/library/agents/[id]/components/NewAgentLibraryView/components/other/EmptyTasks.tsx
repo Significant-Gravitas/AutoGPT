@@ -1,6 +1,8 @@
 "use client";
 
 import { getV1GetGraphVersion } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
@@ -16,10 +18,17 @@ import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
 
 type Props = {
   agent: LibraryAgent;
+  onRun?: (run: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 };
 
-export function EmptyTasks({ agent, onTriggerSetup }: Props) {
+export function EmptyTasks({
+  agent,
+  onRun,
+  onTriggerSetup,
+  onScheduleCreated,
+}: Props) {
   const { toast } = useToast();
 
   async function handleExport() {
@@ -77,7 +86,9 @@ export function EmptyTasks({ agent, onTriggerSetup }: Props) {
                 </Button>
               }
               agent={agent}
+              onRunCreated={onRun}
               onTriggerSetup={onTriggerSetup}
+              onScheduleCreated={onScheduleCreated}
             />
           </div>
         </div>

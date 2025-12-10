@@ -1,5 +1,6 @@
 import {
   getGetV1ListGraphExecutionsInfiniteQueryOptions,
+  getGetV1ListGraphExecutionsQueryKey,
   usePostV1ExecuteGraphAgent,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
@@ -66,13 +67,11 @@ export function useAgentRunModal(
           toast({
             title: "Agent execution started",
           });
-          callbacks?.onRun?.(response.data as unknown as GraphExecutionMeta);
           // Invalidate runs list for this graph
           queryClient.invalidateQueries({
-            queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
-              agent.graph_id,
-            ).queryKey,
+            queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
           });
+          callbacks?.onRun?.(response.data);
           analytics.sendDatafastEvent("run_agent", {
             name: agent.name,
             id: agent.graph_id,
@@ -91,17 +90,15 @@ export function useAgentRunModal(
 
   const setupTriggerMutation = usePostV2SetupTrigger({
     mutation: {
-      onSuccess: (response: any) => {
+      onSuccess: (response) => {
         if (response.status === 200) {
           toast({
             title: "Trigger setup complete",
           });
-          callbacks?.onSetupTrigger?.(response.data);
           queryClient.invalidateQueries({
-            queryKey: getGetV2ListPresetsQueryKey({
-              graph_id: agent.graph_id,
-            }),
+            queryKey: getGetV2ListPresetsQueryKey({ graph_id: agent.graph_id }),
           });
+          callbacks?.onSetupTrigger?.(response.data);
           setIsOpen(false);
         }
       },
