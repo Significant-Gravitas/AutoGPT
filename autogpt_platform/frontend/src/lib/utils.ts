@@ -445,3 +445,31 @@ export function validateYouTubeUrl(val: string): boolean {
     return false;
   }
 }
+
+/**
+ * Validate OAuth redirect URI.
+ * Allows HTTPS URLs or http://localhost for development.
+ */
+export function validateRedirectUri(uri: string): {
+  valid: boolean;
+  error?: string;
+} {
+  try {
+    const url = new URL(uri);
+    if (url.protocol === "https:") {
+      return { valid: true };
+    }
+    if (
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    ) {
+      return { valid: true };
+    }
+    return {
+      valid: false,
+      error: "Must be HTTPS (or http://localhost for development)",
+    };
+  } catch {
+    return { valid: false, error: "Invalid URL format" };
+  }
+}

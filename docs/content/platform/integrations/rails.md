@@ -49,6 +49,14 @@ config/
 └── routes.rb                       # Route definitions
 ```
 
+## Authentication Methods
+
+The OAuth authorization endpoint supports two authentication methods:
+
+1. **API Key (Recommended for server-side apps)**: Pass the user's AutoGPT API key via `X-API-Key` header. This shows the consent page directly.
+
+2. **Login Flow (For browser-based apps)**: If no API key is provided, the user is redirected to the AutoGPT login page, which then continues the OAuth flow automatically.
+
 ## Step 1: Configuration
 
 Create `config/initializers/autogpt.rb`:
@@ -95,6 +103,13 @@ module AutoGPT
   class OAuth
     class Error < StandardError; end
     class TokenError < Error; end
+    class LoginRequiredError < Error
+      attr_reader :authorization_url
+      def initialize(authorization_url)
+        @authorization_url = authorization_url
+        super("Login required")
+      end
+    end
 
     def initialize
       @config = AutoGPT.configuration
@@ -126,6 +141,34 @@ module AutoGPT
       }
 
       "#{@config.base_url}/oauth/authorize?#{URI.encode_www_form(params)}"
+    end
+
+    # Request authorization with optional API key
+    # If api_key provided, returns consent HTML
+    # If api_key not provided, raises LoginRequiredError with redirect URL
+    def request_authorization(authorization_url, api_key: nil)
+      headers = {}
+      headers['X-API-Key'] = api_key if api_key.present?
+
+      response = HTTParty.get(
+        authorization_url,
+        headers: headers,
+        follow_redirects: false
+      )
+
+      case response.code
+      when 200
+        # Consent page HTML returned
+        response.body
+      when 302, 303
+        # Redirect to login - raise with the authorization URL
+        raise LoginRequiredError.new(authorization_url)
+      when 401
+        # Unauthorized - login required
+        raise LoginRequiredError.new(authorization_url)
+      else
+        raise Error, "Authorization failed: #{response.body}"
+      end
     end
 
     # Exchange authorization code for tokens
@@ -386,7 +429,7 @@ module AutoGPT
     skip_before_action :verify_authenticity_token, only: [:callback]
 
     # GET /autogpt/oauth/authorize
-    # Initiates OAuth flow by redirecting to AutoGPT
+    # Initiates OAuth flow - can use API key or browser login
     def authorize
       oauth = AutoGPT::OAuth.new
 
@@ -406,7 +449,22 @@ module AutoGPT
         scopes: scopes
       )
 
-      redirect_to url, allow_other_host: true
+      # Check if API key was provided
+      api_key = params[:api_key] || request.headers['X-API-Key']
+
+      if api_key.present?
+        begin
+          # Try to authorize with API key
+          consent_html = oauth.request_authorization(url, api_key: api_key)
+          render html: consent_html.html_safe
+        rescue AutoGPT::OAuth::LoginRequiredError => e
+          # API key invalid, redirect to login
+          redirect_to e.authorization_url, allow_other_host: true
+        end
+      else
+        # No API key provided, redirect to login
+        redirect_to url, allow_other_host: true
+      end
     end
 
     # GET /autogpt/oauth/callback
@@ -699,13 +757,29 @@ Create `app/views/autogpt/connect/index.html.erb`:
   <% end %>
 
   <% unless @tokens %>
-    <div class="text-center">
+    <div class="text-center max-w-md mx-auto">
       <p class="text-gray-600 mb-6">
-        Sign in with AutoGPT to use AI agents with your connected services.
+        Authorize this application to use AutoGPT agents on your behalf.
       </p>
+
+      <!-- Primary: Browser-based login flow -->
       <%= link_to 'Sign in with AutoGPT',
                   autogpt_oauth_authorize_path,
-                  class: 'px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700' %>
+                  class: 'block w-full px-6 py-3 bg-blue-600 text-white text-center rounded-lg hover:bg-blue-700 mb-4' %>
+
+      <!-- Alternative: API key flow -->
+      <p class="text-sm text-gray-500 mb-2">Or use API key:</p>
+      <%= form_with url: autogpt_oauth_authorize_path, method: :get, local: true, class: 'space-y-4' do |f| %>
+        <%= f.text_field :api_key,
+                        placeholder: 'Enter your AutoGPT API key (agpt_...)',
+                        class: 'w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500' %>
+        <%= f.submit 'Authorize with API Key',
+                    class: 'w-full px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 cursor-pointer' %>
+      <% end %>
+
+      <p class="mt-4 text-sm text-gray-500">
+        Find your API key in AutoGPT Settings → Developer
+      </p>
     </div>
   <% else %>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

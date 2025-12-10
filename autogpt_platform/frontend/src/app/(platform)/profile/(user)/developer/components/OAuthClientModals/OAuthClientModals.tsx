@@ -8,7 +8,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/__legacy__/ui/dialog";
-import { LuCopy } from "react-icons/lu";
+import { Copy } from "@phosphor-icons/react";
 import { Label } from "@/components/__legacy__/ui/label";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Textarea } from "@/components/__legacy__/ui/textarea";
@@ -232,7 +232,7 @@ export function OAuthClientModals() {
                   variant="outline"
                   onClick={handleCopyClientId}
                 >
-                  <LuCopy className="h-4 w-4" />
+                  <Copy className="h-4 w-4" weight="bold" />
                 </Button>
               </div>
             </div>
@@ -248,7 +248,7 @@ export function OAuthClientModals() {
                     variant="outline"
                     onClick={handleCopyClientSecret}
                   >
-                    <LuCopy className="h-4 w-4" />
+                    <Copy className="h-4 w-4" weight="bold" />
                   </Button>
                 </div>
               </div>
@@ -265,7 +265,7 @@ export function OAuthClientModals() {
                     variant="outline"
                     onClick={handleCopyWebhookSecret}
                   >
-                    <LuCopy className="h-4 w-4" />
+                    <Copy className="h-4 w-4" weight="bold" />
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">

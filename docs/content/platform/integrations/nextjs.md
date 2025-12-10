@@ -19,18 +19,27 @@ src/
 ├── app/
 │   ├── api/
 │   │   └── autogpt/
-│   │       ├── callback/route.ts    # OAuth callback handler
-│   │       └── webhook/route.ts     # Webhook handler
+│   │       ├── authorize/route.ts    # Authorization (with optional API key)
+│   │       ├── callback/route.ts     # OAuth callback handler
+│   │       └── webhook/route.ts      # Webhook handler
 │   └── connect/
-│       └── page.tsx                 # Connect button page
+│       └── page.tsx                  # Connect button page
 ├── lib/
 │   └── autogpt/
-│       ├── client.ts               # AutoGPT API client
-│       ├── oauth.ts                # OAuth utilities
-│       └── types.ts                # TypeScript types
+│       ├── client.ts                # AutoGPT API client
+│       ├── oauth.ts                 # OAuth utilities
+│       └── types.ts                 # TypeScript types
 └── components/
-    └── ConnectButton.tsx           # Reusable connect button
+    └── ConnectButton.tsx            # Reusable connect button
 ```
+
+## Authentication Methods
+
+The OAuth authorization endpoint supports two authentication methods:
+
+1. **API Key (Recommended for server-side apps)**: Pass the user's AutoGPT API key via `X-API-Key` header. This shows the consent page directly.
+
+2. **Login Flow (For browser-based apps)**: If no API key is provided, the user is redirected to the AutoGPT login page, which then continues the OAuth flow automatically.
 
 ## Step 1: Define Types
 
@@ -144,6 +153,26 @@ export async function buildAuthorizationUrl(
   url.searchParams.set("scope", scopes.join(" "));
 
   return { url: url.toString(), state, codeVerifier };
+}
+
+/**
+ * Request authorization with optional API key (server-side)
+ * If apiKey is provided, returns consent page HTML
+ * If apiKey is not provided, returns redirect to login page
+ */
+export async function requestAuthorization(
+  authUrl: string,
+  apiKey?: string
+): Promise<Response> {
+  const headers: HeadersInit = {};
+  if (apiKey) {
+    headers["X-API-Key"] = apiKey;
+  }
+
+  return fetch(authUrl, {
+    headers,
+    redirect: "manual", // Don't follow redirects automatically
+  });
 }
 
 /**
@@ -431,7 +460,136 @@ export class AutoGPTClient {
 }
 ```
 
-## Step 4: Create the OAuth Callback Route
+## Step 4: Create the Authorization API Route
+
+Create `src/app/api/autogpt/authorize/route.ts`:
+
+This route handles authorization with optional API key. If an API key is provided, it authenticates directly. If not, it redirects to the AutoGPT login page which will continue the OAuth flow after login.
+
+```typescript
+import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
+import { buildAuthorizationUrl, requestAuthorization } from "@/lib/autogpt/oauth";
+
+const CLIENT_ID = process.env.AUTOGPT_CLIENT_ID!;
+const REDIRECT_URI = process.env.AUTOGPT_REDIRECT_URI!;
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const apiKey = body.apiKey; // Optional - if not provided, will redirect to login
+
+    // Build authorization URL
+    const scopes = [
+      "openid",
+      "profile",
+      "email",
+      "agents:execute",
+      "integrations:connect",
+      "integrations:list",
+    ];
+
+    const { url, state, codeVerifier } = await buildAuthorizationUrl(
+      CLIENT_ID,
+      REDIRECT_URI,
+      scopes
+    );
+
+    // Store state and verifier in cookies for callback validation
+    const cookieStore = await cookies();
+    cookieStore.set("autogpt_oauth_state", state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600, // 10 minutes
+    });
+    cookieStore.set("autogpt_code_verifier", codeVerifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+    });
+
+    // Request authorization (with optional API key)
+    const response = await requestAuthorization(url, apiKey);
+
+    // If redirect (login required), return the redirect URL
+    if (response.status === 302 || response.status === 303) {
+      const redirectUrl = response.headers.get("Location");
+      return NextResponse.json({
+        redirect: true,
+        url: redirectUrl || url, // Fallback to auth URL if no Location header
+      });
+    }
+
+    // If unauthorized, return redirect to login
+    if (response.status === 401) {
+      return NextResponse.json({
+        redirect: true,
+        url: url, // Client will open this in browser for login flow
+      });
+    }
+
+    if (!response.ok) {
+      const error = await response.text();
+      return NextResponse.json(
+        { error: `Authorization failed: ${error}` },
+        { status: response.status }
+      );
+    }
+
+    // API key was provided and valid - return consent page HTML
+    const html = await response.text();
+    return new NextResponse(html, {
+      headers: { "Content-Type": "text/html" },
+    });
+  } catch (error) {
+    console.error("Authorization error:", error);
+    return NextResponse.json(
+      { error: "Authorization failed" },
+      { status: 500 }
+    );
+  }
+}
+
+// GET endpoint for browser-based login flow (no API key)
+export async function GET(request: NextRequest) {
+  // Build authorization URL
+  const scopes = [
+    "openid",
+    "profile",
+    "email",
+    "agents:execute",
+    "integrations:connect",
+    "integrations:list",
+  ];
+
+  const { url, state, codeVerifier } = await buildAuthorizationUrl(
+    CLIENT_ID,
+    REDIRECT_URI,
+    scopes
+  );
+
+  // Store state and verifier in cookies
+  const response = NextResponse.redirect(url);
+  response.cookies.set("autogpt_oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 600,
+  });
+  response.cookies.set("autogpt_code_verifier", codeVerifier, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 600,
+  });
+
+  return response;
+}
+```
+
+## Step 5: Create the OAuth Callback Route
 
 Create `src/app/api/autogpt/callback/route.ts`:
 
@@ -517,7 +675,7 @@ export async function GET(request: NextRequest) {
 }
 ```
 
-## Step 5: Create the Token Refresh Route
+## Step 6: Create the Token Refresh Route
 
 Create `src/app/api/autogpt/refresh/route.ts`:
 
@@ -556,7 +714,7 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-## Step 6: Create the Webhook Handler
+## Step 7: Create the Webhook Handler
 
 Create `src/app/api/autogpt/webhook/route.ts`:
 
@@ -637,7 +795,7 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-## Step 7: Create the Connect Button Component
+## Step 8: Create the Connect Button Component
 
 Create `src/components/ConnectButton.tsx`:
 
@@ -693,28 +851,28 @@ export function ConnectButton({
 }
 ```
 
-## Step 8: Create the Connect Page
+## Step 9: Create the Connect Page
 
 Create `src/app/connect/page.tsx`:
+
+This page supports both API key and browser-based login flows:
 
 ```typescript
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ConnectButton } from "@/components/ConnectButton";
-import { buildAuthorizationUrl } from "@/lib/autogpt/oauth";
 import type { OAuthTokens, ConnectResult } from "@/lib/autogpt/types";
-
-const CLIENT_ID = process.env.NEXT_PUBLIC_AUTOGPT_CLIENT_ID!;
-const REDIRECT_URI = process.env.NEXT_PUBLIC_AUTOGPT_REDIRECT_URI!;
 
 export default function ConnectPage() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [tokens, setTokens] = useState<OAuthTokens | null>(null);
   const [grants, setGrants] = useState<ConnectResult[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [useApiKey, setUseApiKey] = useState(false);
 
   useEffect(() => {
     // Check for errors from OAuth callback
@@ -723,7 +881,12 @@ export default function ConnectPage() {
       setError(errorParam);
     }
 
-    // Load tokens from cookie (in production, fetch from server)
+    // Check for success
+    if (searchParams.get("success") === "true") {
+      loadTokens();
+    }
+
+    // Load tokens from cookie (via server endpoint)
     async function loadTokens() {
       const response = await fetch("/api/autogpt/tokens");
       if (response.ok) {
@@ -734,28 +897,51 @@ export default function ConnectPage() {
     loadTokens();
   }, [searchParams]);
 
-  async function handleLogin() {
-    const scopes = [
-      "openid",
-      "profile",
-      "email",
-      "agents:execute",
-      "integrations:connect",
-      "integrations:list",
-    ];
+  // Browser-based login flow (redirect to AutoGPT login)
+  function handleLoginFlow() {
+    // Redirect to the authorize endpoint which will redirect to AutoGPT login
+    window.location.href = "/api/autogpt/authorize";
+  }
 
-    const { url, state, codeVerifier } = await buildAuthorizationUrl(
-      CLIENT_ID,
-      REDIRECT_URI,
-      scopes
-    );
+  // API key flow (for server-side apps or users who prefer API key)
+  async function handleApiKeyFlow() {
+    if (!apiKey.trim()) {
+      setError("Please enter your AutoGPT API key");
+      return;
+    }
 
-    // Store state and verifier in cookies for validation
-    document.cookie = `autogpt_oauth_state=${state}; path=/; max-age=600; SameSite=Lax`;
-    document.cookie = `autogpt_code_verifier=${codeVerifier}; path=/; max-age=600; SameSite=Lax`;
+    setIsAuthorizing(true);
+    setError(null);
 
-    // Redirect to AutoGPT authorization
-    window.location.href = url;
+    try {
+      const response = await fetch("/api/autogpt/authorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      const data = await response.json();
+
+      // If redirect is needed (shouldn't happen with valid API key)
+      if (data.redirect) {
+        window.location.href = data.url;
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || "Authorization failed");
+      }
+
+      // Response is HTML consent page - render in popup
+      const popup = window.open("", "AutoGPT Consent", "width=600,height=700");
+      if (popup) {
+        popup.document.write(await response.text());
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authorization failed");
+    } finally {
+      setIsAuthorizing(false);
+    }
   }
 
   function handleGrantSuccess(result: ConnectResult) {
@@ -770,17 +956,68 @@ export default function ConnectPage() {
   if (!tokens) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <h1 className="text-2xl font-bold mb-4">Connect to AutoGPT</h1>
           <p className="text-gray-600 mb-6">
-            Sign in with AutoGPT to use AI agents with your connected services.
+            Authorize this application to use AutoGPT agents on your behalf.
           </p>
-          <button
-            onClick={handleLogin}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Sign in with AutoGPT
-          </button>
+
+          {error && (
+            <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          {!useApiKey ? (
+            <>
+              {/* Primary: Browser-based login flow */}
+              <button
+                onClick={handleLoginFlow}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 mb-4"
+              >
+                Sign in with AutoGPT
+              </button>
+
+              <button
+                onClick={() => setUseApiKey(true)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Or use API key instead
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Alternative: API key flow */}
+              <p className="text-sm text-gray-500 mb-4">
+                Enter your AutoGPT API key (from Settings → Developer)
+              </p>
+
+              <div className="mb-4">
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your AutoGPT API key (agpt_...)"
+                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <button
+                onClick={handleApiKeyFlow}
+                disabled={isAuthorizing}
+                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 mb-4"
+              >
+                {isAuthorizing ? "Authorizing..." : "Authorize with API Key"}
+              </button>
+
+              <button
+                onClick={() => setUseApiKey(false)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Back to sign in
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -871,7 +1108,7 @@ export default function ConnectPage() {
 }
 ```
 
-## Step 9: Environment Variables
+## Step 10: Environment Variables
 
 Add to your `.env.local`:
 
@@ -999,12 +1236,13 @@ export default function AgentRunner({ tokens }: { tokens: OAuthTokens }) {
 ## Security Best Practices
 
 1. **Store tokens securely** - Use HTTP-only cookies or server-side sessions
-2. **Validate the state parameter** - Prevents CSRF attacks
-3. **Use PKCE** - Required for all authorization flows
-4. **Verify popup origin** - Only accept messages from `platform.agpt.co`
-5. **Verify webhook signatures** - Prevents spoofed webhook calls
-6. **Keep secrets server-side** - Never expose `client_secret` to the browser
-7. **Implement token refresh** - Handle expired tokens gracefully
+2. **Protect API keys** - User API keys should only be sent over HTTPS and never stored client-side
+3. **Validate the state parameter** - Prevents CSRF attacks
+4. **Use PKCE** - Required for all authorization flows
+5. **Verify popup origin** - Only accept messages from `platform.agpt.co`
+6. **Verify webhook signatures** - Prevents spoofed webhook calls
+7. **Keep secrets server-side** - Never expose `client_secret` to the browser
+8. **Implement token refresh** - Handle expired tokens gracefully
 
 ## Next Steps
 

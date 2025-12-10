@@ -5363,9 +5363,8 @@
       "get": {
         "tags": ["oauth", "oauth"],
         "summary": "Authorize",
-        "description": "OAuth 2.0 Authorization Endpoint.\n\nValidates the request, checks user authentication, and either:\n- Redirects to login if user is not authenticated\n- Shows consent page if user hasn't authorized these scopes\n- Redirects with authorization code if already authorized",
+        "description": "OAuth 2.0 Authorization Endpoint.\n\nValidates the request, checks user authentication, and either:\n- Returns error if user is not authenticated (API key or JWT required)\n- Shows consent page if user hasn't authorized these scopes\n- Redirects with authorization code if already authorized\n\nAuthentication methods (in order of preference):\n1. X-API-Key header - API key for external apps\n2. Authorization: Bearer <jwt> - JWT token\n3. access_token cookie - Browser-based auth",
         "operationId": "getOauthAuthorize",
-        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "response_type",
@@ -12176,8 +12175,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Postmark-Webhook-Token"
-      },
-      "HTTPBearer": { "type": "http", "scheme": "bearer" }
+      }
     },
     "responses": {
       "HTTP401NotAuthenticatedError": {

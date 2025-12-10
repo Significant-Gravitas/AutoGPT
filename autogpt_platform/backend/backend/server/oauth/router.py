@@ -7,25 +7,31 @@ Implements:
 - POST /oauth/token - Token endpoint
 - GET /oauth/userinfo - OIDC UserInfo endpoint
 - POST /oauth/revoke - Token revocation endpoint
+
+Authentication:
+- X-API-Key header - API key for external apps (preferred)
+- Authorization: Bearer <jwt> - JWT token authentication
+- access_token cookie - Browser-based auth
 """
 
+import json
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
-from autogpt_libs.auth import get_optional_user_id
-from fastapi import APIRouter, Form, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from backend.data.db import prisma
+from backend.data.redis_client import get_redis_async
 from backend.server.oauth.consent_templates import (
     render_consent_page,
     render_error_page,
-    render_login_redirect_page,
 )
 from backend.server.oauth.errors import (
-    InvalidGrantError,
+    InvalidClientError,
     InvalidRequestError,
     LoginRequiredError,
     OAuthError,
@@ -35,12 +41,80 @@ from backend.server.oauth.models import TokenResponse, UserInfoResponse
 from backend.server.oauth.service import get_oauth_service
 from backend.server.oauth.token_service import get_token_service
 from backend.util.rate_limiter import check_rate_limit
-from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 oauth_router = APIRouter(prefix="/oauth", tags=["oauth"])
 
-# Consent state storage (in production, use Redis)
-_consent_states: dict[str, dict] = {}
+# Redis key prefix and TTL for consent state storage
+CONSENT_STATE_PREFIX = "oauth:consent:"
+CONSENT_STATE_TTL = 600  # 10 minutes
+
+
+async def _store_consent_state(token: str, state: dict) -> None:
+    """Store consent state in Redis with TTL."""
+    redis = await get_redis_async()
+    await redis.setex(
+        f"{CONSENT_STATE_PREFIX}{token}",
+        CONSENT_STATE_TTL,
+        json.dumps(state, default=str),
+    )
+
+
+async def _get_and_delete_consent_state(token: str) -> Optional[dict]:
+    """Retrieve and delete consent state from Redis (atomic get+delete)."""
+    redis = await get_redis_async()
+    key = f"{CONSENT_STATE_PREFIX}{token}"
+    state_json = await redis.get(key)
+    if state_json:
+        await redis.delete(key)
+        return json.loads(state_json)
+    return None
+
+
+async def _get_user_id_from_request(request: Request) -> Optional[str]:
+    """
+    Extract user ID from request, checking API key, Authorization header, and cookie.
+
+    Supports:
+    1. X-API-Key header - API key authentication (preferred for external apps)
+    2. Authorization: Bearer <jwt> - JWT token authentication
+    3. access_token cookie - Cookie-based auth (for browser flows)
+    """
+    from autogpt_libs.auth.jwt_utils import parse_jwt_token
+
+    from backend.data.api_key import validate_api_key
+
+    # First try X-API-Key header (for external apps)
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        try:
+            api_key_info = await validate_api_key(api_key)
+            if api_key_info:
+                return api_key_info.user_id
+        except Exception:
+            logger.debug("API key validation failed")
+
+    # Then try Authorization header (JWT)
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            token = auth_header[7:]
+            payload = parse_jwt_token(token)
+            return payload.get("sub")
+        except Exception as e:
+            logger.debug("JWT token validation failed: %s", type(e).__name__)
+
+    # Finally try cookie (browser-based auth)
+    token = request.cookies.get("access_token")
+    if token:
+        try:
+            payload = parse_jwt_token(token)
+            return payload.get("sub")
+        except Exception as e:
+            logger.debug("Cookie token validation failed: %s", type(e).__name__)
+
+    return None
 
 
 def _parse_scopes(scope_str: str) -> list[str]:
@@ -75,17 +149,23 @@ async def authorize(
     scope: str = Query("", description="Space-separated scopes"),
     nonce: Optional[str] = Query(None, description="OIDC nonce"),
     prompt: Optional[str] = Query(None, description="Prompt behavior"),
-    # User authentication (via JWT token)
-    user_id: Optional[str] = Security(get_optional_user_id),
 ) -> HTMLResponse | RedirectResponse:
     """
     OAuth 2.0 Authorization Endpoint.
 
     Validates the request, checks user authentication, and either:
-    - Redirects to login if user is not authenticated
+    - Returns error if user is not authenticated (API key or JWT required)
     - Shows consent page if user hasn't authorized these scopes
     - Redirects with authorization code if already authorized
+
+    Authentication methods (in order of preference):
+    1. X-API-Key header - API key for external apps
+    2. Authorization: Bearer <jwt> - JWT token
+    3. access_token cookie - Browser-based auth
     """
+    # Get user ID from API key, Authorization header, or cookie
+    user_id = await _get_user_id_from_request(request)
+
     # Rate limiting - use client IP as identifier for authorize endpoint
     client_ip = _get_client_ip(request)
     rate_result = await check_rate_limit(client_ip, "oauth_authorize")
@@ -99,7 +179,6 @@ async def authorize(
         )
 
     oauth_service = get_oauth_service()
-    settings = Settings()
 
     try:
         # Validate response_type
@@ -122,17 +201,8 @@ async def authorize(
 
         # Check if user is authenticated
         if not user_id:
-            if prompt == "none":
-                # Cannot prompt, return error
-                raise LoginRequiredError(state=state)
-
-            # Redirect to login with return URL
-            login_url = settings.config.frontend_base_url or "http://localhost:3000"
-            return_url = str(request.url)
-            login_redirect = (
-                f"{login_url}/login?returnUrl={urlencode({'': return_url})[1:]}"
-            )
-            return HTMLResponse(render_login_redirect_page(login_redirect))
+            # Authentication required - user must provide API key or JWT
+            raise LoginRequiredError(state=state)
 
         # Check if user has already authorized these scopes
         if prompt != "consent":
@@ -150,22 +220,29 @@ async def authorize(
                     code_challenge_method=code_challenge_method,
                     nonce=nonce,
                 )
-                redirect_url = f"{redirect_uri}?code={code}&state={state}"
+                redirect_url = (
+                    f"{redirect_uri}?{urlencode({'code': code, 'state': state})}"
+                )
                 return RedirectResponse(url=redirect_url, status_code=302)
 
-        # Generate consent token and store state
+        # Generate consent token and store state in Redis
         consent_token = secrets.token_urlsafe(32)
-        _consent_states[consent_token] = {
-            "user_id": user_id,
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "scopes": scopes,
-            "state": state,
-            "code_challenge": code_challenge,
-            "code_challenge_method": code_challenge_method,
-            "nonce": nonce,
-            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
-        }
+        await _store_consent_state(
+            consent_token,
+            {
+                "user_id": user_id,
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "scopes": scopes,
+                "state": state,
+                "code_challenge": code_challenge,
+                "code_challenge_method": code_challenge_method,
+                "nonce": nonce,
+                "expires_at": (
+                    datetime.now(timezone.utc) + timedelta(minutes=10)
+                ).isoformat(),
+            },
+        )
 
         # Render consent page
         return HTMLResponse(
@@ -209,16 +286,17 @@ async def submit_consent(
     """
     oauth_service = get_oauth_service()
 
-    # Validate consent token
-    consent_state = _consent_states.pop(consent_token, None)
+    # Validate consent token (retrieves and deletes from Redis atomically)
+    consent_state = await _get_and_delete_consent_state(consent_token)
     if not consent_state:
         return HTMLResponse(
             render_error_page("invalid_request", "Invalid or expired consent token"),
             status_code=400,
         )
 
-    # Check expiration
-    if consent_state["expires_at"] < datetime.now(timezone.utc):
+    # Check expiration (expires_at is stored as ISO string in Redis)
+    expires_at = datetime.fromisoformat(consent_state["expires_at"])
+    if expires_at < datetime.now(timezone.utc):
         return HTMLResponse(
             render_error_page("invalid_request", "Consent session expired"),
             status_code=400,
@@ -255,7 +333,7 @@ async def submit_consent(
 
         # Redirect with code
         return RedirectResponse(
-            url=f"{redirect_uri}?code={code}&state={state}",
+            url=f"{redirect_uri}?{urlencode({'code': code, 'state': state})}",
             status_code=302,
         )
 
@@ -337,7 +415,8 @@ async def token(
             raise UnsupportedGrantTypeError(grant_type)
 
     except OAuthError as e:
-        raise e.to_http_exception(400 if isinstance(e, InvalidGrantError) else 401)
+        # 401 for client auth failure, 400 for other validation errors (per RFC 6749)
+        raise e.to_http_exception(401 if isinstance(e, InvalidClientError) else 400)
 
 
 # ================================================================

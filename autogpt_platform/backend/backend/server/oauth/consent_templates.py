@@ -5,6 +5,7 @@ These templates are used for the OAuth authorization flow
 when the user needs to approve access for an external application.
 """
 
+import html
 from typing import Optional
 
 from backend.server.oauth.models import SCOPE_DESCRIPTIONS
@@ -234,11 +235,15 @@ def render_consent_page(
     Returns:
         HTML string for the consent page
     """
+    # Escape user-provided values to prevent XSS
+    safe_client_name = html.escape(client_name)
+    safe_client_logo = html.escape(client_logo) if client_logo else None
+
     # Build logo HTML
-    if client_logo:
-        logo_html = f'<img src="{client_logo}" alt="{client_name}">'
+    if safe_client_logo:
+        logo_html = f'<img src="{safe_client_logo}" alt="{safe_client_name}">'
     else:
-        logo_html = f'<span class="logo-placeholder">{client_name[0].upper()}</span>'
+        logo_html = f'<span class="logo-placeholder">{html.escape(client_name[0].upper())}</span>'
 
     # Build scopes HTML
     scopes_html = ""
@@ -247,21 +252,25 @@ def render_consent_page(
         scopes_html += f"""
             <div class="scope-item">
                 {_check_icon()}
-                <span class="scope-text">{description}</span>
+                <span class="scope-text">{html.escape(description)}</span>
             </div>
         """
 
-    # Build footer links
+    # Build footer links (escape URLs)
     footer_links = []
     if privacy_policy_url:
         footer_links.append(
-            f'<a href="{privacy_policy_url}" target="_blank">Privacy Policy</a>'
+            f'<a href="{html.escape(privacy_policy_url)}" target="_blank">Privacy Policy</a>'
         )
     if terms_url:
         footer_links.append(
-            f'<a href="{terms_url}" target="_blank">Terms of Service</a>'
+            f'<a href="{html.escape(terms_url)}" target="_blank">Terms of Service</a>'
         )
     footer_html = " &bull; ".join(footer_links) if footer_links else ""
+
+    # Escape action_url and consent_token
+    safe_action_url = html.escape(action_url)
+    safe_consent_token = html.escape(consent_token)
 
     return f"""
     <!DOCTYPE html>
@@ -269,26 +278,26 @@ def render_consent_page(
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Authorize {client_name} - AutoGPT</title>
+        <title>Authorize {safe_client_name} - AutoGPT</title>
         <style>{_base_styles()}</style>
     </head>
     <body>
         <div class="container">
             <div class="header">
                 <div class="logo">{logo_html}</div>
-                <h1>Authorize <span class="app-name">{client_name}</span></h1>
+                <h1>Authorize <span class="app-name">{safe_client_name}</span></h1>
                 <p class="subtitle">wants to access your AutoGPT account</p>
             </div>
 
             <div class="divider"></div>
 
             <div class="scopes-section">
-                <h2>This will allow {client_name} to:</h2>
+                <h2>This will allow {safe_client_name} to:</h2>
                 {scopes_html}
             </div>
 
-            <form method="POST" action="{action_url}">
-                <input type="hidden" name="consent_token" value="{consent_token}">
+            <form method="POST" action="{safe_action_url}">
+                <input type="hidden" name="consent_token" value="{safe_consent_token}">
                 <div class="buttons">
                     <button type="submit" name="authorize" value="false" class="btn btn-cancel">
                         Cancel
@@ -322,10 +331,15 @@ def render_error_page(
     Returns:
         HTML string for the error page
     """
+    # Escape user-provided values to prevent XSS
+    safe_error = html.escape(error)
+    safe_error_description = html.escape(error_description)
+
     redirect_html = ""
     if redirect_url:
+        safe_redirect_url = html.escape(redirect_url)
         redirect_html = f"""
-            <a href="{redirect_url}" class="btn btn-cancel" style="display: inline-block; text-decoration: none;">
+            <a href="{safe_redirect_url}" class="btn btn-cancel" style="display: inline-block; text-decoration: none;">
                 Go Back
             </a>
         """
@@ -344,9 +358,9 @@ def render_error_page(
             <div class="error-container">
                 {_error_icon()}
                 <h1 class="error-title">Authorization Failed</h1>
-                <p class="error-message">{error_description}</p>
+                <p class="error-message">{safe_error_description}</p>
                 <p class="error-message" style="font-size: 12px; color: #52525b;">
-                    Error code: {error}
+                    Error code: {safe_error}
                 </p>
                 {redirect_html}
             </div>
@@ -372,16 +386,29 @@ def render_success_page(
     Returns:
         HTML string for the success page
     """
+    # Escape user-provided values to prevent XSS
+    safe_message = html.escape(message)
+
     # PostMessage script for popup flows
     post_message_script = ""
     if redirect_origin and post_message_data:
         import json
 
+        # json.dumps escapes for JS context, but we also escape < > for HTML context
+        safe_json_origin = (
+            json.dumps(redirect_origin).replace("<", "\\u003c").replace(">", "\\u003e")
+        )
+        safe_json_data = (
+            json.dumps(post_message_data)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+        )
+
         post_message_script = f"""
             <script>
                 (function() {{
-                    var targetOrigin = {json.dumps(redirect_origin)};
-                    var message = {json.dumps(post_message_data)};
+                    var targetOrigin = {safe_json_origin};
+                    var message = {safe_json_data};
                     if (window.opener) {{
                         window.opener.postMessage(message, targetOrigin);
                         setTimeout(function() {{ window.close(); }}, 1000);
@@ -404,7 +431,7 @@ def render_success_page(
             <div class="error-container">
                 {_success_icon()}
                 <h1 class="success-title">Success!</h1>
-                <p class="error-message">{message}</p>
+                <p class="error-message">{safe_message}</p>
                 <p class="error-message" style="font-size: 12px;">
                     This window will close automatically...
                 </p>
@@ -426,13 +453,16 @@ def render_login_redirect_page(login_url: str) -> str:
     Returns:
         HTML string with auto-redirect
     """
+    # Escape URL to prevent XSS
+    safe_login_url = html.escape(login_url)
+
     return f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="refresh" content="0;url={login_url}">
+        <meta http-equiv="refresh" content="0;url={safe_login_url}">
         <title>Login Required - AutoGPT</title>
         <style>{_base_styles()}</style>
     </head>
@@ -440,10 +470,208 @@ def render_login_redirect_page(login_url: str) -> str:
         <div class="container">
             <div class="error-container">
                 <p class="error-message">Redirecting to login...</p>
-                <a href="{login_url}" class="btn btn-allow" style="display: inline-block; text-decoration: none;">
+                <a href="{safe_login_url}" class="btn btn-allow" style="display: inline-block; text-decoration: none;">
                     Click here if not redirected
                 </a>
             </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def _login_form_styles() -> str:
+    """Additional CSS styles for login form."""
+    return """
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #a1a1aa;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #3f3f46;
+            background: #18181b;
+            color: #e4e4e7;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus {
+            border-color: #22d3ee;
+        }
+        .form-group input::placeholder {
+            color: #52525b;
+        }
+        .error-alert {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid #ef4444;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            color: #fca5a5;
+            font-size: 14px;
+        }
+        .btn-login {
+            width: 100%;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            background: #22d3ee;
+            color: #0f172a;
+            transition: all 0.2s;
+            margin-top: 8px;
+        }
+        .btn-login:hover {
+            background: #06b6d4;
+        }
+        .btn-login:disabled {
+            background: #3f3f46;
+            color: #71717a;
+            cursor: not-allowed;
+        }
+        .signup-link {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 14px;
+            color: #a1a1aa;
+        }
+        .signup-link a {
+            color: #22d3ee;
+            text-decoration: none;
+        }
+        .signup-link a:hover {
+            text-decoration: underline;
+        }
+    """
+
+
+def render_login_page(
+    action_url: str,
+    login_state: str,
+    client_name: Optional[str] = None,
+    error_message: Optional[str] = None,
+    signup_url: Optional[str] = None,
+    browser_login_url: Optional[str] = None,
+) -> str:
+    """
+    Render an embedded login page for OAuth flow.
+
+    Args:
+        action_url: URL to submit the login form
+        login_state: State token to preserve OAuth parameters
+        client_name: Name of the application requesting access (optional)
+        error_message: Error message to display (optional)
+        signup_url: URL to signup page (optional)
+        browser_login_url: URL to redirect to frontend login (optional)
+
+    Returns:
+        HTML string for the login page
+    """
+    # Escape all user-provided values to prevent XSS
+    safe_action_url = html.escape(action_url)
+    safe_login_state = html.escape(login_state)
+    safe_client_name = html.escape(client_name) if client_name else None
+
+    error_html = ""
+    if error_message:
+        safe_error_message = html.escape(error_message)
+        error_html = f'<div class="error-alert">{safe_error_message}</div>'
+
+    subtitle = "wants to access your AutoGPT account" if safe_client_name else ""
+    title_html = (
+        '<h1>Sign in to <span class="app-name">AutoGPT</span></h1>'
+        if not safe_client_name
+        else f'<h1><span class="app-name">{safe_client_name}</span></h1>'
+    )
+
+    signup_html = ""
+    if signup_url:
+        safe_signup_url = html.escape(signup_url)
+        signup_html = f"""
+            <div class="signup-link">
+                Don't have an account? <a href="{safe_signup_url}">Sign up</a>
+            </div>
+        """
+
+    browser_login_html = ""
+    if browser_login_url:
+        safe_browser_login_url = html.escape(browser_login_url)
+        browser_login_html = f"""
+            <div class="divider"></div>
+            <div class="signup-link">
+                <a href="{safe_browser_login_url}">Sign in with Google or other providers</a>
+            </div>
+        """
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Sign In - AutoGPT</title>
+        <style>
+            {_base_styles()}
+            {_login_form_styles()}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo">
+                    <span class="logo-placeholder">A</span>
+                </div>
+                {title_html}
+                <p class="subtitle">{subtitle}</p>
+            </div>
+
+            <div class="divider"></div>
+
+            {error_html}
+
+            <form method="POST" action="{safe_action_url}">
+                <input type="hidden" name="login_state" value="{safe_login_state}">
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="you@example.com"
+                        required
+                        autocomplete="email"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="Enter your password"
+                        required
+                        autocomplete="current-password"
+                    >
+                </div>
+
+                <button type="submit" class="btn-login">Sign In</button>
+            </form>
+
+            {signup_html}
+            {browser_login_html}
         </div>
     </body>
     </html>

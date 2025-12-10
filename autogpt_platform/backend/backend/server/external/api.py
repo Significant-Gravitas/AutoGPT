@@ -5,21 +5,15 @@ from backend.server.middleware.security import SecurityHeadersMiddleware
 
 from .routes.execution import execution_router
 from .routes.grants import grants_router
-from .routes.integrations import integrations_router
-from .routes.tools import tools_router
-from .routes.v1 import v1_router
 
 external_app = FastAPI(
     title="AutoGPT External API",
-    description="External API for AutoGPT integrations",
+    description="External API for AutoGPT integrations (OAuth-based)",
     docs_url="/docs",
     version="1.0",
 )
 
 external_app.add_middleware(SecurityHeadersMiddleware)
-external_app.include_router(v1_router, prefix="/v1")
-external_app.include_router(tools_router, prefix="/v1")
-external_app.include_router(integrations_router, prefix="/v1")
 external_app.include_router(grants_router, prefix="/v1")
 external_app.include_router(execution_router, prefix="/v1")
 

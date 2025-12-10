@@ -1,7 +1,6 @@
 "use client";
 
-import { Loader2, MoreVertical } from "lucide-react";
-import { LuCopy } from "react-icons/lu";
+import { CircleNotch, Copy, DotsThreeVertical } from "@phosphor-icons/react";
 import { Button } from "@/components/__legacy__/ui/button";
 import {
   Table,
@@ -69,7 +68,7 @@ export function OAuthClientSection() {
     <>
       {isLoading ? (
         <div className="flex justify-center p-4">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <CircleNotch className="h-6 w-6 animate-spin" weight="bold" />
         </div>
       ) : oauthClients && oauthClients.length > 0 ? (
         <Table>
@@ -133,7 +132,7 @@ export function OAuthClientSection() {
                         variant="ghost"
                         size="sm"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <DotsThreeVertical className="h-4 w-4" weight="bold" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -212,7 +211,7 @@ export function OAuthClientSection() {
                   variant="outline"
                   onClick={handleCopyWebhookSecret}
                 >
-                  <LuCopy className="h-4 w-4" />
+                  <Copy className="h-4 w-4" weight="bold" />
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">

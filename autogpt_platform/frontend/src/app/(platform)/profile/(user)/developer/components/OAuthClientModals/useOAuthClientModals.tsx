@@ -8,14 +8,13 @@ import { ClientSecretResponse } from "@/app/api/__generated__/models/clientSecre
 import { RegisterClientRequest } from "@/app/api/__generated__/models/registerClientRequest";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { validateRedirectUri } from "@/lib/utils";
 import { useState } from "react";
 
 type ClientType = "public" | "confidential";
 
-// Extended type to include webhook_secret (will be in generated types after API regeneration)
-interface ClientSecretResponseWithWebhook extends ClientSecretResponse {
-  webhook_secret?: string;
-}
+// ClientSecretResponse already includes webhook_secret from the generated types
+type ClientSecretResponseWithWebhook = ClientSecretResponse;
 
 interface ClientFormState {
   name: string;
@@ -87,6 +86,19 @@ export function useOAuthClientModals() {
         variant: "destructive",
       });
       return;
+    }
+
+    // Validate each redirect URI
+    for (const uri of redirectUris) {
+      const validation = validateRedirectUri(uri);
+      if (!validation.valid) {
+        toast({
+          title: "Invalid Redirect URI",
+          description: `"${uri}": ${validation.error}`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     if (!formState.name.trim()) {

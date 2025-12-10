@@ -10,7 +10,7 @@ The AutoGPT External API allows your application to:
 - **Access integrations** - Use third-party service credentials (Google, GitHub, etc.) that users have connected
 - **Receive webhooks** - Get notified when agent executions complete
 
-The integration uses standard OAuth 2.0 with PKCE for secure authentication and a popup-based "Connect" flow for credential access.
+The integration uses standard OAuth 2.0 with PKCE for secure authentication, with API key-based user identification during the authorization flow.
 
 ## Architecture
 
@@ -30,9 +30,10 @@ The integration uses standard OAuth 2.0 with PKCE for secure authentication and 
 **Key concepts:**
 
 1. **OAuth Client** - Your registered application with AutoGPT
-2. **OAuth Tokens** - Access/refresh tokens for API authentication
-3. **Credential Grants** - User permissions to use their connected integrations
-4. **Integration Scopes** - Specific permissions for each integration (e.g., `google:gmail.readonly`)
+2. **API Key** - User's AutoGPT API key for identifying the user during authorization
+3. **OAuth Tokens** - Access/refresh tokens for API authentication
+4. **Credential Grants** - User permissions to use their connected integrations
+5. **Integration Scopes** - Specific permissions for each integration (e.g., `google:gmail.readonly`)
 
 ## Getting Started
 
@@ -72,6 +73,14 @@ curl -X POST https://platform.agpt.co/oauth/clients/ \
 
 Use the standard OAuth 2.0 Authorization Code flow with PKCE to get user consent and tokens.
 
+#### Authentication Methods
+
+The authorization endpoint supports two authentication methods:
+
+1. **API Key (Recommended for server-side apps)**: Pass the user's AutoGPT API key via `X-API-Key` header. This shows the consent page directly without requiring a browser login.
+
+2. **Login Flow (For browser-based apps)**: If no API key is provided, the user is redirected to the AutoGPT login page, which then continues the OAuth flow automatically after login.
+
 #### Generate PKCE Parameters
 
 ```javascript
@@ -90,24 +99,69 @@ async function generateCodeChallenge(verifier) {
 }
 ```
 
-#### Redirect User to Authorization
+#### Request Authorization
+
+**Option 1: With API Key (Server-side apps)**
+
+If you have the user's API key, make a server-side request to get the consent page directly:
 
 ```javascript
 const state = crypto.randomUUID(); // Store this for validation
 const codeVerifier = generateCodeVerifier(); // Store this securely
 const codeChallenge = await generateCodeChallenge(codeVerifier);
 
-const authUrl = new URL('https://platform.agpt.co/oauth/authorize');
-authUrl.searchParams.set('response_type', 'code');
-authUrl.searchParams.set('client_id', CLIENT_ID);
-authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
-authUrl.searchParams.set('state', state);
-authUrl.searchParams.set('code_challenge', codeChallenge);
-authUrl.searchParams.set('code_challenge_method', 'S256');
-authUrl.searchParams.set('scope', 'openid profile email agents:execute integrations:connect');
+const authUrl = 'https://platform.agpt.co/oauth/authorize?' + new URLSearchParams({
+  response_type: 'code',
+  client_id: CLIENT_ID,
+  redirect_uri: REDIRECT_URI,
+  state: state,
+  code_challenge: codeChallenge,
+  code_challenge_method: 'S256',
+  scope: 'openid profile email agents:execute integrations:connect',
+});
 
-window.location.href = authUrl.toString();
+// Server-side request with user's API key
+const response = await fetch(authUrl, {
+  headers: {
+    'X-API-Key': userApiKey,  // User's AutoGPT API key (optional)
+  },
+});
+
+// Response is HTML consent page - render it to the user
+const consentHtml = await response.text();
 ```
+
+**Option 2: Browser Login Flow (No API Key)**
+
+If you don't have the user's API key, redirect them to the authorization URL. They will be prompted to log in to AutoGPT, and the OAuth flow will continue automatically after login:
+
+```javascript
+const state = crypto.randomUUID(); // Store this for validation
+const codeVerifier = generateCodeVerifier(); // Store this securely
+const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+const authUrl = 'https://platform.agpt.co/oauth/authorize?' + new URLSearchParams({
+  response_type: 'code',
+  client_id: CLIENT_ID,
+  redirect_uri: REDIRECT_URI,
+  state: state,
+  code_challenge: codeChallenge,
+  code_challenge_method: 'S256',
+  scope: 'openid profile email agents:execute integrations:connect',
+});
+
+// Redirect user to AutoGPT login page
+// After login, they'll see the consent page and be redirected to your callback
+window.location.href = authUrl;
+```
+
+**Authentication methods (in order of preference):**
+
+| Method | Header | Description |
+|--------|--------|-------------|
+| API Key | `X-API-Key: agpt_xxx` | User's AutoGPT API key (preferred for external apps) |
+| JWT Token | `Authorization: Bearer <jwt>` | Supabase JWT token |
+| Cookie | `access_token` cookie | Browser-based authentication |
 
 **Available scopes:**
 
@@ -330,13 +384,13 @@ Base URL: `https://platform.agpt.co/api/external/v1`
 
 Base URL: `https://platform.agpt.co`
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/oauth/authorize` | Authorization endpoint |
-| POST | `/oauth/token` | Token endpoint |
-| GET | `/oauth/userinfo` | OIDC UserInfo |
-| POST | `/oauth/revoke` | Revoke tokens |
-| GET | `/.well-known/openid-configuration` | OIDC Discovery |
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| GET | `/oauth/authorize` | API Key or JWT | Authorization endpoint |
+| POST | `/oauth/token` | None | Token endpoint |
+| GET | `/oauth/userinfo` | OAuth Token | OIDC UserInfo |
+| POST | `/oauth/revoke` | OAuth Token | Revoke tokens |
+| GET | `/.well-known/openid-configuration` | None | OIDC Discovery |
 
 ### Client Management Endpoints
 
@@ -378,6 +432,7 @@ Common OAuth errors:
 - `invalid_grant` - Expired/invalid authorization code
 - `access_denied` - User denied consent
 - `invalid_scope` - Requested scope not allowed
+- `login_required` - User authentication required (provide API key or JWT)
 
 ### API Errors
 
@@ -389,7 +444,7 @@ Common OAuth errors:
 
 HTTP status codes:
 - `400` - Bad request (invalid parameters)
-- `401` - Unauthorized (invalid/expired token)
+- `401` - Unauthorized (invalid/expired token or missing API key)
 - `403` - Forbidden (insufficient scopes or grants)
 - `404` - Resource not found
 - `429` - Rate limited
@@ -398,12 +453,13 @@ HTTP status codes:
 ## Security Best Practices
 
 1. **Store secrets securely** - Never expose `client_secret` in client-side code
-2. **Validate state parameter** - Prevent CSRF attacks
-3. **Use PKCE** - Required for all authorization flows
-4. **Verify webhook signatures** - Prevent spoofed webhooks
-5. **Request minimal scopes** - Only request what you need
-6. **Handle token refresh** - Refresh tokens before they expire
-7. **Validate redirect origins** - Only accept messages from expected origins
+2. **Protect API keys** - User API keys should be stored securely and transmitted over HTTPS
+3. **Validate state parameter** - Prevent CSRF attacks
+4. **Use PKCE** - Required for all authorization flows
+5. **Verify webhook signatures** - Prevent spoofed webhooks
+6. **Request minimal scopes** - Only request what you need
+7. **Handle token refresh** - Refresh tokens before they expire
+8. **Validate redirect origins** - Only accept messages from expected origins
 
 ## Complete Integration Example
 
@@ -416,31 +472,58 @@ class AutoGPTClient {
     this.baseUrl = 'https://platform.agpt.co';
   }
 
-  // Step 1: Generate authorization URL
-  async getAuthorizationUrl(scopes) {
+  // Step 1: Build authorization URL
+  async buildAuthorizationUrl(scopes) {
     const state = crypto.randomUUID();
     const codeVerifier = this.generateCodeVerifier();
     const codeChallenge = await this.generateCodeChallenge(codeVerifier);
 
     // Store for callback
-    sessionStorage.setItem('oauth_state', state);
-    sessionStorage.setItem('oauth_verifier', codeVerifier);
+    this.pendingAuth = { state, codeVerifier };
 
-    const url = new URL(`${this.baseUrl}/oauth/authorize`);
-    url.searchParams.set('response_type', 'code');
-    url.searchParams.set('client_id', this.clientId);
-    url.searchParams.set('redirect_uri', this.redirectUri);
-    url.searchParams.set('state', state);
-    url.searchParams.set('code_challenge', codeChallenge);
-    url.searchParams.set('code_challenge_method', 'S256');
-    url.searchParams.set('scope', scopes.join(' '));
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: this.clientId,
+      redirect_uri: this.redirectUri,
+      state: state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      scope: scopes.join(' '),
+    });
 
-    return url.toString();
+    return `${this.baseUrl}/oauth/authorize?${params}`;
   }
 
-  // Step 2: Exchange code for tokens
+  // Step 1a: Start authorization with user's API key (server-side apps)
+  async startAuthorizationWithApiKey(userApiKey, scopes) {
+    const authUrl = await this.buildAuthorizationUrl(scopes);
+
+    // Request authorization with user's API key
+    const response = await fetch(authUrl, {
+      headers: {
+        'X-API-Key': userApiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Authorization failed: ${error}`);
+    }
+
+    // Return consent page HTML for rendering to user
+    return await response.text();
+  }
+
+  // Step 1b: Start authorization via login flow (browser-based apps)
+  async startAuthorizationWithLogin(scopes) {
+    const authUrl = await this.buildAuthorizationUrl(scopes);
+    // Redirect user to AutoGPT login - they'll be redirected back after login
+    window.location.href = authUrl;
+  }
+
+  // Step 2: Exchange code for tokens (after user consents)
   async exchangeCode(code, state) {
-    if (state !== sessionStorage.getItem('oauth_state')) {
+    if (state !== this.pendingAuth?.state) {
       throw new Error('Invalid state');
     }
 
@@ -453,7 +536,7 @@ class AutoGPTClient {
         redirect_uri: this.redirectUri,
         client_id: this.clientId,
         client_secret: this.clientSecret,
-        code_verifier: sessionStorage.getItem('oauth_verifier'),
+        code_verifier: this.pendingAuth.codeVerifier,
       }),
     });
 
@@ -576,16 +659,24 @@ const client = new AutoGPTClient(
   'https://myapp.com/oauth/callback'
 );
 
-// 1. Redirect to authorization
-const authUrl = await client.getAuthorizationUrl([
-  'openid', 'profile', 'agents:execute', 'integrations:connect'
-]);
-window.location.href = authUrl;
+const scopes = ['openid', 'profile', 'agents:execute', 'integrations:connect'];
 
-// 2. After callback, exchange code
+// Option A: Start authorization with user's API key (server-side apps)
+// User provides their AutoGPT API key (from Settings > Developer)
+const userApiKey = 'agpt_xxx...';
+const consentHtml = await client.startAuthorizationWithApiKey(userApiKey, scopes);
+// Render consent page HTML to user in popup/iframe
+
+// Option B: Start authorization via login flow (browser-based apps)
+// No API key needed - user will log in to AutoGPT
+await client.startAuthorizationWithLogin(scopes);
+// User is redirected to AutoGPT login, then back to your callback
+
+// 2. After user consents, your callback receives ?code=xxx&state=xxx
+// Exchange code for tokens
 const tokens = await client.exchangeCode(code, state);
 
-// 3. Request Google credentials
+// 3. Request Google credentials (user must be logged into AutoGPT in browser)
 const grant = await client.requestGrant('google', ['google:gmail.readonly']);
 
 // 4. Execute an agent

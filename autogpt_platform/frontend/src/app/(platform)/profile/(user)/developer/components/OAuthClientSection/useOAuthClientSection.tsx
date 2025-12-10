@@ -13,6 +13,7 @@ import type { ClientResponse } from "@/app/api/__generated__/models/clientRespon
 import type { UpdateClientRequest } from "@/app/api/__generated__/models/updateClientRequest";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { validateRedirectUri } from "@/lib/utils";
 
 export function useOAuthClientSection() {
   const queryClient = getQueryClient();
@@ -178,6 +179,21 @@ export function useOAuthClientSection() {
 
   async function handleSaveClient() {
     if (!editingClient) return;
+
+    // Validate redirect URIs before saving
+    if (editFormState.redirect_uris) {
+      for (const uri of editFormState.redirect_uris) {
+        const validation = validateRedirectUri(uri);
+        if (!validation.valid) {
+          toast({
+            title: "Invalid Redirect URI",
+            description: `"${uri}": ${validation.error}`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
 
     try {
       await updateClient({

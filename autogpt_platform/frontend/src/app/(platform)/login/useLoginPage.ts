@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -13,6 +13,7 @@ export function useLoginPage() {
   const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -20,11 +21,44 @@ export function useLoginPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
+  // Get returnUrl from query params (used by OAuth flow)
+  const returnUrl = searchParams.get("returnUrl");
+
+  function getRedirectUrl(onboarding: boolean): string {
+    // If returnUrl is set and is a valid URL, redirect there after login
+    if (returnUrl) {
+      try {
+        const url = new URL(returnUrl, window.location.origin);
+        const backendUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL;
+
+        // Same origin - return normalized path only (prevents open redirect)
+        if (url.origin === window.location.origin) {
+          return url.pathname + url.search;
+        }
+
+        // Backend URL - strict origin match (not startsWith to prevent prefix attacks)
+        if (backendUrl) {
+          try {
+            const backendOrigin = new URL(backendUrl).origin;
+            if (url.origin === backendOrigin) {
+              return url.href;
+            }
+          } catch {
+            // Invalid backend URL config, fall through to default
+          }
+        }
+      } catch {
+        // Invalid URL, fall through to default
+      }
+    }
+    return onboarding ? "/onboarding" : "/marketplace";
+  }
+
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
-      router.push("/marketplace");
+      router.push(getRedirectUrl(false));
     }
-  }, [isLoggedIn, isLoggingIn]);
+  }, [isLoggedIn, isLoggingIn, returnUrl]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -83,11 +117,7 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (result.onboarding) {
-        router.replace("/onboarding");
-      } else {
-        router.replace("/marketplace");
-      }
+      router.replace(getRedirectUrl(result.onboarding ?? false));
     } catch (error) {
       toast({
         title:
