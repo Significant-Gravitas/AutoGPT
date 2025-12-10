@@ -12,6 +12,7 @@ import {
   StopIcon,
 } from "@phosphor-icons/react";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
+import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";
 import { CreateTemplateModal } from "../CreateTemplateModal/CreateTemplateModal";
 import { useSelectedRunActions } from "./useSelectedRunActions";
@@ -53,7 +54,7 @@ export function SelectedRunActions({
   if (!run || !agent) return null;
 
   return (
-    <div className="my-4 flex flex-col items-center gap-3">
+    <SelectedActionsWrap>
       {canRunManually && !isRunning ? (
         <Button
           variant="icon"
@@ -138,6 +139,6 @@ export function SelectedRunActions({
         agentGraphId={agent.graph_id}
         onClearSelectedRun={onClearSelectedRun}
       />
-    </div>
+    </SelectedActionsWrap>
   );
 }

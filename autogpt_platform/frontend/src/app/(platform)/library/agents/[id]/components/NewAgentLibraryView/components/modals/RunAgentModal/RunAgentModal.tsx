@@ -88,6 +88,8 @@ export function RunAgentModal({
     Object.keys(agentInputFields || {}).length > 0 ||
     Object.keys(agentCredentialsInputFields || {}).length > 0;
 
+  const isTriggerRunType = defaultRunType.includes("trigger");
+
   function handleInputChange(key: string, value: string) {
     setInputValues((prev) => ({
       ...prev,
@@ -162,8 +164,7 @@ export function RunAgentModal({
 
           <Dialog.Footer className="mt-6 bg-white pt-4">
             <div className="flex items-center justify-end gap-3">
-              {(defaultRunType == "manual" || defaultRunType == "schedule") &&
-              !allRequiredInputsAreSet ? (
+              {isTriggerRunType ? null : !allRequiredInputsAreSet ? (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>

@@ -13,10 +13,11 @@ import {
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
+import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { InfoIcon } from "@phosphor-icons/react";
 import { useEffect } from "react";
-import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
+import { AnchorLinksWrap } from "../AnchorLinksWrap";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
@@ -45,6 +46,9 @@ export function SelectedRunView({
 }: Props) {
   const { run, preset, isLoading, responseError, httpError } =
     useSelectedRunView(agent.graph_id, runId);
+
+  const breakpoint = useBreakpoint();
+  const isLgScreenUp = isLargeScreen(breakpoint);
 
   const {
     pendingReviews,
@@ -89,6 +93,15 @@ export function SelectedRunView({
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={run} />
 
+            {!isLgScreenUp ? (
+              <SelectedRunActions
+                agent={agent}
+                run={run}
+                onSelectRun={onSelectRun}
+                onClearSelectedRun={onClearSelectedRun}
+              />
+            ) : null}
+
             {preset &&
               agent.trigger_setup_info &&
               preset.webhook_id &&
@@ -100,38 +113,36 @@ export function SelectedRunView({
               )}
 
             {/* Navigation Links */}
-            <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
-              <nav className="flex gap-8 px-3 pb-1">
-                {withSummary && (
-                  <button
-                    onClick={() => scrollToSection("summary")}
-                    className={anchorStyles}
-                  >
-                    Summary
-                  </button>
-                )}
+            <AnchorLinksWrap>
+              {withSummary && (
                 <button
-                  onClick={() => scrollToSection("output")}
+                  onClick={() => scrollToSection("summary")}
                   className={anchorStyles}
                 >
-                  Output
+                  Summary
                 </button>
+              )}
+              <button
+                onClick={() => scrollToSection("output")}
+                className={anchorStyles}
+              >
+                Output
+              </button>
+              <button
+                onClick={() => scrollToSection("input")}
+                className={anchorStyles}
+              >
+                Your input
+              </button>
+              {withReviews && (
                 <button
-                  onClick={() => scrollToSection("input")}
+                  onClick={() => scrollToSection("reviews")}
                   className={anchorStyles}
                 >
-                  Your input
+                  Reviews ({pendingReviews.length})
                 </button>
-                {withReviews && (
-                  <button
-                    onClick={() => scrollToSection("reviews")}
-                    className={anchorStyles}
-                  >
-                    Reviews ({pendingReviews.length})
-                  </button>
-                )}
-              </nav>
-            </div>
+              )}
+            </AnchorLinksWrap>
 
             {/* Summary Section */}
             {withSummary && (
@@ -216,14 +227,16 @@ export function SelectedRunView({
           </div>
         </SelectedViewLayout>
       </div>
-      <div className="-mt-2 max-w-[3.75rem] flex-shrink-0">
-        <SelectedRunActions
-          agent={agent}
-          run={run}
-          onSelectRun={onSelectRun}
-          onClearSelectedRun={onClearSelectedRun}
-        />
-      </div>
+      {isLgScreenUp ? (
+        <div className="max-w-[3.75rem] flex-shrink-0">
+          <SelectedRunActions
+            agent={agent}
+            run={run}
+            onSelectRun={onSelectRun}
+            onClearSelectedRun={onClearSelectedRun}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

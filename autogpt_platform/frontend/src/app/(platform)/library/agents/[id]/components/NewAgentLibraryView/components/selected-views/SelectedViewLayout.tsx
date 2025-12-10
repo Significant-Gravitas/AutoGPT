@@ -12,7 +12,7 @@ export function SelectedViewLayout(props: Props) {
   return (
     <SectionWrap className="relative mb-3 flex min-h-0 flex-1 flex-col">
       <div
-        className={`${AGENT_LIBRARY_SECTION_PADDING_X} flex-shrink-0 border-b border-zinc-100 pb-4`}
+        className={`${AGENT_LIBRARY_SECTION_PADDING_X} flex-shrink-0 border-b border-zinc-100 pb-0 lg:pb-4`}
       >
         <Breadcrumbs
           items={[
