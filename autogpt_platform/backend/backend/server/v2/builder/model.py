@@ -60,18 +60,11 @@ class ProviderResponse(BaseModel):
     pagination: Pagination
 
 
-class SearchBlocksResponse(BaseModel):
-    blocks: BlockResponse
-    total_block_count: int
-    total_integration_count: int
-
-
 class SearchResponse(BaseModel):
     items: list[BlockInfo | library_model.LibraryAgent | store_model.StoreAgent]
     search_id: str
     total_items: dict[FilterType, int]
-    page: int
-    more_pages: bool
+    pagination: Pagination
 
 
 class CountResponse(BaseModel):

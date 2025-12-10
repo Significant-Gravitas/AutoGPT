@@ -6,10 +6,6 @@ from autogpt_libs.auth.dependencies import get_user_id, requires_user
 
 import backend.server.v2.builder.db as builder_db
 import backend.server.v2.builder.model as builder_model
-import backend.server.v2.library.db as library_db
-import backend.server.v2.library.model as library_model
-import backend.server.v2.store.db as store_db
-import backend.server.v2.store.model as store_model
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination
 
@@ -145,7 +141,6 @@ async def get_providers(
     )
 
 
-# Not using post method because on frontend, orval doesn't support Infinite Query with POST method.
 @router.get(
     "/search",
     summary="Builder search",
@@ -174,59 +169,28 @@ async def search(
         ]
     search_query = sanitize_query(search_query)
 
-    # Blocks&Integrations
-    blocks = builder_model.SearchBlocksResponse(
-        blocks=builder_model.BlockResponse(
-            blocks=[],
-            pagination=Pagination.empty(),
-        ),
-        total_block_count=0,
-        total_integration_count=0,
+    # Get all possible results
+    cached_results = await builder_db.get_sorted_search_results(
+        user_id=user_id,
+        search_query=search_query,
+        filters=filter,
+        by_creator=by_creator,
     )
-    if "blocks" in filter or "integrations" in filter:
-        blocks = builder_db.search_blocks(
-            include_blocks="blocks" in filter,
-            include_integrations="integrations" in filter,
-            query=search_query or "",
-            page=page,
-            page_size=page_size,
-        )
 
-    # Library Agents
-    my_agents = library_model.LibraryAgentResponse(
-        agents=[],
-        pagination=Pagination.empty(),
+    # Paginate results
+    total_combined_items = len(cached_results.items)
+    pagination = Pagination(
+        total_items=total_combined_items,
+        total_pages=(total_combined_items + page_size - 1) // page_size,
+        current_page=page,
+        page_size=page_size,
     )
-    if "my_agents" in filter:
-        my_agents = await library_db.list_library_agents(
-            user_id=user_id,
-            search_term=search_query,
-            page=page,
-            page_size=page_size,
-        )
 
-    # Marketplace Agents
-    marketplace_agents = store_model.StoreAgentsResponse(
-        agents=[],
-        pagination=Pagination.empty(),
-    )
-    if "marketplace_agents" in filter:
-        marketplace_agents = await store_db.get_store_agents(
-            creators=by_creator,
-            search_query=search_query,
-            page=page,
-            page_size=page_size,
-        )
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    paginated_items = cached_results.items[start_idx:end_idx]
 
-    more_pages = False
-    if (
-        blocks.blocks.pagination.current_page < blocks.blocks.pagination.total_pages
-        or my_agents.pagination.current_page < my_agents.pagination.total_pages
-        or marketplace_agents.pagination.current_page
-        < marketplace_agents.pagination.total_pages
-    ):
-        more_pages = True
-
+    # Update the search entry by id
     search_id = await builder_db.update_search(
         user_id,
         builder_model.SearchEntry(
@@ -238,16 +202,10 @@ async def search(
     )
 
     return builder_model.SearchResponse(
-        items=blocks.blocks.blocks + my_agents.agents + marketplace_agents.agents,
+        items=paginated_items,
         search_id=search_id,
-        total_items={
-            "blocks": blocks.total_block_count,
-            "integrations": blocks.total_integration_count,
-            "marketplace_agents": marketplace_agents.pagination.total_items,
-            "my_agents": my_agents.pagination.total_items,
-        },
-        page=page,
-        more_pages=more_pages,
+        total_items=cached_results.total_items,
+        pagination=pagination,
     )
 
 

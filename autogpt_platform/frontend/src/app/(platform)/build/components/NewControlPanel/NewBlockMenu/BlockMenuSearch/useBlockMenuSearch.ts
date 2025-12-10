@@ -41,10 +41,15 @@ export const useBlockMenuSearch = () => {
     },
     {
       query: {
-        getNextPageParam: (lastPage, allPages) => {
-          const pagination = lastPage.data as SearchResponse;
-          const isMore = pagination.more_pages;
-          return isMore ? allPages.length + 1 : undefined;
+        getNextPageParam: (lastPage) => {
+          const response = lastPage.data as SearchResponse;
+          const { pagination } = response;
+          if (!pagination) {
+            return undefined;
+          }
+
+          const { current_page, total_pages } = pagination;
+          return current_page < total_pages ? current_page + 1 : undefined;
         },
       },
     },
