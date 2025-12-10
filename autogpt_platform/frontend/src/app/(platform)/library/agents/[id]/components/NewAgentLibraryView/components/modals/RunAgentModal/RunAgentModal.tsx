@@ -23,7 +23,6 @@ import { useAgentRunModal } from "./useAgentRunModal";
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
-  preset?: LibraryAgentPreset;
   initialInputValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
