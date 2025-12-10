@@ -1,5 +1,5 @@
 import { debounce } from "lodash";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { getGetV2GetBuilderSuggestionsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
@@ -11,17 +11,13 @@ export const useBlockMenuSearchBar = () => {
   const [localQuery, setLocalQuery] = useState("");
   const { setSearchQuery, setSearchId, searchQuery } = useBlockMenuStore();
   const queryClient = getQueryClient();
-  const builderSuggestionsQueryKey = useMemo(
-    () => getGetV2GetBuilderSuggestionsQueryKey(),
-    [],
-  );
 
   const clearSearchSession = useCallback(() => {
     setSearchId(undefined);
     queryClient.invalidateQueries({
-      queryKey: builderSuggestionsQueryKey,
+      queryKey: getGetV2GetBuilderSuggestionsQueryKey(),
     });
-  }, [builderSuggestionsQueryKey, queryClient, setSearchId]);
+  }, [queryClient, setSearchId]);
 
   const debouncedSetSearchQuery = useCallback(
     debounce((value: string) => {

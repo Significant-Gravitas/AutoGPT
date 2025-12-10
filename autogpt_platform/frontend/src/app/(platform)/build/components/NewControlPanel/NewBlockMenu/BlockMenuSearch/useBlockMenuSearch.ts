@@ -1,7 +1,7 @@
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { useGetV2BuilderSearchInfinite } from "@/app/api/__generated__/endpoints/store/store";
 import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
@@ -23,17 +23,13 @@ export const useBlockMenuSearch = () => {
   const { addAgentToBuilder, addLibraryAgentToBuilder } =
     useAddAgentToBuilder();
   const queryClient = getQueryClient();
-  const builderSuggestionsQueryKey = useMemo(
-    () => getGetV2GetBuilderSuggestionsQueryKey(),
-    [],
-  );
 
   const resetSearchSession = useCallback(() => {
     setSearchId(undefined);
     queryClient.invalidateQueries({
-      queryKey: builderSuggestionsQueryKey,
+      queryKey: getGetV2GetBuilderSuggestionsQueryKey(),
     });
-  }, [builderSuggestionsQueryKey, queryClient, setSearchId]);
+  }, [queryClient, setSearchId]);
 
   const [addingLibraryAgentId, setAddingLibraryAgentId] = useState<
     string | null
