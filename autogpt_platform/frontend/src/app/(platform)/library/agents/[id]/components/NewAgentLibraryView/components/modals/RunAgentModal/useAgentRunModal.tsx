@@ -13,7 +13,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "@/lib/utils";
 import { analytics } from "@/services/analytics";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =
@@ -51,6 +51,12 @@ export function useAgentRunModal(
       ? "automatic-trigger"
       : "manual-trigger"
     : "manual";
+
+  // Update input values/credentials if template is selected/unselected
+  useEffect(() => {
+    setInputValues(callbacks?.initialInputValues || {});
+    setInputCredentials(callbacks?.initialInputCredentials || {});
+  }, [callbacks?.initialInputValues, callbacks?.initialInputCredentials]);
 
   // API mutations
   const executeGraphMutation = usePostV1ExecuteGraphAgent({
