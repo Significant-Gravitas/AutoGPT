@@ -190,7 +190,7 @@ export function RunAgentModal({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-              ) : defaultRunType == "manual" || defaultRunType == "schedule" ? (
+              ) : (
                 <Button
                   variant="secondary"
                   onClick={handleOpenScheduleModal}
@@ -202,7 +202,7 @@ export function RunAgentModal({
                 >
                   Schedule Task
                 </Button>
-              ) : null}
+              )}
               <RunActions
                 defaultRunType={defaultRunType}
                 onRun={handleRun}
