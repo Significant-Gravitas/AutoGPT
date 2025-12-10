@@ -6,7 +6,6 @@ import {
   getGetV2ListPresetsQueryKey,
   usePostV2SetupTrigger,
 } from "@/app/api/__generated__/endpoints/presets/presets";
-import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
@@ -26,7 +25,6 @@ export type RunVariant =
 interface UseAgentRunModalCallbacks {
   onRun?: (execution: GraphExecutionMeta) => void;
   onSetupTrigger?: (preset: LibraryAgentPreset) => void;
-  onCreateSchedule?: (schedule: GraphExecutionJobInfo) => void;
   initialInputValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
 }
