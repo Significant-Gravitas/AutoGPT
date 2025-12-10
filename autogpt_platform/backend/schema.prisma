@@ -53,7 +53,7 @@ model User {
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
-  BuilderSearch         BuilderSearch[]
+  BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
@@ -115,7 +115,7 @@ model UserOnboarding {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model BuilderSearch {
+model BuilderSearchHistory {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt

@@ -162,7 +162,7 @@ async def update_search(user_id: str, search: SearchEntry) -> str:
     """
     if search.search_id:
         # Update existing search
-        await prisma.models.BuilderSearch.prisma().update(
+        await prisma.models.BuilderSearchHistory.prisma().update(
             where={
                 "id": search.search_id,
             },
@@ -175,7 +175,7 @@ async def update_search(user_id: str, search: SearchEntry) -> str:
         return search.search_id
     else:
         # Create new search
-        new_search = await prisma.models.BuilderSearch.prisma().create(
+        new_search = await prisma.models.BuilderSearchHistory.prisma().create(
             data={
                 "userId": user_id,
                 "searchQuery": search.search_query or "",
@@ -190,7 +190,7 @@ async def get_recent_searches(user_id: str, limit: int = 5) -> list[SearchEntry]
     """
     Get the user's most recent search requests.
     """
-    searches = await prisma.models.BuilderSearch.prisma().find_many(
+    searches = await prisma.models.BuilderSearchHistory.prisma().find_many(
         where={
             "userId": user_id,
         },
