@@ -32,10 +32,9 @@ export function AgentInputsReadOnly({
   // TODO: ensure consistent ordering.
   const inputEntries =
     inputs &&
-    Object.entries(inputs).map<[string, [BlockIOSubSchema, any]]>(([k, v]) => [
-      k,
-      [inputFields[k], v],
-    ]);
+    Object.entries(inputs).map<[string, [BlockIOSubSchema | undefined, any]]>(
+      ([k, v]) => [k, [inputFields[k], v]],
+    );
 
   const hasInputs = inputEntries && inputEntries.length > 0;
   const hasCredentials = credentialInputs && credentialFieldEntries.length > 0;
