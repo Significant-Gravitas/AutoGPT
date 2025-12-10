@@ -14,6 +14,7 @@ export const SuggestionContent = () => {
     useBlockMenuStore();
   const { data, isLoading, isError, error, refetch } = useSuggestionContent();
   const suggestions = data?.suggestions;
+  const hasRecentSearches = (suggestions?.recent_searches?.length ?? 0) > 0;
 
   if (isError) {
     return (
@@ -37,7 +38,7 @@ export const SuggestionContent = () => {
     <div className={blockMenuContainerStyle}>
       <div className="w-full space-y-6 pb-4">
         {/* Recent searches */}
-        {suggestions?.recent_searches.length! > 0 && (
+        {hasRecentSearches && (
           <div className="space-y-2.5 px-4">
             <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
               Recent searches
