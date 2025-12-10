@@ -40,8 +40,8 @@ import { cn, isEmpty } from "@/lib/utils";
 import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
-import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 import { analytics } from "@/services/analytics";
+import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 
 export function AgentRunDraftView({
   graph,
@@ -674,9 +674,6 @@ export function AgentRunDraftView({
                       prev.add("credentials"),
                     );
                   }}
-                  hideIfSingleCredentialAvailable={
-                    !agentPreset && !graph.has_external_trigger
-                  }
                 />
               ),
             )}

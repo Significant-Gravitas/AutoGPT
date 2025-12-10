@@ -3,8 +3,10 @@
 import { useEffect, useMemo } from "react";
 
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import type { LibraryAgentPresetResponse } from "@/app/api/__generated__/models/libraryAgentPresetResponse";
 import { okData } from "@/app/api/helpers";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,8 +17,15 @@ import {
   getNextRunsPageParam,
 } from "./helpers";
 
-function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
-  if (value === "runs" || value === "scheduled" || value === "templates") {
+function parseTab(
+  value: string | null,
+): "runs" | "scheduled" | "templates" | "triggers" {
+  if (
+    value === "runs" ||
+    value === "scheduled" ||
+    value === "templates" ||
+    value === "triggers"
+  ) {
     return value;
   }
   return "runs";
@@ -24,10 +33,15 @@ function parseTab(value: string | null): "runs" | "scheduled" | "templates" {
 
 type Args = {
   graphId?: string;
-  onSelectRun: (runId: string, tab?: "runs" | "scheduled") => void;
+  onSelectRun: (
+    runId: string,
+    tab?: "runs" | "scheduled" | "templates" | "triggers",
+  ) => void;
   onCountsChange?: (info: {
     runsCount: number;
     schedulesCount: number;
+    templatesCount: number;
+    triggersCount: number;
     loading?: boolean;
   }) => void;
 };
@@ -67,16 +81,40 @@ export function useSidebarRunsList({
     },
   );
 
+  const presetsQuery = useGetV2ListPresets(
+    { graph_id: graphId || null, page: 1, page_size: 100 },
+    {
+      query: {
+        enabled: !!graphId,
+        select: (r) => okData<LibraryAgentPresetResponse>(r)?.presets ?? [],
+      },
+    },
+  );
+
   const runs = useMemo(
     () => extractRunsFromPages(runsQuery.data),
     [runsQuery.data],
   );
 
   const schedules = schedulesQuery.data || [];
+  const allPresets = presetsQuery.data || [];
+  const triggers = useMemo(
+    () => allPresets.filter((preset) => preset.webhook_id && preset.webhook),
+    [allPresets],
+  );
+  const templates = useMemo(
+    () => allPresets.filter((preset) => !preset.webhook_id || !preset.webhook),
+    [allPresets],
+  );
 
   const runsCount = computeRunsCount(runsQuery.data, runs.length);
   const schedulesCount = schedules.length;
-  const loading = !schedulesQuery.isSuccess || !runsQuery.isSuccess;
+  const templatesCount = templates.length;
+  const triggersCount = triggers.length;
+  const loading =
+    !schedulesQuery.isSuccess ||
+    !runsQuery.isSuccess ||
+    !presetsQuery.isSuccess;
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -94,9 +132,22 @@ export function useSidebarRunsList({
   // Notify parent about counts and loading state
   useEffect(() => {
     if (onCountsChange) {
-      onCountsChange({ runsCount, schedulesCount, loading });
+      onCountsChange({
+        runsCount,
+        schedulesCount,
+        templatesCount,
+        triggersCount,
+        loading,
+      });
     }
-  }, [runsCount, schedulesCount, loading, onCountsChange]);
+  }, [
+    runsCount,
+    schedulesCount,
+    templatesCount,
+    triggersCount,
+    loading,
+    onCountsChange,
+  ]);
 
   useEffect(() => {
     if (runs.length > 0 && tabValue === "runs" && !activeItem) {
@@ -111,15 +162,31 @@ export function useSidebarRunsList({
     }
   }, [activeItem, runs.length, schedules, onSelectRun]);
 
+  useEffect(() => {
+    if (templates.length > 0 && tabValue === "templates" && !activeItem) {
+      onSelectRun(templates[0].id, "templates");
+    }
+  }, [templates, activeItem, tabValue, onSelectRun]);
+
+  useEffect(() => {
+    if (triggers.length > 0 && tabValue === "triggers" && !activeItem) {
+      onSelectRun(triggers[0].id, "triggers");
+    }
+  }, [triggers, activeItem, tabValue, onSelectRun]);
+
   return {
     runs,
     schedules,
-    error: schedulesQuery.error || runsQuery.error,
+    templates,
+    triggers,
+    error: schedulesQuery.error || runsQuery.error || presetsQuery.error,
     loading,
     runsQuery,
     tabValue,
     runsCount,
     schedulesCount,
+    templatesCount,
+    triggersCount,
     fetchMoreRuns: runsQuery.fetchNextPage,
     hasMoreRuns: runsQuery.hasNextPage,
     isFetchingMoreRuns: runsQuery.isFetchingNextPage,

@@ -4,13 +4,15 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { AlarmIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { ScheduleAgentModal } from "../ScheduleAgentModal/ScheduleAgentModal";
-import { AgentCostSection } from "./components/AgentCostSection/AgentCostSection";
-import { AgentDetails } from "./components/AgentDetails/AgentDetails";
-import { AgentSectionHeader } from "./components/AgentSectionHeader/AgentSectionHeader";
 import { ModalHeader } from "./components/ModalHeader/ModalHeader";
 import { ModalRunSection } from "./components/ModalRunSection/ModalRunSection";
 import { RunActions } from "./components/RunActions/RunActions";
@@ -77,6 +79,8 @@ export function RunAgentModal({
     Object.keys(agentInputFields || {}).length > 0 ||
     Object.keys(agentCredentialsInputFields || {}).length > 0;
 
+  const isTriggerRunType = defaultRunType.includes("trigger");
+
   function handleInputChange(key: string, value: string) {
     setInputValues((prev) => ({
       ...prev,
@@ -122,70 +126,74 @@ export function RunAgentModal({
       >
         <Dialog.Trigger>{triggerSlot}</Dialog.Trigger>
         <Dialog.Content>
-          <div className="flex h-full flex-col pb-4">
-            {/* Header */}
-            <div className="flex-shrink-0">
-              <ModalHeader agent={agent} />
-              <AgentCostSection flowId={agent.graph_id} />
-            </div>
+          {/* Header */}
+          <ModalHeader agent={agent} />
 
-            {/* Scrollable content */}
-            <div className="flex-1 pr-1" style={{ scrollbarGutter: "stable" }}>
-              {/* Setup Section */}
-              <div className="mt-10">
-                {hasAnySetupFields ? (
-                  <RunAgentModalContextProvider
-                    value={{
-                      agent,
-                      defaultRunType,
-                      presetName,
-                      setPresetName,
-                      presetDescription,
-                      setPresetDescription,
-                      inputValues,
-                      setInputValue: handleInputChange,
-                      agentInputFields,
-                      inputCredentials,
-                      setInputCredentialsValue: handleCredentialsChange,
-                      agentCredentialsInputFields,
-                    }}
-                  >
-                    <>
-                      <AgentSectionHeader
-                        title={
-                          defaultRunType === "automatic-trigger"
-                            ? "Trigger Setup"
-                            : "Agent Setup"
-                        }
-                      />
-                      <ModalRunSection />
-                    </>
-                  </RunAgentModalContextProvider>
-                ) : null}
-              </div>
-
-              {/* Agent Details Section */}
-              <div className="mt-8">
-                <AgentSectionHeader title="Agent Details" />
-                <AgentDetails agent={agent} />
-              </div>
-            </div>
-          </div>
-          <Dialog.Footer
-            className="fixed bottom-1 left-0 z-10 w-full bg-white p-4"
-            style={{ boxShadow: "0px -8px 10px white" }}
-          >
-            <div className="flex items-center justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={handleOpenScheduleModal}
-                disabled={
-                  isExecuting || isSettingUpTrigger || !allRequiredInputsAreSet
-                }
+          {/* Content */}
+          {hasAnySetupFields ? (
+            <div className="mt-10">
+              <RunAgentModalContextProvider
+                value={{
+                  agent,
+                  defaultRunType,
+                  presetName,
+                  setPresetName,
+                  presetDescription,
+                  setPresetDescription,
+                  inputValues,
+                  setInputValue: handleInputChange,
+                  agentInputFields,
+                  inputCredentials,
+                  setInputCredentialsValue: handleCredentialsChange,
+                  agentCredentialsInputFields,
+                }}
               >
-                <AlarmIcon size={16} />
-                Schedule Agent
-              </Button>
+                <ModalRunSection />
+              </RunAgentModalContextProvider>
+            </div>
+          ) : null}
+
+          <Dialog.Footer className="mt-6 bg-white pt-4">
+            <div className="flex items-center justify-end gap-3">
+              {isTriggerRunType ? null : !allRequiredInputsAreSet ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          variant="secondary"
+                          onClick={handleOpenScheduleModal}
+                          disabled={
+                            isExecuting ||
+                            isSettingUpTrigger ||
+                            !allRequiredInputsAreSet
+                          }
+                        >
+                          Schedule Task
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        Please set up all required inputs and credentials before
+                        scheduling
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={handleOpenScheduleModal}
+                  disabled={
+                    isExecuting ||
+                    isSettingUpTrigger ||
+                    !allRequiredInputsAreSet
+                  }
+                >
+                  Schedule Task
+                </Button>
+              )}
               <RunActions
                 defaultRunType={defaultRunType}
                 onRun={handleRun}
