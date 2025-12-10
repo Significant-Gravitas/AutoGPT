@@ -60,6 +60,9 @@ model User {
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
+
+  // Long-running agent sessions
+  LongRunningSessions   LongRunningSession[]
 }
 
 enum OnboardingStep {
@@ -958,4 +961,166 @@ enum APIKeyStatus {
   ACTIVE
   REVOKED
   SUSPENDED
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////   LONG-RUNNING AGENT SESSION TABLES    //////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// Status of a long-running agent session
+enum LongRunningSessionStatus {
+  INITIALIZING
+  READY
+  WORKING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+// Status of a feature in a long-running session
+enum LongRunningFeatureStatus {
+  PENDING
+  IN_PROGRESS
+  PASSING
+  FAILING
+  BLOCKED
+  SKIPPED
+}
+
+// Category of a feature
+enum LongRunningFeatureCategory {
+  FUNCTIONAL
+  UI
+  INTEGRATION
+  PERFORMANCE
+  SECURITY
+  DOCUMENTATION
+  TESTING
+  INFRASTRUCTURE
+}
+
+// Type of progress entry
+enum LongRunningProgressEntryType {
+  SESSION_START
+  SESSION_END
+  FEATURE_START
+  FEATURE_COMPLETE
+  FEATURE_FAILED
+  CODE_CHANGE
+  TEST_RUN
+  BUG_FIX
+  ENVIRONMENT_SETUP
+  GIT_COMMIT
+  NOTE
+  ERROR
+}
+
+// Main session state for long-running agent projects
+// Based on Anthropic's "Effective Harnesses for Long-Running Agents" research
+model LongRunningSession {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Project info
+  projectName        String
+  projectDescription String @db.Text
+
+  // Status tracking
+  status           LongRunningSessionStatus @default(INITIALIZING)
+  currentSessionId String?
+  sessionCount     Int                      @default(0)
+
+  // File paths (for file-based state management)
+  workingDirectory String
+  featureListPath  String?
+  progressLogPath  String?
+  initScriptPath   String?
+
+  // Git tracking
+  gitRepoInitialized Boolean @default(false)
+  currentFeatureId   String?
+
+  // Additional metadata
+  environmentVariables Json @default("{}")
+  metadata             Json @default("{}")
+
+  // Link to User model
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relations
+  Features       LongRunningFeature[]
+  ProgressLog    LongRunningProgress[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+// Features for a long-running session
+model LongRunningFeature {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Feature info
+  featureId   String // User-defined feature ID (e.g., "feature_001")
+  category    LongRunningFeatureCategory @default(FUNCTIONAL)
+  description String                     @db.Text
+  steps       String[]                   @default([])
+
+  // Status tracking
+  status   LongRunningFeatureStatus @default(PENDING)
+  priority Int                      @default(5) // 1 = highest, 10 = lowest
+
+  // Dependencies
+  dependencies String[] @default([])
+
+  // Notes and tracking
+  notes            String?
+  updatedBySession String?
+
+  // Link to session
+  sessionId String
+  Session   LongRunningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Progress entries related to this feature
+  ProgressEntries LongRunningProgress[]
+
+  @@unique([sessionId, featureId])
+  @@index([sessionId, status])
+  @@index([sessionId, priority])
+}
+
+// Progress entries for a long-running session
+model LongRunningProgress {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Entry info
+  agentSessionId String // The session that created this entry
+  entryType      LongRunningProgressEntryType
+
+  // Content
+  title       String
+  description String? @db.Text
+
+  // Related entities
+  gitCommitHash String?
+  filesChanged  String[] @default([])
+  metadata      Json     @default("{}")
+
+  // Link to session
+  sessionId String
+  Session   LongRunningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Optional link to feature
+  featureId String?
+  Feature   LongRunningFeature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
+  @@index([agentSessionId])
+  @@index([featureId])
 }

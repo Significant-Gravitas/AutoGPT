@@ -33,6 +33,7 @@ import backend.server.v2.executions.review.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
+import backend.server.v2.long_running.routes
 import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
@@ -282,6 +283,11 @@ app.include_router(
 )
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
+)
+app.include_router(
+    backend.server.v2.long_running.routes.router,
+    tags=["v2", "long-running"],
+    prefix="/api/long-running",
 )
 app.include_router(
     backend.server.v2.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
