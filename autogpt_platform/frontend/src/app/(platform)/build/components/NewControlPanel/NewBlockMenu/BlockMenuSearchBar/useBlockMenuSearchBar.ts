@@ -1,30 +1,32 @@
 import { debounce } from "lodash";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
+import { getQueryClient } from "@/lib/react-query/queryClient";
+import { getGetV2GetBuilderSuggestionsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
 export const useBlockMenuSearchBar = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localQuery, setLocalQuery] = useState("");
-  const { setSearchQuery, setSearchId, searchId, searchQuery } =
-    useBlockMenuStore();
+  const { setSearchQuery, setSearchId, searchQuery } = useBlockMenuStore();
+  const queryClient = getQueryClient();
 
-  const searchIdRef = useRef(searchId);
-  useEffect(() => {
-    searchIdRef.current = searchId;
-  }, [searchId]);
+  const clearSearchSession = useCallback(() => {
+    setSearchId(undefined);
+    queryClient.invalidateQueries({
+      queryKey: getGetV2GetBuilderSuggestionsQueryKey(),
+    });
+  }, [queryClient, setSearchId]);
 
   const debouncedSetSearchQuery = useCallback(
     debounce((value: string) => {
       setSearchQuery(value);
       if (value.length === 0) {
-        setSearchId(undefined);
-      } else if (!searchIdRef.current) {
-        setSearchId(crypto.randomUUID());
+        clearSearchSession();
       }
     }, SEARCH_DEBOUNCE_MS),
-    [setSearchQuery, setSearchId],
+    [clearSearchSession, setSearchQuery],
   );
 
   useEffect(() => {
@@ -36,13 +38,13 @@ export const useBlockMenuSearchBar = () => {
   const handleClear = () => {
     setLocalQuery("");
     setSearchQuery("");
-    setSearchId(undefined);
+    clearSearchSession();
     debouncedSetSearchQuery.cancel();
   };
 
   useEffect(() => {
     setLocalQuery(searchQuery);
-  }, []);
+  }, [searchQuery]);
 
   return {
     handleClear,
