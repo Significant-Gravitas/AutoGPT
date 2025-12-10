@@ -13,7 +13,8 @@ export function getCredentialTypeDisplayName(type: string): string {
 }
 
 export function getAgentInputFields(agent: LibraryAgent): Record<string, any> {
-  const schema = agent.input_schema as unknown as {
+  const schema = (agent.trigger_setup_info?.config_schema ??
+    agent.input_schema) as unknown as {
     properties?: Record<string, any>;
   } | null;
   if (!schema || !schema.properties) return {};

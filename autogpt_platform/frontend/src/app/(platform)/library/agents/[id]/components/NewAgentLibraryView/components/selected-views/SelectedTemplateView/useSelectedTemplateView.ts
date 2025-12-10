@@ -138,11 +138,21 @@ export function useSelectedTemplateView({
   }
 
   function handleStartTask() {
+    if (!query.data) return;
+
+    const inputsChanged =
+      JSON.stringify(inputs) !== JSON.stringify(query.data.inputs || {});
+
+    const credentialsChanged =
+      JSON.stringify(credentials) !==
+      JSON.stringify(query.data.credentials || {});
+
+    // Use changed unpersisted inputs if applicable
     executeMutation.mutate({
       presetId: templateId,
       data: {
-        inputs: {},
-        credential_inputs: {},
+        inputs: inputsChanged ? inputs : undefined,
+        credential_inputs: credentialsChanged ? credentials : undefined,
       },
     });
   }

@@ -1,5 +1,7 @@
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
+import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
@@ -24,7 +26,7 @@ export function useNewAgentLibraryView() {
   const agentId = id as string;
 
   const {
-    data: response,
+    data: agent,
     isSuccess,
     error,
   } = useGetV2GetLibraryAgent(agentId, {
@@ -40,6 +42,24 @@ export function useNewAgentLibraryView() {
     });
 
   const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
+
+  const {
+    data: _template,
+    isSuccess: isTemplateLoaded,
+    isLoading: isTemplateLoading,
+    error: templateError,
+  } = useGetV2GetASpecificPreset(activeItem ?? "", {
+    query: {
+      enabled: Boolean(activeTab === "templates" && activeItem),
+      select: okData<LibraryAgentPreset>,
+    },
+  });
+  const activeTemplate =
+    isTemplateLoaded &&
+    activeTab === "templates" &&
+    _template?.id === activeItem
+      ? _template
+      : null;
 
   useEffect(() => {
     if (!activeTabRaw && !activeItem) {
@@ -71,10 +91,10 @@ export function useNewAgentLibraryView() {
   const showSidebarLayout = sidebarLoading || hasAnyItems;
 
   useEffect(() => {
-    if (response) {
-      document.title = `${response.name} - Library - AutoGPT Platform`;
+    if (agent) {
+      document.title = `${agent.name} - Library - AutoGPT Platform`;
     }
-  }, [response]);
+  }, [agent]);
 
   useEffect(() => {
     if (
@@ -135,9 +155,11 @@ export function useNewAgentLibraryView() {
 
   return {
     agentId: id,
+    agent,
     ready: isSuccess,
-    error,
-    agent: response,
+    activeTemplate,
+    isTemplateLoading,
+    error: error || templateError,
     hasAnyItems,
     showSidebarLayout,
     activeItem,

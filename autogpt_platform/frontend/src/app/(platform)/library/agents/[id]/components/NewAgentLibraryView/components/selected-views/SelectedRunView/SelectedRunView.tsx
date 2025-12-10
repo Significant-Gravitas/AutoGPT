@@ -198,8 +198,8 @@ export function SelectedRunView({
               <RunDetailCard title="Your input">
                 <AgentInputsReadOnly
                   agent={agent}
-                  inputs={(run as any)?.inputs}
-                  credentialInputs={(run as any)?.credential_inputs}
+                  inputs={run?.inputs}
+                  credentialInputs={run?.credential_inputs}
                 />
               </RunDetailCard>
             </div>

@@ -2,6 +2,7 @@
 
 import { getV1GetGraphVersion } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
@@ -15,9 +16,10 @@ import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
 
 type Props = {
   agent: LibraryAgent;
+  onTriggerSetup?: (preset: LibraryAgentPreset) => void;
 };
 
-export function EmptyTasks({ agent }: Props) {
+export function EmptyTasks({ agent, onTriggerSetup }: Props) {
   const { toast } = useToast();
 
   async function handleExport() {
@@ -75,7 +77,7 @@ export function EmptyTasks({ agent }: Props) {
                 </Button>
               }
               agent={agent}
-              agentId={agent.id.toString()}
+              onTriggerSetup={onTriggerSetup}
             />
           </div>
         </div>
