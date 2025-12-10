@@ -19,13 +19,18 @@ import { useSelectedRunActions } from "./useSelectedRunActions";
 type Props = {
   agent: LibraryAgent;
   run: GraphExecution | undefined;
-  scheduleRecurrence?: string;
   onSelectRun?: (id: string) => void;
   onClearSelectedRun?: () => void;
 };
 
-export function SelectedRunActions(props: Props) {
+export function SelectedRunActions({
+  agent,
+  run,
+  onSelectRun,
+  onClearSelectedRun,
+}: Props) {
   const {
+    canRunManually,
     handleRunAgain,
     handleStopRun,
     isRunningAgain,
@@ -36,21 +41,20 @@ export function SelectedRunActions(props: Props) {
     isCreateTemplateModalOpen,
     setIsCreateTemplateModalOpen,
   } = useSelectedRunActions({
-    agentGraphId: props.agent.graph_id,
-    run: props.run,
-    agent: props.agent,
-    onSelectRun: props.onSelectRun,
-    onClearSelectedRun: props.onClearSelectedRun,
+    agentGraphId: agent.graph_id,
+    run: run,
+    agent: agent,
+    onSelectRun: onSelectRun,
   });
 
   const shareExecutionResultsEnabled = useGetFlag(Flag.SHARE_EXECUTION_RESULTS);
-  const isRunning = props.run?.status === "RUNNING";
+  const isRunning = run?.status === "RUNNING";
 
-  if (!props.run || !props.agent) return null;
+  if (!run || !agent) return null;
 
   return (
     <div className="my-4 flex flex-col items-center gap-3">
-      {!isRunning ? (
+      {canRunManually && !isRunning ? (
         <Button
           variant="icon"
           size="icon"
@@ -102,37 +106,37 @@ export function SelectedRunActions(props: Props) {
       ) : null}
       {shareExecutionResultsEnabled && (
         <ShareRunButton
-          graphId={props.agent.graph_id}
-          executionId={props.run.id}
-          isShared={props.run.is_shared}
-          shareToken={props.run.share_token}
+          graphId={agent.graph_id}
+          executionId={run.id}
+          isShared={run.is_shared}
+          shareToken={run.share_token}
         />
       )}
-      <FloatingSafeModeToggle
-        graph={props.agent}
-        variant="white"
-        fullWidth={false}
-      />
-      <Button
-        variant="icon"
-        size="icon"
-        aria-label="Save task as template"
-        onClick={() => setIsCreateTemplateModalOpen(true)}
-        title="Create template"
-      >
-        <CardsThreeIcon weight="bold" size={18} className="text-zinc-700" />
-      </Button>
+      <FloatingSafeModeToggle graph={agent} variant="white" fullWidth={false} />
+      {canRunManually && (
+        <>
+          <Button
+            variant="icon"
+            size="icon"
+            aria-label="Save task as template"
+            onClick={() => setIsCreateTemplateModalOpen(true)}
+            title="Create template"
+          >
+            <CardsThreeIcon weight="bold" size={18} className="text-zinc-700" />
+          </Button>
+          <CreateTemplateModal
+            isOpen={isCreateTemplateModalOpen}
+            onClose={() => setIsCreateTemplateModalOpen(false)}
+            onCreate={handleCreateTemplate}
+            run={run}
+          />
+        </>
+      )}
       <AgentActionsDropdown
-        agent={props.agent}
-        run={props.run}
-        agentGraphId={props.agent.graph_id}
-        onClearSelectedRun={props.onClearSelectedRun}
-      />
-      <CreateTemplateModal
-        isOpen={isCreateTemplateModalOpen}
-        onClose={() => setIsCreateTemplateModalOpen(false)}
-        onCreate={handleCreateTemplate}
-        run={props.run}
+        agent={agent}
+        run={run}
+        agentGraphId={agent.graph_id}
+        onClearSelectedRun={onClearSelectedRun}
       />
     </div>
   );

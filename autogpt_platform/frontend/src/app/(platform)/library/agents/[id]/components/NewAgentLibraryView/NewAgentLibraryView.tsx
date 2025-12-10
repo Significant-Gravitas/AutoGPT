@@ -27,8 +27,8 @@ export function NewAgentLibraryView() {
     agentId,
     agent,
     ready,
-    preset,
-    isPresetLoading,
+    activeTemplate,
+    isTemplateLoading,
     error,
     hasAnyItems,
     activeItem,
@@ -88,7 +88,7 @@ export function NewAgentLibraryView() {
                 variant="primary"
                 size="large"
                 className="w-full"
-                disabled={isPresetLoading}
+                disabled={isTemplateLoading && activeTab === "templates"}
               >
                 <PlusIcon size={20} /> New task
               </Button>
@@ -98,8 +98,8 @@ export function NewAgentLibraryView() {
             onScheduleCreated={(schedule) =>
               handleSelectRun(schedule.id, "scheduled")
             }
-            initialInputValues={preset?.inputs}
-            initialInputCredentials={preset?.credentials}
+            initialInputValues={activeTemplate?.inputs}
+            initialInputCredentials={activeTemplate?.credentials}
           />
         </div>
 

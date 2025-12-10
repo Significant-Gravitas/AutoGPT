@@ -44,17 +44,22 @@ export function useNewAgentLibraryView() {
   const activeTab = useMemo(() => parseTab(activeTabRaw), [activeTabRaw]);
 
   const {
-    data: _preset,
-    isSuccess: isPresetLoaded,
-    isLoading: isPresetLoading,
-    error: presetError,
+    data: _template,
+    isSuccess: isTemplateLoaded,
+    isLoading: isTemplateLoading,
+    error: templateError,
   } = useGetV2GetASpecificPreset(activeItem ?? "", {
     query: {
       enabled: Boolean(activeTab === "templates" && activeItem),
       select: okData<LibraryAgentPreset>,
     },
   });
-  const preset = isPresetLoaded && _preset?.id === activeItem ? _preset : null;
+  const activeTemplate =
+    isTemplateLoaded &&
+    activeTab === "templates" &&
+    _template?.id === activeItem
+      ? _template
+      : null;
 
   useEffect(() => {
     if (!activeTabRaw && !activeItem) {
@@ -152,9 +157,9 @@ export function useNewAgentLibraryView() {
     agentId: id,
     agent,
     ready: isSuccess,
-    preset,
-    isPresetLoading,
-    error: error || presetError,
+    activeTemplate,
+    isTemplateLoading,
+    error: error || templateError,
     hasAnyItems,
     showSidebarLayout,
     activeItem,
