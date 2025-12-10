@@ -7,15 +7,15 @@ from typing import Sequence
 import prisma
 
 import backend.data.block
+import backend.server.v2.library.db as library_db
+import backend.server.v2.library.model as library_model
+import backend.server.v2.store.db as store_db
+import backend.server.v2.store.model as store_model
 from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
 from backend.data.db import query_raw_with_schema
 from backend.integrations.providers import ProviderName
-import backend.server.v2.library.db as library_db
-import backend.server.v2.library.model as library_model
-import backend.server.v2.store.db as store_db
-import backend.server.v2.store.model as store_model
 from backend.server.v2.builder.model import (
     BlockCategoryResponse,
     BlockResponse,
@@ -280,9 +280,7 @@ async def _build_cached_search_results(
             page=1,
             page_size=MAX_MARKETPLACE_AGENT_RESULTS,
         )
-        total_items[
-            "marketplace_agents"
-        ] = marketplace_response.pagination.total_items
+        total_items["marketplace_agents"] = marketplace_response.pagination.total_items
         scored_items.extend(
             _build_marketplace_items(
                 agents=marketplace_response.agents,
