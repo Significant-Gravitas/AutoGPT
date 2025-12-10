@@ -24,7 +24,8 @@ export function RunActions({
         disabled={!isRunReady || isExecuting || isSettingUpTrigger}
         loading={isExecuting || isSettingUpTrigger}
       >
-        {defaultRunType === "automatic-trigger"
+        {defaultRunType === "automatic-trigger" ||
+        defaultRunType === "manual-trigger"
           ? "Set up Trigger"
           : "Start Task"}
       </Button>
