@@ -1,7 +1,7 @@
 import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
 import { useGetV2BuilderSearchInfinite } from "@/app/api/__generated__/endpoints/store/store";
 import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
@@ -9,16 +9,31 @@ import {
   getGetV2ListLibraryAgentsQueryKey,
   usePostV2AddMarketplaceAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
-import { getGetV2GetBuilderItemCountsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
+import {
+  getGetV2GetBuilderItemCountsQueryKey,
+  getGetV2GetBuilderSuggestionsQueryKey,
+} from "@/app/api/__generated__/endpoints/default/default";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 
 export const useBlockMenuSearch = () => {
-  const { searchQuery } = useBlockMenuStore();
+  const { searchQuery, searchId, setSearchId } = useBlockMenuStore();
   const { toast } = useToast();
   const { addAgentToBuilder, addLibraryAgentToBuilder } =
     useAddAgentToBuilder();
+  const queryClient = getQueryClient();
+  const builderSuggestionsQueryKey = useMemo(
+    () => getGetV2GetBuilderSuggestionsQueryKey(),
+    [],
+  );
+
+  const resetSearchSession = useCallback(() => {
+    setSearchId(undefined);
+    queryClient.invalidateQueries({
+      queryKey: builderSuggestionsQueryKey,
+    });
+  }, [builderSuggestionsQueryKey, queryClient, setSearchId]);
 
   const [addingLibraryAgentId, setAddingLibraryAgentId] = useState<
     string | null
@@ -38,6 +53,7 @@ export const useBlockMenuSearch = () => {
       page: 1,
       page_size: 8,
       search_query: searchQuery,
+      search_id: searchId,
     },
     {
       query: {
@@ -58,7 +74,6 @@ export const useBlockMenuSearch = () => {
   const { mutateAsync: addMarketplaceAgent } = usePostV2AddMarketplaceAgent({
     mutation: {
       onSuccess: () => {
-        const queryClient = getQueryClient();
         queryClient.invalidateQueries({
           queryKey: getGetV2ListLibraryAgentsQueryKey(),
         });
@@ -79,6 +94,24 @@ export const useBlockMenuSearch = () => {
       },
     },
   });
+
+  useEffect(() => {
+    if (!searchData?.pages?.length) {
+      return;
+    }
+
+    const latestPage = searchData.pages[searchData.pages.length - 1];
+    const response = latestPage?.data as SearchResponse;
+    if (response?.search_id && response.search_id !== searchId) {
+      setSearchId(response.search_id);
+    }
+  }, [searchData, searchId, setSearchId]);
+
+  useEffect(() => {
+    if (searchId && !searchQuery) {
+      resetSearchSession();
+    }
+  }, [resetSearchSession, searchId, searchQuery]);
 
   const allSearchData =
     searchData?.pages?.flatMap((page) => {
