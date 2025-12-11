@@ -55,14 +55,21 @@ export function getPaginationNextPageNumber(
   return hasMore ? pagination.current_page + 1 : undefined;
 }
 
+/** Makes one list from a paginated infinite query result */
 export function unpaginate<
   TItemData extends object,
   TPageDataKey extends string,
 >(
-  infiniteData: InfiniteData<{
-    status: number;
-    data: { [key in TPageDataKey]: TItemData[] } | Record<string, any>;
-  }>,
+  infiniteData: InfiniteData<
+    | {
+        status: 200;
+        data: { [key in TPageDataKey]: TItemData[] };
+      }
+    | {
+        status: 401 | 404 | 422; // <-- add error codes here as needed; do not change to 'number' as that will break the type checking magic
+        data: Record<string, any>;
+      }
+  >,
   pageListKey: TPageDataKey &
     keyof (typeof infiniteData)["pages"][number]["data"],
 ): TItemData[] {
