@@ -1,15 +1,16 @@
+import { getPaginationNextPageNumber } from "@/app/api/helpers";
+import {
+  GraphExecutionMeta as LegacyGraphExecutionMeta,
+  GraphID,
+  GraphExecutionID,
+} from "@/lib/autogpt-server-api";
+import { getQueryClient } from "@/lib/react-query/queryClient";
 import {
   getV1ListGraphExecutionsResponse,
   getV1ListGraphExecutionsResponse200,
   useGetV1ListGraphExecutionsInfinite,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphExecutionsPaginated";
-import { getQueryClient } from "@/lib/react-query/queryClient";
-import {
-  GraphExecutionMeta as LegacyGraphExecutionMeta,
-  GraphID,
-  GraphExecutionID,
-} from "@/lib/autogpt-server-api";
 import { GraphExecutionMeta as RawGraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 
 export type GraphExecutionMeta = Omit<
@@ -44,15 +45,7 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
     { page: 1, page_size: 20 },
     {
       query: {
-        getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as GraphExecutionsPaginated)
-            .pagination;
-          const hasMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return hasMore ? pagination.current_page + 1 : undefined;
-        },
+        getNextPageParam: getPaginationNextPageNumber,
 
         // Prevent query from running if graphID is not available (yet)
         ...(!graphID

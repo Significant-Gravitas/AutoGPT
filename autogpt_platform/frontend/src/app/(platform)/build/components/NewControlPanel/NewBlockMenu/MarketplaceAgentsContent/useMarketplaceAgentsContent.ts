@@ -1,3 +1,4 @@
+import { getPaginationNextPageNumber } from "@/app/api/helpers";
 import { getGetV2GetBuilderItemCountsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
 import {
   getGetV2ListLibraryAgentsQueryKey,
@@ -7,13 +8,13 @@ import {
   getV2GetSpecificAgent,
   useGetV2ListStoreAgentsInfinite,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { StoreAgentsResponse } from "@/lib/autogpt-server-api";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import * as Sentry from "@sentry/nextjs";
 import { useState } from "react";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 export const useMarketplaceAgentsContent = () => {
   const { toast } = useToast();
@@ -35,16 +36,7 @@ export const useMarketplaceAgentsContent = () => {
       page_size: 10,
     },
     {
-      query: {
-        getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as StoreAgentsResponse).pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
-      },
+      query: { getNextPageParam: getPaginationNextPageNumber },
     },
   );
 

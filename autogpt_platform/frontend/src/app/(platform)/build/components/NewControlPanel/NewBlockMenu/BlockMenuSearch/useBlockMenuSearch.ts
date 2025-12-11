@@ -1,18 +1,21 @@
-import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
-import { useGetV2BuilderSearchInfinite } from "@/app/api/__generated__/endpoints/store/store";
-import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 import { useCallback, useEffect, useState } from "react";
+import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
+import { getPaginationNextPageNumber } from "@/app/api/helpers";
+import {
+  getGetV2GetBuilderItemCountsQueryKey,
+  getGetV2GetBuilderSuggestionsQueryKey,
+} from "@/app/api/__generated__/endpoints/default/default";
 import {
   getGetV2ListLibraryAgentsQueryKey,
   usePostV2AddMarketplaceAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
 import {
-  getGetV2GetBuilderItemCountsQueryKey,
-  getGetV2GetBuilderSuggestionsQueryKey,
-} from "@/app/api/__generated__/endpoints/default/default";
+  getV2GetSpecificAgent,
+  useGetV2BuilderSearchInfinite,
+} from "@/app/api/__generated__/endpoints/store/store";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
@@ -52,18 +55,7 @@ export const useBlockMenuSearch = () => {
       search_id: searchId,
     },
     {
-      query: {
-        getNextPageParam: (lastPage) => {
-          const response = lastPage.data as SearchResponse;
-          const { pagination } = response;
-          if (!pagination) {
-            return undefined;
-          }
-
-          const { current_page, total_pages } = pagination;
-          return current_page < total_pages ? current_page + 1 : undefined;
-        },
-      },
+      query: { getNextPageParam: getPaginationNextPageNumber },
     },
   );
 

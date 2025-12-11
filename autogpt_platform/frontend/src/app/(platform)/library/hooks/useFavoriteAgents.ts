@@ -1,5 +1,6 @@
 "use client";
 
+import { getPaginationNextPageNumber } from "@/app/api/helpers";
 import { useGetV2ListFavoriteLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 
 export function useFavoriteAgents() {
@@ -15,19 +16,7 @@ export function useFavoriteAgents() {
       page_size: 10,
     },
     {
-      query: {
-        getNextPageParam: (lastPage) => {
-          // Only paginate on successful responses
-          if (!lastPage || lastPage.status !== 200) return undefined;
-
-          const pagination = lastPage.data.pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
-      },
+      query: { getNextPageParam: getPaginationNextPageNumber },
     },
   );
 

@@ -48,7 +48,7 @@ export function useSelectedRunView(graphId: string, runId: string) {
   const presetQuery = useGetV2GetASpecificPreset(presetId || "", {
     query: {
       enabled: !!presetId,
-      select: (res) => okData<LibraryAgentPreset>(res),
+      select: okData,
     },
   });
 

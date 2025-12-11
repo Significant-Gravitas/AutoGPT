@@ -1,3 +1,4 @@
+import { getPaginationNextPageNumber } from "@/app/api/helpers";
 import { useGetV2GetBuilderIntegrationProvidersInfinite } from "@/app/api/__generated__/endpoints/default/default";
 import { ProviderResponse } from "@/app/api/__generated__/models/providerResponse";
 
@@ -18,16 +19,7 @@ export const usePaginatedIntegrationList = () => {
       page_size: PAGE_SIZE,
     },
     {
-      query: {
-        getNextPageParam: (lastPage: any) => {
-          const pagination = (lastPage.data as ProviderResponse).pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
-      },
+      query: { getNextPageParam: getPaginationNextPageNumber },
     },
   );
 

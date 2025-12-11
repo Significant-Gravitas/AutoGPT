@@ -34,7 +34,7 @@ export function useSelectedTemplateView({
   const query = useGetV2GetASpecificPreset(templateId, {
     query: {
       enabled: !!templateId,
-      select: (res) => okData<LibraryAgentPreset>(res),
+      select: okData,
     },
   });
 
@@ -83,7 +83,7 @@ export function useSelectedTemplateView({
     mutation: {
       onSuccess: (response) => {
         if (response.status === 200) {
-          const execution = okData<GraphExecutionMeta>(response);
+          const execution = okData(response);
           if (execution) {
             toast({
               title: "Task started",

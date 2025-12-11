@@ -1,5 +1,6 @@
 "use client";
 
+import { getPaginationNextPageNumber } from "@/app/api/helpers";
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { useLibraryPageContext } from "../state-provider";
@@ -26,14 +27,7 @@ export const useLibraryAgentList = () => {
     {
       query: {
         initialData: getInitialData(cachedAgents, searchTerm, 8),
-        getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as LibraryAgentResponse).pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
+        getNextPageParam: getPaginationNextPageNumber,
       },
     },
   );
