@@ -26,9 +26,9 @@ INSTAGRAM_BLOCKS = {
     "InstagramSearchHashtagBlock",
 }
 
-# Check if instagrapi is available
+# Check if instagrapi is available (optional dependency)
 try:
-    import instagrapi
+    import instagrapi  # type: ignore[import-not-found]
 
     INSTAGRAPI_AVAILABLE = True
 except ImportError:
