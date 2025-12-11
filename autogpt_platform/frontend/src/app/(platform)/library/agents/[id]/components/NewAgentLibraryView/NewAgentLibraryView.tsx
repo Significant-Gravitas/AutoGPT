@@ -1,8 +1,5 @@
 "use client";
 
-import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -41,46 +38,10 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    onRunInitiated,
+    onTriggerSetup,
+    onScheduleCreated,
   } = useNewAgentLibraryView();
-
-  function onRunInitiated(newRun: GraphExecutionMeta) {
-    if (!agent) return;
-    if (!hasAnyItems)
-      handleCountsChange({
-        runsCount: 1,
-        schedulesCount: 0,
-        templatesCount: 0,
-        triggersCount: 0,
-      });
-
-    handleSelectRun(newRun.id, "runs");
-  }
-
-  function onScheduleCreated(newSchedule: GraphExecutionJobInfo) {
-    if (!agent) return;
-    if (!hasAnyItems)
-      handleCountsChange({
-        schedulesCount: 1,
-        runsCount: 0,
-        templatesCount: 0,
-        triggersCount: 0,
-      });
-
-    handleSelectRun(newSchedule.id, "scheduled");
-  }
-
-  function onTriggerSetup(newTrigger: LibraryAgentPreset) {
-    if (!agent) return;
-    if (!hasAnyItems)
-      handleCountsChange({
-        triggersCount: 1,
-        runsCount: 0,
-        schedulesCount: 0,
-        templatesCount: 0,
-      });
-
-    handleSelectRun(newTrigger.id, "triggers");
-  }
 
   if (error) {
     return (
