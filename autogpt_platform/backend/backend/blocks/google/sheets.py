@@ -614,6 +614,7 @@ class GoogleSheetsAppendRowBlock(Block):
                 input_data.value_input_option,
             )
             yield "result", result
+            # Output the GoogleDriveFile for chaining (preserves credentials_id)
             yield "spreadsheet", GoogleDriveFile(
                 id=input_data.spreadsheet.id,
                 name=input_data.spreadsheet.name,
