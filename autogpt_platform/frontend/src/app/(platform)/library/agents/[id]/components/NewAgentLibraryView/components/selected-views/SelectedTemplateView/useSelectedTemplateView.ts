@@ -1,6 +1,6 @@
 "use client";
 
-import { getGetV1ListGraphExecutionsInfiniteQueryOptions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { getGetV1ListGraphExecutionsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
   getGetV2GetASpecificPresetQueryKey,
   getGetV2ListPresetsQueryKey,
@@ -9,7 +9,6 @@ import {
   usePostV2ExecuteAPreset,
 } from "@/app/api/__generated__/endpoints/presets/presets";
 import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import type { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import type { LibraryAgentPresetUpdatable } from "@/app/api/__generated__/models/libraryAgentPresetUpdatable";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -89,9 +88,7 @@ export function useSelectedTemplateView({
               title: "Task started",
             });
             queryClient.invalidateQueries({
-              queryKey:
-                getGetV1ListGraphExecutionsInfiniteQueryOptions(graphId)
-                  .queryKey,
+              queryKey: getGetV1ListGraphExecutionsQueryKey(graphId),
             });
             onRunCreated?.(execution);
           }

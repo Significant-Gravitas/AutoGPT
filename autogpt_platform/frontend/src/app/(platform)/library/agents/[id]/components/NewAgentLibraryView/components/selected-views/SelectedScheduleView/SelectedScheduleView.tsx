@@ -16,6 +16,7 @@ import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
 import { SelectedScheduleActions } from "./components/SelectedScheduleActions";
 import { useSelectedScheduleView } from "./useSelectedScheduleView";
+import { okData } from "@/app/api/helpers";
 
 const anchorStyles =
   "border-b-2 border-transparent pb-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:border-slate-900";
@@ -37,9 +38,7 @@ export function SelectedScheduleView({
   );
 
   const { data: userTzRes } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
+    query: { select: (res) => okData(res)?.timezone },
   });
 
   const breakpoint = useBreakpoint();

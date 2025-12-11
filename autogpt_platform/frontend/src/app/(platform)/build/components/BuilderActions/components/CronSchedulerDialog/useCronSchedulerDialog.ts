@@ -1,5 +1,6 @@
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { usePostV1CreateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
@@ -29,9 +30,7 @@ export const useCronSchedulerDialog = ({
   });
 
   const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
+    query: { select: (res) => okData(res)?.timezone },
   });
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
 

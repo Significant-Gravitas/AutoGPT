@@ -5,6 +5,7 @@ import {
 } from "@/app/api/__generated__/endpoints/library/library";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -67,15 +68,19 @@ export function FloatingSafeModeToggle({
   const { data: libraryAgent, isLoading } = useGetV2GetLibraryAgentByGraphId(
     graphId,
     {},
-    { query: { enabled: !isAgent && shouldShowToggle } },
+    {
+      query: {
+        enabled: !isAgent && shouldShowToggle,
+        select: okData,
+      },
+    },
   );
 
   const [localSafeMode, setLocalSafeMode] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!isAgent && libraryAgent?.status === 200) {
-      const backendValue =
-        libraryAgent.data?.settings?.human_in_the_loop_safe_mode;
+    if (!isAgent && libraryAgent) {
+      const backendValue = libraryAgent.settings?.human_in_the_loop_safe_mode;
       if (backendValue !== undefined) {
         setLocalSafeMode(backendValue);
       }

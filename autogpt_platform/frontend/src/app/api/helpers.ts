@@ -17,7 +17,7 @@ import { Pagination } from "./__generated__/models/pagination";
  *   data // is now properly typed as LibraryAgent | undefined
  * ```
  */
-export function okData<TResponse extends { status: number; data?: object }>(
+export function okData<TResponse extends { status: number; data?: any }>(
   res: TResponse | undefined,
 ): (TResponse & { status: 200 })["data"] | undefined {
   if (!res || typeof res !== "object") return undefined;

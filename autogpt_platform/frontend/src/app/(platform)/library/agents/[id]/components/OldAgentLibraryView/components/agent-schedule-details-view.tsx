@@ -24,6 +24,7 @@ import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { formatScheduleTime } from "@/lib/timezone-utils";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
+import { okData } from "@/app/api/helpers";
 import { PlayIcon } from "lucide-react";
 
 import { AgentRunStatus } from "./agent-run-status-chip";
@@ -49,9 +50,7 @@ export function AgentScheduleDetailsView({
 
   // Get user's timezone for displaying schedule times
   const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
+    query: { select: (res) => okData(res)?.timezone },
   });
 
   const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {

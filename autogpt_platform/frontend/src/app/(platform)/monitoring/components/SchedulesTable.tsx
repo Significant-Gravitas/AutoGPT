@@ -38,6 +38,7 @@ import {
 import { TextRenderer } from "../../../../components/__legacy__/ui/render";
 import { Input } from "../../../../components/__legacy__/ui/input";
 import { Label } from "../../../../components/__legacy__/ui/label";
+import { okData } from "@/app/api/helpers";
 
 interface SchedulesTableProps {
   schedules: GraphExecutionJobInfo[];
@@ -67,9 +68,7 @@ export const SchedulesTable = ({
 
   // Get user's timezone for displaying schedule times
   const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : "UTC"),
-    },
+    query: { select: (res) => okData(res)?.timezone ?? "UTC" },
   });
 
   const filteredAndSortedSchedules = [...schedules]

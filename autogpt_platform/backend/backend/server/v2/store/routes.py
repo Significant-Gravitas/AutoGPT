@@ -11,7 +11,6 @@ import fastapi.responses
 import backend.data.graph
 import backend.server.v2.store.cache as store_cache
 import backend.server.v2.store.db
-import backend.server.v2.store.exceptions
 import backend.server.v2.store.image_gen
 import backend.server.v2.store.media
 import backend.server.v2.store.model
@@ -175,7 +174,9 @@ async def get_agent(username: str, agent_name: str):
     tags=["store"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
 )
-async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
+async def get_graph_meta_by_store_listing_version_id(
+    store_listing_version_id: str,
+) -> backend.data.graph.GraphMeta:
     """
     Get Agent Graph from Store Listing Version ID.
     """

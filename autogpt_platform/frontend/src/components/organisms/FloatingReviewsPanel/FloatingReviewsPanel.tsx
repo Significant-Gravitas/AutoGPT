@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { okData } from "@/app/api/helpers";
 
 interface FloatingReviewsPanelProps {
   executionId?: string;
@@ -27,12 +28,10 @@ export function FloatingReviewsPanel({
     {
       query: {
         enabled: !!(graphId && executionId),
+        select: okData,
       },
     },
   );
-
-  const executionStatus =
-    executionDetails?.status === 200 ? executionDetails.data.status : undefined;
 
   const { pendingReviews, isLoading, refetch } = usePendingReviewsForExecution(
     executionId || "",
@@ -42,13 +41,13 @@ export function FloatingReviewsPanel({
     if (executionId) {
       refetch();
     }
-  }, [executionStatus, executionId, refetch]);
+  }, [executionDetails?.status, executionId, refetch]);
 
   if (
     !executionId ||
     (!isLoading &&
       pendingReviews.length === 0 &&
-      executionStatus !== AgentExecutionStatus.REVIEW)
+      executionDetails?.status !== AgentExecutionStatus.REVIEW)
   ) {
     return null;
   }
