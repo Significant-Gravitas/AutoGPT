@@ -80,7 +80,11 @@ class InstagramLikePostBlock(Block):
                 from urllib.parse import urlparse
 
                 parsed = urlparse(media_id)
-                if parsed.netloc not in ("instagram.com", "www.instagram.com"):
+                if parsed.netloc not in (
+                    "instagram.com",
+                    "www.instagram.com",
+                    "m.instagram.com",
+                ):
                     return False, "Invalid URL: must be an Instagram URL"
                 media_id = client.media_pk_from_url(media_id)
 
@@ -162,7 +166,11 @@ class InstagramUnlikePostBlock(Block):
                 from urllib.parse import urlparse
 
                 parsed = urlparse(media_id)
-                if parsed.netloc not in ("instagram.com", "www.instagram.com"):
+                if parsed.netloc not in (
+                    "instagram.com",
+                    "www.instagram.com",
+                    "m.instagram.com",
+                ):
                     return False, "Invalid URL: must be an Instagram URL"
                 media_id = client.media_pk_from_url(media_id)
 
