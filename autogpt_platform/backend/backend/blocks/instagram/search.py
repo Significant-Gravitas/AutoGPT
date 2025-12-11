@@ -3,7 +3,7 @@ Instagram Search Blocks for AutoGPT Platform.
 """
 
 from instagrapi import Client
-from instagrapi.types import Media, UserShort
+from instagrapi.types import Media
 
 from backend.data.block import (
     Block,

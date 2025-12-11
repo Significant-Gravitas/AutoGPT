@@ -9,11 +9,7 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
-)
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 
 # Instagram credentials type
 InstagramCredentials = APIKeyCredentials
