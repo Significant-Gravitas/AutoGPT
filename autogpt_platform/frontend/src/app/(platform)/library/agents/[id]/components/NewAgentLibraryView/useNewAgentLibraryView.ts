@@ -1,5 +1,7 @@
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
@@ -153,6 +155,39 @@ export function useNewAgentLibraryView() {
     [],
   );
 
+  function onItemCreated(
+    createEvent:
+      | { type: "runs"; item: GraphExecutionMeta }
+      | { type: "triggers"; item: LibraryAgentPreset }
+      | { type: "scheduled"; item: GraphExecutionJobInfo },
+  ) {
+    if (!hasAnyItems) {
+      // Manually increment item count to flip hasAnyItems and showSidebarLayout
+      const counts = {
+        runsCount: createEvent.type === "runs" ? 1 : 0,
+        triggersCount: createEvent.type === "triggers" ? 1 : 0,
+        schedulesCount: createEvent.type === "scheduled" ? 1 : 0,
+        templatesCount: 0,
+      };
+      handleCountsChange(counts);
+    }
+  }
+
+  function onRunInitiated(newRun: GraphExecutionMeta) {
+    if (!agent) return;
+    onItemCreated({ item: newRun, type: "runs" });
+  }
+
+  function onTriggerSetup(newTrigger: LibraryAgentPreset) {
+    if (!agent) return;
+    onItemCreated({ item: newTrigger, type: "triggers" });
+  }
+
+  function onScheduleCreated(newSchedule: GraphExecutionJobInfo) {
+    if (!agent) return;
+    onItemCreated({ item: newSchedule, type: "scheduled" });
+  }
+
   return {
     agentId: id,
     agent,
@@ -169,5 +204,8 @@ export function useNewAgentLibraryView() {
     handleClearSelectedRun,
     handleCountsChange,
     handleSelectRun,
+    onRunInitiated,
+    onTriggerSetup,
+    onScheduleCreated,
   };
 }

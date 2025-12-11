@@ -1,6 +1,5 @@
 "use client";
 
-import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
@@ -39,13 +38,10 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    onRunInitiated,
+    onTriggerSetup,
+    onScheduleCreated,
   } = useNewAgentLibraryView();
-
-  function onTriggerSetup(newTrigger: LibraryAgentPreset) {
-    if (!agent) return;
-
-    handleSelectRun(newTrigger.id, "triggers");
-  }
 
   if (error) {
     return (
@@ -74,7 +70,12 @@ export function NewAgentLibraryView() {
           />
         </div>
         <div className="flex min-h-0 flex-1">
-          <EmptyTasks agent={agent} onTriggerSetup={onTriggerSetup} />
+          <EmptyTasks
+            agent={agent}
+            onRun={onRunInitiated}
+            onTriggerSetup={onTriggerSetup}
+            onScheduleCreated={onScheduleCreated}
+          />
         </div>
       </div>
     );
@@ -101,10 +102,8 @@ export function NewAgentLibraryView() {
               </Button>
             }
             agent={agent}
-            onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
-            onScheduleCreated={(schedule) =>
-              handleSelectRun(schedule.id, "scheduled")
-            }
+            onRunCreated={onRunInitiated}
+            onScheduleCreated={onScheduleCreated}
             onTriggerSetup={onTriggerSetup}
             initialInputValues={activeTemplate?.inputs}
             initialInputCredentials={activeTemplate?.credentials}
@@ -167,7 +166,12 @@ export function NewAgentLibraryView() {
         </SelectedViewLayout>
       ) : (
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
-          <EmptyTasks agent={agent} onTriggerSetup={onTriggerSetup} />
+          <EmptyTasks
+            agent={agent}
+            onRun={onRunInitiated}
+            onTriggerSetup={onTriggerSetup}
+            onScheduleCreated={onScheduleCreated}
+          />
         </SelectedViewLayout>
       )}
     </div>
