@@ -1,7 +1,6 @@
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { usePostV1CreateExecutionSchedule } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useEffect, useState } from "react";
@@ -29,9 +28,7 @@ export const useCronSchedulerDialog = ({
     flowExecutionID: parseAsString,
   });
 
-  const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: { select: (res) => okData(res)?.timezone },
-  });
+  const userTimezone = useUserTimezone();
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
 
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
