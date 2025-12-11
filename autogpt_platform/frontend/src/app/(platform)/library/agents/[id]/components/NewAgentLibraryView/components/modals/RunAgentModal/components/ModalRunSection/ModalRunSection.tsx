@@ -26,7 +26,8 @@ export function ModalRunSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      {defaultRunType === "automatic-trigger" ? (
+      {defaultRunType === "automatic-trigger" ||
+      defaultRunType === "manual-trigger" ? (
         <ModalSection
           title="Task Trigger"
           subtitle="Set up a trigger for the agent to run this task automatically"
