@@ -1,10 +1,14 @@
-import { getPaginationNextPageNumber } from "@/app/api/helpers";
 import {
   GraphExecutionMeta as LegacyGraphExecutionMeta,
   GraphID,
   GraphExecutionID,
 } from "@/lib/autogpt-server-api";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import {
+  getPaginatedTotalCount,
+  getPaginationNextPageNumber,
+  unpaginate,
+} from "@/app/api/helpers";
 import {
   getV1ListGraphExecutionsResponse,
   getV1ListGraphExecutionsResponse200,
@@ -73,15 +77,8 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
     queryClient,
   );
 
-  const agentRuns =
-    queryResults?.pages.flatMap((page) => {
-      const response = page.data as GraphExecutionsPaginated;
-      return response.executions;
-    }) ?? [];
-
-  const agentRunCount = (
-    queryResults?.pages.at(-1)?.data as GraphExecutionsPaginated | undefined
-  )?.pagination.total_items;
+  const agentRuns = queryResults ? unpaginate(queryResults, "executions") : [];
+  const agentRunCount = getPaginatedTotalCount(queryResults);
 
   const upsertAgentRun = (newAgentRun: GraphExecutionMeta) => {
     queryClient.setQueryData(

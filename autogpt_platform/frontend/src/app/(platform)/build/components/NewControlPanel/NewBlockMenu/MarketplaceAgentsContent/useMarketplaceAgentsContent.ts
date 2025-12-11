@@ -1,4 +1,4 @@
-import { getPaginationNextPageNumber } from "@/app/api/helpers";
+import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { getGetV2GetBuilderItemCountsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
 import {
   getGetV2ListLibraryAgentsQueryKey,
@@ -10,7 +10,6 @@ import {
 } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { StoreAgentsResponse } from "@/lib/autogpt-server-api";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import * as Sentry from "@sentry/nextjs";
 import { useState } from "react";
@@ -22,7 +21,7 @@ export const useMarketplaceAgentsContent = () => {
   const { addAgentToBuilder } = useAddAgentToBuilder();
 
   const {
-    data: listStoreAgents,
+    data: storeAgentsQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -40,13 +39,10 @@ export const useMarketplaceAgentsContent = () => {
     },
   );
 
-  const allAgents =
-    listStoreAgents?.pages?.flatMap((page) => {
-      const response = page.data as StoreAgentsResponse;
-      return response.agents;
-    }) ?? [];
-
-  const status = listStoreAgents?.pages[0]?.status;
+  const allAgents = storeAgentsQueryData
+    ? unpaginate(storeAgentsQueryData, "agents")
+    : [];
+  const status = storeAgentsQueryData?.pages[0]?.status;
 
   const { mutateAsync: addMarketplaceAgent } = usePostV2AddMarketplaceAgent({
     mutation: {

@@ -35,11 +35,11 @@ export function okData<TResponse extends { status: number; data?: object }>(
 
 export function getPaginatedTotalCount(
   infiniteData: InfiniteData<unknown> | undefined,
-  runsLength: number,
+  fallbackCount?: number,
 ): number {
   const lastPage = infiniteData?.pages.at(-1);
-  if (!hasValidPaginationInfo(lastPage)) return runsLength;
-  return lastPage.data.pagination?.total_items || runsLength;
+  if (!hasValidPaginationInfo(lastPage)) return fallbackCount ?? 0;
+  return lastPage.data.pagination.total_items ?? fallbackCount ?? 0;
 }
 
 export function getPaginationNextPageNumber(

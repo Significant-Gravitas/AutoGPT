@@ -1,6 +1,5 @@
-import { getPaginationNextPageNumber } from "@/app/api/helpers";
+import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { useState } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
@@ -13,7 +12,7 @@ export const useMyAgentsContent = () => {
   const { toast } = useToast();
 
   const {
-    data: agents,
+    data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -31,13 +30,10 @@ export const useMyAgentsContent = () => {
     },
   );
 
-  const allAgents =
-    agents?.pages?.flatMap((page) => {
-      const response = page.data as LibraryAgentResponse;
-      return response.agents;
-    }) ?? [];
-
-  const status = agents?.pages[0]?.status;
+  const allAgents = agentsQueryData
+    ? unpaginate(agentsQueryData, "agents")
+    : [];
+  const status = agentsQueryData?.pages[0]?.status;
 
   const handleAddBlock = async (agent: LibraryAgent) => {
     setSelectedAgentId(agent.id);
