@@ -28,15 +28,27 @@ This module provides comprehensive Instagram automation capabilities:
 
 ### 1. Install Dependencies
 
-The `instagrapi` library is **not included** in the Poetry dependencies due to version conflicts with core platform dependencies (pydantic and moviepy). To use Instagram blocks, you must install it separately using pip:
+The `instagrapi` library is an **optional dependency** due to version conflicts with core platform dependencies (moviepy). 
 
+**Option A: Using Poetry extras (recommended for development)**
 ```bash
-cd backend
-poetry install  # Install core dependencies first
-poetry run pip install instagrapi
+cd autogpt_platform/backend
+poetry install --with instagram
 ```
 
-**Note:** The Instagram blocks require `instagrapi`, which has specific pydantic (2.7.1-2.11.5) and moviepy (1.0.3) requirements that conflict with the platform's requirements (pydantic ^2.11.7, moviepy ^2.1.2). Installing via pip after poetry allows both to coexist in the same environment.
+**Option B: Using pip extras (for production/deployment)**
+```bash
+pip install autogpt-platform-backend[instagram]
+```
+
+**Note:** The Instagram blocks require `instagrapi`, which has a moviepy version constraint (1.0.3) that conflicts with the platform's moviepy (^2.1.2). The optional dependency group allows users who need Instagram functionality to install it separately.
+
+If neither option works due to conflicts, you can install after the main dependencies:
+```bash
+poetry install  # Install core dependencies first
+poetry run pip install instagrapi --no-deps
+poetry run pip install moviepy==1.0.3  # Only if needed for instagrapi
+```
 
 ### 2. Configure Credentials
 
