@@ -6,11 +6,8 @@ import type {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { CredentialsInput } from "../CredentialsInputs/CredentialsInputs";
-import {
-  getAgentCredentialsFields,
-  getAgentInputFields,
-  renderValue,
-} from "./helpers";
+import { RunAgentInputs } from "../RunAgentInputs/RunAgentInputs";
+import { getAgentCredentialsFields, getAgentInputFields } from "./helpers";
 
 type Props = {
   agent: LibraryAgent;
@@ -48,16 +45,18 @@ export function AgentInputsReadOnly({
       {/* Regular inputs */}
       {hasInputs && (
         <div className="flex flex-col gap-4">
-          {inputEntries.map(([key, [schema, value]]) => (
-            <div key={key} className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">
-                {schema?.title || key}
-              </label>
-              <p className="whitespace-pre-wrap break-words text-sm text-neutral-700">
-                {renderValue(value)}
-              </p>
-            </div>
-          ))}
+          {inputEntries.map(([key, [schema, value]]) => {
+            if (!schema) return null;
+            return (
+              <RunAgentInputs
+                key={key}
+                schema={schema}
+                value={value}
+                onChange={() => {}}
+                readOnly={true}
+              />
+            );
+          })}
         </div>
       )}
 

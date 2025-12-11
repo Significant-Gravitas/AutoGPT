@@ -32,6 +32,7 @@ interface Props {
   value?: any;
   placeholder?: string;
   onChange: (value: any) => void;
+  readOnly?: boolean;
 }
 
 /**
@@ -44,6 +45,7 @@ export function RunAgentInputs({
   value,
   placeholder,
   onChange,
+  readOnly,
   ...props
 }: Props & React.HTMLAttributes<HTMLElement>) {
   const { handleUploadFile, uploadProgress } = useRunAgentInputs();
@@ -347,6 +349,11 @@ export function RunAgentInputs({
   }
 
   return (
-    <div className="no-drag relative flex w-full">{innerInputElement}</div>
+    <div
+      className="no-drag relative flex w-full"
+      style={readOnly ? { pointerEvents: "none", opacity: 0.7 } : undefined}
+    >
+      {innerInputElement}
+    </div>
   );
 }
