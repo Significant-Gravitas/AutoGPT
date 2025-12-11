@@ -98,15 +98,9 @@ requests = "^2.32.5"
 ruff = "^0.14.5"
 # NOTE: please insert new dependencies in their alphabetical location
 
-# Optional Instagram integration (conflicts with moviepy>=2.1.2, install separately)
-[tool.poetry.group.instagram]
-optional = true
-
-[tool.poetry.group.instagram.dependencies]
-instagrapi = "^2.1.0"
-
-[tool.poetry.extras]
-instagram = ["instagrapi"]
+# NOTE: Instagram blocks require 'instagrapi' which has dependency conflicts.
+# Install manually after poetry install: pip install instagrapi
+# See backend/blocks/instagram/README.md for details.
 
 [build-system]
 requires = ["poetry-core"]

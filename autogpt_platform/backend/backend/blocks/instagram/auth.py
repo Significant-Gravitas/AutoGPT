@@ -35,7 +35,9 @@ def InstagramCredentialsField() -> InstagramCredentialsInput:
     )
 
 
-# Test credentials for development/testing
+# Mock credentials for unit testing only - NOT real credentials
+# These are used by the test framework to verify block schemas
+# Real credentials are provided by users through the platform's secure credential system
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="instagram",
