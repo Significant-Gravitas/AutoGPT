@@ -24,11 +24,13 @@ import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
   const {
-    agent,
-    hasAnyItems,
-    ready,
-    error,
     agentId,
+    agent,
+    ready,
+    activeTemplate,
+    isTemplateLoading,
+    error,
+    hasAnyItems,
     activeItem,
     sidebarLoading,
     activeTab,
@@ -36,6 +38,9 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    onRunInitiated,
+    onTriggerSetup,
+    onScheduleCreated,
   } = useNewAgentLibraryView();
 
   if (error) {
@@ -65,7 +70,12 @@ export function NewAgentLibraryView() {
           />
         </div>
         <div className="flex min-h-0 flex-1">
-          <EmptyTasks agent={agent} />
+          <EmptyTasks
+            agent={agent}
+            onRun={onRunInitiated}
+            onTriggerSetup={onTriggerSetup}
+            onScheduleCreated={onScheduleCreated}
+          />
         </div>
       </div>
     );
@@ -82,16 +92,21 @@ export function NewAgentLibraryView() {
         >
           <RunAgentModal
             triggerSlot={
-              <Button variant="primary" size="large" className="w-full">
+              <Button
+                variant="primary"
+                size="large"
+                className="w-full"
+                disabled={isTemplateLoading && activeTab === "templates"}
+              >
                 <PlusIcon size={20} /> New task
               </Button>
             }
             agent={agent}
-            agentId={agent.id.toString()}
-            onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
-            onScheduleCreated={(schedule) =>
-              handleSelectRun(schedule.id, "scheduled")
-            }
+            onRunCreated={onRunInitiated}
+            onScheduleCreated={onScheduleCreated}
+            onTriggerSetup={onTriggerSetup}
+            initialInputValues={activeTemplate?.inputs}
+            initialInputCredentials={activeTemplate?.credentials}
           />
         </div>
 
@@ -151,7 +166,12 @@ export function NewAgentLibraryView() {
         </SelectedViewLayout>
       ) : (
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
-          <EmptyTasks agent={agent} />
+          <EmptyTasks
+            agent={agent}
+            onRun={onRunInitiated}
+            onTriggerSetup={onTriggerSetup}
+            onScheduleCreated={onScheduleCreated}
+          />
         </SelectedViewLayout>
       )}
     </div>

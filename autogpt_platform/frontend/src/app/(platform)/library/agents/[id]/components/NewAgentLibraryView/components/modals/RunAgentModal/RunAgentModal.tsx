@@ -3,6 +3,7 @@
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
@@ -22,16 +23,20 @@ import { useAgentRunModal } from "./useAgentRunModal";
 interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
-  agentId: string;
-  agentVersion?: number;
+  initialInputValues?: Record<string, any>;
+  initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
+  onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 }
 
 export function RunAgentModal({
   triggerSlot,
   agent,
+  initialInputValues,
+  initialInputCredentials,
   onRunCreated,
+  onTriggerSetup,
   onScheduleCreated,
 }: Props) {
   const {
@@ -71,6 +76,9 @@ export function RunAgentModal({
     handleRun,
   } = useAgentRunModal(agent, {
     onRun: onRunCreated,
+    onSetupTrigger: onTriggerSetup,
+    initialInputValues,
+    initialInputCredentials,
   });
 
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);

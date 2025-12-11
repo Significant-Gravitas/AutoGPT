@@ -95,6 +95,7 @@ export function SelectedTemplateView({
     return null;
   }
 
+  const templateOrTrigger = agent.trigger_setup_info ? "Trigger" : "Template";
   const hasWebhook = !!template.webhook_id && template.webhook;
 
   return (
@@ -111,14 +112,14 @@ export function SelectedTemplateView({
               />
             )}
 
-            <RunDetailCard title="Template Details">
+            <RunDetailCard title={`${templateOrTrigger} Details`}>
               <div className="flex flex-col gap-2">
                 <Input
                   id="template-name"
                   label="Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter template name"
+                  placeholder={`Enter ${templateOrTrigger.toLowerCase()} name`}
                 />
 
                 <Input
@@ -128,7 +129,7 @@ export function SelectedTemplateView({
                   rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Enter template description"
+                  placeholder={`Enter ${templateOrTrigger.toLowerCase()} description`}
                 />
               </div>
             </RunDetailCard>

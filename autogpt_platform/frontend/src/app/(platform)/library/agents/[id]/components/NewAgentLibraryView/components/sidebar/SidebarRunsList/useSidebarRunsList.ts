@@ -32,7 +32,7 @@ function parseTab(
 }
 
 type Args = {
-  graphId?: string;
+  graphId: string;
   onSelectRun: (
     runId: string,
     tab?: "runs" | "scheduled" | "templates" | "triggers",
@@ -60,7 +60,7 @@ export function useSidebarRunsList({
   const queryClient = useQueryClient();
 
   const runsQuery = useGetV1ListGraphExecutionsInfinite(
-    graphId || "",
+    graphId,
     { page: 1, page_size: 20 },
     {
       query: {
@@ -71,22 +71,19 @@ export function useSidebarRunsList({
     },
   );
 
-  const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(
-    graphId || "",
-    {
-      query: {
-        enabled: !!graphId,
-        select: (r) => okData<GraphExecutionJobInfo[]>(r) ?? [],
-      },
+  const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
+    query: {
+      enabled: !!graphId,
+      select: (r) => okData<GraphExecutionJobInfo[]>(r),
     },
-  );
+  });
 
   const presetsQuery = useGetV2ListPresets(
-    { graph_id: graphId || null, page: 1, page_size: 100 },
+    { graph_id: graphId, page: 1, page_size: 100 },
     {
       query: {
         enabled: !!graphId,
-        select: (r) => okData<LibraryAgentPresetResponse>(r)?.presets ?? [],
+        select: (r) => okData<LibraryAgentPresetResponse>(r)?.presets,
       },
     },
   );
@@ -99,11 +96,11 @@ export function useSidebarRunsList({
   const schedules = schedulesQuery.data || [];
   const allPresets = presetsQuery.data || [];
   const triggers = useMemo(
-    () => allPresets.filter((preset) => preset.webhook_id && preset.webhook),
+    () => allPresets.filter((preset) => preset.webhook_id),
     [allPresets],
   );
   const templates = useMemo(
-    () => allPresets.filter((preset) => !preset.webhook_id || !preset.webhook),
+    () => allPresets.filter((preset) => !preset.webhook_id),
     [allPresets],
   );
 
@@ -112,9 +109,11 @@ export function useSidebarRunsList({
   const templatesCount = templates.length;
   const triggersCount = triggers.length;
   const loading =
-    !schedulesQuery.isSuccess ||
     !runsQuery.isSuccess ||
+    !schedulesQuery.isSuccess ||
     !presetsQuery.isSuccess;
+  const stale =
+    runsQuery.isStale || schedulesQuery.isStale || presetsQuery.isStale;
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -131,7 +130,7 @@ export function useSidebarRunsList({
 
   // Notify parent about counts and loading state
   useEffect(() => {
-    if (onCountsChange) {
+    if (onCountsChange && !stale) {
       onCountsChange({
         runsCount,
         schedulesCount,
@@ -141,12 +140,13 @@ export function useSidebarRunsList({
       });
     }
   }, [
+    onCountsChange,
     runsCount,
     schedulesCount,
     templatesCount,
     triggersCount,
     loading,
-    onCountsChange,
+    stale,
   ]);
 
   useEffect(() => {

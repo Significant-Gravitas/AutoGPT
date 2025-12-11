@@ -166,7 +166,7 @@ function renderMarkdown(
         className="prose prose-sm dark:prose-invert max-w-none"
         remarkPlugins={[
           remarkGfm, // GitHub Flavored Markdown (tables, task lists, strikethrough)
-          remarkMath, // Math support for LaTeX
+          [remarkMath, { singleDollarTextMath: false }], // Math support for LaTeX
         ]}
         rehypePlugins={[
           rehypeKatex, // Render math with KaTeX

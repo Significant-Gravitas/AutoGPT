@@ -15,15 +15,19 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
-interface Args {
+interface Params {
   agentGraphId: string;
   run?: GraphExecution;
   agent?: LibraryAgent;
   onSelectRun?: (id: string) => void;
-  onClearSelectedRun?: () => void;
 }
 
-export function useSelectedRunActions(args: Args) {
+export function useSelectedRunActions({
+  agentGraphId,
+  run,
+  agent,
+  onSelectRun,
+}: Params) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -31,8 +35,9 @@ export function useSelectedRunActions(args: Args) {
   const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] =
     useState(false);
 
-  const canStop =
-    args.run?.status === "RUNNING" || args.run?.status === "QUEUED";
+  const canStop = run?.status === "RUNNING" || run?.status === "QUEUED";
+
+  const canRunManually = !agent?.trigger_setup_info;
 
   const { mutateAsync: stopRun, isPending: isStopping } =
     usePostV1StopGraphExecution();
@@ -46,16 +51,16 @@ export function useSelectedRunActions(args: Args) {
   async function handleStopRun() {
     try {
       await stopRun({
-        graphId: args.run?.graph_id ?? "",
-        graphExecId: args.run?.id ?? "",
+        graphId: run?.graph_id ?? "",
+        graphExecId: run?.id ?? "",
       });
 
       toast({ title: "Run stopped" });
 
       await queryClient.invalidateQueries({
-        queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
-          args.agentGraphId,
-        ).queryKey,
+        queryKey:
+          getGetV1ListGraphExecutionsInfiniteQueryOptions(agentGraphId)
+            .queryKey,
       });
     } catch (error: unknown) {
       toast({
@@ -70,7 +75,7 @@ export function useSelectedRunActions(args: Args) {
   }
 
   async function handleRunAgain() {
-    if (!args.run) {
+    if (!run) {
       toast({
         title: "Run not found",
         description: "Run not found",
@@ -83,11 +88,11 @@ export function useSelectedRunActions(args: Args) {
       toast({ title: "Run started" });
 
       const res = await executeRun({
-        graphId: args.run.graph_id,
-        graphVersion: args.run.graph_version,
+        graphId: run.graph_id,
+        graphVersion: run.graph_version,
         data: {
-          inputs: args.run.inputs || {},
-          credentials_inputs: args.run.credential_inputs || {},
+          inputs: run.inputs || {},
+          credentials_inputs: run.credential_inputs || {},
           source: "library",
         },
       });
@@ -95,12 +100,12 @@ export function useSelectedRunActions(args: Args) {
       const newRunId = res?.status === 200 ? (res?.data?.id ?? "") : "";
 
       await queryClient.invalidateQueries({
-        queryKey: getGetV1ListGraphExecutionsInfiniteQueryOptions(
-          args.agentGraphId,
-        ).queryKey,
+        queryKey:
+          getGetV1ListGraphExecutionsInfiniteQueryOptions(agentGraphId)
+            .queryKey,
       });
 
-      if (newRunId && args.onSelectRun) args.onSelectRun(newRunId);
+      if (newRunId && onSelectRun) onSelectRun(newRunId);
     } catch (error: unknown) {
       toast({
         title: "Failed to start run",
@@ -118,7 +123,7 @@ export function useSelectedRunActions(args: Args) {
   }
 
   async function handleCreateTemplate(name: string, description: string) {
-    if (!args.run) {
+    if (!run) {
       toast({
         title: "Run not found",
         description: "Cannot create template from missing run",
@@ -132,7 +137,7 @@ export function useSelectedRunActions(args: Args) {
         data: {
           name,
           description,
-          graph_execution_id: args.run.id,
+          graph_execution_id: run.id,
         },
       });
 
@@ -141,10 +146,10 @@ export function useSelectedRunActions(args: Args) {
           title: "Template created",
         });
 
-        if (args.agent) {
+        if (agent) {
           queryClient.invalidateQueries({
             queryKey: getGetV2ListPresetsQueryKey({
-              graph_id: args.agent.graph_id,
+              graph_id: agent.graph_id,
             }),
           });
         }
@@ -164,8 +169,8 @@ export function useSelectedRunActions(args: Args) {
   }
 
   // Open in builder URL helper
-  const openInBuilderHref = args.run
-    ? `/build?flowID=${args.run.graph_id}&flowVersion=${args.run.graph_version}&flowExecutionID=${args.run.id}`
+  const openInBuilderHref = run
+    ? `/build?flowID=${run.graph_id}&flowVersion=${run.graph_version}&flowExecutionID=${run.id}`
     : undefined;
 
   return {
@@ -173,6 +178,7 @@ export function useSelectedRunActions(args: Args) {
     showDeleteDialog,
     canStop,
     isStopping,
+    canRunManually,
     isRunningAgain,
     handleShowDeleteDialog,
     handleStopRun,

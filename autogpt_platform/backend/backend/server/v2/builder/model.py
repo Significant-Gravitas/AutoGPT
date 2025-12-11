@@ -18,10 +18,17 @@ FilterType = Literal[
 BlockType = Literal["all", "input", "action", "output"]
 
 
+class SearchEntry(BaseModel):
+    search_query: str | None = None
+    filter: list[FilterType] | None = None
+    by_creator: list[str] | None = None
+    search_id: str | None = None
+
+
 # Suggestions
 class SuggestionsResponse(BaseModel):
     otto_suggestions: list[str]
-    recent_searches: list[str]
+    recent_searches: list[SearchEntry]
     providers: list[ProviderName]
     top_blocks: list[BlockInfo]
 
@@ -32,7 +39,7 @@ class BlockCategoryResponse(BaseModel):
     total_blocks: int
     blocks: list[BlockInfo]
 
-    model_config = {"use_enum_values": False}  # <== use enum names like "AI"
+    model_config = {"use_enum_values": False}  # Use enum names like "AI"
 
 
 # Input/Action/Output and see all for block categories
@@ -53,17 +60,11 @@ class ProviderResponse(BaseModel):
     pagination: Pagination
 
 
-class SearchBlocksResponse(BaseModel):
-    blocks: BlockResponse
-    total_block_count: int
-    total_integration_count: int
-
-
 class SearchResponse(BaseModel):
     items: list[BlockInfo | library_model.LibraryAgent | store_model.StoreAgent]
+    search_id: str
     total_items: dict[FilterType, int]
-    page: int
-    more_pages: bool
+    pagination: Pagination
 
 
 class CountResponse(BaseModel):

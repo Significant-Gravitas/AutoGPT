@@ -183,12 +183,12 @@ export function SelectedRunView({
 
                 {/* Input Section */}
                 <ScrollableTabsContent value="input">
-                  <div className="scroll-mt-4">
+                  <div id="input" className="scroll-mt-4">
                     <RunDetailCard title="Your input">
                       <AgentInputsReadOnly
                         agent={agent}
-                        inputs={(run as any)?.inputs}
-                        credentialInputs={(run as any)?.credential_inputs}
+                        inputs={run?.inputs}
+                        credentialInputs={run?.credential_inputs}
                       />
                     </RunDetailCard>
                   </div>
