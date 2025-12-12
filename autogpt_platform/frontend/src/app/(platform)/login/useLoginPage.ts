@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -13,6 +13,7 @@ export function useLoginPage() {
   const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -20,11 +21,59 @@ export function useLoginPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
+  // Get returnUrl, oauth_session, and connect_session from query params
+  const returnUrl = searchParams.get("returnUrl");
+  const oauthSession = searchParams.get("oauth_session");
+  const connectSession = searchParams.get("connect_session");
+
+  function getRedirectUrl(onboarding: boolean): string {
+    // OAuth session takes priority - redirect to frontend oauth-resume page
+    // which will handle the backend call with proper authentication
+    if (oauthSession) {
+      return `/auth/oauth-resume?session_id=${encodeURIComponent(oauthSession)}`;
+    }
+
+    // Connect session - redirect to frontend connect-resume page
+    // for integration credential connection flow
+    if (connectSession) {
+      return `/auth/connect-resume?session_id=${encodeURIComponent(connectSession)}`;
+    }
+
+    // If returnUrl is set and is a valid URL, redirect there after login
+    if (returnUrl) {
+      try {
+        const url = new URL(returnUrl, window.location.origin);
+        const backendUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL;
+
+        // Same origin - return normalized path only (prevents open redirect)
+        if (url.origin === window.location.origin) {
+          return url.pathname + url.search;
+        }
+
+        // Backend URL - strict origin match (not startsWith to prevent prefix attacks)
+        if (backendUrl) {
+          try {
+            const backendOrigin = new URL(backendUrl).origin;
+            if (url.origin === backendOrigin) {
+              return url.href;
+            }
+          } catch {
+            // Invalid backend URL config, fall through to default
+          }
+        }
+      } catch {
+        // Invalid URL, fall through to default
+      }
+    }
+    return onboarding ? "/onboarding" : "/marketplace";
+  }
+
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
-      router.push("/marketplace");
+      const redirectTo = getRedirectUrl(false);
+      router.push(redirectTo);
     }
-  }, [isLoggedIn, isLoggingIn]);
+  }, [isLoggedIn, isLoggingIn, returnUrl, oauthSession, connectSession]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -39,10 +88,20 @@ export function useLoginPage() {
     setIsLoggingIn(true);
 
     try {
+      // Build redirect URL that preserves oauth_session or connect_session through the OAuth flow
+      let callbackUrl: string | undefined;
+      const origin = window.location.origin;
+
+      if (oauthSession) {
+        callbackUrl = `${origin}/auth/callback?oauth_session=${encodeURIComponent(oauthSession)}`;
+      } else if (connectSession) {
+        callbackUrl = `${origin}/auth/callback?connect_session=${encodeURIComponent(connectSession)}`;
+      }
+
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, redirectTo: callbackUrl }),
       });
 
       if (!response.ok) {
@@ -83,11 +142,7 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (result.onboarding) {
-        router.replace("/onboarding");
-      } else {
-        router.replace("/marketplace");
-      }
+      router.replace(getRedirectUrl(result.onboarding ?? false));
     } catch (error) {
       toast({
         title:

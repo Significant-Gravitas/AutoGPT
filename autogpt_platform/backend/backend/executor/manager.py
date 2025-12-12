@@ -67,6 +67,7 @@ from backend.executor.utils import (
     validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.webhook_notifier import get_webhook_notifier
 from backend.notifications.notifications import queue_notification
 from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
@@ -222,11 +223,31 @@ async def execute_node(
     creds_locks: list[AsyncRedisLock] = []
     input_model = cast(type[BlockSchema], node_block.input_schema)
 
+    # Check if this is an external API execution using grant-based credential resolution
+    grant_resolver = None
+    if execution_context and execution_context.grant_resolver_context:
+        from backend.integrations.grant_resolver import GrantBasedCredentialResolver
+
+        grant_ctx = execution_context.grant_resolver_context
+        grant_resolver = GrantBasedCredentialResolver(
+            user_id=user_id,
+            client_id=grant_ctx.client_db_id,
+            grant_ids=grant_ctx.grant_ids,
+        )
+        await grant_resolver.initialize()
+
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         credentials_meta = input_type(**input_data[field_name])
-        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
-        creds_locks.append(lock)
+        if grant_resolver:
+            # External API execution - use grant resolver (no locking needed)
+            credentials = await grant_resolver.resolve_credential(credentials_meta.id)
+        else:
+            # Normal execution - use credentials manager with locking
+            credentials, lock = await creds_manager.acquire(
+                user_id, credentials_meta.id
+            )
+            creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
 
     # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
@@ -244,10 +265,17 @@ async def execute_node(
                     )
                     file_name = field_data.get("name", "selected file")
                     try:
-                        credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
-                        creds_locks.append(lock)
+                        if grant_resolver:
+                            # External API execution - use grant resolver
+                            credentials = await grant_resolver.resolve_credential(
+                                cred_id
+                            )
+                        else:
+                            # Normal execution - use credentials manager
+                            credentials, lock = await creds_manager.acquire(
+                                user_id, cred_id
+                            )
+                            creds_locks.append(lock)
                         extra_exec_kwargs[kwarg_name] = credentials
                     except ValueError:
                         # Credential was deleted or doesn't exist
@@ -786,6 +814,7 @@ class ExecutionProcessor:
                 graph_exec_id=graph_exec.graph_exec_id,
                 status=exec_meta.status,
                 stats=exec_stats,
+                event_loop=self.node_execution_loop,
             )
 
     def _charge_usage(
@@ -1922,6 +1951,53 @@ def update_node_execution_status(
     return exec_update
 
 
+async def _notify_execution_webhook(
+    execution_id: str,
+    agent_id: str,
+    status: ExecutionStatus,
+    outputs: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    """
+    Send webhook notification for execution completion if registered.
+
+    This is a fire-and-forget operation that checks if a webhook was registered
+    for this execution and sends the appropriate notification.
+    """
+    from backend.data.db import prisma
+
+    try:
+        webhook = await prisma.executionwebhook.find_first(
+            where={"executionId": execution_id}
+        )
+        if not webhook:
+            return
+
+        notifier = get_webhook_notifier()
+
+        if status == ExecutionStatus.COMPLETED:
+            await notifier.notify_execution_completed(
+                execution_id=execution_id,
+                agent_id=agent_id,
+                client_id=webhook.clientId,
+                webhook_url=webhook.webhookUrl,
+                outputs=outputs or {},
+                webhook_secret=webhook.secret,
+            )
+        elif status == ExecutionStatus.FAILED:
+            await notifier.notify_execution_failed(
+                execution_id=execution_id,
+                agent_id=agent_id,
+                client_id=webhook.clientId,
+                webhook_url=webhook.webhookUrl,
+                error=error or "Execution failed",
+                webhook_secret=webhook.secret,
+            )
+    except Exception as e:
+        # Don't let webhook failures affect execution state updates
+        logger.warning(f"Failed to send webhook notification for {execution_id}: {e}")
+
+
 async def async_update_graph_execution_state(
     db_client: "DatabaseManagerAsyncClient",
     graph_exec_id: str,
@@ -1934,6 +2010,17 @@ async def async_update_graph_execution_state(
     )
     if graph_update:
         await send_async_execution_update(graph_update)
+
+        # Send webhook notification for terminal states
+        if status == ExecutionStatus.COMPLETED or status == ExecutionStatus.FAILED:
+            await _notify_execution_webhook(
+                execution_id=graph_exec_id,
+                agent_id=graph_update.graph_id,
+                status=status,
+                outputs=(
+                    graph_update.outputs if hasattr(graph_update, "outputs") else None
+                ),
+            )
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
     return graph_update
@@ -1944,11 +2031,33 @@ def update_graph_execution_state(
     graph_exec_id: str,
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
+    event_loop: asyncio.AbstractEventLoop | None = None,
 ) -> GraphExecution | None:
     """Sets status and fetches+broadcasts the latest state of the graph execution"""
     graph_update = db_client.update_graph_execution_stats(graph_exec_id, status, stats)
     if graph_update:
         send_execution_update(graph_update)
+
+        # Send webhook notification for terminal states (fire-and-forget)
+        if (
+            status == ExecutionStatus.COMPLETED or status == ExecutionStatus.FAILED
+        ) and event_loop:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    _notify_execution_webhook(
+                        execution_id=graph_exec_id,
+                        agent_id=graph_update.graph_id,
+                        status=status,
+                        outputs=(
+                            graph_update.outputs
+                            if hasattr(graph_update, "outputs")
+                            else None
+                        ),
+                    ),
+                    event_loop,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to schedule webhook notification: {e}")
     else:
         logger.error(f"Failed to update graph execution stats for {graph_exec_id}")
     return graph_update

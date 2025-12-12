@@ -28,6 +28,7 @@ from prisma.models import (
     AgentNodeExecutionKeyValueData,
 )
 from prisma.types import (
+    AgentGraphExecutionCreateInput,
     AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
@@ -35,7 +36,7 @@ from prisma.types import (
     AgentNodeExecutionKeyValueDataCreateInput,
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
-    AgentNodeExecutionWhereUniqueInput,
+    _AgentNodeExecutionWhereUnique_id_Input,
 )
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
@@ -75,6 +76,13 @@ logger = logging.getLogger(__name__)
 config = Config()
 
 
+class GrantResolverContext(BaseModel):
+    """Context for grant-based credential resolution in external API executions."""
+
+    client_db_id: str  # The OAuth client database UUID
+    grant_ids: list[str]  # List of grant IDs to use for credential resolution
+
+
 class ExecutionContext(BaseModel):
     """
     Unified context that carries execution-level data throughout the entire execution flow.
@@ -85,6 +93,8 @@ class ExecutionContext(BaseModel):
     user_timezone: str = "UTC"
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
+    # For external API executions using credential grants
+    grant_resolver_context: Optional[GrantResolverContext] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -709,18 +719,18 @@ async def create_graph_execution(
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
     result = await AgentGraphExecution.prisma().create(
-        data={
-            "agentGraphId": graph_id,
-            "agentGraphVersion": graph_version,
-            "executionStatus": ExecutionStatus.INCOMPLETE,
-            "inputs": SafeJson(inputs),
-            "credentialInputs": (
+        data=AgentGraphExecutionCreateInput(
+            agentGraphId=graph_id,
+            agentGraphVersion=graph_version,
+            executionStatus=ExecutionStatus.INCOMPLETE,
+            inputs=SafeJson(inputs),
+            credentialInputs=(
                 SafeJson(credential_inputs) if credential_inputs else Json({})
             ),
-            "nodesInputMasks": (
+            nodesInputMasks=(
                 SafeJson(nodes_input_masks) if nodes_input_masks else Json({})
             ),
-            "NodeExecutions": {
+            NodeExecutions={
                 "create": [
                     AgentNodeExecutionCreateInput(
                         agentNodeId=node_id,
@@ -736,10 +746,10 @@ async def create_graph_execution(
                     for node_id, node_input in starting_nodes_input
                 ]
             },
-            "userId": user_id,
-            "agentPresetId": preset_id,
-            "parentGraphExecutionId": parent_graph_exec_id,
-        },
+            userId=user_id,
+            agentPresetId=preset_id,
+            parentGraphExecutionId=parent_graph_exec_id,
+        ),
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 
@@ -831,10 +841,10 @@ async def upsert_execution_output(
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    data: AgentNodeExecutionInputOutputCreateInput = {
-        "name": output_name,
-        "referencedByOutputExecId": node_exec_id,
-    }
+    data = AgentNodeExecutionInputOutputCreateInput(
+        name=output_name,
+        referencedByOutputExecId=node_exec_id,
+    )
     if output_data is not None:
         data["data"] = SafeJson(output_data)
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
@@ -976,7 +986,7 @@ async def update_node_execution_status(
 
     if res := await AgentNodeExecution.prisma().update(
         where=cast(
-            AgentNodeExecutionWhereUniqueInput,
+            _AgentNodeExecutionWhereUnique_id_Input,
             {
                 "id": node_exec_id,
                 "executionStatus": {"in": [s.value for s in allowed_from]},

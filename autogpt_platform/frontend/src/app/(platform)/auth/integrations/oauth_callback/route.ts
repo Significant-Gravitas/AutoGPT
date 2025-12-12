@@ -22,20 +22,28 @@ export async function GET(request: Request) {
 
   console.debug("Sending message to opener:", message);
 
+  // Escape JSON to prevent XSS attacks via </script> injection
+  const safeJson = JSON.stringify(message)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e");
+
   // Return a response with the message as JSON and a script to close the window
   return new NextResponse(
-    `
-    <html>
-      <body>
-        <script>
-          window.opener.postMessage(${JSON.stringify(message)});
-          window.close();
-        </script>
-      </body>
-    </html>
-    `,
+    `<!DOCTYPE html>
+<html>
+  <body>
+    <script>
+      window.opener.postMessage(${safeJson}, '*');
+      window.close();
+    </script>
+  </body>
+</html>`,
     {
-      headers: { "Content-Type": "text/html" },
+      headers: {
+        "Content-Type": "text/html",
+        "Content-Security-Policy":
+          "default-src 'none'; script-src 'unsafe-inline'",
+      },
     },
   );
 }

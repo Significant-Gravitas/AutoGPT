@@ -651,6 +651,23 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
+
+    # OAuth Provider JWT keys
+    oauth_jwt_private_key: str = Field(
+        default="",
+        description="RSA private key for signing OAuth tokens (PEM format). "
+        "If not set, a development key will be auto-generated.",
+    )
+    oauth_jwt_public_key: str = Field(
+        default="",
+        description="RSA public key for verifying OAuth tokens (PEM format). "
+        "If not set, derived from private key.",
+    )
+    oauth_jwt_key_id: str = Field(
+        default="autogpt-oauth-key-1",
+        description="Key ID (kid) for JWKS. Used to identify the signing key.",
+    )
+
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
         env_file=".env",

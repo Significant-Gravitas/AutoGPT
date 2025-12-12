@@ -8,6 +8,7 @@ which would have caught the CreditTransactionType enum casting bug.
 import pytest
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, User, UserBalance
+from prisma.types import UserCreateInput
 
 from backend.data.credit import (
     AutoTopUpConfig,
@@ -29,12 +30,12 @@ async def cleanup_test_user():
     # Create the user first
     try:
         await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"test-{user_id}@example.com",
-                "topUpConfig": SafeJson({}),
-                "timezone": "UTC",
-            }
+            data=UserCreateInput(
+                id=user_id,
+                email=f"test-{user_id}@example.com",
+                topUpConfig=SafeJson({}),
+                timezone="UTC",
+            )
         )
     except Exception:
         # User might already exist, that's fine

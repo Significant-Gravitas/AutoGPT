@@ -802,18 +802,16 @@ async def add_store_agent_to_library(
 
         # Create LibraryAgent entry
         added_agent = await prisma.models.LibraryAgent.prisma().create(
-            data={
-                "User": {"connect": {"id": user_id}},
-                "AgentGraph": {
+            data=prisma.types.LibraryAgentCreateInput(
+                User={"connect": {"id": user_id}},
+                AgentGraph={
                     "connect": {
                         "graphVersionId": {"id": graph.id, "version": graph.version}
                     }
                 },
-                "isCreatedByUser": False,
-                "settings": SafeJson(
-                    _initialize_graph_settings(graph_model).model_dump()
-                ),
-            },
+                isCreatedByUser=False,
+                settings=SafeJson(_initialize_graph_settings(graph_model).model_dump()),
+            ),
             include=library_agent_include(
                 user_id, include_nodes=False, include_executions=False
             ),

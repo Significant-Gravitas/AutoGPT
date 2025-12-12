@@ -8,6 +8,8 @@ import { shouldShowOnboarding } from "@/app/api/helpers";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const oauthSession = searchParams.get("oauth_session");
+  const connectSession = searchParams.get("connect_session");
 
   let next = "/marketplace";
 
@@ -24,6 +26,22 @@ export async function GET(request: Request) {
       try {
         const api = new BackendAPI();
         await api.createUser();
+
+        // Handle oauth_session redirect - resume OAuth flow after login
+        // Redirect to a frontend page that will handle the OAuth resume with proper auth
+        if (oauthSession) {
+          return NextResponse.redirect(
+            `${origin}/auth/oauth-resume?session_id=${encodeURIComponent(oauthSession)}`,
+          );
+        }
+
+        // Handle connect_session redirect - resume connect flow after login
+        // Redirect to a frontend page that will handle the connect resume with proper auth
+        if (connectSession) {
+          return NextResponse.redirect(
+            `${origin}/auth/connect-resume?session_id=${encodeURIComponent(connectSession)}`,
+          );
+        }
 
         if (await shouldShowOnboarding()) {
           next = "/onboarding";
