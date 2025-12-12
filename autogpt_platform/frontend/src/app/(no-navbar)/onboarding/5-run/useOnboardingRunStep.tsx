@@ -140,7 +140,7 @@ export function useOnboardingRunStep() {
   return {
     ready: agentGraphQueryIsSuccess && storeAgentQueryIsSuccess,
     error: agentGraphQueryError || storeAgentQueryError,
-    agentGraphMeta: agentGraphMeta || null,
+    graphMeta: agentGraphMeta || null,
     onboarding,
     showInput,
     storeAgent: storeAgent || null,
