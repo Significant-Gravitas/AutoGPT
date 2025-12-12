@@ -10,6 +10,7 @@ from typing import Optional, Union
 import forge
 from forge.config.base import BaseConfig
 from forge.llm.providers import CHAT_MODELS, ModelName
+from forge.llm.providers.anthropic import AnthropicModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
@@ -48,11 +49,11 @@ class AppConfig(BaseConfig):
     ##########################
     # Model configuration
     fast_llm: ModelName = UserConfigurable(
-        default=OpenAIModelName.GPT4_O_MINI,
+        default=AnthropicModelName.CLAUDE4_5_SONNET_v1,
         from_env="FAST_LLM",
     )
     smart_llm: ModelName = UserConfigurable(
-        default=OpenAIModelName.GPT4_O,
+        default=AnthropicModelName.CLAUDE4_5_OPUS_v1,
         from_env="SMART_LLM",
     )
     temperature: float = UserConfigurable(default=0, from_env="TEMPERATURE")
