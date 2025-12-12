@@ -20,6 +20,7 @@ from backend.util.settings import Settings
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
     GoogleCredentials,
     GoogleCredentialsField,
     GoogleCredentialsInput,
@@ -257,6 +258,7 @@ class GoogleDocsCreateBlock(Block):
             input_schema=GoogleDocsCreateBlock.Input,
             output_schema=GoogleDocsCreateBlock.Output,
             test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
                 "title": "My New Document",
                 "initial_content": "Hello, this is the initial content.",
             },
