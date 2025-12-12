@@ -106,7 +106,11 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
           />
           <NodeAdvancedToggle nodeId={nodeId} />
           {data.uiType != BlockUIType.OUTPUT && (
-            <OutputHandler outputSchema={outputSchema} nodeId={nodeId} />
+            <OutputHandler
+              uiType={data.uiType}
+              outputSchema={outputSchema}
+              nodeId={nodeId}
+            />
           )}
           <NodeDataRenderer nodeId={nodeId} />
         </div>

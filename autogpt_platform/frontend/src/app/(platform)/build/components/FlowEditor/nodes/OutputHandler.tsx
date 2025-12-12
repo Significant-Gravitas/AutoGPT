@@ -14,13 +14,16 @@ import {
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
 import { generateHandleId } from "../handlers/helpers";
+import { BlockUIType } from "../../types";
 
 export const OutputHandler = ({
   outputSchema,
   nodeId,
+  uiType,
 }: {
   outputSchema: RJSFSchema;
   nodeId: string;
+  uiType: BlockUIType;
 }) => {
   const { isOutputConnected } = useEdgeStore();
   const properties = outputSchema?.properties || {};
@@ -79,7 +82,9 @@ export const OutputHandler = ({
                 </Text>
 
                 <NodeHandle
-                  handleId={generateHandleId(key)}
+                  handleId={
+                    uiType === BlockUIType.AGENT ? key : generateHandleId(key)
+                  }
                   isConnected={isConnected}
                   side="right"
                 />

@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
+import { BlockUIType } from "@/app/(platform)/build/components/types";
 
 type TypeOption = {
   type: string;
@@ -47,7 +48,14 @@ export const AnyOfField = ({
   onBlur,
   onFocus,
 }: FieldProps) => {
-  const handleId = generateHandleId(idSchema.$id ?? "");
+  const handleId =
+    formContext.uiType === BlockUIType.AGENT
+      ? (idSchema.$id ?? "")
+          .split("_")
+          .filter((p) => p !== "root" && p !== "properties" && p.length > 0)
+          .join("_") || ""
+      : generateHandleId(idSchema.$id ?? "");
+
   const updatedFormContexrt = { ...formContext, fromAnyOf: true };
 
   const { nodeId, showHandles = true } = updatedFormContexrt;

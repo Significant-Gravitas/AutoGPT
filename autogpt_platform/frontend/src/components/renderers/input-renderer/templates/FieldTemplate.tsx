@@ -58,7 +58,15 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 
   let handleId = null;
   if (!isArrayItem) {
-    handleId = generateHandleId(fieldId);
+    if (uiType === BlockUIType.AGENT) {
+      const parts = fieldId.split("_");
+      const filtered = parts.filter(
+        (p) => p !== "root" && p !== "properties" && p.length > 0,
+      );
+      handleId = filtered.join("_") || "";
+    } else {
+      handleId = generateHandleId(fieldId);
+    }
   } else {
     handleId = arrayFieldHandleId;
   }
