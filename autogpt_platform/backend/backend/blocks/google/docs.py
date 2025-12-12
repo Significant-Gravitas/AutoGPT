@@ -165,6 +165,7 @@ class GoogleDocsReadBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsReadBlock.Input,
             output_schema=GoogleDocsReadBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -257,6 +258,7 @@ class GoogleDocsCreateBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsCreateBlock.Input,
             output_schema=GoogleDocsCreateBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "title": "My New Document",
@@ -383,6 +385,7 @@ class GoogleDocsAppendPlainTextBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsAppendPlainTextBlock.Input,
             output_schema=GoogleDocsAppendPlainTextBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -492,6 +495,7 @@ class GoogleDocsInsertPlainTextBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsInsertPlainTextBlock.Input,
             output_schema=GoogleDocsInsertPlainTextBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -598,6 +602,7 @@ class GoogleDocsFindReplacePlainTextBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsFindReplacePlainTextBlock.Input,
             output_schema=GoogleDocsFindReplacePlainTextBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -718,6 +723,7 @@ class GoogleDocsGetMetadataBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsGetMetadataBlock.Input,
             output_schema=GoogleDocsGetMetadataBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -832,6 +838,7 @@ class GoogleDocsInsertTableBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsInsertTableBlock.Input,
             output_schema=GoogleDocsInsertTableBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1107,6 +1114,7 @@ class GoogleDocsInsertPageBreakBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsInsertPageBreakBlock.Input,
             output_schema=GoogleDocsInsertPageBreakBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1206,6 +1214,7 @@ class GoogleDocsDeleteContentBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsDeleteContentBlock.Input,
             output_schema=GoogleDocsDeleteContentBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1329,6 +1338,7 @@ class GoogleDocsExportBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsExportBlock.Input,
             output_schema=GoogleDocsExportBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1453,6 +1463,7 @@ class GoogleDocsFormatTextBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsFormatTextBlock.Input,
             output_schema=GoogleDocsFormatTextBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1616,6 +1627,7 @@ class GoogleDocsShareBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsShareBlock.Input,
             output_schema=GoogleDocsShareBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1738,6 +1750,7 @@ class GoogleDocsSetPublicAccessBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsSetPublicAccessBlock.Input,
             output_schema=GoogleDocsSetPublicAccessBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1865,6 +1878,7 @@ class GoogleDocsAppendMarkdownBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsAppendMarkdownBlock.Input,
             output_schema=GoogleDocsAppendMarkdownBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -1986,6 +2000,7 @@ class GoogleDocsReplaceAllWithMarkdownBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsReplaceAllWithMarkdownBlock.Input,
             output_schema=GoogleDocsReplaceAllWithMarkdownBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -2109,6 +2124,7 @@ class GoogleDocsInsertMarkdownAtBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsInsertMarkdownAtBlock.Input,
             output_schema=GoogleDocsInsertMarkdownAtBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -2224,6 +2240,7 @@ class GoogleDocsReplaceRangeWithMarkdownBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsReplaceRangeWithMarkdownBlock.Input,
             output_schema=GoogleDocsReplaceRangeWithMarkdownBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -2368,6 +2385,7 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsReplaceContentWithMarkdownBlock.Input,
             output_schema=GoogleDocsReplaceContentWithMarkdownBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
@@ -2575,6 +2593,7 @@ class GoogleDocsGetStructureBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleDocsGetStructureBlock.Input,
             output_schema=GoogleDocsGetStructureBlock.Output,
+            disabled=GOOGLE_DOCS_DISABLED,
             test_input={
                 "document": {
                     "id": "1abc123def456",
