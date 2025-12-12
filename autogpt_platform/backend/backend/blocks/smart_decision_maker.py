@@ -27,6 +27,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
+from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
@@ -130,6 +131,50 @@ def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
     # OpenAI format: tool IDs typically start with "call_".
     # Or default fallback (if the tool_id doesn't match any known prefix)
     return {"role": "tool", "tool_call_id": call_id, "content": content}
+
+
+def _combine_tool_responses(tool_outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Combine multiple Anthropic tool responses into a single user message.
+    For non-Anthropic formats, returns the original list unchanged.
+    """
+    if len(tool_outputs) <= 1:
+        return tool_outputs
+
+    # Anthropic responses have role="user", type="message", and content is a list with tool_result items
+    anthropic_responses = [
+        output
+        for output in tool_outputs
+        if (
+            output.get("role") == "user"
+            and output.get("type") == "message"
+            and isinstance(output.get("content"), list)
+            and any(
+                item.get("type") == "tool_result"
+                for item in output.get("content", [])
+                if isinstance(item, dict)
+            )
+        )
+    ]
+
+    if len(anthropic_responses) > 1:
+        combined_content = [
+            item for response in anthropic_responses for item in response["content"]
+        ]
+
+        combined_response = {
+            "role": "user",
+            "type": "message",
+            "content": combined_content,
+        }
+
+        non_anthropic_responses = [
+            output for output in tool_outputs if output not in anthropic_responses
+        ]
+
+        return [combined_response] + non_anthropic_responses
+
+    return tool_outputs
 
 
 def _convert_raw_response_to_dict(raw_response: Any) -> dict[str, Any]:
@@ -236,6 +281,11 @@ class SmartDecisionMakerBlock(Block):
             description="Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit.",
             advanced=True,
             default=0,
+        )
+        conversation_compaction: bool = SchemaField(
+            default=True,
+            title="Context window auto-compaction",
+            description="Automatically compact the context window once it hits the limit",
         )
 
         @classmethod
@@ -539,6 +589,7 @@ class SmartDecisionMakerBlock(Block):
         Returns the response if successful, raises ValueError if validation fails.
         """
         resp = await llm.llm_call(
+            compress_prompt_to_fit=input_data.conversation_compaction,
             credentials=credentials,
             llm_model=input_data.model,
             prompt=current_prompt,
@@ -689,12 +740,19 @@ class SmartDecisionMakerBlock(Block):
         self, prompt: list[dict], response, tool_outputs: list | None = None
     ):
         """Update conversation history with response and tool outputs."""
-        if response.reasoning:
+        # Don't add separate reasoning message with tool calls (breaks Anthropic's tool_use->tool_result pairing)
+        assistant_message = _convert_raw_response_to_dict(response.raw_response)
+        has_tool_calls = isinstance(assistant_message.get("content"), list) and any(
+            item.get("type") == "tool_use"
+            for item in assistant_message.get("content", [])
+        )
+
+        if response.reasoning and not has_tool_calls:
             prompt.append(
                 {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
             )
 
-        prompt.append(_convert_raw_response_to_dict(response.raw_response))
+        prompt.append(assistant_message)
 
         if tool_outputs:
             prompt.extend(tool_outputs)
@@ -848,7 +906,7 @@ class SmartDecisionMakerBlock(Block):
             if max_iterations > 0 and iteration == max_iterations:
                 last_iteration_message = {
                     "role": "system",
-                    "content": f"[FINAL ITERATION]: This is your last iteration ({iteration}/{max_iterations}). "
+                    "content": f"{MAIN_OBJECTIVE_PREFIX}This is your last iteration ({iteration}/{max_iterations}). "
                     "Try to complete the task with the information you have. If you cannot fully complete it, "
                     "provide a summary of what you've accomplished and what remains to be done. "
                     "Prefer finishing with a clear response rather than making additional tool calls.",
@@ -890,7 +948,8 @@ class SmartDecisionMakerBlock(Block):
                     )
                     tool_outputs.append(error_response)
 
-            # Update conversation with response and tool outputs
+            tool_outputs = _combine_tool_responses(tool_outputs)
+
             self._update_conversation(current_prompt, response, tool_outputs)
 
             # Yield intermediate conversation state
@@ -962,17 +1021,24 @@ class SmartDecisionMakerBlock(Block):
             input_data.prompt = llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = llm.fmt.format_string(input_data.sys_prompt, values)
 
-        prefix = "[Main Objective Prompt]: "
-
         if input_data.sys_prompt and not any(
-            p["role"] == "system" and p["content"].startswith(prefix) for p in prompt
+            p["role"] == "system" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            for p in prompt
         ):
-            prompt.append({"role": "system", "content": prefix + input_data.sys_prompt})
+            prompt.append(
+                {
+                    "role": "system",
+                    "content": MAIN_OBJECTIVE_PREFIX + input_data.sys_prompt,
+                }
+            )
 
         if input_data.prompt and not any(
-            p["role"] == "user" and p["content"].startswith(prefix) for p in prompt
+            p["role"] == "user" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            for p in prompt
         ):
-            prompt.append({"role": "user", "content": prefix + input_data.prompt})
+            prompt.append(
+                {"role": "user", "content": MAIN_OBJECTIVE_PREFIX + input_data.prompt}
+            )
 
         # Execute tools based on the selected mode
         if input_data.agent_mode_max_iterations != 0:
