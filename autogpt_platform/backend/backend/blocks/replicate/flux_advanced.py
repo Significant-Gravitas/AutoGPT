@@ -9,7 +9,11 @@ from backend.blocks.replicate._auth import (
     TEST_CREDENTIALS_INPUT,
     ReplicateCredentialsInput,
 )
-from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
+from backend.blocks.replicate._helper import (
+    ReplicateOutputs,
+    extract_result,
+    run_replicate_with_retry,
+)
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -188,9 +192,10 @@ class ReplicateFluxAdvancedModelBlock(Block):
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
         # Run the model with additional parameters
-        output: ReplicateOutputs = await client.async_run(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`
+        output: ReplicateOutputs = await run_replicate_with_retry(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`
+            client,
             f"{model_name}",
-            input={
+            input_params={
                 "prompt": prompt,
                 "seed": seed,
                 "steps": steps,

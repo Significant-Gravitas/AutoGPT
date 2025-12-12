@@ -1,5 +1,8 @@
+import asyncio
 import logging
+from typing import Any
 
+from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
 logger = logging.getLogger(__name__)
@@ -37,3 +40,56 @@ def extract_result(output: ReplicateOutputs) -> str:
         )
 
     return result
+
+
+async def run_replicate_with_retry(
+    client: ReplicateClient,
+    model: str,
+    input_params: dict[str, Any],
+    wait: bool = False,
+    max_retries: int = 3,
+    **kwargs: Any,
+) -> Any:
+    last_error = None
+    retry_delay = 2  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            output = await client.async_run(
+                model, input=input_params, wait=wait, **kwargs
+            )
+
+            # Check for failed status in response
+            is_failed = False
+            if isinstance(output, dict) and output.get("status") == "failed":
+                is_failed = True
+            elif hasattr(output, "status") and getattr(output, "status") == "failed":
+                is_failed = True
+
+            if is_failed:
+                # Try to get error message
+                error_msg = "Replicate prediction failed"
+                if isinstance(output, dict):
+                    error = output.get("error")
+                    if error:
+                        error_msg = f"{error_msg}: {error}"
+                elif hasattr(output, "error"):
+                    error = getattr(output, "error")
+                    if error:
+                        error_msg = f"{error_msg}: {error}"
+
+                raise RuntimeError(error_msg)
+
+            return output
+
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = retry_delay * (2**attempt)
+                logger.warning(
+                    f"Replicate attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s..."
+                )
+                await asyncio.sleep(wait_time)
+            else:
+                logger.error(f"Replicate failed after {max_retries} attempts: {str(e)}")
+                raise last_error

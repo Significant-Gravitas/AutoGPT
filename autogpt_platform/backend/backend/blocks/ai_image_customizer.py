@@ -6,6 +6,7 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
+from backend.blocks.replicate._helper import run_replicate_with_retry
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -183,9 +184,10 @@ class AIImageCustomizerBlock(Block):
         if images:
             input_params["image_input"] = [str(img) for img in images]
 
-        output: FileOutput | str = await client.async_run(  # type: ignore
+        output: FileOutput | str = await run_replicate_with_retry(  # type: ignore
+            client,
             model_name,
-            input=input_params,
+            input_params,
             wait=False,
         )
 
