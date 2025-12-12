@@ -22,27 +22,86 @@ from .schema import (
 
 
 class GroqModelName(str, enum.Enum):
+    # Llama 3.3 models
+    LLAMA_3_3_70B = "llama-3.3-70b-versatile"
+
+    # Llama 3.1 models
+    LLAMA_3_1_70B = "llama-3.1-70b-versatile"
+    LLAMA_3_1_8B = "llama-3.1-8b-instant"
+
+    # Llama 3 models
+    LLAMA_3_70B = "llama3-70b-8192"
+    LLAMA_3_8B = "llama3-8b-8192"
+
+    # Mixtral
     MIXTRAL_8X7B = "mixtral-8x7b-32768"
-    GEMMA_7B = "gemma-7b-it"
+
+    # Gemma 2
+    GEMMA_2_9B = "gemma2-9b-it"
 
 
 GROQ_CHAT_MODELS = {
     info.name: info
     for info in [
+        # Llama 3.3 models
         ChatModelInfo(
-            name=GroqModelName.MIXTRAL_8X7B,
+            name=GroqModelName.LLAMA_3_3_70B,
             provider_name=ModelProviderName.GROQ,
-            prompt_token_cost=0.27 / 1e6,
-            completion_token_cost=0.27 / 1e6,
-            max_tokens=32768,
+            prompt_token_cost=0.59 / 1e6,
+            completion_token_cost=0.79 / 1e6,
+            max_tokens=128_000,
+            has_function_call_api=True,
+        ),
+        # Llama 3.1 models
+        ChatModelInfo(
+            name=GroqModelName.LLAMA_3_1_70B,
+            provider_name=ModelProviderName.GROQ,
+            prompt_token_cost=0.59 / 1e6,
+            completion_token_cost=0.79 / 1e6,
+            max_tokens=128_000,
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=GroqModelName.GEMMA_7B,
+            name=GroqModelName.LLAMA_3_1_8B,
             provider_name=ModelProviderName.GROQ,
-            prompt_token_cost=0.10 / 1e6,
-            completion_token_cost=0.10 / 1e6,
-            max_tokens=8192,
+            prompt_token_cost=0.05 / 1e6,
+            completion_token_cost=0.08 / 1e6,
+            max_tokens=128_000,
+            has_function_call_api=True,
+        ),
+        # Llama 3 models
+        ChatModelInfo(
+            name=GroqModelName.LLAMA_3_70B,
+            provider_name=ModelProviderName.GROQ,
+            prompt_token_cost=0.59 / 1e6,
+            completion_token_cost=0.79 / 1e6,
+            max_tokens=8_192,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=GroqModelName.LLAMA_3_8B,
+            provider_name=ModelProviderName.GROQ,
+            prompt_token_cost=0.05 / 1e6,
+            completion_token_cost=0.08 / 1e6,
+            max_tokens=8_192,
+            has_function_call_api=True,
+        ),
+        # Mixtral
+        ChatModelInfo(
+            name=GroqModelName.MIXTRAL_8X7B,
+            provider_name=ModelProviderName.GROQ,
+            prompt_token_cost=0.24 / 1e6,
+            completion_token_cost=0.24 / 1e6,
+            max_tokens=32_768,
+            has_function_call_api=True,
+        ),
+        # Gemma 2
+        ChatModelInfo(
+            name=GroqModelName.GEMMA_2_9B,
+            provider_name=ModelProviderName.GROQ,
+            prompt_token_cost=0.20 / 1e6,
+            completion_token_cost=0.20 / 1e6,
+            max_tokens=8_192,
             has_function_call_api=True,
         ),
     ]
