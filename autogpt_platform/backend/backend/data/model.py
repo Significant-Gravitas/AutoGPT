@@ -44,7 +44,7 @@ from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
 from backend.util.settings import Secrets
 
-from .llm_schema_utils import update_schema_with_llm_registry
+from backend.data.llm_registry import update_schema_with_llm_registry
 
 # Type alias for any provider name (including custom ones)
 AnyProviderName = str  # Will be validated as ProviderName at runtime

@@ -24,12 +24,9 @@ export function EditModelModal({
       styling={{ maxWidth: "768px", maxHeight: "90vh", overflowY: "auto" }}
     >
       <Dialog.Trigger>
-        <button
-          type="button"
-          className="inline-flex items-center rounded border border-input px-3 py-1 text-xs font-semibold hover:bg-muted"
-        >
+        <Button variant="outline" size="small" className="min-w-0">
           Edit
-        </button>
+        </Button>
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="mb-4 text-sm text-muted-foreground">

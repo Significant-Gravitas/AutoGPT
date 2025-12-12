@@ -38,7 +38,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Config
 
-from .llm_schema_utils import update_schema_with_llm_registry
+from backend.data.llm_registry import update_schema_with_llm_registry
 from .model import (
     ContributorDetails,
     Credentials,

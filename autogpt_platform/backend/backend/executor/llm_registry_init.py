@@ -10,7 +10,7 @@ import logging
 from backend.data import db, llm_registry
 from backend.data.block import BlockSchema, initialize_blocks
 from backend.data.block_cost_config import refresh_llm_costs
-from backend.data.llm_registry_notifications import subscribe_to_registry_refresh
+from backend.data.llm_registry import subscribe_to_registry_refresh
 
 logger = logging.getLogger(__name__)
 

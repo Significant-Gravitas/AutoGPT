@@ -79,7 +79,7 @@ async def event_broadcaster(manager: ConnectionManager):
 
     async def registry_refresh_worker():
         """Listen for LLM registry refresh notifications and broadcast to all clients."""
-        from backend.data.llm_registry_notifications import REGISTRY_REFRESH_CHANNEL
+        from backend.data.llm_registry import REGISTRY_REFRESH_CHANNEL
         from backend.data.redis_client import connect_async
 
         redis = await connect_async()

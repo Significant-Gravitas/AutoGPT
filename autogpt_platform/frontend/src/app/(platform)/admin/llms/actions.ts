@@ -31,14 +31,10 @@ export async function createLlmProviderAction(formData: FormData) {
       ? String(formData.get("description"))
       : undefined,
     default_credential_provider: formData.get("default_credential_provider")
-      ? String(formData.get("default_credential_provider"))
+      ? String(formData.get("default_credential_provider")).trim()
       : undefined,
-    default_credential_id: formData.get("default_credential_id")
-      ? String(formData.get("default_credential_id"))
-      : undefined,
-    default_credential_type: formData.get("default_credential_type")
-      ? String(formData.get("default_credential_type"))
-      : undefined,
+    default_credential_id: undefined, // Not needed - system uses credential_provider to lookup
+    default_credential_type: "api_key", // Default to api_key
     supports_tools: formData.get("supports_tools") === "on",
     supports_json_output: formData.get("supports_json_output") !== "off",
     supports_reasoning: formData.get("supports_reasoning") === "on",
@@ -52,13 +48,24 @@ export async function createLlmProviderAction(formData: FormData) {
 }
 
 export async function createLlmModelAction(formData: FormData) {
+  const providerId = String(formData.get("provider_id"));
+  
+  // Fetch provider to get default credentials
+  const api = new BackendApi();
+  const providersResponse = await api.listAdminLlmProviders(false);
+  const provider = providersResponse.providers.find((p) => p.id === providerId);
+  
+  if (!provider) {
+    throw new Error("Provider not found");
+  }
+
   const payload: CreateLlmModelRequest = {
     slug: String(formData.get("slug") || "").trim(),
     display_name: String(formData.get("display_name") || "").trim(),
     description: formData.get("description")
       ? String(formData.get("description"))
       : undefined,
-    provider_id: String(formData.get("provider_id")),
+    provider_id: providerId,
     context_window: Number(formData.get("context_window") || 0),
     max_output_tokens: formData.get("max_output_tokens")
       ? Number(formData.get("max_output_tokens"))
@@ -69,21 +76,15 @@ export async function createLlmModelAction(formData: FormData) {
     costs: [
       {
         credit_cost: Number(formData.get("credit_cost") || 0),
-        credential_provider: String(
-          formData.get("credential_provider") || "",
-        ).trim(),
-        credential_id: formData.get("credential_id")
-          ? String(formData.get("credential_id"))
-          : undefined,
-        credential_type: formData.get("credential_type")
-          ? String(formData.get("credential_type"))
-          : undefined,
+        credential_provider:
+          provider.default_credential_provider || provider.name,
+        credential_id: provider.default_credential_id || undefined,
+        credential_type: provider.default_credential_type || "api_key",
         metadata: {},
       },
     ],
   };
 
-  const api = new BackendApi();
   await api.createAdminLlmModel(payload);
   revalidatePath(ADMIN_LLM_PATH);
 }

@@ -8,7 +8,11 @@ and model options from the LLM registry into block schemas.
 import logging
 from typing import Any
 
-from backend.data import llm_registry
+from backend.data.llm_registry.registry import (
+    get_all_model_slugs_for_validation,
+    get_llm_discriminator_mapping,
+    get_llm_model_schema_options,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,7 @@ def refresh_llm_model_options(field_schema: dict[str, Any]) -> None:
     Existing graphs may have disabled models selected - they should pass validation
     and the fallback logic in llm_call() will handle using an alternative model.
     """
-    fresh_options = llm_registry.get_llm_model_schema_options()
+    fresh_options = get_llm_model_schema_options()
     if not fresh_options:
         return
 
@@ -52,7 +56,7 @@ def refresh_llm_model_options(field_schema: dict[str, Any]) -> None:
     if "options" in field_schema:
         field_schema["options"] = fresh_options
 
-    all_known_slugs = llm_registry.get_all_model_slugs_for_validation()
+    all_known_slugs = get_all_model_slugs_for_validation()
     if all_known_slugs and "enum" in field_schema:
         existing_enum = set(field_schema.get("enum", []))
         combined_enum = existing_enum | all_known_slugs
@@ -70,7 +74,7 @@ def refresh_llm_discriminator_mapping(field_schema: dict[str, Any]) -> None:
         return
 
     # Always refresh the mapping to get latest models
-    fresh_mapping = llm_registry.get_llm_discriminator_mapping()
+    fresh_mapping = get_llm_discriminator_mapping()
     if fresh_mapping:
         field_schema["discriminator_mapping"] = fresh_mapping
 
@@ -117,3 +121,4 @@ def update_schema_with_llm_registry(
                 field_name,
                 exc,
             )
+

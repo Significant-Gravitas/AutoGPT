@@ -89,3 +89,4 @@ async def subscribe_to_registry_refresh(
             exc_info=True,
         )
         raise
+

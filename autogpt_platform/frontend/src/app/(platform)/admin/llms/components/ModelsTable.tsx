@@ -1,5 +1,4 @@
 import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
-
 import {
   Table,
   TableBody,
@@ -8,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/atoms/Table/Table";
-
+import { Button } from "@/components/atoms/Button/Button";
 import { toggleLlmModelAction } from "../actions";
 import { DeleteModelModal } from "./DeleteModelModal";
 import { EditModelModal } from "./EditModelModal";
@@ -43,7 +42,7 @@ export function ModelsTable({
             <TableHead>Max Output</TableHead>
             <TableHead>Cost</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -95,16 +94,16 @@ export function ModelsTable({
                 </TableCell>
                 <TableCell>
                   <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                       model.is_enabled
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                         : "bg-muted text-muted-foreground"
                     }`}
                   >
                     {model.is_enabled ? "Enabled" : "Disabled"}
                   </span>
                 </TableCell>
-                <TableCell className="text-right text-sm">
+                <TableCell>
                   <div className="flex items-center justify-end gap-2">
                     <ToggleModelButton
                       modelId={model.id}
@@ -134,15 +133,17 @@ function ToggleModelButton({
   isEnabled: boolean;
 }) {
   return (
-    <form action={toggleLlmModelAction}>
+    <form action={toggleLlmModelAction} className="inline">
       <input type="hidden" name="model_id" value={modelId} />
       <input type="hidden" name="is_enabled" value={(!isEnabled).toString()} />
-      <button
+      <Button
         type="submit"
-        className="inline-flex items-center rounded border border-input px-3 py-1 text-xs font-semibold hover:bg-muted"
+        variant="outline"
+        size="small"
+        className="min-w-0"
       >
         {isEnabled ? "Disable" : "Enable"}
-      </button>
+      </Button>
     </form>
   );
 }

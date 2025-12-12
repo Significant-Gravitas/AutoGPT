@@ -23,7 +23,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.llm_model_types import ModelMetadata
+from backend.data.llm_registry import ModelMetadata
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,

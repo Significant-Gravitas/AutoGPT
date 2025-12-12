@@ -1,3 +1,5 @@
+"""Core LLM registry implementation for managing models dynamically."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,13 +9,15 @@ from typing import Any, Iterable
 
 import prisma.models
 
-from backend.data.llm_model_types import ModelMetadata
+from backend.data.llm_registry.model_types import ModelMetadata
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class RegistryModelCost:
+    """Cost configuration for an LLM model."""
+
     credit_cost: int
     credential_provider: str
     credential_id: str | None
@@ -24,6 +28,8 @@ class RegistryModelCost:
 
 @dataclass(frozen=True)
 class RegistryModel:
+    """Represents a model in the LLM registry."""
+
     slug: str
     display_name: str
     description: str | None
@@ -44,11 +50,13 @@ _lock = asyncio.Lock()
 
 
 def register_static_metadata(metadata: dict[Any, ModelMetadata]) -> None:
+    """Register static metadata for legacy models (deprecated)."""
     _static_metadata.update({str(key): value for key, value in metadata.items()})
     _refresh_cached_schema()
 
 
 def register_static_costs(costs: dict[Any, int]) -> None:
+    """Register static costs for legacy models (deprecated)."""
     _static_costs.update({str(key): value for key, value in costs.items()})
 
 
@@ -148,6 +156,7 @@ async def refresh_llm_registry() -> None:
 
 
 def _refresh_cached_schema() -> None:
+    """Refresh cached schema options and discriminator mapping."""
     new_options = _build_schema_options()
     _schema_options.clear()
     _schema_options.extend(new_options)
@@ -166,11 +175,8 @@ def get_llm_model_metadata(slug: str) -> ModelMetadata | None:
     return _static_metadata.get(slug)
 
 
-# Removed get_llm_model_metadata_async - direct database queries don't work in executor context
-# The registry should be refreshed on startup via initialize_blocks() or rest_api lifespan
-
-
 def get_llm_model_cost(slug: str) -> tuple[RegistryModelCost, ...]:
+    """Get model cost configuration by slug."""
     if slug in _dynamic_models:
         return _dynamic_models[slug].costs
     cost_value = _static_costs.get(slug)
@@ -209,6 +215,7 @@ def get_llm_discriminator_mapping() -> dict[str, str]:
 
 
 def get_dynamic_model_slugs() -> set[str]:
+    """Get all dynamic model slugs from the registry."""
     return set(_dynamic_models.keys())
 
 
@@ -226,6 +233,7 @@ def get_all_model_slugs_for_validation() -> set[str]:
 
 
 def iter_dynamic_models() -> Iterable[RegistryModel]:
+    """Iterate over all dynamic models in the registry."""
     return tuple(_dynamic_models.values())
 
 
@@ -286,7 +294,7 @@ def get_model_info(model_slug: str) -> RegistryModel | None:
 def get_default_model_slug() -> str:
     """
     Get the default model slug to use for block defaults.
-    
+
     Prefers "gpt-4o" if it exists and is enabled, otherwise returns
     the first enabled model from the registry, or "gpt-4o" as fallback.
     """
@@ -295,11 +303,12 @@ def get_default_model_slug() -> str:
     preferred_model = _dynamic_models.get(preferred_slug)
     if preferred_model and preferred_model.is_enabled:
         return preferred_slug
-    
+
     # Find first enabled model
     for model in sorted(_dynamic_models.values(), key=lambda m: m.display_name.lower()):
         if model.is_enabled:
             return model.slug
-    
+
     # Fallback to preferred slug even if not in registry (for backwards compatibility)
     return preferred_slug
+
