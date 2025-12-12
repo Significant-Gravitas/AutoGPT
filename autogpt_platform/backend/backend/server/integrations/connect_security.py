@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 # State expiration time
 STATE_EXPIRATION_SECONDS = 600  # 10 minutes
 NONCE_EXPIRATION_SECONDS = 3600  # 1 hour (nonces valid for longer to prevent races)
+LOGIN_STATE_EXPIRATION_SECONDS = 600  # 10 minutes for login redirect flow
 
 
 class ConnectState(BaseModel):
@@ -55,6 +56,24 @@ class ConnectContinuationState(BaseModel):
     redirect_origin: str
     nonce: str
     created_at: str
+
+
+class ConnectLoginState(BaseModel):
+    """
+    State for connect flow when user needs to log in first.
+
+    When an unauthenticated user tries to access /connect/{provider},
+    we store the connect parameters and redirect to login. After login,
+    the user is redirected back to complete the connect flow.
+    """
+
+    client_id: str
+    provider: str
+    requested_scopes: list[str]
+    redirect_origin: str
+    nonce: str
+    created_at: str
+    expires_at: str
 
 
 # Continuation state expiration (same as regular state)
@@ -250,6 +269,97 @@ async def consume_connect_state(token: str) -> Optional[ConnectState]:
 
     state = ConnectState.model_validate_json(data)
     logger.debug(f"Consumed connect state for token {token[:8]}...")
+
+    return state
+
+
+async def store_connect_login_state(
+    client_id: str,
+    provider: str,
+    requested_scopes: list[str],
+    redirect_origin: str,
+    nonce: str,
+) -> str:
+    """
+    Store connect parameters for unauthenticated users.
+
+    When a user isn't logged in, we store the connect params and redirect
+    to login. After login, the frontend calls /connect/resume with the token.
+
+    Args:
+        client_id: OAuth client ID
+        provider: Integration provider name
+        requested_scopes: Requested integration scopes
+        redirect_origin: Origin to send postMessage to
+        nonce: Client-provided nonce for replay protection
+
+    Returns:
+        Login state token to be used after login completes
+    """
+    token = generate_connect_token()
+    now = datetime.now(timezone.utc)
+    expires_at = now.timestamp() + LOGIN_STATE_EXPIRATION_SECONDS
+
+    state = ConnectLoginState(
+        client_id=client_id,
+        provider=provider,
+        requested_scopes=requested_scopes,
+        redirect_origin=redirect_origin,
+        nonce=nonce,
+        created_at=now.isoformat(),
+        expires_at=datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
+    )
+
+    redis = await get_redis_async()
+    key = f"connect_login_state:{token}"
+    await redis.setex(key, LOGIN_STATE_EXPIRATION_SECONDS, state.model_dump_json())
+
+    logger.debug(f"Stored connect login state for token {token[:8]}...")
+    return token
+
+
+async def get_connect_login_state(token: str) -> Optional[ConnectLoginState]:
+    """
+    Get connect login state without consuming it.
+
+    Args:
+        token: Login state token
+
+    Returns:
+        ConnectLoginState or None if not found/expired
+    """
+    redis = await get_redis_async()
+    key = f"connect_login_state:{token}"
+    data = await redis.get(key)
+
+    if not data:
+        return None
+
+    return ConnectLoginState.model_validate_json(data)
+
+
+async def consume_connect_login_state(token: str) -> Optional[ConnectLoginState]:
+    """
+    Get and consume (delete) connect login state.
+
+    This ensures the token can only be used once.
+
+    Args:
+        token: Login state token
+
+    Returns:
+        ConnectLoginState or None if not found/expired
+    """
+    redis = await get_redis_async()
+    key = f"connect_login_state:{token}"
+
+    # Atomic get-and-delete to prevent race conditions
+    data = await redis.getdel(key)
+    if not data:
+        return None
+
+    state = ConnectLoginState.model_validate_json(data)
+    logger.debug(f"Consumed connect login state for token {token[:8]}...")
 
     return state
 

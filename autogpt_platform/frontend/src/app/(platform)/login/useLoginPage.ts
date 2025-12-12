@@ -21,10 +21,24 @@ export function useLoginPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
-  // Get returnUrl from query params (used by OAuth flow)
+  // Get returnUrl, oauth_session, and connect_session from query params
   const returnUrl = searchParams.get("returnUrl");
+  const oauthSession = searchParams.get("oauth_session");
+  const connectSession = searchParams.get("connect_session");
 
   function getRedirectUrl(onboarding: boolean): string {
+    // OAuth session takes priority - redirect to frontend oauth-resume page
+    // which will handle the backend call with proper authentication
+    if (oauthSession) {
+      return `/auth/oauth-resume?session_id=${encodeURIComponent(oauthSession)}`;
+    }
+
+    // Connect session - redirect to frontend connect-resume page
+    // for integration credential connection flow
+    if (connectSession) {
+      return `/auth/connect-resume?session_id=${encodeURIComponent(connectSession)}`;
+    }
+
     // If returnUrl is set and is a valid URL, redirect there after login
     if (returnUrl) {
       try {
@@ -56,9 +70,10 @@ export function useLoginPage() {
 
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
-      router.push(getRedirectUrl(false));
+      const redirectTo = getRedirectUrl(false);
+      router.push(redirectTo);
     }
-  }, [isLoggedIn, isLoggingIn, returnUrl]);
+  }, [isLoggedIn, isLoggingIn, returnUrl, oauthSession, connectSession]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -73,10 +88,20 @@ export function useLoginPage() {
     setIsLoggingIn(true);
 
     try {
+      // Build redirect URL that preserves oauth_session or connect_session through the OAuth flow
+      let callbackUrl: string | undefined;
+      const origin = window.location.origin;
+
+      if (oauthSession) {
+        callbackUrl = `${origin}/auth/callback?oauth_session=${encodeURIComponent(oauthSession)}`;
+      } else if (connectSession) {
+        callbackUrl = `${origin}/auth/callback?connect_session=${encodeURIComponent(connectSession)}`;
+      }
+
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, redirectTo: callbackUrl }),
       });
 
       if (!response.ok) {

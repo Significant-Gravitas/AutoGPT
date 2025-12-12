@@ -16,8 +16,9 @@ import logging
 from typing import Annotated, Optional
 
 from autogpt_libs.auth import get_user_id
+from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from fastapi import APIRouter, Form, Query, Request, Security
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from prisma.enums import CredentialGrantPermission
 
 from backend.data.credential_grants import (
@@ -38,9 +39,11 @@ from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.server.integrations.connect_security import (
     consume_connect_continuation,
+    consume_connect_login_state,
     consume_connect_state,
     create_post_message_data,
     store_connect_continuation,
+    store_connect_login_state,
     store_connect_state,
     validate_nonce,
     validate_redirect_origin,
@@ -432,49 +435,162 @@ def _render_result_page(
     """
 
 
+def _try_get_user_id(request: Request) -> Optional[str]:
+    """
+    Attempt to extract user ID from request without raising an error.
+
+    Checks Authorization header (Bearer token) and access_token cookie.
+    Returns None if no valid authentication is found.
+    """
+    # Try Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            token = auth_header[7:]
+            payload = parse_jwt_token(token)
+            return payload.get("sub")
+        except Exception:
+            pass
+
+    # Try cookie
+    token = request.cookies.get("access_token")
+    if token:
+        try:
+            payload = parse_jwt_token(token)
+            return payload.get("sub")
+        except Exception:
+            pass
+
+    return None
+
+
+def _render_login_redirect_page(login_url: str) -> str:
+    """Render a page that redirects to login."""
+    safe_login_url = html.escape(login_url)
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="refresh" content="0;url={safe_login_url}">
+        <title>Login Required - AutoGPT</title>
+        <style>{_base_styles()}</style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Login Required</h1>
+            <p class="subtitle" style="margin-top: 16px;">
+                Redirecting to login...
+            </p>
+            <a href="{safe_login_url}" class="btn btn-primary" style="display: inline-block; text-decoration: none; margin-top: 16px;">
+                Click here if not redirected
+            </a>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def _wants_json(request: Request) -> bool:
+    """Check if client prefers JSON response."""
+    accept = request.headers.get("Accept", "")
+    return "application/json" in accept
+
+
+def _add_security_headers(response: HTMLResponse) -> HTMLResponse:
+    """Add security headers to connect HTML responses."""
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @connect_router.get("/{provider}", response_model=None)
 async def connect_page(
+    request: Request,
     provider: ProviderName,
     client_id: Annotated[str, Query(description="OAuth client ID")],
     scopes: Annotated[str, Query(description="Comma-separated integration scopes")],
     nonce: Annotated[str, Query(description="Nonce for replay protection")],
     redirect_origin: Annotated[str, Query(description="Origin for postMessage")],
-    user_id: Annotated[str, Security(get_user_id)],
-) -> HTMLResponse:
+) -> HTMLResponse | JSONResponse:
     """
     Render the connect consent page.
 
     This page allows users to select an existing credential or connect a new one
     for use by an external application.
+
+    If the user is not authenticated, stores the connect params and redirects
+    to login. After login, user is redirected to /auth/connect-resume to continue.
     """
-    # Validate client
+    wants_json = _wants_json(request)
+
+    # Validate client first (before checking auth)
     client = await prisma.oauthclient.find_unique(where={"clientId": client_id})
     if not client:
-        return HTMLResponse(
-            _render_error_page("invalid_client", "Unknown application"),
-            status_code=400,
+        if wants_json:
+            return JSONResponse(
+                {"error": "invalid_client", "error_description": "Unknown application"},
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page("invalid_client", "Unknown application"),
+                status_code=400,
+            )
         )
 
     if client.status.value != "ACTIVE":
-        return HTMLResponse(
-            _render_error_page("invalid_client", "Application is not active"),
-            status_code=400,
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "invalid_client",
+                    "error_description": "Application is not active",
+                },
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page("invalid_client", "Application is not active"),
+                status_code=400,
+            )
         )
 
     # Validate redirect origin
     if not validate_redirect_origin(redirect_origin, client):
-        return HTMLResponse(
-            _render_error_page(
-                "invalid_request", "Invalid redirect origin for this application"
-            ),
-            status_code=400,
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Invalid redirect origin for this application",
+                },
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page(
+                    "invalid_request", "Invalid redirect origin for this application"
+                ),
+                status_code=400,
+            )
         )
 
     # Validate nonce
     if not await validate_nonce(client_id, nonce):
-        return HTMLResponse(
-            _render_error_page("invalid_request", "Nonce has already been used"),
-            status_code=400,
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Nonce has already been used",
+                },
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page("invalid_request", "Nonce has already been used"),
+                status_code=400,
+            )
         )
 
     # Parse and validate scopes
@@ -484,11 +600,21 @@ async def connect_page(
     if not valid:
         # HTML escape user input to prevent XSS
         escaped_invalid = html.escape(", ".join(invalid))
-        return HTMLResponse(
-            _render_error_page(
-                "invalid_scope", f"Invalid scopes requested: {escaped_invalid}"
-            ),
-            status_code=400,
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "invalid_scope",
+                    "error_description": f"Invalid scopes requested: {escaped_invalid}",
+                },
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page(
+                    "invalid_scope", f"Invalid scopes requested: {escaped_invalid}"
+                ),
+                status_code=400,
+            )
         )
 
     # Verify all scopes are for the requested provider
@@ -497,14 +623,77 @@ async def connect_page(
         if scope_provider != provider:
             # HTML escape user input to prevent XSS
             escaped_scope = html.escape(scope)
-            return HTMLResponse(
-                _render_error_page(
-                    "invalid_scope",
-                    f"Scope '{escaped_scope}' is not for provider '{provider.value}'",
-                ),
-                status_code=400,
+            if wants_json:
+                return JSONResponse(
+                    {
+                        "error": "invalid_scope",
+                        "error_description": f"Scope '{escaped_scope}' is not for provider '{provider.value}'",
+                    },
+                    status_code=400,
+                )
+            return _add_security_headers(
+                HTMLResponse(
+                    _render_error_page(
+                        "invalid_scope",
+                        f"Scope '{escaped_scope}' is not for provider '{provider.value}'",
+                    ),
+                    status_code=400,
+                )
             )
 
+    # Try to get user ID (optional - handles unauthenticated users)
+    user_id = _try_get_user_id(request)
+
+    if not user_id:
+        # User needs to log in - store connect params and redirect to frontend login
+        frontend_base_url = settings.config.frontend_base_url
+        if not frontend_base_url:
+            if wants_json:
+                return JSONResponse(
+                    {
+                        "error": "server_error",
+                        "error_description": "Frontend URL not configured",
+                    },
+                    status_code=500,
+                )
+            return _add_security_headers(
+                HTMLResponse(
+                    _render_error_page("server_error", "Frontend URL not configured"),
+                    status_code=500,
+                )
+            )
+
+        # Store login state
+        login_token = await store_connect_login_state(
+            client_id=client_id,
+            provider=provider.value,
+            requested_scopes=requested_scopes,
+            redirect_origin=redirect_origin,
+            nonce=nonce,
+        )
+
+        # Redirect to frontend login with connect_session parameter
+        login_url = f"{frontend_base_url}/login?connect_session={login_token}"
+
+        logger.info(
+            f"Redirecting unauthenticated user to login for connect flow: "
+            f"provider={provider.value}, client={client_id}"
+        )
+
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "login_required",
+                    "error_description": "Authentication required",
+                    "redirect_url": login_url,
+                },
+                status_code=401,
+            )
+        return _add_security_headers(
+            HTMLResponse(_render_login_redirect_page(login_url))
+        )
+
+    # User is authenticated - continue with normal flow
     # Get user's existing credentials for this provider
     user_credentials = await creds_manager.store.get_creds_by_provider(
         user_id, provider
@@ -523,14 +712,16 @@ async def connect_page(
         nonce=nonce,
     )
 
-    return HTMLResponse(
-        _render_connect_page(
-            client_name=client.name,
-            provider=provider.value,
-            scopes=requested_scopes,
-            credentials=oauth_credentials,
-            connect_token=connect_token,
-            action_url=f"/connect/{provider.value}/approve",
+    return _add_security_headers(
+        HTMLResponse(
+            _render_connect_page(
+                client_name=client.name,
+                provider=provider.value,
+                scopes=requested_scopes,
+                credentials=oauth_credentials,
+                connect_token=connect_token,
+                action_url=f"/connect/{provider.value}/approve",
+            )
         )
     )
 
@@ -846,6 +1037,151 @@ async def connect_oauth_callback(
             nonce=nonce,
         )
         return HTMLResponse(_render_result_page(False, redirect_origin, post_data))
+
+
+@connect_router.get("/resume", response_model=None)
+async def resume_connect(
+    request: Request,
+    session_id: Annotated[str, Query(description="Connect login session ID")],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> HTMLResponse | JSONResponse:
+    """
+    Resume connect flow after user login.
+
+    This endpoint is called after the user completes login on the frontend.
+    It retrieves the stored connect parameters and continues the connect flow.
+
+    Supports Accept: application/json header to return JSON for frontend fetch calls.
+    """
+    wants_json = _wants_json(request)
+
+    # Retrieve and delete login state (one-time use)
+    login_state = await consume_connect_login_state(session_id)
+    if not login_state:
+        logger.warning(f"Connect login state not found for session_id: {session_id}")
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Invalid or expired connect session",
+                },
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page(
+                    "invalid_request",
+                    "Invalid or expired connect session. Please start over.",
+                ),
+                status_code=400,
+            )
+        )
+
+    # Extract stored parameters
+    client_id = login_state.client_id
+    provider = login_state.provider
+    requested_scopes = login_state.requested_scopes
+    redirect_origin = login_state.redirect_origin
+    nonce = login_state.nonce
+
+    # Re-validate client
+    client = await prisma.oauthclient.find_unique(where={"clientId": client_id})
+    if not client or client.status.value != "ACTIVE":
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "invalid_client",
+                    "error_description": "Client not found or inactive",
+                },
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page("invalid_client", "Client not found or inactive"),
+                status_code=400,
+            )
+        )
+
+    # Convert provider string back to ProviderName
+    try:
+        provider_enum = ProviderName(provider)
+    except ValueError:
+        if wants_json:
+            return JSONResponse(
+                {
+                    "error": "invalid_request",
+                    "error_description": f"Invalid provider: {provider}",
+                },
+                status_code=400,
+            )
+        return _add_security_headers(
+            HTMLResponse(
+                _render_error_page("invalid_request", f"Invalid provider: {provider}"),
+                status_code=400,
+            )
+        )
+
+    # Get user's existing credentials for this provider
+    user_credentials = await creds_manager.store.get_creds_by_provider(
+        user_id, provider_enum
+    )
+    oauth_credentials = [
+        c for c in user_credentials if isinstance(c, OAuth2Credentials)
+    ]
+
+    # Store connect state for the consent form
+    connect_token = await store_connect_state(
+        user_id=user_id,
+        client_id=client_id,
+        provider=provider,
+        requested_scopes=requested_scopes,
+        redirect_origin=redirect_origin,
+        nonce=nonce,
+    )
+
+    # For JSON requests, return connect data instead of HTML
+    if wants_json:
+        from backend.data.integration_scopes import INTEGRATION_SCOPE_DESCRIPTIONS
+
+        scope_details = [
+            {"scope": s, "description": INTEGRATION_SCOPE_DESCRIPTIONS.get(s, s)}
+            for s in requested_scopes
+        ]
+        credentials_list = [
+            {
+                "id": c.id,
+                "title": c.title or c.username or "Credential",
+                "username": c.username or "",
+            }
+            for c in oauth_credentials
+        ]
+        return JSONResponse(
+            {
+                "connect_token": connect_token,
+                "client": {
+                    "name": client.name,
+                    "logo_url": getattr(client, "logoUrl", None),
+                },
+                "provider": provider,
+                "scopes": scope_details,
+                "credentials": credentials_list,
+                "action_url": f"/connect/{provider}/approve",
+            }
+        )
+
+    # Render consent page (HTML response)
+    return _add_security_headers(
+        HTMLResponse(
+            _render_connect_page(
+                client_name=client.name,
+                provider=provider,
+                scopes=requested_scopes,
+                credentials=oauth_credentials,
+                connect_token=connect_token,
+                action_url=f"/connect/{provider}/approve",
+            )
+        )
+    )
 
 
 def _get_provider_oauth_handler(request: Request, provider_name: ProviderName):

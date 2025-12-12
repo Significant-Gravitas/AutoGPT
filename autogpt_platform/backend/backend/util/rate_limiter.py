@@ -176,6 +176,7 @@ DEFAULT_RATE_LIMITS = {
     # OAuth endpoints
     "oauth_authorize": {"minute": (30, 60)},  # 30/min per IP
     "oauth_token": {"minute": (20, 60)},  # 20/min per client
+    "oauth_consent": {"minute": (20, 60)},  # 20/min per IP for consent submission
     # External API endpoints
     "api_execute": {
         "minute": (10, 60),
