@@ -29,6 +29,9 @@ RUN apt-get update \
     libssl-dev \
     postgresql-client \
     nodejs \
+    tesseract-ocr \
+    libtesseract-dev \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 ENV POETRY_HOME=/opt/poetry
@@ -44,6 +47,10 @@ COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 WORKDIR /app/autogpt_platform/backend
 RUN poetry install --no-ansi --no-root
+
+
+# pytessearct
+RUN poetry add pytesseract --no-ansi || true
 
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
@@ -65,6 +72,9 @@ ENV PATH=/opt/poetry/bin:$PATH
 RUN apt-get update && apt-get install -y \
     python3.13 \
     python3-pip \
+    tesseract-ocr \
+    libtesseract-dev \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only necessary files from builder
