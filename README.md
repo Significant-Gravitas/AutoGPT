@@ -218,6 +218,16 @@ To maintain a uniform standard and ensure seamless compatibility with many curre
 
 ---
 
+## 🔧 MCP Tools & Integrations
+
+AutoGPT leverages the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) to enhance agent capabilities through standardized tool integrations. The following MCP servers provide additional functionality for your AutoGPT agents:
+
+**[Roundtable MCP Server](https://github.com/InsightFactory/roundtable_mcp_server)** - Zero-configuration AI tool management for autonomous agents. Provides unified interface for multiple AI coding assistants with intelligent auto-discovery and session management, perfect for AutoGPT workflows requiring consistent AI interactions.
+
+> **Note**: AutoGPT includes built-in MCP support for enhanced agent capabilities. You can extend your agents with additional MCP servers to access specialized tools and integrations.
+
+---
+
 ## Stars stats
 
 <p align="center">
