@@ -63,6 +63,7 @@ def _build_docs_service(credentials: GoogleCredentials):
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.secrets.google_client_id,
         client_secret=settings.secrets.google_client_secret,
+        scopes=credentials.scopes,
     )
     return build("docs", "v1", credentials=creds, cache_discovery=False)
 
@@ -83,6 +84,7 @@ def _build_drive_service(credentials: GoogleCredentials):
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.secrets.google_client_id,
         client_secret=settings.secrets.google_client_secret,
+        scopes=credentials.scopes,
     )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
@@ -1715,6 +1717,13 @@ class GoogleDocsShareBlock(Block):
                 kwargs["emailMessage"] = message
 
             service.permissions().create(**kwargs).execute()
+        else:
+            # Create "anyone with the link" permission for link sharing
+            permission = {"type": "anyone", "role": role.value}
+            service.permissions().create(
+                fileId=document_id,
+                body=permission,
+            ).execute()
 
         return {"success": True, "share_link": share_link}
 
