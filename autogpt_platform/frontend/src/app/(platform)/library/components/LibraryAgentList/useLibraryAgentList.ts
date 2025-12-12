@@ -1,7 +1,11 @@
 "use client";
 
+import {
+  getPaginatedTotalCount,
+  getPaginationNextPageNumber,
+  unpaginate,
+} from "@/app/api/helpers";
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { useLibraryPageContext } from "../state-provider";
 import { useLibraryAgentsStore } from "@/hooks/useLibraryAgents/store";
 import { getInitialData } from "./helpers";
@@ -11,7 +15,7 @@ export const useLibraryAgentList = () => {
   const { agents: cachedAgents } = useLibraryAgentsStore();
 
   const {
-    data: agents,
+    data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -26,27 +30,15 @@ export const useLibraryAgentList = () => {
     {
       query: {
         initialData: getInitialData(cachedAgents, searchTerm, 8),
-        getNextPageParam: (lastPage) => {
-          const pagination = (lastPage.data as LibraryAgentResponse).pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
+        getNextPageParam: getPaginationNextPageNumber,
       },
     },
   );
 
-  const allAgents =
-    agents?.pages?.flatMap((page) => {
-      const response = page.data as LibraryAgentResponse;
-      return response.agents;
-    }) ?? [];
-
-  const agentCount = agents?.pages?.[0]
-    ? (agents.pages[0].data as LibraryAgentResponse).pagination.total_items
-    : 0;
+  const allAgents = agentsQueryData
+    ? unpaginate(agentsQueryData, "agents")
+    : [];
+  const agentCount = getPaginatedTotalCount(agentsQueryData);
 
   return {
     allAgents,

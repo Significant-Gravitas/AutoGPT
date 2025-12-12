@@ -2,7 +2,6 @@ import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/libra
 import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
 import { useParams } from "next/navigation";
@@ -31,11 +30,7 @@ export function useNewAgentLibraryView() {
     data: agent,
     isSuccess,
     error,
-  } = useGetV2GetLibraryAgent(agentId, {
-    query: {
-      select: okData<LibraryAgent>,
-    },
-  });
+  } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
 
   const [{ activeItem, activeTab: activeTabRaw }, setQueryStates] =
     useQueryStates({
@@ -53,7 +48,7 @@ export function useNewAgentLibraryView() {
   } = useGetV2GetASpecificPreset(activeItem ?? "", {
     query: {
       enabled: Boolean(activeTab === "templates" && activeItem),
-      select: okData<LibraryAgentPreset>,
+      select: okData,
     },
   });
   const activeTemplate =

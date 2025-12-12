@@ -26,7 +26,7 @@ export default function Page() {
     ready,
     error,
     showInput,
-    agent,
+    graphMeta,
     onboarding,
     storeAgent,
     runningAgent,
@@ -77,7 +77,7 @@ export default function Page() {
                   <CardTitle className="font-poppins text-lg">Input</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  {Object.entries(agent?.input_schema.properties || {}).map(
+                  {Object.entries(graphMeta?.input_schema.properties || {}).map(
                     ([key, inputSubSchema]) => (
                       <div key={key} className="flex flex-col space-y-2">
                         <label className="flex items-center gap-1 text-sm font-medium">
@@ -96,7 +96,7 @@ export default function Page() {
                     ),
                   )}
                   <AgentOnboardingCredentials
-                    agent={agent}
+                    agent={graphMeta}
                     siblingInputs={
                       (onboarding.state?.agentInput as Record<string, any>) ||
                       undefined
@@ -112,7 +112,7 @@ export default function Page() {
                 className="mt-8 w-[136px]"
                 loading={runningAgent}
                 disabled={isRunDisabled({
-                  agent,
+                  agent: graphMeta,
                   isRunning: runningAgent,
                   agentInputs:
                     (onboarding.state?.agentInput as unknown as InputValues) ||
