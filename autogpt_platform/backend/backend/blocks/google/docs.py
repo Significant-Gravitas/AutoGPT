@@ -273,7 +273,7 @@ class GoogleDocsCreateBlock(Block):
                         url="https://docs.google.com/document/d/new_doc_123/edit",
                         iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
                         isFolder=False,
-                        _credentials_id=None,
+                        _credentials_id=TEST_CREDENTIALS_INPUT["id"],
                     ),
                 ),
                 ("document_id", "new_doc_123"),
