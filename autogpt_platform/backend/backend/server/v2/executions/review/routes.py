@@ -70,8 +70,7 @@ async def list_pending_reviews(
     response_model=List[PendingHumanReviewModel],
     responses={
         200: {"description": "List of pending reviews for the execution"},
-        400: {"description": "Invalid graph execution ID"},
-        403: {"description": "Access denied to graph execution"},
+        404: {"description": "Graph execution not found"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
@@ -94,7 +93,7 @@ async def list_pending_reviews_for_execution(
 
     Raises:
         HTTPException:
-            - 403: If user doesn't own the graph execution
+            - 404: If the graph execution doesn't exist or isn't owned by this user
             - 500: If authentication fails or database error occurs
 
     Note:
@@ -108,8 +107,8 @@ async def list_pending_reviews_for_execution(
     )
     if not graph_exec:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to graph execution",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph execution #{graph_exec_id} not found",
         )
 
     return await get_pending_reviews_for_execution(graph_exec_id, user_id)
