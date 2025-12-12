@@ -5,6 +5,9 @@ import {
 } from "./__generated__/endpoints/onboarding/onboarding";
 import { Pagination } from "./__generated__/models/pagination";
 
+export type OKData<TResponse extends { status: number; data?: any }> =
+  (TResponse & { status: 200 })["data"];
+
 /**
  * Narrow an orval response to its success payload if and only if it is a `200` status with OK shape.
  *
@@ -19,7 +22,7 @@ import { Pagination } from "./__generated__/models/pagination";
  */
 export function okData<TResponse extends { status: number; data?: any }>(
   res: TResponse | undefined,
-): (TResponse & { status: 200 })["data"] | undefined {
+): OKData<TResponse> | undefined {
   if (!res || typeof res !== "object") return undefined;
 
   // status must exist and be exactly 200
@@ -55,40 +58,38 @@ export function getPaginationNextPageNumber(
   return hasMore ? pagination.current_page + 1 : undefined;
 }
 
-/** Makes one list from a paginated infinite query result */
+/** Make one list from a paginated infinite query result. */
 export function unpaginate<
-  TItemData extends object,
-  TPageDataKey extends string,
+  TResponse extends { status: number; data: any },
+  TPageDataKey extends {
+    // Only allow keys for which the value is an array:
+    [K in keyof OKData<TResponse>]: OKData<TResponse>[K] extends any[]
+      ? K
+      : never;
+  }[keyof OKData<TResponse>] &
+    string,
+  TItemData extends OKData<TResponse>[TPageDataKey][number],
 >(
-  infiniteData: InfiniteData<
-    | {
-        status: 200;
-        data: { [key in TPageDataKey]: TItemData[] };
-      }
-    | {
-        status: 401 | 404 | 422; // <-- add error codes here as needed; do not change to 'number' as that will break the type checking magic
-        data: Record<string, any>;
-      }
-  >,
-  pageListKey: TPageDataKey &
-    keyof (typeof infiniteData)["pages"][number]["data"],
+  infiniteData: InfiniteData<TResponse>,
+  pageListKey: TPageDataKey,
 ): TItemData[] {
   return (
-    infiniteData?.pages.flatMap((page) => {
-      if (!hasValidListPage<TItemData, TPageDataKey>(page, pageListKey))
-        return [];
+    infiniteData?.pages.flatMap<TItemData>((page) => {
+      if (!hasValidListPage(page, pageListKey)) return [];
       return page.data[pageListKey] || [];
     }) || []
   );
 }
 
-function hasValidListPage<TItemData extends object, TKey extends string>(
+function hasValidListPage<TKey extends string>(
   page: unknown,
   pageListKey: TKey,
-): page is { data: { [key in TKey]: TItemData[] } } {
+): page is { status: 200; data: { [key in TKey]: any[] } } {
   return (
     typeof page === "object" &&
     page !== null &&
+    "status" in page &&
+    page.status === 200 &&
     "data" in page &&
     typeof page.data === "object" &&
     page.data !== null &&
