@@ -41,15 +41,33 @@ _P = ParamSpec("_P")
 
 
 class AnthropicModelName(str, enum.Enum):
+    # Claude 3 models
     CLAUDE3_OPUS_v1 = "claude-3-opus-20240229"
     CLAUDE3_SONNET_v1 = "claude-3-sonnet-20240229"
-    CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
     CLAUDE3_HAIKU_v1 = "claude-3-haiku-20240307"
+
+    # Claude 3.5 models
+    CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
+    CLAUDE3_5_SONNET_v2 = "claude-3-5-sonnet-20241022"
+    CLAUDE3_5_HAIKU_v1 = "claude-3-5-haiku-20241022"
+
+    # Claude 3.7 models
+    CLAUDE3_7_SONNET_v1 = "claude-3-7-sonnet-20250219"
+
+    # Claude 4 models
+    CLAUDE4_OPUS_v1 = "claude-opus-4-20250514"
+    CLAUDE4_SONNET_v1 = "claude-sonnet-4-20250514"
+
+    # Claude 4.5 models
+    CLAUDE4_5_OPUS_v1 = "claude-opus-4-5-20251101"
+    CLAUDE4_5_SONNET_v1 = "claude-sonnet-4-5-20250929"
+    CLAUDE4_5_HAIKU_v1 = "claude-haiku-4-5-20251001"
 
 
 ANTHROPIC_CHAT_MODELS = {
     info.name: info
     for info in [
+        # Claude 3 models
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_OPUS_v1,
             provider_name=ModelProviderName.ANTHROPIC,
@@ -67,6 +85,15 @@ ANTHROPIC_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
+            name=AnthropicModelName.CLAUDE3_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=0.25 / 1e6,
+            completion_token_cost=1.25 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        # Claude 3.5 models
+        ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_5_SONNET_v1,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=3 / 1e6,
@@ -75,10 +102,69 @@ ANTHROPIC_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=AnthropicModelName.CLAUDE3_HAIKU_v1,
+            name=AnthropicModelName.CLAUDE3_5_SONNET_v2,
             provider_name=ModelProviderName.ANTHROPIC,
-            prompt_token_cost=0.25 / 1e6,
-            completion_token_cost=1.25 / 1e6,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE3_5_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=0.8 / 1e6,
+            completion_token_cost=4 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        # Claude 3.7 models
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE3_7_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        # Claude 4 models
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=15 / 1e6,
+            completion_token_cost=75 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        # Claude 4.5 models
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=15 / 1e6,
+            completion_token_cost=75 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=0.8 / 1e6,
+            completion_token_cost=4 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
         ),

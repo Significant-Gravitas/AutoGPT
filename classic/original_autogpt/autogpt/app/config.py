@@ -48,11 +48,11 @@ class AppConfig(BaseConfig):
     ##########################
     # Model configuration
     fast_llm: ModelName = UserConfigurable(
-        default=OpenAIModelName.GPT3,
+        default=OpenAIModelName.GPT4_O_MINI,
         from_env="FAST_LLM",
     )
     smart_llm: ModelName = UserConfigurable(
-        default=OpenAIModelName.GPT4_TURBO,
+        default=OpenAIModelName.GPT4_O,
         from_env="SMART_LLM",
     )
     temperature: float = UserConfigurable(default=0, from_env="TEMPERATURE")

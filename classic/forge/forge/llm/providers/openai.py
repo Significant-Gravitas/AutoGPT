@@ -72,10 +72,30 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_TURBO_PREVIEW = "gpt-4-turbo-preview"
     GPT4_VISION = "gpt-4-vision-preview"
     GPT4_O_v1 = "gpt-4o-2024-05-13"
+    GPT4_O_v2 = "gpt-4o-2024-08-06"
+    GPT4_O_v3 = "gpt-4o-2024-11-20"
     GPT4_O_ROLLING = "gpt-4o"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
     GPT4_O = GPT4_O_ROLLING
+
+    # GPT-4o Mini models
+    GPT4_O_MINI_v1 = "gpt-4o-mini-2024-07-18"
+    GPT4_O_MINI_ROLLING = "gpt-4o-mini"
+    GPT4_O_MINI = GPT4_O_MINI_ROLLING
+
+    # O1 Reasoning models
+    O1_v1 = "o1-2024-12-17"
+    O1_ROLLING = "o1"
+    O1 = O1_ROLLING
+    O1_PREVIEW = "o1-preview"
+    O1_PREVIEW_v1 = "o1-preview-2024-09-12"
+    O1_MINI = "o1-mini"
+    O1_MINI_v1 = "o1-mini-2024-09-12"
+
+    # O3 Reasoning models
+    O3_MINI = "o3-mini"
+    O3_MINI_v1 = "o3-mini-2025-01-31"
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -168,9 +188,49 @@ OPEN_AI_CHAT_MODELS = {
         ChatModelInfo(
             name=OpenAIModelName.GPT4_O,
             provider_name=ModelProviderName.OPENAI,
-            prompt_token_cost=5 / 1_000_000,
-            completion_token_cost=15 / 1_000_000,
+            prompt_token_cost=2.5 / 1_000_000,
+            completion_token_cost=10 / 1_000_000,
             max_tokens=128_000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT4_O_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.15 / 1_000_000,
+            completion_token_cost=0.6 / 1_000_000,
+            max_tokens=128_000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O1,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=15 / 1_000_000,
+            completion_token_cost=60 / 1_000_000,
+            max_tokens=200_000,
+            has_function_call_api=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O1_PREVIEW,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=15 / 1_000_000,
+            completion_token_cost=60 / 1_000_000,
+            max_tokens=128_000,
+            has_function_call_api=False,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O1_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=3 / 1_000_000,
+            completion_token_cost=12 / 1_000_000,
+            max_tokens=128_000,
+            has_function_call_api=False,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.O3_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=1.1 / 1_000_000,
+            completion_token_cost=4.4 / 1_000_000,
+            max_tokens=200_000,
             has_function_call_api=True,
         ),
     ]
@@ -193,7 +253,16 @@ chat_model_mapping = {
         OpenAIModelName.GPT4_TURBO_PREVIEW,
         OpenAIModelName.GPT4_v5,
     ],
-    OpenAIModelName.GPT4_O: [OpenAIModelName.GPT4_O_v1],
+    OpenAIModelName.GPT4_O: [
+        OpenAIModelName.GPT4_O_v1,
+        OpenAIModelName.GPT4_O_v2,
+        OpenAIModelName.GPT4_O_v3,
+    ],
+    OpenAIModelName.GPT4_O_MINI: [OpenAIModelName.GPT4_O_MINI_v1],
+    OpenAIModelName.O1: [OpenAIModelName.O1_v1],
+    OpenAIModelName.O1_PREVIEW: [OpenAIModelName.O1_PREVIEW_v1],
+    OpenAIModelName.O1_MINI: [OpenAIModelName.O1_MINI_v1],
+    OpenAIModelName.O3_MINI: [OpenAIModelName.O3_MINI_v1],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
@@ -356,8 +425,8 @@ class OpenAIProvider(
                 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
             )
             tokens_per_name = -1  # if there's a name, the role is omitted
-        # TODO: check if this is still valid for gpt-4o
-        elif model_name.startswith("gpt-4"):
+        elif model_name.startswith(("gpt-4", "o1", "o3")):
+            # GPT-4, GPT-4o, GPT-4o-mini, O1, and O3 models use similar tokenization
             tokens_per_message = 3
             tokens_per_name = 1
         else:
