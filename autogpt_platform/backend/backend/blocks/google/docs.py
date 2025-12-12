@@ -314,7 +314,7 @@ class GoogleDocsCreateBlock(Block):
                 url=doc_url,
                 iconUrl="https://www.gstatic.com/images/branding/product/1x/docs_48dp.png",
                 isFolder=False,
-                _credentials_id=(input_data.credentials.id),
+                _credentials_id=input_data.credentials.id,
             )
             yield "document_id", doc_id
             yield "document_url", doc_url
@@ -984,8 +984,13 @@ class GoogleDocsInsertTableBlock(Block):
         # If we inserted at end (index was high), take the last table
         # Otherwise, take the first table at or after our insert index
         table_element = None
-        if index >= _get_document_end_index(service, document_id) - (
-            rows * columns * 2
+        # Heuristic: rows * columns * 2 estimates the minimum index space a table
+        # occupies (each cell has at least a start index and structural overhead).
+        # This helps determine if our insert point was near the document end.
+        estimated_table_size = rows * columns * 2
+        if (
+            index
+            >= _get_document_end_index(service, document_id) - estimated_table_size
         ):
             # Likely inserted at end - use last table
             table_element = tables_found[-1]
@@ -1027,35 +1032,45 @@ class GoogleDocsInsertTableBlock(Block):
         cell_positions.sort(key=lambda x: x[2], reverse=True)
 
         cells_populated = 0
-        for row_idx, col_idx, cell_start in cell_positions:
-            # Get the content for this cell
-            if row_idx < len(content) and col_idx < len(content[row_idx]):
-                cell_text = content[row_idx][col_idx]
-                if not cell_text:
-                    continue
 
-                if format_as_markdown:
-                    # Use gravitas-md2gdocs for markdown formatting
+        if format_as_markdown:
+            # Markdown formatting: process each cell individually since
+            # gravitas-md2gdocs requests may have complex interdependencies
+            for row_idx, col_idx, cell_start in cell_positions:
+                if row_idx < len(content) and col_idx < len(content[row_idx]):
+                    cell_text = content[row_idx][col_idx]
+                    if not cell_text:
+                        continue
                     md_requests = to_requests(cell_text, start_index=cell_start)
                     if md_requests:
                         service.documents().batchUpdate(
                             documentId=document_id, body={"requests": md_requests}
                         ).execute()
                         cells_populated += 1
-                else:
-                    # Plain text insertion
-                    text_requests = [
+        else:
+            # Plain text: batch all insertions into a single API call
+            # Cells are sorted by index descending, so earlier requests
+            # don't affect indices of later ones
+            all_text_requests = []
+            for row_idx, col_idx, cell_start in cell_positions:
+                if row_idx < len(content) and col_idx < len(content[row_idx]):
+                    cell_text = content[row_idx][col_idx]
+                    if not cell_text:
+                        continue
+                    all_text_requests.append(
                         {
                             "insertText": {
                                 "location": {"index": cell_start},
                                 "text": cell_text,
                             }
                         }
-                    ]
-                    service.documents().batchUpdate(
-                        documentId=document_id, body={"requests": text_requests}
-                    ).execute()
+                    )
                     cells_populated += 1
+
+            if all_text_requests:
+                service.documents().batchUpdate(
+                    documentId=document_id, body={"requests": all_text_requests}
+                ).execute()
 
         return {
             "success": True,
@@ -2428,31 +2443,50 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
     def _find_text_positions(
         self, service, document_id: str, find_text: str, match_case: bool
     ) -> list[tuple[int, int]]:
-        """Find all positions of the search text in the document."""
+        """Find all positions of the search text using actual document indices.
+
+        Iterates through document content and uses the real startIndex/endIndex
+        from text runs, rather than trying to map plain text offsets to indices.
+        """
         doc = service.documents().get(documentId=document_id).execute()
         body = doc.get("body", {})
         content = body.get("content", [])
 
-        # Extract full text with position tracking
-        full_text = _extract_text_from_content(content)
-
-        # Find all occurrences
         positions = []
         search_text = find_text if match_case else find_text.lower()
-        text_to_search = full_text if match_case else full_text.lower()
 
-        start = 0
-        while True:
-            pos = text_to_search.find(search_text, start)
-            if pos == -1:
-                break
-            # Google Docs indices start at 1, and we need to account for the
-            # initial structural element
-            doc_start_index = pos + 1
-            doc_end_index = doc_start_index + len(find_text)
-            positions.append((doc_start_index, doc_end_index))
-            start = pos + 1
+        def search_in_content(elements: list[dict]) -> None:
+            """Recursively search through content elements."""
+            for element in elements:
+                if "paragraph" in element:
+                    for text_elem in element["paragraph"].get("elements", []):
+                        if "textRun" in text_elem:
+                            text_run = text_elem["textRun"]
+                            text_content = text_run.get("content", "")
+                            start_index = text_elem.get("startIndex", 0)
 
+                            # Search within this text run
+                            text_to_search = (
+                                text_content if match_case else text_content.lower()
+                            )
+                            offset = 0
+                            while True:
+                                pos = text_to_search.find(search_text, offset)
+                                if pos == -1:
+                                    break
+                                # Calculate actual document indices
+                                doc_start = start_index + pos
+                                doc_end = doc_start + len(find_text)
+                                positions.append((doc_start, doc_end))
+                                offset = pos + 1
+
+                elif "table" in element:
+                    # Search within table cells
+                    for row in element["table"].get("tableRows", []):
+                        for cell in row.get("tableCells", []):
+                            search_in_content(cell.get("content", []))
+
+        search_in_content(content)
         return positions
 
     def _replace_content_with_markdown(
@@ -2476,27 +2510,27 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
 
         # Process in reverse order to maintain correct indices
         for start_index, end_index in reversed(positions):
-            # Delete the found text
-            delete_requests = [
+            # Build combined request: delete first, then insert markdown
+            # Combining into single batchUpdate reduces API calls by half
+            combined_requests = [
                 {
                     "deleteContentRange": {
                         "range": {"startIndex": start_index, "endIndex": end_index}
                     }
                 }
             ]
+
+            # Get markdown insert requests
+            md_requests = to_requests(markdown, start_index=start_index)
+            if md_requests:
+                combined_requests.extend(md_requests)
+
+            # Execute delete + insert in single API call
             service.documents().batchUpdate(
-                documentId=document_id, body={"requests": delete_requests}
+                documentId=document_id, body={"requests": combined_requests}
             ).execute()
 
-            # Insert markdown at that position
-            requests = to_requests(markdown, start_index=start_index)
-
-            if requests:
-                service.documents().batchUpdate(
-                    documentId=document_id, body={"requests": requests}
-                ).execute()
-                total_requests += len(requests)
-
+            total_requests += len(combined_requests)
             replacements_made += 1
 
         return {
