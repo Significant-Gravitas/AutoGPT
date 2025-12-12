@@ -25,9 +25,10 @@ export function SelectedScheduleActions({ agent, scheduleId }: Props) {
           <Button
             variant="icon"
             size="icon"
-            aria-label="Open in builder"
             as="NextLink"
             href={openInBuilderHref}
+            target="_blank"
+            aria-label="View scheduled task details"
           >
             <EyeIcon weight="bold" size={18} className="text-zinc-700" />
           </Button>
