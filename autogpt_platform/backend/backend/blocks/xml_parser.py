@@ -39,6 +39,12 @@ class XMLParserBlock(Block):
             parser = Parser(tokens)
             parsed_result = parser.parse()
             yield "parsed_xml", parsed_result
+        except AttributeError as attr_e:
+            raise ValueError(
+                f"XML parsing error: The gravitasml library encountered an incompatible structure. "
+                f"This may occur with certain XML formats that create List objects with text content. "
+                f"Details: {attr_e}"
+            ) from attr_e
         except ValueError as val_e:
             raise ValueError(f"Validation error for dict:{val_e}") from val_e
         except SyntaxError as syn_e:
