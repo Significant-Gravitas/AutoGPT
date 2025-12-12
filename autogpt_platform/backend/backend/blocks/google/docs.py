@@ -282,6 +282,7 @@ class GoogleDocsCreateBlock(Block):
             test_mock={
                 "_create_document": lambda *args, **kwargs: {
                     "document_id": "new_doc_123",
+                    "document_url": "https://docs.google.com/document/d/new_doc_123/edit",
                     "title": "My New Document",
                 },
             },
