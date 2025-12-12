@@ -131,6 +131,10 @@ jobs:
           fi
 
       - name: Install Python dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install
+
+      - name: Install project
         run: poetry install
 
       - name: Generate Prisma Client
@@ -203,6 +207,16 @@ jobs:
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
+
+      - name: Update pyrightconfig.json for Python ${{ matrix.python-version }}
+        run: |
+          python -c "import json; \
+          config = json.load(open('pyrightconfig.json')); \
+          config['pythonVersion'] = '${{ matrix.python-version }}';
+          json.dump(config, open('pyrightconfig.json', 'w'), indent=2)"
+
+      - name: Run Pyright type-checking for Python ${{ matrix.python-version }}
+        run: poetry run pyright
 
     env:
       CI: true
