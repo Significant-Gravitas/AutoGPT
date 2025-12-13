@@ -5370,6 +5370,222 @@
         }
       }
     },
+    "/oauth/authorize": {
+      "get": {
+        "tags": ["oauth"],
+        "summary": "Authorize",
+        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and redirects back to the client.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nQuery Parameters:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scope: Space-separated list of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- Redirect to redirect_uri with authorization code and state\n\nError cases redirect to redirect_uri with error parameters.",
+        "operationId": "getOauthAuthorize",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Client identifier",
+              "title": "Client Id"
+            },
+            "description": "Client identifier"
+          },
+          {
+            "name": "redirect_uri",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Redirect URI",
+              "title": "Redirect Uri"
+            },
+            "description": "Redirect URI"
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Space-separated list of scopes",
+              "title": "Scope"
+            },
+            "description": "Space-separated list of scopes"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Anti-CSRF token from client",
+              "title": "State"
+            },
+            "description": "Anti-CSRF token from client"
+          },
+          {
+            "name": "response_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Must be 'code' for authorization code flow",
+              "default": "code",
+              "title": "Response Type"
+            },
+            "description": "Must be 'code' for authorization code flow"
+          },
+          {
+            "name": "code_challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "PKCE code challenge (required)",
+              "title": "Code Challenge"
+            },
+            "description": "PKCE code challenge (required)"
+          },
+          {
+            "name": "code_challenge_method",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["S256", "plain"],
+              "type": "string",
+              "description": "PKCE code challenge method (S256 recommended)",
+              "default": "S256",
+              "title": "Code Challenge Method"
+            },
+            "description": "PKCE code challenge method (S256 recommended)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Token",
+        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scope: Space-separated scopes",
+        "operationId": "postOauthToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/TokenRequestByCode" },
+                  { "$ref": "#/components/schemas/TokenRequestByRefreshToken" }
+                ],
+                "title": "Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TokenResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/introspect": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Introspect",
+        "description": "OAuth 2.0 Token Introspection Endpoint (RFC 7662)\n\nAllows clients to check if a token is valid and get its metadata.\n\nReturns:\n- active: Whether the token is currently active\n- scope: Space-separated scopes (if active)\n- client_id: The client the token was issued to (if active)\n- user_id: The user the token represents (if active)\n- exp: Expiration timestamp (if active)\n- token_type: \"access_token\" or \"refresh_token\" (if active)",
+        "operationId": "postOauthIntrospect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postOauthIntrospect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenIntrospectionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Revoke",
+        "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009)\n\nAllows clients to revoke an access or refresh token.\n\nNote: Revoking a refresh token does NOT revoke associated access tokens.\nRevoking an access token does NOT revoke the associated refresh token.",
+        "operationId": "postOauthRevoke",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Body_postOauthRevoke" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
@@ -5418,28 +5634,29 @@
       },
       "APIKeyInfo": {
         "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "head": {
-            "type": "string",
-            "title": "Head",
-            "description": "The first 8 characters of the key"
-          },
-          "tail": {
-            "type": "string",
-            "title": "Tail",
-            "description": "The last 8 characters of the key"
-          },
-          "status": { "$ref": "#/components/schemas/APIKeyStatus" },
-          "permissions": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "scopes": {
             "items": { "$ref": "#/components/schemas/APIKeyPermission" },
             "type": "array",
-            "title": "Permissions"
+            "title": "Scopes"
+          },
+          "type": {
+            "type": "string",
+            "const": "api_key",
+            "title": "Type",
+            "default": "api_key"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Expires At"
           },
           "last_used_at": {
             "anyOf": [
@@ -5455,22 +5672,34 @@
             ],
             "title": "Revoked At"
           },
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "head": {
+            "type": "string",
+            "title": "Head",
+            "description": "The first 8 characters of the key"
+          },
+          "tail": {
+            "type": "string",
+            "title": "Tail",
+            "description": "The last 8 characters of the key"
+          },
+          "status": { "$ref": "#/components/schemas/APIKeyStatus" },
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
-          },
-          "user_id": { "type": "string", "title": "User Id" }
+          }
         },
         "type": "object",
         "required": [
+          "user_id",
+          "scopes",
+          "created_at",
           "id",
           "name",
           "head",
           "tail",
-          "status",
-          "permissions",
-          "created_at",
-          "user_id"
+          "status"
         ],
         "title": "APIKeyInfo"
       },
@@ -5862,6 +6091,66 @@
         "type": "object",
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
+      },
+      "Body_postOauthIntrospect": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Token to introspect"
+          },
+          "token_type_hint": {
+            "anyOf": [
+              { "type": "string", "enum": ["access_token", "refresh_token"] },
+              { "type": "null" }
+            ],
+            "title": "Token Type Hint",
+            "description": "Hint about token type ('access_token' or 'refresh_token')"
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "Client identifier"
+          },
+          "client_secret": {
+            "type": "string",
+            "title": "Client Secret",
+            "description": "Client secret"
+          }
+        },
+        "type": "object",
+        "required": ["token", "client_id", "client_secret"],
+        "title": "Body_postOauthIntrospect"
+      },
+      "Body_postOauthRevoke": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Token to revoke"
+          },
+          "token_type_hint": {
+            "anyOf": [
+              { "type": "string", "enum": ["access_token", "refresh_token"] },
+              { "type": "null" }
+            ],
+            "title": "Token Type Hint",
+            "description": "Hint about token type ('access_token' or 'refresh_token')"
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "Client identifier"
+          },
+          "client_secret": {
+            "type": "string",
+            "title": "Client Secret",
+            "description": "Client secret"
+          }
+        },
+        "type": "object",
+        "required": ["token", "client_id", "client_secret"],
+        "title": "Body_postOauthRevoke"
       },
       "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
@@ -9891,6 +10180,134 @@
         "type": "object",
         "required": ["timezone"],
         "title": "TimezoneResponse"
+      },
+      "TokenIntrospectionResult": {
+        "properties": {
+          "active": { "type": "boolean", "title": "Active" },
+          "scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Scopes"
+          },
+          "client_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Client Id"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "exp": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Exp"
+          },
+          "token_type": {
+            "anyOf": [
+              { "type": "string", "enum": ["access_token", "refresh_token"] },
+              { "type": "null" }
+            ],
+            "title": "Token Type"
+          }
+        },
+        "type": "object",
+        "required": ["active"],
+        "title": "TokenIntrospectionResult",
+        "description": "Result of token introspection (RFC 7662)"
+      },
+      "TokenRequestByCode": {
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "const": "authorization_code",
+            "title": "Grant Type"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Authorization code"
+          },
+          "redirect_uri": {
+            "type": "string",
+            "title": "Redirect Uri",
+            "description": "Redirect URI (must match authorization request)"
+          },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_secret": { "type": "string", "title": "Client Secret" },
+          "code_verifier": {
+            "type": "string",
+            "title": "Code Verifier",
+            "description": "PKCE code verifier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "grant_type",
+          "code",
+          "redirect_uri",
+          "client_id",
+          "client_secret",
+          "code_verifier"
+        ],
+        "title": "TokenRequestByCode"
+      },
+      "TokenRequestByRefreshToken": {
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "const": "refresh_token",
+            "title": "Grant Type"
+          },
+          "refresh_token": { "type": "string", "title": "Refresh Token" },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_secret": { "type": "string", "title": "Client Secret" }
+        },
+        "type": "object",
+        "required": [
+          "grant_type",
+          "refresh_token",
+          "client_id",
+          "client_secret"
+        ],
+        "title": "TokenRequestByRefreshToken"
+      },
+      "TokenResponse": {
+        "properties": {
+          "token_type": {
+            "type": "string",
+            "const": "Bearer",
+            "title": "Token Type",
+            "default": "Bearer"
+          },
+          "access_token": { "type": "string", "title": "Access Token" },
+          "access_token_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Access Token Expires At"
+          },
+          "refresh_token": { "type": "string", "title": "Refresh Token" },
+          "refresh_token_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Refresh Token Expires At"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "access_token_expires_at",
+          "refresh_token",
+          "refresh_token_expires_at",
+          "scopes"
+        ],
+        "title": "TokenResponse",
+        "description": "OAuth 2.0 token response"
       },
       "TransactionHistory": {
         "properties": {
