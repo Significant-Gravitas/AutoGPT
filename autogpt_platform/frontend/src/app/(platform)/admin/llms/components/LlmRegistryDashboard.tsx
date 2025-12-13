@@ -1,17 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { CaretDown } from "@phosphor-icons/react";
 import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { Button } from "@/components/atoms/Button/Button";
-import { AddProviderForm } from "./AddProviderForm";
-import { AddModelForm } from "./AddModelForm";
+import { AddProviderModal } from "./AddProviderModal";
+import { AddModelModal } from "./AddModelModal";
 import { ProviderList } from "./ProviderList";
 import { ModelsTable } from "./ModelsTable";
 
@@ -20,15 +11,7 @@ interface Props {
   models: LlmModel[];
 }
 
-type FormType = "model" | "provider" | null;
-
 export function LlmRegistryDashboard({ providers, models }: Props) {
-  const [activeForm, setActiveForm] = useState<FormType>(null);
-
-  function handleFormSelect(type: FormType) {
-    setActiveForm(activeForm === type ? null : type);
-  }
-
   return (
     <div className="mx-auto p-6">
       <div className="flex flex-col gap-6">
@@ -40,46 +23,11 @@ export function LlmRegistryDashboard({ providers, models }: Props) {
               Manage supported providers, models, and credit pricing
             </p>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="primary" size="small" className="gap-2">
-                Add New
-                <CaretDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleFormSelect("model")}>
-                Model
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleFormSelect("provider")}>
-                Provider
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* Add Forms Section */}
-        {activeForm && (
-          <div className="rounded-lg border bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">
-                Add {activeForm === "model" ? "Model" : "Provider"}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setActiveForm(null)}
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                Close
-              </button>
-            </div>
-            {activeForm === "model" ? (
-              <AddModelForm providers={providers} />
-            ) : (
-              <AddProviderForm />
-            )}
+          <div className="flex gap-2">
+            <AddModelModal providers={providers} />
+            <AddProviderModal />
           </div>
-        )}
+        </div>
 
         {/* Providers Section */}
         <div className="rounded-lg border bg-white p-6 shadow-sm">
