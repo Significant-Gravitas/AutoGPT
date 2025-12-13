@@ -2,26 +2,38 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { BehaveAs, getBehaveAs, getEnvironmentStr } from "@/lib/utils";
+import { consent } from "@/services/consent/cookies";
+import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
-const isProductionCloud =
-  process.env.NODE_ENV === "production" && getBehaveAs() === BehaveAs.CLOUD;
+const isProdOrDev = environment.isProd() || environment.isDev();
+const isCloud = environment.isCloud();
+const isDisabled = process.env.DISABLE_SENTRY === "true";
+
+const shouldEnable = !isDisabled && isProdOrDev && isCloud;
+
+// Check for monitoring consent (includes session replay)
+const hasMonitoringConsent = consent.hasConsentFor("monitoring");
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
-  environment: getEnvironmentStr(),
+  environment: environment.getEnvironmentStr(),
 
-  enabled: isProductionCloud,
+  enabled: shouldEnable,
 
   // Add optional integrations for additional features
   integrations: [
-    Sentry.replayIntegration(),
+    Sentry.captureConsoleIntegration(),
+    Sentry.extraErrorDataIntegration(),
+    Sentry.browserProfilingIntegration(),
     Sentry.httpClientIntegration(),
+    Sentry.launchDarklyIntegration(),
+    Sentry.replayIntegration({
+      unmask: [".sentry-unmask, [data-sentry-unmask]"],
+    }),
     Sentry.replayCanvasIntegration(),
     Sentry.reportingObserverIntegration(),
-    Sentry.browserProfilingIntegration(),
     // Sentry.feedbackIntegration({
     //   // Additional SDK configuration goes in here, for example:
     //   colorScheme: "system",
@@ -42,10 +54,12 @@ Sentry.init({
   // Define how likely Replay events are sampled.
   // This sets the sample rate to be 10%. You may want this to be 100% while
   // in development and sample at a lower rate in production
-  replaysSessionSampleRate: 0.1,
+  // GDPR: Only enable if user has consented to monitoring
+  replaysSessionSampleRate: hasMonitoringConsent ? 0.1 : 0,
 
   // Define how likely Replay events are sampled when an error occurs.
-  replaysOnErrorSampleRate: 1.0,
+  // GDPR: Only enable if user has consented to monitoring
+  replaysOnErrorSampleRate: hasMonitoringConsent ? 1.0 : 0,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
@@ -56,10 +70,7 @@ Sentry.init({
   // For example, a tracesSampleRate of 0.5 and profilesSampleRate of 0.5 would
   // result in 25% of transactions being profiled (0.5*0.5=0.25)
   profilesSampleRate: 1.0,
-  _experiments: {
-    // Enable logs to be sent to Sentry.
-    enableLogs: true,
-  },
+  enableLogs: true,
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

@@ -21,6 +21,9 @@ export function getHttpErrorMessage(
 
   const status = httpError.status || 0;
 
+  if (httpError.message || httpError.statusText)
+    return httpError.message || httpError.statusText || "Unknown error";
+
   if (status >= 500) {
     return "An internal server error has occurred. Please try again in a few minutes.";
   }
@@ -50,10 +53,6 @@ export function shouldShowError(
   httpError?: ErrorCardProps["httpError"],
 ): boolean {
   return !isSuccess || !!responseError || !!httpError;
-}
-
-export function isHttpError(httpError?: ErrorCardProps["httpError"]): boolean {
-  return !!httpError;
 }
 
 export function handleReportError(

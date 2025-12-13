@@ -55,6 +55,8 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
 )
@@ -62,7 +64,7 @@ from ._config import my_provider
 
 
 class MyBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         # Define input fields
         credentials: CredentialsMetaInput = my_provider.credentials_field(
             description="API credentials for My Provider"
@@ -80,11 +82,11 @@ class MyBlock(Block):
             advanced=True  # Hidden by default in UI
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Define output fields
         results: list = SchemaField(description="List of results")
         count: int = SchemaField(description="Total count")
-        error: str = SchemaField(description="Error message if failed")
+        # error output pin is already defined on BlockSchemaOutput
 
     def __init__(self):
         super().__init__(
@@ -145,7 +147,7 @@ The `ProviderBuilder` allows you to:
 1. **Unique ID**: Generate using `uuid.uuid4()`
 2. **Categories**: Choose from `BlockCategory` enum (e.g., SEARCH, AI, PRODUCTIVITY)
 3. **async run()**: Main execution method that yields outputs
-4. **Error handling**: Always include error output field
+4. **Error handling**: Error output pin is already defined on BlockSchemaOutput
 
 ## Advanced Features
 
@@ -225,7 +227,7 @@ backend/blocks/my_provider/
 
 ## Best Practices
 
-1. **Error Handling**: Always include an error field in outputs
+1. **Error Handling**: Error output pin is already defined on BlockSchemaOutput
 2. **Credentials**: Use the provider's `credentials_field()` method
 3. **Validation**: Use SchemaField constraints (ge, le, min_length, etc.)
 4. **Categories**: Choose appropriate categories for discoverability

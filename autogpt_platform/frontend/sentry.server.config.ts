@@ -2,19 +2,22 @@
 // The config you add here will be used whenever the server handles a request.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { BehaveAs, getBehaveAs, getEnvironmentStr } from "@/lib/utils";
+import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 // import { NodeProfilingIntegration } from "@sentry/profiling-node";
 
-const isProductionCloud =
-  process.env.NODE_ENV === "production" && getBehaveAs() === BehaveAs.CLOUD;
+const isProdOrDev = environment.isProd() || environment.isDev();
+const isCloud = environment.isCloud();
+const isDisabled = process.env.DISABLE_SENTRY === "true";
+
+const shouldEnable = !isDisabled && isProdOrDev && isCloud;
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
-  environment: getEnvironmentStr(),
+  environment: environment.getEnvironmentStr(),
 
-  enabled: isProductionCloud,
+  enabled: shouldEnable,
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 1,
@@ -32,11 +35,9 @@ Sentry.init({
   integrations: [
     Sentry.anrIntegration(),
     // NodeProfilingIntegration,
+    Sentry.extraErrorDataIntegration(),
     // Sentry.fsIntegration(),
   ],
 
-  _experiments: {
-    // Enable logs to be sent to Sentry.
-    enableLogs: true,
-  },
+  enableLogs: true,
 });

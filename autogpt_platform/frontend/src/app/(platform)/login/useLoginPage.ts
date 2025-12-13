@@ -1,32 +1,30 @@
-import { useTurnstile } from "@/hooks/useTurnstile";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
+import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { login, providerLogin } from "./actions";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
+  const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
-  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
-  const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+  const isCloudEnv = environment.isCloud();
 
-  const turnstile = useTurnstile({
-    action: "login",
-    autoVerify: false,
-    resetOnError: true,
-  });
+  useEffect(() => {
+    if (isLoggedIn && !isLoggingIn) {
+      router.push("/marketplace");
+    }
+  }, [isLoggedIn, isLoggingIn]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -36,57 +34,36 @@ export function useLoginPage() {
     },
   });
 
-  const resetCaptcha = useCallback(() => {
-    setCaptchaKey((k) => k + 1);
-    turnstile.reset();
-  }, [turnstile]);
-
-  useEffect(() => {
-    if (user) router.push("/");
-  }, [user]);
-
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
-
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
-      toast({
-        title: "Please complete the CAPTCHA challenge.",
-        variant: "info",
-      });
-
-      setIsGoogleLoading(false);
-      resetCaptcha();
-      return;
-    }
+    setIsLoggingIn(true);
 
     try {
-      const error = await providerLogin(provider);
-      if (error) throw error;
-      setFeedback(null);
-    } catch (error) {
-      resetCaptcha();
-      setIsGoogleLoading(false);
-      const errorString = JSON.stringify(error);
-      if (errorString.includes("not_allowed")) {
-        setShowNotAllowedModal(true);
-      } else {
-        setFeedback(errorString);
+      const response = await fetch("/api/auth/provider", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json();
+        throw new Error(error || "Failed to start OAuth flow");
       }
+
+      const { url } = await response.json();
+      if (url) window.location.href = url as string;
+    } catch (error) {
+      setIsGoogleLoading(false);
+      setIsLoggingIn(false);
+      setFeedback(
+        error instanceof Error ? error.message : "Failed to start OAuth flow",
+      );
     }
   }
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
-    if (isCloudEnv && !turnstile.verified && !isVercelPreview) {
-      toast({
-        title: "Please complete the CAPTCHA challenge.",
-        variant: "info",
-      });
-
-      setIsLoading(false);
-      resetCaptcha();
-      return;
-    }
+    setIsLoggingIn(true);
 
     if (data.email.includes("@agpt.co")) {
       toast({
@@ -95,37 +72,43 @@ export function useLoginPage() {
       });
 
       setIsLoading(false);
-      resetCaptcha();
+      setIsLoggingIn(false);
       return;
     }
 
-    const error = await login(data, turnstile.token as string);
-    await supabase?.auth.refreshSession();
-    setIsLoading(false);
-    if (error) {
+    try {
+      const result = await loginAction(data.email, data.password);
+
+      if (!result.success) {
+        throw new Error(result.error || "Login failed");
+      }
+
+      if (result.onboarding) {
+        router.replace("/onboarding");
+      } else {
+        router.replace("/marketplace");
+      }
+    } catch (error) {
       toast({
-        title: error,
+        title:
+          error instanceof Error
+            ? error.message
+            : "Unexpected error during login",
         variant: "destructive",
       });
-
-      resetCaptcha();
-      // Always reset the turnstile on any error
-      turnstile.reset();
-      return;
+      setIsLoading(false);
+      setIsLoggingIn(false);
     }
-    setFeedback(null);
   }
 
   return {
     form,
     feedback,
-    turnstile,
-    captchaKey,
-    isLoggedIn: !!user,
+    user,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleLogin),

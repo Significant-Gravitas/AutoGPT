@@ -15,15 +15,20 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 from backend.data.db import prisma
 from backend.data.model import User, UserIntegrations, UserMetadata
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
-from backend.server.v2.store.exceptions import DatabaseError
+from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
+from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Cache decorator alias for consistent user lookup caching
+cache_user_lookup = cached(maxsize=1000, ttl_seconds=300)
 
+
+@cache_user_lookup
 async def get_or_create_user(user_data: dict) -> User:
     try:
         user_id = user_data.get("sub")
@@ -49,6 +54,7 @@ async def get_or_create_user(user_data: dict) -> User:
         raise DatabaseError(f"Failed to get or create user {user_data}: {e}") from e
 
 
+@cache_user_lookup
 async def get_user_by_id(user_id: str) -> User:
     user = await prisma.user.find_unique(where={"id": user_id})
     if not user:
@@ -64,6 +70,7 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
         raise DatabaseError(f"Failed to get user email for user {user_id}: {e}") from e
 
 
+@cache_user_lookup
 async def get_user_by_email(email: str) -> Optional[User]:
     try:
         user = await prisma.user.find_unique(where={"email": email})
@@ -74,7 +81,17 @@ async def get_user_by_email(email: str) -> Optional[User]:
 
 async def update_user_email(user_id: str, email: str):
     try:
+        # Get old email first for cache invalidation
+        old_user = await prisma.user.find_unique(where={"id": user_id})
+        old_email = old_user.email if old_user else None
+
         await prisma.user.update(where={"id": user_id}, data={"email": email})
+
+        # Selectively invalidate only the specific user entries
+        get_user_by_id.cache_delete(user_id)
+        if old_email:
+            get_user_by_email.cache_delete(old_email)
+        get_user_by_email.cache_delete(email)
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user email for user {user_id}: {e}"
@@ -114,6 +131,8 @@ async def update_user_integrations(user_id: str, data: UserIntegrations):
         where={"id": user_id},
         data={"integrations": encrypted_data},
     )
+    # Invalidate cache for this user
+    get_user_by_id.cache_delete(user_id)
 
 
 async def migrate_and_encrypt_user_integrations():
@@ -285,6 +304,10 @@ async def update_user_notification_preference(
         )
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
+
+        # Invalidate cache for this user since notification preferences are part of user data
+        get_user_by_id.cache_delete(user_id)
+
         preferences: dict[NotificationType, bool] = {
             NotificationType.AGENT_RUN: user.notifyOnAgentRun or True,
             NotificationType.ZERO_BALANCE: user.notifyOnZeroBalance or True,
@@ -323,9 +346,41 @@ async def set_user_email_verification(user_id: str, verified: bool) -> None:
             where={"id": user_id},
             data={"emailVerified": verified},
         )
+        # Invalidate cache for this user
+        get_user_by_id.cache_delete(user_id)
     except Exception as e:
         raise DatabaseError(
             f"Failed to set email verification status for user {user_id}: {e}"
+        ) from e
+
+
+async def disable_all_user_notifications(user_id: str) -> None:
+    """Disable all notification preferences for a user.
+
+    Used when user's email bounces/is inactive to prevent any future notifications.
+    """
+    try:
+        await PrismaUser.prisma().update(
+            where={"id": user_id},
+            data={
+                "notifyOnAgentRun": False,
+                "notifyOnZeroBalance": False,
+                "notifyOnLowBalance": False,
+                "notifyOnBlockExecutionFailed": False,
+                "notifyOnContinuousAgentError": False,
+                "notifyOnDailySummary": False,
+                "notifyOnWeeklySummary": False,
+                "notifyOnMonthlySummary": False,
+                "notifyOnAgentApproved": False,
+                "notifyOnAgentRejected": False,
+            },
+        )
+        # Invalidate cache for this user
+        get_user_by_id.cache_delete(user_id)
+        logger.info(f"Disabled all notification preferences for user {user_id}")
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to disable notifications for user {user_id}: {e}"
         ) from e
 
 
@@ -407,6 +462,10 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
         )
         if not user:
             raise ValueError(f"User not found with ID: {user_id}")
+
+        # Invalidate cache for this user
+        get_user_by_id.cache_delete(user_id)
+
         return User.from_db(user)
     except Exception as e:
         raise DatabaseError(f"Failed to update timezone for user {user_id}: {e}") from e

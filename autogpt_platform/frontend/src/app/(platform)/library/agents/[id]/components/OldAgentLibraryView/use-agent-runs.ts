@@ -86,16 +86,16 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
       return response.executions;
     }) ?? [];
 
-  const agentRunCount = queryResults?.pages[-1]
-    ? (queryResults.pages[-1].data as GraphExecutionsPaginated).pagination
-        .total_items
-    : 0;
+  const agentRunCount = (
+    queryResults?.pages.at(-1)?.data as GraphExecutionsPaginated | undefined
+  )?.pagination.total_items;
 
   const upsertAgentRun = (newAgentRun: GraphExecutionMeta) => {
     queryClient.setQueryData(
       queryKey,
       (currentQueryData: typeof queryResults) => {
-        if (!currentQueryData?.pages) return currentQueryData;
+        if (!currentQueryData?.pages || agentRunCount === undefined)
+          return currentQueryData;
 
         const exists = currentQueryData.pages.some((page) => {
           if (page.status !== 200) return false;
@@ -147,7 +147,22 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
         const updatedPages = [updatedPage, ...currentQueryData.pages.slice(1)];
         return {
           ...currentQueryData,
-          pages: updatedPages,
+          pages: updatedPages.map(
+            // Increment the total runs count in the pagination info of all pages
+            (page) =>
+              page.status === 200
+                ? {
+                    ...page,
+                    data: {
+                      ...page.data,
+                      pagination: {
+                        ...page.data.pagination,
+                        total_items: agentRunCount + 1,
+                      },
+                    },
+                  }
+                : page,
+          ),
         };
       },
     );

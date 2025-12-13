@@ -9,18 +9,24 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconCross } from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import LoadingBox from "@/components/ui/loading";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
+import { IconCross } from "@/components/__legacy__/ui/icons";
+import { Input } from "@/components/__legacy__/ui/input";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { formatScheduleTime } from "@/lib/timezone-utils";
 import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { PlayIcon } from "lucide-react";
+
+import { AgentRunStatus } from "./agent-run-status-chip";
 
 export function AgentScheduleDetailsView({
   graph,
@@ -58,7 +64,7 @@ export function AgentScheduleDetailsView({
       },
       {
         label: "Schedule",
-        value: humanizeCronExpression(schedule.cron, userTimezone),
+        value: humanizeCronExpression(schedule.cron),
       },
       {
         label: "Next run",
@@ -94,8 +100,9 @@ export function AgentScheduleDetailsView({
           graph.version,
           schedule.input_data,
           schedule.input_credentials,
+          "library",
         )
-        .then((run) => onForcedRun(run.graph_exec_id))
+        .then((run) => onForcedRun(run.id))
         .catch(toastOnFail("execute agent")),
     [api, graph, schedule, onForcedRun, toastOnFail],
   );

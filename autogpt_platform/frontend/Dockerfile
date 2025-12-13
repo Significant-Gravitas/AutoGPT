@@ -9,13 +9,24 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm pnpm install --frozen-lock
 FROM base AS build
 
 COPY autogpt_platform/frontend/ .
-RUN if [ -f .env ]; then \
+# Allow CI to opt-in to Playwright test build-time flags
+ARG NEXT_PUBLIC_PW_TEST="false"
+ENV NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST
+ENV NODE_ENV="production"
+# Merge env files appropriately based on environment
+RUN if [ -f .env.production ]; then \
+      # In CI/CD: merge defaults with production (production takes precedence)
+      cat .env.default .env.production > .env.merged && mv .env.merged .env.production; \
+    elif [ -f .env ]; then \
+      # Local with custom .env: merge defaults with .env
       cat .env.default .env > .env.merged && mv .env.merged .env; \
     else \
+      # Local without custom .env: use defaults
       cp .env.default .env; \
     fi
 RUN pnpm run generate:api
-RUN pnpm build
+# In CI, we want NEXT_PUBLIC_PW_TEST=true during build so Next.js inlines it
+RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=4096" pnpm build; else NODE_OPTIONS="--max-old-space-size=4096" pnpm build; fi
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
 FROM node:21-alpine AS prod

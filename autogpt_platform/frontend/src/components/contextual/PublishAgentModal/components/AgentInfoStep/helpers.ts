@@ -1,4 +1,5 @@
 import z from "zod";
+import { validateYouTubeUrl } from "@/lib/utils";
 
 export const publishAgentSchema = z.object({
   title: z
@@ -19,27 +20,23 @@ export const publishAgentSchema = z.object({
     ),
   youtubeLink: z
     .string()
-    .optional()
-    .refine((val) => {
-      if (!val) return true;
-      try {
-        const url = new URL(val);
-        const allowedHosts = [
-          "youtube.com",
-          "www.youtube.com",
-          "youtu.be",
-          "www.youtu.be",
-        ];
-        return allowedHosts.includes(url.hostname);
-      } catch {
-        return false;
-      }
-    }, "Please enter a valid YouTube URL"),
+    .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),
   category: z.string().min(1, "Category is required"),
   description: z
     .string()
     .min(1, "Description is required")
     .max(1000, "Description must be less than 1000 characters"),
+  recommendedScheduleCron: z.string().optional(),
+  instructions: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || val.length <= 2000,
+      "Instructions must be less than 2000 characters",
+    ),
+  agentOutputDemo: z
+    .string()
+    .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),
 });
 
 export type PublishAgentFormData = z.infer<typeof publishAgentSchema>;
@@ -54,4 +51,7 @@ export interface PublishAgentInfoInitialData {
   category: string;
   description: string;
   additionalImages?: string[];
+  recommendedScheduleCron?: string;
+  instructions?: string;
+  agentOutputDemo?: string;
 }

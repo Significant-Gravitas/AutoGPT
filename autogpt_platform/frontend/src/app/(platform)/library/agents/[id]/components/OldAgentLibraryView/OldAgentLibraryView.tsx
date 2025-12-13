@@ -25,10 +25,9 @@ import {
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { exportAsJSONFile } from "@/lib/utils";
 
-import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
-import type { ButtonAction } from "@/components/agptui/types";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { Button } from "@/components/ui/button";
+import DeleteConfirmDialog from "@/components/__legacy__/delete-confirm-dialog";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -36,11 +35,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+} from "@/components/__legacy__/ui/dialog";
+import LoadingBox, { LoadingSpinner } from "@/components/__legacy__/ui/loading";
+import {
+  useToast,
+  useToastOnFail,
+} from "@/components/molecules/Toast/use-toast";
 import { AgentRunDetailsView } from "./components/agent-run-details-view";
 import { AgentRunDraftView } from "./components/agent-run-draft-view";
+import { CreatePresetDialog } from "./components/create-preset-dialog";
 import { useAgentRunsInfinite } from "./use-agent-runs";
 import { AgentRunsSelectorList } from "./components/agent-runs-selector-list";
 import { AgentScheduleDetailsView } from "./components/agent-schedule-details-view";
@@ -48,6 +51,7 @@ import { AgentScheduleDetailsView } from "./components/agent-schedule-details-vi
 export function OldAgentLibraryView() {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
   const [executionId, setExecutionId] = useQueryState("executionId");
+  const toastOnFail = useToastOnFail();
   const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
@@ -79,12 +83,9 @@ export function OldAgentLibraryView() {
     useState<GraphExecutionMeta | null>(null);
   const [confirmingDeleteAgentPreset, setConfirmingDeleteAgentPreset] =
     useState<LibraryAgentPresetID | null>(null);
-  const {
-    state: onboardingState,
-    updateState: updateOnboardingState,
-    incrementRuns,
-  } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
+  const [creatingPresetFromExecutionID, setCreatingPresetFromExecutionID] =
+    useState<GraphExecutionID | null>(null);
 
   // Set page title with agent name
   useEffect(() => {
@@ -128,22 +129,6 @@ export function OldAgentLibraryView() {
     },
     [api, graphVersions, loadingGraphVersions],
   );
-
-  // Reward user for viewing results of their onboarding agent
-  useEffect(() => {
-    if (
-      !onboardingState ||
-      !selectedRun ||
-      onboardingState.completedSteps.includes("GET_RESULTS")
-    )
-      return;
-
-    if (selectedRun.id === onboardingState.onboardingAgentExecutionId) {
-      updateOnboardingState({
-        completedSteps: [...onboardingState.completedSteps, "GET_RESULTS"],
-      });
-    }
-  }, [selectedRun, onboardingState, updateOnboardingState]);
 
   const lastRefresh = useRef<number>(0);
   const refreshPageData = useCallback(() => {
@@ -278,18 +263,18 @@ export function OldAgentLibraryView() {
       (data) => {
         if (data.graph_id != agent?.graph_id) return;
 
-        if (data.status == "COMPLETED") {
-          incrementRuns();
-        }
-
         agentRunsQuery.upsertAgentRun(data);
+        if (data.id === selectedView.id) {
+          // Update currently viewed run
+          setSelectedRun(data);
+        }
       },
     );
 
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent?.graph_id, selectedView.id, incrementRuns]);
+  }, [api, agent?.graph_id, selectedView.id]);
 
   // Pre-load selectedRun based on selectedView
   useEffect(() => {
@@ -298,7 +283,7 @@ export function OldAgentLibraryView() {
     const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
     if (selectedView.id !== selectedRun?.id) {
       // Pull partial data from "cache" while waiting for the rest to load
-      setSelectedRun(newSelectedRun ?? null);
+      setSelectedRun((newSelectedRun as GraphExecutionMeta) ?? null);
     }
   }, [api, selectedView, agentRuns, selectedRun?.id]);
 
@@ -382,6 +367,26 @@ export function OldAgentLibraryView() {
       openRunDraftView();
     },
     [schedules, api],
+  );
+
+  const handleCreatePresetFromRun = useCallback(
+    async (name: string, description: string) => {
+      if (!creatingPresetFromExecutionID) return;
+
+      await api
+        .createLibraryAgentPreset({
+          name,
+          description,
+          graph_execution_id: creatingPresetFromExecutionID,
+        })
+        .then((preset) => {
+          setAgentPresets((prev) => [...prev, preset]);
+          selectPreset(preset.id);
+          setCreatingPresetFromExecutionID(null);
+        })
+        .catch(toastOnFail("create a preset"));
+    },
+    [api, creatingPresetFromExecutionID, selectPreset, toast],
   );
 
   const downloadGraph = useCallback(
@@ -488,6 +493,7 @@ export function OldAgentLibraryView() {
         doDeleteRun={setConfirmingDeleteAgentRun}
         doDeletePreset={setConfirmingDeleteAgentPreset}
         doDeleteSchedule={deleteSchedule}
+        doCreatePresetFromRun={setCreatingPresetFromExecutionID}
       />
 
       <div className="flex-1">
@@ -512,28 +518,31 @@ export function OldAgentLibraryView() {
               run={selectedRun}
               agentActions={agentActions}
               onRun={selectRun}
-              deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
+              doDeleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
+              doCreatePresetFromRun={() =>
+                setCreatingPresetFromExecutionID(selectedRun.id)
+              }
             />
           ) : null
         ) : selectedView.type == "run" ? (
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
             graph={graph}
-            triggerSetupInfo={agent.trigger_setup_info}
             onRun={selectRun}
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
             agentActions={agentActions}
+            recommendedScheduleCron={agent?.recommended_schedule_cron || null}
           />
         ) : selectedView.type == "preset" ? (
           /* Edit & update presets */
           <AgentRunDraftView
             graph={graph}
-            triggerSetupInfo={agent.trigger_setup_info}
             agentPreset={
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }
             onRun={selectRun}
+            recommendedScheduleCron={agent?.recommended_schedule_cron || null}
             onCreateSchedule={onCreateSchedule}
             onUpdatePreset={onUpdatePreset}
             doDeletePreset={setConfirmingDeleteAgentPreset}
@@ -610,6 +619,11 @@ export function OldAgentLibraryView() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <CreatePresetDialog
+          open={!!creatingPresetFromExecutionID}
+          onOpenChange={() => setCreatingPresetFromExecutionID(null)}
+          onConfirm={handleCreatePresetFromRun}
+        />
       </div>
     </div>
   );

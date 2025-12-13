@@ -1,10 +1,11 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
+import { scrollbarStyles } from "@/components/styles/scrollbars";
+import { cn } from "@/lib/utils";
 import { X } from "@phosphor-icons/react";
 import { PropsWithChildren } from "react";
 import { Drawer } from "vaul";
 import { DialogCtx } from "../useDialogCtx";
 import { drawerStyles, modalStyles } from "./styles";
-import styles from "./styles.module.css";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -42,7 +43,7 @@ export function DrawerWrap({
         onInteractOutside={handleClose}
       >
         <div
-          className={`flex w-full items-center justify-between ${
+          className={`flex w-full shrink-0 items-center justify-between ${
             title ? "pb-6" : "pb-0"
           }`}
         >
@@ -62,8 +63,15 @@ export function DrawerWrap({
             )
           ) : null}
         </div>
-        <div className={`overflow-auto ${styles.scrollableContent}`}>
-          {children}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div
+            className={cn(
+              "flex-1 overflow-y-auto overflow-x-hidden",
+              scrollbarStyles,
+            )}
+          >
+            {children}
+          </div>
         </div>
       </Drawer.Content>
     </Drawer.Portal>

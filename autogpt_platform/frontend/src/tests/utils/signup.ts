@@ -1,4 +1,3 @@
-import { faker } from "@faker-js/faker";
 import { TestUser } from "./auth";
 import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
@@ -11,6 +10,7 @@ export async function signupTestUser(
   ignoreOnboarding: boolean = true,
   withAgent: boolean = false,
 ): Promise<TestUser> {
+  const { faker } = await import("@faker-js/faker");
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
@@ -67,6 +67,7 @@ export async function signupTestUser(
         .getByText(
           "Bringing you AI agents designed by thinkers from around the world",
         )
+        .first()
         .waitFor({ state: "visible", timeout: 10000 });
 
       // Verify user is authenticated (profile menu visible)
@@ -152,6 +153,7 @@ export function generateTestEmail(): string {
   return `test.${Date.now()}.${Math.random().toString(36).substring(7)}@example.com`;
 }
 
-export function generateTestPassword(): string {
+export async function generateTestPassword(): Promise<string> {
+  const { faker } = await import("@faker-js/faker");
   return faker.internet.password({ length: 12 });
 }

@@ -44,6 +44,9 @@ export function useAgentInfoStep({
       youtubeLink: "",
       category: "",
       description: "",
+      recommendedScheduleCron: "",
+      instructions: "",
+      agentOutputDemo: "",
     },
   });
 
@@ -64,6 +67,9 @@ export function useAgentInfoStep({
         youtubeLink: initialData.youtubeLink,
         category: initialData.category,
         description: initialData.description,
+        recommendedScheduleCron: initialData.recommendedScheduleCron || "",
+        instructions: initialData.instructions || "",
+        agentOutputDemo: initialData.agentOutputDemo || "",
       });
     }
   }, [initialData, form]);
@@ -92,13 +98,16 @@ export function useAgentInfoStep({
         name: data.title,
         sub_heading: data.subheader,
         description: data.description,
+        instructions: data.instructions || null,
         image_urls: images,
         video_url: data.youtubeLink || "",
+        agent_output_demo_url: data.agentOutputDemo || "",
         agent_id: selectedAgentId || "",
         agent_version: selectedAgentVersion || 0,
         slug: data.slug.replace(/\s+/g, "-"),
         categories: filteredCategories,
-      });
+        recommended_schedule_cron: data.recommendedScheduleCron || null,
+      } as any);
 
       await queryClient.invalidateQueries({
         queryKey: getGetV2ListMySubmissionsQueryKey(),
@@ -110,6 +119,7 @@ export function useAgentInfoStep({
       toast({
         title: "Submit Agent Error",
         description:
+          (error instanceof Error ? error.message : undefined) ||
           "An error occurred while submitting the agent. Please try again.",
         duration: 3000,
         variant: "destructive",

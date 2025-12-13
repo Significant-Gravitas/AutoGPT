@@ -1,11 +1,18 @@
+import { Button } from "@/components/atoms/Button/Button";
+import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { X } from "@phosphor-icons/react";
 import * as RXDialog from "@radix-ui/react-dialog";
-import { CSSProperties, PropsWithChildren } from "react";
+import {
+  CSSProperties,
+  PropsWithChildren,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
-import styles from "./styles.module.css";
-import { Button } from "@/components/atoms/Button/Button";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -15,6 +22,14 @@ interface Props extends BaseProps {
   withGradient?: boolean;
 }
 
+/**
+ * Check if an external picker (like Google Drive) is currently open.
+ * Used to prevent dialog from closing when user interacts with the picker.
+ */
+function isExternalPickerOpen(): boolean {
+  return document.body.hasAttribute("data-google-picker-open");
+}
+
 export function DialogWrap({
   children,
   title,
@@ -22,14 +37,60 @@ export function DialogWrap({
   isForceOpen,
   handleClose,
 }: Props) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
+
+  // Prevent dialog from closing when external picker is open
+  const handleInteractOutside = useCallback(
+    (event: Event) => {
+      if (isExternalPickerOpen()) {
+        event.preventDefault();
+        return;
+      }
+      handleClose();
+    },
+    [handleClose],
+  );
+
+  const handlePointerDownOutside = useCallback((event: Event) => {
+    if (isExternalPickerOpen()) {
+      event.preventDefault();
+    }
+  }, []);
+
+  const handleFocusOutside = useCallback((event: Event) => {
+    if (isExternalPickerOpen()) {
+      event.preventDefault();
+    }
+  }, []);
+
+  useEffect(() => {
+    function update() {
+      const el = scrollRef.current;
+      if (!el) return;
+      setHasVerticalScrollbar(el.scrollHeight > el.clientHeight + 1);
+    }
+    update();
+    const ro = new ResizeObserver(update);
+    if (scrollRef.current) ro.observe(scrollRef.current);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
   return (
     <RXDialog.Portal>
-      <RXDialog.Overlay className={modalStyles.overlay} />
+      <RXDialog.Overlay data-dialog-overlay className={modalStyles.overlay} />
       <RXDialog.Content
-        onInteractOutside={handleClose}
+        data-dialog-content
+        onInteractOutside={handleInteractOutside}
+        onPointerDownOutside={handlePointerDownOutside}
+        onFocusOutside={handleFocusOutside}
         onEscapeKeyDown={handleClose}
         aria-describedby={undefined}
-        className={cn(modalStyles.content)}
+        className={modalStyles.content}
         style={{
           ...styling,
         }}
@@ -52,17 +113,31 @@ export function DialogWrap({
 
           {isForceOpen && !handleClose ? null : (
             <Button
-              variant="ghost"
+              variant="icon"
+              size="icon"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute -right-2 top-2 z-50 hover:border-transparent hover:bg-transparent"
+              className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
+              withTooltip={false}
             >
-              <X className={modalStyles.icon} />
+              <X width="1rem" />
             </Button>
           )}
         </div>
-        <div className={`overflow-y-auto ${styles.scrollableContent}`}>
-          {children}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div
+            ref={scrollRef}
+            className={cn(
+              "flex-1 overflow-y-auto overflow-x-hidden",
+              scrollbarStyles,
+            )}
+            style={{
+              scrollbarGutter: "stable",
+              marginRight: hasVerticalScrollbar ? "-14px" : "0px",
+            }}
+          >
+            {children}
+          </div>
         </div>
       </RXDialog.Content>
     </RXDialog.Portal>

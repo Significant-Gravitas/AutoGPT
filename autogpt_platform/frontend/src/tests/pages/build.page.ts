@@ -1,8 +1,8 @@
 import { expect, Locator, Page } from "@playwright/test";
-import { BasePage } from "./base.page";
 import { Block as APIBlock } from "../../lib/autogpt-server-api/types";
 import { beautifyString } from "../../lib/utils";
 import { isVisible } from "../utils/assertion";
+import { BasePage } from "./base.page";
 
 export interface Block {
   id: string;
@@ -113,17 +113,20 @@ export class BuildPage extends BasePage {
     const displayName = this.getDisplayName(block.name);
     await searchInput.clear();
     await searchInput.fill(displayName);
-    await this.page.waitForTimeout(500);
 
     const blockCard = this.page.getByTestId(`block-name-${block.id}`);
-    if (await blockCard.isVisible()) {
+
+    try {
+      // Wait for the block card to be visible with a reasonable timeout
+      await blockCard.waitFor({ state: "visible", timeout: 10000 });
       await blockCard.click();
       const blockInEditor = this.page.getByTestId(block.id).first();
       expect(blockInEditor).toBeAttached();
-    } else {
+    } catch (error) {
       console.log(
         `❌ ❌  Block ${block.name} (display: ${displayName}) returned from the API but not found in block list`,
       );
+      console.log(`Error: ${error}`);
     }
   }
 
@@ -213,6 +216,41 @@ export class BuildPage extends BasePage {
       ? `[data-id="${dataId}"] [data-blockid="${blockId}"]`
       : `[data-blockid="${blockId}"]`;
     return selector;
+  }
+
+  private async moveBlockToViewportPosition(
+    blockSelector: string,
+    options: { xRatio?: number; yRatio?: number } = {},
+  ): Promise<void> {
+    const { xRatio = 0.5, yRatio = 0.5 } = options;
+    const blockLocator = this.page.locator(blockSelector).first();
+
+    await blockLocator.waitFor({ state: "visible" });
+
+    const boundingBox = await blockLocator.boundingBox();
+    const viewport = this.page.viewportSize();
+
+    if (!boundingBox || !viewport) {
+      return;
+    }
+
+    const currentX = boundingBox.x + boundingBox.width / 2;
+    const currentY = boundingBox.y + boundingBox.height / 2;
+
+    const targetX = viewport.width * xRatio;
+    const targetY = viewport.height * yRatio;
+
+    const distance = Math.hypot(targetX - currentX, targetY - currentY);
+
+    if (distance < 5) {
+      return;
+    }
+
+    await this.page.mouse.move(currentX, currentY);
+    await this.page.mouse.down();
+    await this.page.mouse.move(targetX, targetY, { steps: 15 });
+    await this.page.mouse.up();
+    await this.page.waitForTimeout(200);
   }
 
   async getBlockById(blockId: string, dataId?: string): Promise<Locator> {
@@ -317,7 +355,11 @@ export class BuildPage extends BasePage {
       startBlockId,
       startDataId,
     );
+
     const endBlockBase = await this._buildBlockSelector(endBlockId, endDataId);
+
+    await this.moveBlockToViewportPosition(startBlockBase, { xRatio: 0.35 });
+    await this.moveBlockToViewportPosition(endBlockBase, { xRatio: 0.65 });
 
     const startBlockOutputSelector = `${startBlockBase} [data-testid="output-handle-${startBlockOutputName.toLowerCase()}"]`;
     const endBlockInputSelector = `${endBlockBase} [data-testid="input-handle-${endBlockInputName.toLowerCase()}"]`;
@@ -325,9 +367,16 @@ export class BuildPage extends BasePage {
     console.log("Start block selector:", startBlockOutputSelector);
     console.log("End block selector:", endBlockInputSelector);
 
-    await this.page
-      .locator(startBlockOutputSelector)
-      .dragTo(this.page.locator(endBlockInputSelector));
+    const startElement = this.page.locator(startBlockOutputSelector);
+    const endElement = this.page.locator(endBlockInputSelector);
+
+    await startElement.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(200);
+
+    await endElement.scrollIntoViewIfNeeded();
+    await this.page.waitForTimeout(200);
+
+    await startElement.dragTo(endElement);
   }
 
   async isLoaded(): Promise<boolean> {
@@ -423,14 +472,44 @@ export class BuildPage extends BasePage {
     );
   }
 
-  async getGithubTriggerBlockDetails(): Promise<Block> {
-    return {
-      id: "6c60ec01-8128-419e-988f-96a063ee2fea",
-      name: "Github Trigger",
-      description:
-        "This block triggers on pull request events and outputs the event type and payload.",
-      type: "Standard",
-    };
+  async getGithubTriggerBlockDetails(): Promise<Block[]> {
+    return [
+      {
+        id: "6c60ec01-8128-419e-988f-96a063ee2fea",
+        name: "Github Trigger",
+        description:
+          "This block triggers on pull request events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "551e0a35-100b-49b7-89b8-3031322239b6",
+        name: "Github Star Trigger",
+        description:
+          "This block triggers on star events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "2052dd1b-74e1-46ac-9c87-c7a0e057b60b",
+        name: "Github Release Trigger",
+        description:
+          "This block triggers on release events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "b2605464-e486-4bf4-aad3-d8a213c8a48a",
+        name: "Github Issue Trigger",
+        description:
+          "This block triggers on issue events and outputs the event type and payload.",
+        type: "Standard",
+      },
+      {
+        id: "87f847b3-d81a-424e-8e89-acadb5c9d52b",
+        name: "Github Discussion Trigger",
+        description:
+          "This block triggers on discussion events and outputs the event type and payload.",
+        type: "Standard",
+      },
+    ];
   }
 
   async nextTutorialStep(): Promise<void> {
@@ -439,7 +518,9 @@ export class BuildPage extends BasePage {
   }
 
   async getBlocksToSkip(): Promise<string[]> {
-    return [(await this.getGithubTriggerBlockDetails()).id];
+    return [
+      (await this.getGithubTriggerBlockDetails()).map((b) => b.id),
+    ].flat();
   }
 
   async createDummyAgent() {

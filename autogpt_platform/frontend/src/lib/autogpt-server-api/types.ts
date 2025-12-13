@@ -58,6 +58,7 @@ export type BlockIOSimpleTypeSubSchema =
   | BlockIOCredentialsSubSchema
   | BlockIOKVSubSchema
   | BlockIOArraySubSchema
+  | BlockIOTableSubSchema
   | BlockIOStringSubSchema
   | BlockIONumberSubSchema
   | BlockIOBooleanSubSchema
@@ -78,6 +79,8 @@ export enum DataType {
   OBJECT = "object",
   KEY_VALUE = "key-value",
   ARRAY = "array",
+  TABLE = "table",
+  GOOGLE_DRIVE_PICKER = "google-drive-picker",
 }
 
 export type BlockIOSubSchemaMeta = {
@@ -111,6 +114,67 @@ export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   items?: BlockIOSimpleTypeSubSchema;
   const?: Array<string>;
   default?: Array<string>;
+  secret?: boolean;
+};
+
+export type GoogleDriveFile = {
+  id: string;
+  name?: string;
+  mimeType?: string;
+  url?: string;
+  iconUrl?: string;
+  isFolder?: boolean;
+};
+
+/** Valid view types for Google Drive Picker - matches backend AttachmentView */
+export type AttachmentView =
+  | "DOCS"
+  | "DOCUMENTS"
+  | "SPREADSHEETS"
+  | "PRESENTATIONS"
+  | "DOCS_IMAGES"
+  | "FOLDERS";
+
+export type GoogleDrivePickerConfig = {
+  multiselect?: boolean;
+  allow_folder_selection?: boolean;
+  allowed_views?: AttachmentView[];
+  allowed_mime_types?: string[];
+  scopes?: string[];
+  /**
+   * Auto-credentials configuration for combined picker + credentials fields.
+   * When present, the picker will include _credentials_id in the output.
+   */
+  auto_credentials?: {
+    provider: string;
+    type: string;
+    scopes?: string[];
+    kwarg_name: string;
+  };
+};
+
+/**
+ * Schema for Google Drive Picker input fields.
+ * When multiselect=false: type="object" (single GoogleDriveFile)
+ * When multiselect=true: type="array" with items={ type="object" } (array of GoogleDriveFile)
+ */
+export type GoogleDrivePickerSchema = BlockIOSubSchemaMeta & {
+  type: "object" | "array";
+  format: "google-drive-picker";
+  google_drive_picker_config?: GoogleDrivePickerConfig;
+};
+
+// Table cell values are typically primitives
+export type TableCellValue = string | number | boolean | null;
+
+export type TableRow = Record<string, TableCellValue>;
+
+export type BlockIOTableSubSchema = BlockIOSubSchemaMeta & {
+  type: "array";
+  format: "table";
+  items: BlockIOObjectSubSchema;
+  const?: TableRow[];
+  default?: TableRow[];
   secret?: boolean;
 };
 
@@ -192,6 +256,7 @@ type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & {
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
+        format?: string; // For table format and other formats on anyOf schemas
       }
     | BlockIOOneOfSubSchema
     | BlockIODiscriminatedOneOfSubSchema
@@ -250,6 +315,9 @@ export type GraphExecutionMeta = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
+  inputs: Record<string, any> | null;
+  credential_inputs: Record<string, CredentialsMetaInput> | null;
+  nodes_input_masks: Record<string, Record<string, any>> | null;
   preset_id: LibraryAgentPresetID | null;
   status:
     | "QUEUED"
@@ -257,7 +325,8 @@ export type GraphExecutionMeta = {
     | "COMPLETED"
     | "TERMINATED"
     | "FAILED"
-    | "INCOMPLETE";
+    | "INCOMPLETE"
+    | "REVIEW";
   started_at: Date;
   ended_at: Date;
   stats: {
@@ -276,7 +345,7 @@ export type GraphExecutionMeta = {
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
 
 /* Mirror of backend/data/execution.py:GraphExecution */
-export type GraphExecution = GraphExecutionMeta & {
+export type GraphExecution = Omit<GraphExecutionMeta, "inputs"> & {
   inputs: Record<string, any>;
   outputs: Record<string, Array<any>>;
   node_executions?: NodeExecutionResult[];
@@ -295,13 +364,23 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  instructions?: string | null;
+  recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
-  has_external_trigger: boolean;
   credentials_input_schema: CredentialsInputSchema;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: GraphTriggerInfo;
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info: null;
+    }
+);
 
 export type GraphID = Brand<string, "GraphID">;
 
@@ -324,11 +403,19 @@ export type GraphIOSubSchema = Omit<
 export type CredentialsInputSchema = {
   type: "object";
   properties: Record<string, BlockIOCredentialsSubSchema>;
-  required: (keyof CredentialsInputSchema["properties"])[];
+  required?: (keyof CredentialsInputSchema["properties"])[];
+};
+
+/* Mirror of backend/data/graph.py:GraphTriggerInfo */
+export type GraphTriggerInfo = {
+  provider: CredentialsProviderName;
+  config_schema: BlockIORootSchema;
+  credentials_input_name: string | null;
 };
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
+  created_at: Date;
   nodes: Node[];
   links: Link[];
   sub_graphs: Omit<Graph, "sub_graphs">[]; // Flattened sub-graphs
@@ -338,6 +425,7 @@ export type GraphUpdateable = Omit<
   Graph,
   | "user_id"
   | "version"
+  | "created_at"
   | "is_active"
   | "nodes"
   | "links"
@@ -346,6 +434,7 @@ export type GraphUpdateable = Omit<
   | "output_schema"
   | "credentials_input_schema"
   | "has_external_trigger"
+  | "trigger_setup_info"
 > & {
   version?: number;
   is_active?: boolean;
@@ -374,7 +463,8 @@ export type NodeExecutionResult = {
     | "RUNNING"
     | "COMPLETED"
     | "TERMINATED"
-    | "FAILED";
+    | "FAILED"
+    | "REVIEW";
   input_data: Record<string, any>;
   output_data: Record<string, Array<any>>;
   add_time: Date;
@@ -399,37 +489,34 @@ export type LibraryAgent = {
   id: LibraryAgentID;
   graph_id: GraphID;
   graph_version: number;
-  image_url?: string;
+  image_url: string | null;
   creator_name: string;
   creator_image_url: string;
   status: AgentStatus;
   updated_at: Date;
   name: string;
   description: string;
+  instructions?: string | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
+  is_favorite: boolean;
   is_latest_version: boolean;
+  recommended_schedule_cron: string | null;
 } & (
   | {
       has_external_trigger: true;
-      trigger_setup_info: LibraryAgentTriggerInfo;
+      trigger_setup_info: GraphTriggerInfo;
     }
   | {
       has_external_trigger: false;
-      trigger_setup_info?: undefined;
+      trigger_setup_info: null;
     }
 );
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
-
-export type LibraryAgentTriggerInfo = {
-  provider: CredentialsProviderName;
-  config_schema: BlockIORootSchema;
-  credentials_input_name?: string;
-};
 
 export enum AgentStatus {
   COMPLETED = "COMPLETED",
@@ -445,6 +532,7 @@ export type LibraryAgentResponse = {
 
 export type LibraryAgentPreset = {
   id: LibraryAgentPresetID;
+  created_at: Date;
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
@@ -453,8 +541,16 @@ export type LibraryAgentPreset = {
   name: string;
   description: string;
   is_active: boolean;
-  webhook_id?: string;
-};
+} & (
+  | {
+      webhook_id: string;
+      webhook: Webhook;
+    }
+  | {
+      webhook_id?: undefined;
+      webhook?: undefined;
+    }
+);
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
 
@@ -465,14 +561,14 @@ export type LibraryAgentPresetResponse = {
 
 export type LibraryAgentPresetCreatable = Omit<
   LibraryAgentPreset,
-  "id" | "updated_at" | "is_active"
+  "id" | "created_at" | "updated_at" | "is_active"
 > & {
   is_active?: boolean;
 };
 
 export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
   LibraryAgentPresetCreatable,
-  "graph_id" | "graph_version" | "inputs"
+  "graph_id" | "graph_version" | "inputs" | "credentials"
 > & {
   graph_execution_id: GraphExecutionID;
 };
@@ -516,7 +612,7 @@ export type CredentialsDeleteNeedConfirmationResponse = {
 export type CredentialsMetaInput = {
   id: string;
   type: CredentialsType;
-  title?: string;
+  title?: string | null;
   provider: string;
 };
 
@@ -594,9 +690,9 @@ export type Webhook = {
   id: string;
   url: string;
   provider: CredentialsProviderName;
-  credentials_id: string;
+  credentials_id: string; // empty string if not appicable
   webhook_type: string;
-  resource?: string;
+  resource: string; // empty string if not appicable
   events: string[];
   secret: string;
   config: Record<string, any>;
@@ -665,28 +761,6 @@ export type StoreAgentsResponse = {
   pagination: Pagination;
 };
 
-export type StoreAgentDetails = {
-  store_listing_version_id: string;
-  slug: string;
-  updated_at: string;
-  agent_name: string;
-  agent_video: string;
-  agent_image: string[];
-  creator: string;
-  creator_avatar: string;
-  sub_heading: string;
-  description: string;
-  categories: string[];
-  runs: number;
-  rating: number;
-  versions: string[];
-
-  // Approval and status fields
-  active_version_id?: string;
-  has_approved_version?: boolean;
-  is_available?: boolean;
-};
-
 export type Creator = {
   name: string;
   username: string;
@@ -719,6 +793,7 @@ export type StoreSubmission = {
   name: string;
   sub_heading: string;
   description: string;
+  instructions?: string;
   image_urls: string[];
   date_submitted: string;
   status: SubmissionStatus;
@@ -750,8 +825,10 @@ export type StoreSubmissionRequest = {
   video_url?: string;
   image_urls: string[];
   description: string;
+  instructions?: string | null;
   categories: string[];
   changes_summary?: string;
+  recommended_schedule_cron?: string | null;
 };
 
 export type ProfileDetails = {
@@ -773,6 +850,7 @@ export type Schedule = {
   input_data: Record<string, any>;
   input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
+  timezone: string;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;
@@ -794,6 +872,7 @@ export type MyAgent = {
   agent_image: string | null;
   last_edited: string;
   description: string;
+  recommended_schedule_cron: string | null;
 };
 
 export type MyAgentsResponse = {
@@ -882,6 +961,7 @@ export interface RefundRequest {
 }
 
 export type OnboardingStep =
+  // Introductory onboarding (Library)
   | "WELCOME"
   | "USAGE_REASON"
   | "INTEGRATIONS"
@@ -889,18 +969,28 @@ export type OnboardingStep =
   | "AGENT_NEW_RUN"
   | "AGENT_INPUT"
   | "CONGRATS"
+  // First Wins
   | "GET_RESULTS"
-  | "RUN_AGENTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"
   | "MARKETPLACE_RUN_AGENT"
-  | "BUILDER_OPEN"
   | "BUILDER_SAVE_AGENT"
+  // Consistency Challenge
+  | "RE_RUN_AGENT"
+  | "SCHEDULE_AGENT"
+  | "RUN_AGENTS"
+  | "RUN_3_DAYS"
+  // The Pro Playground
+  | "TRIGGER_WEBHOOK"
+  | "RUN_14_DAYS"
+  | "RUN_AGENTS_100"
+  // No longer used but tracked
+  | "BUILDER_OPEN"
   | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];
-  notificationDot: boolean;
+  walletShown: boolean;
   notified: OnboardingStep[];
   rewardedFor: OnboardingStep[];
   usageReason: string | null;
@@ -909,8 +999,24 @@ export interface UserOnboarding {
   selectedStoreListingVersionId: string | null;
   agentInput: Record<string, string | number> | null;
   onboardingAgentExecutionId: GraphExecutionID | null;
+  lastRunAt: Date | null;
+  consecutiveRunDays: number;
   agentRuns: number;
 }
+
+export interface OnboardingNotificationPayload {
+  type: "onboarding";
+  event: "step_completed" | "increment_runs";
+  step: OnboardingStep | null;
+}
+
+export type WebSocketNotification =
+  | OnboardingNotificationPayload
+  | {
+      type: string;
+      event: string;
+      [key: string]: unknown;
+    };
 
 /* *** UTILITIES *** */
 
@@ -1027,6 +1133,10 @@ function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
     return DataType.NUMBER;
   }
   if (subSchema.type === "array") {
+    // Check for table format first
+    if ("format" in subSchema && subSchema.format === "table") {
+      return DataType.TABLE;
+    }
     /** Commented code below since we haven't yet support rendering of a multi-select with array { items: enum } type */
     // if ("items" in subSchema && subSchema.items && "enum" in subSchema.items) {
     //   return DataType.MULTI_SELECT; // array + enum => multi-select
@@ -1069,6 +1179,13 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
     return DataType.CREDENTIALS;
   }
 
+  if (
+    "google_drive_picker_config" in schema ||
+    ("format" in schema && schema.format === "google-drive-picker")
+  ) {
+    return DataType.GOOGLE_DRIVE_PICKER;
+  }
+
   // enum == SELECT
   if ("enum" in schema) {
     return DataType.SELECT;
@@ -1106,6 +1223,11 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
 
     // (array | null)
     if (types.includes("array") && types.includes("null")) {
+      // Check for table format on the parent schema (where anyOf is)
+      if ("format" in schema && schema.format === "table") {
+        return DataType.TABLE;
+      }
+
       const arrSchema = schema.anyOf.find((s) => s.type === "array");
       if (arrSchema) return _handleSingleTypeSchema(arrSchema);
       return DataType.ARRAY;

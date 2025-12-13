@@ -1,10 +1,17 @@
+import logging
 from datetime import datetime, timezone
 from typing import Iterator, Literal
 
 import praw
 from pydantic import BaseModel, SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -58,6 +65,7 @@ class RedditComment(BaseModel):
 
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 def get_praw(creds: RedditCredentials) -> praw.Reddit:
@@ -71,12 +79,12 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
     me = client.user.me()
     if not me:
         raise ValueError("Invalid Reddit credentials.")
-    print(f"Logged in as Reddit user: {me.name}")
+    logger.info(f"Logged in as Reddit user: {me.name}")
     return client
 
 
 class GetRedditPostsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         subreddit: str = SchemaField(
             description="Subreddit name, excluding the /r/ prefix",
             default="writingprompts",
@@ -94,7 +102,7 @@ class GetRedditPostsBlock(Block):
             description="Number of posts to fetch", default=10
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         post: RedditPost = SchemaField(description="Reddit post")
         posts: list[RedditPost] = SchemaField(description="List of all Reddit posts")
 
@@ -194,11 +202,11 @@ class GetRedditPostsBlock(Block):
 
 
 class PostRedditCommentBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: RedditCredentialsInput = RedditCredentialsField()
         data: RedditComment = SchemaField(description="Reddit comment")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         comment_id: str = SchemaField(description="Posted comment ID")
 
     def __init__(self):

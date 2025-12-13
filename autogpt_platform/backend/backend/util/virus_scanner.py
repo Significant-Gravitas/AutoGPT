@@ -2,9 +2,16 @@ import asyncio
 import io
 import logging
 import time
+import warnings
 from typing import Optional, Tuple
 
-import aioclamd
+# Suppress the specific pkg_resources deprecation warning from aioclamd
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore", message="pkg_resources is deprecated", category=UserWarning
+    )
+    import aioclamd
+
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 

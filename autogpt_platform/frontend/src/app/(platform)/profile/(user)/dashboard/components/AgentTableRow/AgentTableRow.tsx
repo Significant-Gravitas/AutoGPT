@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Text } from "@/components/atoms/Text/Text";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { Status } from "@/components/agptui/Status";
+import { Status } from "@/components/__legacy__/Status";
 import { useAgentTableRow } from "./useAgentTableRow";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import {

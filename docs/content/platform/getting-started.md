@@ -23,7 +23,7 @@ To setup the server, you need to have the following installed:
 
 We use Node.js to run our frontend application.
 
-If you need assistance installing Node.js:
+If you need assistance installing Node.js:  
 https://nodejs.org/en/download/
 
 NPM is included with Node.js, but if you need assistance installing NPM:
@@ -79,7 +79,7 @@ Once you have Docker and Docker Compose installed, you can proceed to the next s
     See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
 </details>
 
-## Quick Setup with Auto Setup Script (Recommended)  
+## Quick Setup with Auto Setup Script (Recommended)
 If you're self-hosting AutoGPT locally, we recommend using our official setup script to simplify the process. This will install dependencies (like Docker), pull the latest code, and launch the app with minimal effort.
 
 For macOS/Linux:
@@ -130,6 +130,41 @@ To run the platform, follow these steps:
   ```
   This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
 
+---
+
+### 🛠️ Using the Makefile for Common Tasks
+
+The repository includes a `Makefile` with helpful commands to streamline setup and development. You may use `make` commands as an alternative to calling Docker or scripts directly.
+
+#### Most-used Makefile commands
+
+Inside the `autogpt_platform` directory, you can use:
+
+| Command                | What it Does                                                                 |
+|------------------------|-------------------------------------------------------------------------------|
+| `make start-core`      | Start just the core services (Supabase, Redis, RabbitMQ) in background        |
+| `make stop-core`       | Stop the core services                                                        |
+| `make logs-core`       | Tail the logs for core services                                               |
+| `make format`          | Format & lint backend (Python) and frontend (TypeScript) code                 |
+| `make migrate`         | Run backend database migrations                                               |
+| `make run-backend`     | Run the backend FastAPI server                                                |
+| `make run-frontend`    | Run the frontend Next.js development server                                   |
+
+*Example usage:*
+```sh
+make start-core
+make run-backend
+make run-frontend
+```
+
+You can always check available Makefile recipes by running:
+```sh
+make help
+```
+(or just inspecting the `Makefile` in the repo root).
+
+---
+
 ### Checking if the application is running
 
 You can check if the server is running by visiting [http://localhost:3000](http://localhost:3000) in your browser.
@@ -167,9 +202,9 @@ When installing Docker on Windows, it is **highly recommended** to select **WSL 
 #### **Steps to enable WSL 2 for Docker:**
 1. Install [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install).
 2. Ensure that your Docker settings use WSL 2 as the default backend:
-  - Open **Docker Desktop**.
-  - Navigate to **Settings > General**.
-  - Check **Use the WSL 2 based engine**.
+   - Open **Docker Desktop**.
+   - Navigate to **Settings > General**.
+   - Check **Use the WSL 2 based engine**.
 3. Restart **Docker Desktop**.
 
 #### **Already Installed Docker with Hyper-V?**
@@ -224,6 +259,7 @@ pnpm dev
 #### Formatting & Linting
 
 Auto formatter and linter are set up in the project. To run them:
+
 Format the code:
 ```sh
 pnpm format
@@ -232,6 +268,10 @@ pnpm format
 Lint the code:
 ```sh
 pnpm lint
+```
+*Or for both frontend and backend, from the root:*
+```sh
+make format
 ```
 
 #### Testing
@@ -253,6 +293,10 @@ Run the backend dependencies (database, message queues, etc.):
 ```sh
 docker compose --profile local up deps --build --detach
 ```
+*Or equivalently with Makefile:*
+```sh
+make start-core
+```
 
 Go to the `autogpt_platform/backend` directory:
 ```sh
@@ -268,8 +312,13 @@ Run the backend server:
 ```sh
 poetry run app
 ```
+*Or from within `autogpt_platform`:*
+```sh
+make run-backend
+```
 
 #### Formatting & Linting
+
 Auto formatter and linter are set up in the project. To run them:
 
 Format the code:
@@ -280,6 +329,10 @@ poetry run format
 Lint the code:
 ```sh
 poetry run lint
+```
+*Or format both frontend and backend at once:*
+```sh
+make format
 ```
 
 #### Testing

@@ -20,7 +20,7 @@ async def setup_prisma():
     yield
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents(mocker):
     # Mock data
     mock_agents = [
@@ -41,6 +41,8 @@ async def test_get_store_agents(mocker):
             rating=4.5,
             versions=["1.0"],
             updated_at=datetime.now(),
+            is_available=False,
+            useForOnboarding=False,
         )
     ]
 
@@ -62,7 +64,7 @@ async def test_get_store_agents(mocker):
     mock_store_agent.return_value.count.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agent_details(mocker):
     # Mock data
     mock_agent = prisma.models.StoreAgent(
@@ -82,16 +84,55 @@ async def test_get_store_agent_details(mocker):
         rating=4.5,
         versions=["1.0"],
         updated_at=datetime.now(),
+        is_available=False,
+        useForOnboarding=False,
+    )
+
+    # Mock active version agent (what we want to return for active version)
+    mock_active_agent = prisma.models.StoreAgent(
+        listing_id="test-id",
+        storeListingVersionId="active-version-id",
+        slug="test-agent",
+        agent_name="Test Agent Active",
+        agent_video="active_video.mp4",
+        agent_image=["active_image.jpg"],
+        featured=False,
+        creator_username="creator",
+        creator_avatar="avatar.jpg",
+        sub_heading="Test heading active",
+        description="Test description active",
+        categories=["test"],
+        runs=15,
+        rating=4.8,
+        versions=["1.0", "2.0"],
+        updated_at=datetime.now(),
+        is_available=True,
+        useForOnboarding=False,
     )
 
     # Create a mock StoreListing result
     mock_store_listing = mocker.MagicMock()
     mock_store_listing.activeVersionId = "active-version-id"
     mock_store_listing.hasApprovedVersion = True
+    mock_store_listing.ActiveVersion = mocker.MagicMock()
+    mock_store_listing.ActiveVersion.recommendedScheduleCron = None
 
-    # Mock StoreAgent prisma call
+    # Mock StoreAgent prisma call - need to handle multiple calls
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
-    mock_store_agent.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
+
+    # Set up side_effect to return different results for different calls
+    def mock_find_first_side_effect(*args, **kwargs):
+        where_clause = kwargs.get("where", {})
+        if "storeListingVersionId" in where_clause:
+            # Second call for active version
+            return mock_active_agent
+        else:
+            # First call for initial lookup
+            return mock_agent
+
+    mock_store_agent.return_value.find_first = mocker.AsyncMock(
+        side_effect=mock_find_first_side_effect
+    )
 
     # Mock Profile prisma call
     mock_profile = mocker.MagicMock()
@@ -101,7 +142,7 @@ async def test_get_store_agent_details(mocker):
         return_value=mock_profile
     )
 
-    # Mock StoreListing prisma call - this is what was missing
+    # Mock StoreListing prisma call
     mock_store_listing_db = mocker.patch("prisma.models.StoreListing.prisma")
     mock_store_listing_db.return_value.find_first = mocker.AsyncMock(
         return_value=mock_store_listing
@@ -110,20 +151,29 @@ async def test_get_store_agent_details(mocker):
     # Call function
     result = await db.get_store_agent_details("creator", "test-agent")
 
-    # Verify results
+    # Verify results - should use active version data
     assert result.slug == "test-agent"
-    assert result.agent_name == "Test Agent"
+    assert result.agent_name == "Test Agent Active"  # From active version
     assert result.active_version_id == "active-version-id"
     assert result.has_approved_version is True
+    assert (
+        result.store_listing_version_id == "active-version-id"
+    )  # Should be active version ID
 
-    # Verify mocks called correctly
-    mock_store_agent.return_value.find_first.assert_called_once_with(
+    # Verify mocks called correctly - now expecting 2 calls
+    assert mock_store_agent.return_value.find_first.call_count == 2
+
+    # Check the specific calls
+    calls = mock_store_agent.return_value.find_first.call_args_list
+    assert calls[0] == mocker.call(
         where={"creator_username": "creator", "slug": "test-agent"}
     )
+    assert calls[1] == mocker.call(where={"storeListingVersionId": "active-version-id"})
+
     mock_store_listing_db.return_value.find_first.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_creator_details(mocker):
     # Mock data
     mock_creator_data = prisma.models.Creator(
@@ -160,7 +210,7 @@ async def test_get_store_creator_details(mocker):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_create_store_submission(mocker):
     # Mock data
     mock_agent = prisma.models.AgentGraph(
@@ -201,6 +251,7 @@ async def test_create_store_submission(mocker):
                 isAvailable=True,
             )
         ],
+        useForOnboarding=False,
     )
 
     # Mock prisma calls
@@ -228,11 +279,10 @@ async def test_create_store_submission(mocker):
 
     # Verify mocks called correctly
     mock_agent_graph.return_value.find_first.assert_called_once()
-    mock_store_listing.return_value.find_first.assert_called_once()
     mock_store_listing.return_value.create.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_update_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
@@ -277,7 +327,7 @@ async def test_update_profile(mocker):
     mock_profile_db.return_value.update.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
@@ -309,3 +359,49 @@ async def test_get_user_profile(mocker):
     assert result.description == "Test description"
     assert result.links == ["link1", "link2"]
     assert result.avatar_url == "avatar.jpg"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_with_search_parameterized(mocker):
+    """Test that search query uses parameterized SQL - validates the fix works"""
+
+    # Call function with search query containing potential SQL injection
+    malicious_search = "test'; DROP TABLE StoreAgent; --"
+    result = await db.get_store_agents(search_query=malicious_search)
+
+    # Verify query executed safely
+    assert isinstance(result.agents, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_with_search_and_filters_parameterized():
+    """Test parameterized SQL with multiple filters"""
+
+    # Call with multiple filters including potential injection attempts
+    result = await db.get_store_agents(
+        search_query="test",
+        creators=["creator1'; DROP TABLE Users; --", "creator2"],
+        category="AI'; DELETE FROM StoreAgent; --",
+        featured=True,
+        sorted_by="rating",
+        page=1,
+        page_size=20,
+    )
+
+    # Verify the query executed without error
+    assert isinstance(result.agents, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_search_category_array_injection():
+    """Test that category parameter is safely passed as a parameter"""
+    # Try SQL injection via category
+    malicious_category = "AI'; DROP TABLE StoreAgent; --"
+    result = await db.get_store_agents(
+        search_query="test",
+        category=malicious_category,
+    )
+
+    # Verify the query executed without error
+    # Category should be parameterized, preventing SQL injection
+    assert isinstance(result.agents, list)

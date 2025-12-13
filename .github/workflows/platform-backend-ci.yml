@@ -37,9 +37,7 @@ jobs:
 
     services:
       redis:
-        image: bitnami/redis:6.2
-        env:
-          REDIS_PASSWORD: testpassword
+        image: redis:latest
         ports:
           - 6379:6379
       rabbitmq:
@@ -204,7 +202,6 @@ jobs:
           JWT_VERIFY_KEY: ${{ steps.supabase.outputs.JWT_SECRET }}
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
-          REDIS_PASSWORD: "testpassword"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
 
     env:

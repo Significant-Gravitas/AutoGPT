@@ -4,15 +4,15 @@ from typing import TYPE_CHECKING, Optional, cast
 from pydantic import JsonValue
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.providers import ProviderName
 from backend.util.settings import Config
 
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
-    from backend.data.block import Block, BlockSchema
+    from backend.data.block import AnyBlockSchema
     from backend.data.integrations import Webhook
     from backend.data.model import Credentials
+    from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 app_config = Config()
@@ -20,7 +20,7 @@ credentials_manager = IntegrationCredentialsManager()
 
 
 # TODO: add test to assert this matches the actual API route
-def webhook_ingress_url(provider_name: ProviderName, webhook_id: str) -> str:
+def webhook_ingress_url(provider_name: "ProviderName", webhook_id: str) -> str:
     return (
         f"{app_config.platform_base_url}/api/integrations/{provider_name.value}"
         f"/webhooks/{webhook_id}/ingress"
@@ -29,7 +29,7 @@ def webhook_ingress_url(provider_name: ProviderName, webhook_id: str) -> str:
 
 async def setup_webhook_for_block(
     user_id: str,
-    trigger_block: "Block[BlockSchema, BlockSchema]",
+    trigger_block: "AnyBlockSchema",
     trigger_config: dict[str, JsonValue],  # = Trigger block inputs
     for_graph_id: Optional[str] = None,
     for_preset_id: Optional[str] = None,
@@ -144,3 +144,69 @@ async def setup_webhook_for_block(
         )
     logger.debug(f"Acquired webhook: {webhook}")
     return webhook, None
+
+
+async def migrate_legacy_triggered_graphs():
+    from prisma.models import AgentGraph
+
+    from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel, set_node_webhook
+    from backend.data.model import is_credentials_field_name
+    from backend.server.v2.library.db import create_preset
+    from backend.server.v2.library.model import LibraryAgentPresetCreatable
+
+    triggered_graphs = [
+        GraphModel.from_db(_graph)
+        for _graph in await AgentGraph.prisma().find_many(
+            where={
+                "isActive": True,
+                "Nodes": {"some": {"NOT": [{"webhookId": None}]}},
+            },
+            include=AGENT_GRAPH_INCLUDE,
+        )
+    ]
+
+    n_migrated_webhooks = 0
+
+    for graph in triggered_graphs:
+        try:
+            if not (
+                (trigger_node := graph.webhook_input_node) and trigger_node.webhook_id
+            ):
+                continue
+
+            # Use trigger node's inputs for the preset
+            preset_credentials = {
+                field_name: creds_meta
+                for field_name, creds_meta in trigger_node.input_default.items()
+                if is_credentials_field_name(field_name)
+            }
+            preset_inputs = {
+                field_name: value
+                for field_name, value in trigger_node.input_default.items()
+                if not is_credentials_field_name(field_name)
+            }
+
+            # Create a triggered preset for the graph
+            await create_preset(
+                graph.user_id,
+                LibraryAgentPresetCreatable(
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                    inputs=preset_inputs,
+                    credentials=preset_credentials,
+                    name=graph.name,
+                    description=graph.description,
+                    webhook_id=trigger_node.webhook_id,
+                    is_active=True,
+                ),
+            )
+
+            # Detach webhook from the graph node
+            await set_node_webhook(trigger_node.id, None)
+
+            n_migrated_webhooks += 1
+        except Exception as e:
+            logger.error(f"Failed to migrate graph #{graph.id} trigger to preset: {e}")
+            continue
+
+    logger.info(f"Migrated {n_migrated_webhooks} node triggers to triggered presets")

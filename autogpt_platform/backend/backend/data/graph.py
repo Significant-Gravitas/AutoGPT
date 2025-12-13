@@ -1,10 +1,18 @@
+import asyncio
 import logging
 import uuid
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 from prisma.enums import SubmissionStatus
-from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
+from prisma.models import (
+    AgentGraph,
+    AgentNode,
+    AgentNodeLink,
+    LibraryAgent,
+    StoreListingVersion,
+)
 from prisma.types import (
     AgentGraphCreateInput,
     AgentGraphWhereInput,
@@ -12,13 +20,15 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import Field, JsonValue, create_model
+from pydantic import BaseModel, Field, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
+from backend.data.dynamic_fields import is_tool_pin, sanitize_pin_name
+from backend.data.includes import MAX_GRAPH_VERSIONS_FETCH
 from backend.data.model import (
     CredentialsField,
     CredentialsFieldInfo,
@@ -27,16 +37,32 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
+from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
 from backend.util.json import SafeJson
+from backend.util.models import Pagination
 
-from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
+from .block import (
+    AnyBlockSchema,
+    Block,
+    BlockInput,
+    BlockSchema,
+    BlockType,
+    EmptySchema,
+    get_block,
+    get_blocks,
+)
 from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
+    from .execution import NodesInputMasks
     from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
+
+
+class GraphSettings(BaseModel):
+    human_in_the_loop_safe_mode: bool | None = None
 
 
 class Link(BaseDbModel):
@@ -69,12 +95,15 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
-    def block(self) -> Block[BlockSchema, BlockSchema]:
+    def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
+        """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)
         if not block:
-            raise ValueError(
-                f"Block #{self.block_id} does not exist -> Node #{self.id} is invalid"
+            # Log warning but don't raise exception - return a placeholder block for deleted blocks
+            logger.warning(
+                f"Block #{self.block_id} does not exist for Node #{self.id} (deleted/missing block), using UnknownBlock"
             )
+            return _UnknownBlockBase(self.block_id)
         return block
 
 
@@ -113,17 +142,20 @@ class NodeModel(Node):
         Returns a copy of the node model, stripped of any non-transferable properties
         """
         stripped_node = self.model_copy(deep=True)
-        # Remove credentials from node input
+
+        # Remove credentials and other (possible) secrets from node input
         if stripped_node.input_default:
             stripped_node.input_default = NodeModel._filter_secrets_from_node_input(
                 stripped_node.input_default, self.block.input_schema.jsonschema()
             )
 
+        # Remove default secret value from secret input nodes
         if (
             stripped_node.block.block_type == BlockType.INPUT
+            and stripped_node.input_default.get("secret", False) is True
             and "value" in stripped_node.input_default
         ):
-            stripped_node.input_default["value"] = ""
+            del stripped_node.input_default["value"]
 
         # Remove webhook info
         stripped_node.webhook_id = None
@@ -140,8 +172,10 @@ class NodeModel(Node):
         result = {}
         for key, value in input_data.items():
             field_schema: dict | None = field_schemas.get(key)
-            if (field_schema and field_schema.get("secret", False)) or any(
-                sensitive_key in key.lower() for sensitive_key in sensitive_keys
+            if (field_schema and field_schema.get("secret", False)) or (
+                any(sensitive_key in key.lower() for sensitive_key in sensitive_keys)
+                # Prevent removing `secret` flag on input nodes
+                and type(value) is not bool
             ):
                 # This is a secret value -> filter this key-value pair out
                 continue
@@ -159,6 +193,8 @@ class BaseGraph(BaseDbModel):
     is_active: bool = True
     name: str
     description: str
+    instructions: str | None = None
+    recommended_schedule_cron: str | None = None
     nodes: list[Node] = []
     links: list[Link] = []
     forked_from_id: str | None = None
@@ -193,6 +229,15 @@ class BaseGraph(BaseDbModel):
     def has_external_trigger(self) -> bool:
         return self.webhook_input_node is not None
 
+    @computed_field
+    @property
+    def has_human_in_the_loop(self) -> bool:
+        return any(
+            node.block_id
+            for node in self.nodes
+            if node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
+        )
+
     @property
     def webhook_input_node(self) -> Node | None:
         return next(
@@ -203,6 +248,35 @@ class BaseGraph(BaseDbModel):
                 in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
             ),
             None,
+        )
+
+    @computed_field
+    @property
+    def trigger_setup_info(self) -> "GraphTriggerInfo | None":
+        if not (
+            self.webhook_input_node
+            and (trigger_block := self.webhook_input_node.block).webhook_config
+        ):
+            return None
+
+        return GraphTriggerInfo(
+            provider=trigger_block.webhook_config.provider,
+            config_schema={
+                **(json_schema := trigger_block.input_schema.jsonschema()),
+                "properties": {
+                    pn: sub_schema
+                    for pn, sub_schema in json_schema["properties"].items()
+                    if not is_credentials_field_name(pn)
+                },
+                "required": [
+                    pn
+                    for pn in json_schema.get("required", [])
+                    if not is_credentials_field_name(pn)
+                ],
+            },
+            credentials_input_name=next(
+                iter(trigger_block.input_schema.get_credentials_fields()), None
+            ),
         )
 
     @staticmethod
@@ -236,6 +310,14 @@ class BaseGraph(BaseDbModel):
             },
             "required": [p.name for p in schema_fields if p.value is None],
         }
+
+
+class GraphTriggerInfo(BaseModel):
+    provider: ProviderName
+    config_schema: dict[str, Any] = Field(
+        description="Input schema for the trigger block"
+    )
+    credentials_input_name: Optional[str]
 
 
 class Graph(BaseGraph):
@@ -342,6 +424,8 @@ class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
 
+    created_at: datetime
+
     @property
     def starting_nodes(self) -> list[NodeModel]:
         outbound_nodes = {link.sink_id for link in self.links}
@@ -353,6 +437,10 @@ class GraphModel(Graph):
             for node in self.nodes
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:  # type: ignore
+        return cast(NodeModel, super().webhook_input_node)
 
     def meta(self) -> "GraphMeta":
         """
@@ -414,7 +502,7 @@ class GraphModel(Graph):
     def validate_graph(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ):
         """
         Validate graph structure and raise `ValueError` on issues.
@@ -428,7 +516,7 @@ class GraphModel(Graph):
     def _validate_graph(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> None:
         errors = GraphModel._validate_graph_get_errors(
             graph, for_run, nodes_input_masks
@@ -442,7 +530,7 @@ class GraphModel(Graph):
     def validate_graph_get_errors(
         self,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
@@ -464,7 +552,7 @@ class GraphModel(Graph):
     def _validate_graph_get_errors(
         graph: BaseGraph,
         for_run: bool = False,
-        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+        nodes_input_masks: Optional["NodesInputMasks"] = None,
     ) -> dict[str, dict[str, str]]:
         """
         Validate graph and return structured errors per node.
@@ -504,9 +592,9 @@ class GraphModel(Graph):
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [_sanitize_pin_name(name) for name in node.input_default]
+                [sanitize_pin_name(name) for name in node.input_default]
                 + [
-                    _sanitize_pin_name(link.sink_name)
+                    sanitize_pin_name(link.sink_name)
                     for link in input_links.get(node.id, [])
                 ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
@@ -622,7 +710,7 @@ class GraphModel(Graph):
                         f"{prefix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )
 
-                sanitized_name = _sanitize_pin_name(name)
+                sanitized_name = sanitize_pin_name(name)
                 vals = node.input_default
                 if i == 0:
                     fields = (
@@ -636,7 +724,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not _is_tool_pin(name):
+                if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -655,9 +743,12 @@ class GraphModel(Graph):
             version=graph.version,
             forked_from_id=graph.forkedFromId,
             forked_from_version=graph.forkedFromVersion,
+            created_at=graph.createdAt,
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
+            instructions=graph.instructions,
+            recommended_schedule_cron=graph.recommendedScheduleCron,
             nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(
                 {
@@ -673,17 +764,6 @@ class GraphModel(Graph):
         )
 
 
-def _is_tool_pin(name: str) -> bool:
-    return name.startswith("tools_^_")
-
-
-def _sanitize_pin_name(name: str) -> str:
-    sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
-    if _is_tool_pin(sanitized_name):
-        return "tools"
-    return sanitized_name
-
-
 class GraphMeta(Graph):
     user_id: str
 
@@ -694,6 +774,13 @@ class GraphMeta(Graph):
     @staticmethod
     def from_graph(graph: GraphModel) -> "GraphMeta":
         return GraphMeta(**graph.model_dump())
+
+
+class GraphsPaginated(BaseModel):
+    """Response schema for paginated graphs."""
+
+    graphs: list[GraphMeta]
+    pagination: Pagination
 
 
 # --------------------- CRUD functions --------------------- #
@@ -724,31 +811,42 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
     return NodeModel.from_db(node)
 
 
-async def list_graphs(
+async def list_graphs_paginated(
     user_id: str,
+    page: int = 1,
+    page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
-) -> list[GraphMeta]:
+) -> GraphsPaginated:
     """
-    Retrieves graph metadata objects.
-    Default behaviour is to get all currently active graphs.
+    Retrieves paginated graph metadata objects.
 
     Args:
+        user_id: The ID of the user that owns the graphs.
+        page: Page number (1-based).
+        page_size: Number of graphs per page.
         filter_by: An optional filter to either select graphs.
-        user_id: The ID of the user that owns the graph.
 
     Returns:
-        list[GraphMeta]: A list of objects representing the retrieved graphs.
+        GraphsPaginated: Paginated list of graph metadata.
     """
     where_clause: AgentGraphWhereInput = {"userId": user_id}
 
     if filter_by == "active":
         where_clause["isActive"] = True
 
+    # Get total count
+    total_count = await AgentGraph.prisma().count(where=where_clause)
+    total_pages = (total_count + page_size - 1) // page_size
+
+    # Get paginated results
+    offset = (page - 1) * page_size
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
         distinct=["id"],
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
+        skip=offset,
+        take=page_size,
     )
 
     graph_models: list[GraphMeta] = []
@@ -762,7 +860,15 @@ async def list_graphs(
             logger.error(f"Error processing graph {graph.id}: {e}")
             continue
 
-    return graph_models
+    return GraphsPaginated(
+        graphs=graph_models,
+        pagination=Pagination(
+            total_items=total_count,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
 
 
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
@@ -792,10 +898,12 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
 async def get_graph(
     graph_id: str,
-    version: int | None = None,
-    user_id: str | None = None,
+    version: int | None,
+    user_id: str | None,
+    *,
     for_export: bool = False,
     include_subgraphs: bool = False,
+    skip_access_check: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -803,35 +911,43 @@ async def get_graph(
 
     Returns `None` if the record is not found.
     """
-    where_clause: AgentGraphWhereInput = {
-        "id": graph_id,
-    }
+    graph = None
 
-    if version is not None:
-        where_clause["version"] = version
-
-    graph = await AgentGraph.prisma().find_first(
-        where=where_clause,
-        include=AGENT_GRAPH_INCLUDE,
-        order={"version": "desc"},
-    )
-    if graph is None:
-        return None
-
-    if graph.userId != user_id:
-        store_listing_filter: StoreListingVersionWhereInput = {
-            "agentGraphId": graph_id,
-            "isDeleted": False,
-            "submissionStatus": SubmissionStatus.APPROVED,
+    # Only search graph directly on owned graph (or access check is skipped)
+    if skip_access_check or user_id is not None:
+        graph_where_clause: AgentGraphWhereInput = {
+            "id": graph_id,
         }
         if version is not None:
-            store_listing_filter["agentGraphVersion"] = version
+            graph_where_clause["version"] = version
+        if not skip_access_check and user_id is not None:
+            graph_where_clause["userId"] = user_id
 
-        # For access, the graph must be owned by the user or listed in the store
-        if not await StoreListingVersion.prisma().find_first(
-            where=store_listing_filter, order={"agentGraphVersion": "desc"}
+        graph = await AgentGraph.prisma().find_first(
+            where=graph_where_clause,
+            include=AGENT_GRAPH_INCLUDE,
+            order={"version": "desc"},
+        )
+
+    # Use store listed graph to find not owned graph
+    if graph is None:
+        store_where_clause: StoreListingVersionWhereInput = {
+            "agentGraphId": graph_id,
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        }
+        if version is not None:
+            store_where_clause["agentGraphVersion"] = version
+
+        if store_listing := await StoreListingVersion.prisma().find_first(
+            where=store_where_clause,
+            order={"agentGraphVersion": "desc"},
+            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
         ):
-            return None
+            graph = store_listing.AgentGraph
+
+    if graph is None:
+        return None
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
@@ -874,13 +990,8 @@ async def get_graph_as_admin(
     # For access, the graph must be owned by the user or listed in the store
     if graph is None or (
         graph.userId != user_id
-        and not (
-            await StoreListingVersion.prisma().find_first(
-                where={
-                    "agentGraphId": graph_id,
-                    "agentGraphVersion": version or graph.version,
-                }
-            )
+        and not await is_graph_published_in_marketplace(
+            graph_id, version or graph.version
         )
     ):
         return None
@@ -982,11 +1093,14 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
     )
 
 
-async def get_graph_all_versions(graph_id: str, user_id: str) -> list[GraphModel]:
+async def get_graph_all_versions(
+    graph_id: str, user_id: str, limit: int = MAX_GRAPH_VERSIONS_FETCH
+) -> list[GraphModel]:
     graph_versions = await AgentGraph.prisma().find_many(
         where={"id": graph_id, "userId": user_id},
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
+        take=limit,
     )
 
     if not graph_versions:
@@ -1004,6 +1118,121 @@ async def delete_graph(graph_id: str, user_id: str) -> int:
     return entries_count
 
 
+async def get_graph_settings(user_id: str, graph_id: str) -> GraphSettings:
+    lib = await LibraryAgent.prisma().find_first(
+        where={
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "isArchived": False,
+        },
+        order={"agentGraphVersion": "desc"},
+    )
+    if not lib or not lib.settings:
+        return GraphSettings()
+
+    try:
+        return GraphSettings.model_validate(lib.settings)
+    except Exception:
+        logger.warning(
+            f"Malformed settings for LibraryAgent user={user_id} graph={graph_id}"
+        )
+        return GraphSettings()
+
+
+async def validate_graph_execution_permissions(
+    user_id: str, graph_id: str, graph_version: int, is_sub_graph: bool = False
+) -> None:
+    """
+    Validate that a user has permission to execute a specific graph.
+
+    This function performs comprehensive authorization checks and raises specific
+    exceptions for different types of failures to enable appropriate error handling.
+
+    ## Logic
+    A user can execute a graph if any of these is true:
+    1. They own the graph and some version of it is still listed in their library
+    2. The graph is published in the marketplace and listed in their library
+    3. The graph is published in the marketplace and is being executed as a sub-agent
+
+    Args:
+        graph_id: The ID of the graph to check
+        user_id: The ID of the user
+        graph_version: The version of the graph to check
+        is_sub_graph: Whether this is being executed as a sub-graph.
+            If `True`, the graph isn't required to be in the user's Library.
+
+    Raises:
+        GraphNotAccessibleError: If the graph is not accessible to the user.
+        GraphNotInLibraryError: If the graph is not in the user's library (deleted/archived).
+        NotAuthorizedError: If the user lacks execution permissions for other reasons
+    """
+    graph, library_agent = await asyncio.gather(
+        AgentGraph.prisma().find_unique(
+            where={"graphVersionId": {"id": graph_id, "version": graph_version}}
+        ),
+        LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": graph_id,
+                "isDeleted": False,
+                "isArchived": False,
+            }
+        ),
+    )
+
+    # Step 1: Check if user owns this graph
+    user_owns_graph = graph and graph.userId == user_id
+
+    # Step 2: Check if agent is in the library *and not deleted*
+    user_has_in_library = library_agent is not None
+
+    # Step 3: Apply permission logic
+    if not (
+        user_owns_graph
+        or await is_graph_published_in_marketplace(graph_id, graph_version)
+    ):
+        raise GraphNotAccessibleError(
+            f"You do not have access to graph #{graph_id} v{graph_version}: "
+            "it is not owned by you and not available in the Marketplace"
+        )
+    elif not (user_has_in_library or is_sub_graph):
+        raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
+
+    # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
+    # Additional authorization checks beyond the above:
+    # 1. Check if user has execution credits (future)
+    # 2. Check if graph is suspended/disabled (future)
+    # 3. Check rate limiting rules (future)
+    # 4. Check organization-level permissions (future)
+
+    # For now, the above check logic is sufficient for execution permission.
+    # Future enhancements can add more granular permission checks here.
+    # When adding new checks, raise NotAuthorizedError for non-library issues.
+
+
+async def is_graph_published_in_marketplace(graph_id: str, graph_version: int) -> bool:
+    """
+    Check if a graph is published in the marketplace.
+
+    Params:
+        graph_id: The ID of the graph to check
+        graph_version: The version of the graph to check
+
+    Returns:
+        True if the graph is published and approved in the marketplace, False otherwise
+    """
+    marketplace_listing = await StoreListingVersion.prisma().find_first(
+        where={
+            "agentGraphId": graph_id,
+            "agentGraphVersion": graph_version,
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        }
+    )
+    return marketplace_listing is not None
+
+
 async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
@@ -1018,7 +1247,7 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
-    graph = await get_graph(graph_id, graph_version, user_id, True)
+    graph = await get_graph(graph_id, graph_version, user_id=user_id, for_export=True)
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
@@ -1045,6 +1274,7 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 version=graph.version,
                 name=graph.name,
                 description=graph.description,
+                recommendedScheduleCron=graph.recommended_schedule_cron,
                 isActive=graph.is_active,
                 userId=user_id,
                 forkedFromId=graph.forked_from_id,
@@ -1103,6 +1333,7 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     return GraphModel(
         **creatable_graph.model_dump(exclude={"nodes"}),
         user_id=user_id,
+        created_at=datetime.now(tz=timezone.utc),
         nodes=[
             NodeModel(
                 **creatable_node.model_dump(),
@@ -1233,3 +1464,34 @@ async def migrate_llm_models(migrate_to: LlmModel):
             id,
             path,
         )
+
+
+# Simple placeholder class for deleted/missing blocks
+class _UnknownBlockBase(Block):
+    """
+    Placeholder for deleted/missing blocks that inherits from Block
+    but uses a name that doesn't end with 'Block' to avoid auto-discovery.
+    """
+
+    def __init__(self, block_id: str = "00000000-0000-0000-0000-000000000000"):
+        # Initialize with minimal valid Block parameters
+        super().__init__(
+            id=block_id,
+            description=f"Unknown or deleted block (original ID: {block_id})",
+            disabled=True,
+            input_schema=EmptySchema,
+            output_schema=EmptySchema,
+            categories=set(),
+            contributors=[],
+            static_output=False,
+            block_type=BlockType.STANDARD,
+            webhook_config=None,
+        )
+
+    @property
+    def name(self):
+        return "UnknownBlock"
+
+    async def run(self, input_data, **kwargs):
+        """Always yield an error for missing blocks."""
+        yield "error", f"Block {self.id} no longer exists"

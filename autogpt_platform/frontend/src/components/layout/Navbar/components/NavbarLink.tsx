@@ -1,8 +1,10 @@
 "use client";
 
-import { IconLaptop } from "@/components/ui/icons";
+import { IconLaptop } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
+  ChatsIcon,
   CubeIcon,
   HouseIcon,
   StorefrontIcon,
@@ -21,14 +23,15 @@ interface Props {
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
   const isActive = pathname.includes(href);
+  const chat_enabled = useGetFlag(Flag.CHAT);
 
   return (
     <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
         className={cn(
-          "flex items-center justify-start gap-1 p-2",
+          "flex items-center justify-start gap-1 p-1 md:p-2",
           isActive &&
-            "rounded-small bg-neutral-800 py-2 pl-2 pr-3 transition-all duration-300 dark:bg-neutral-200",
+            "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 dark:bg-neutral-200 md:py-2 md:pl-2 md:pr-3",
         )}
       >
         {href === "/marketplace" && (
@@ -63,8 +66,16 @@ export function NavbarLink({ name, href }: Props) {
             )}
           />
         )}
+        {chat_enabled && href === "/chat" && (
+          <ChatsIcon
+            className={cn(
+              iconWidthClass,
+              isActive && "text-white dark:text-black",
+            )}
+          />
+        )}
         <Text
-          variant="h4"
+          variant="h5"
           className={cn(
             "hidden !font-poppins lg:block",
             isActive ? "!text-white" : "!text-black",

@@ -1,14 +1,23 @@
 import logging
-from typing import Callable, Concatenate, ParamSpec, TypeVar, cast
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.data import db
+from backend.data.analytics import (
+    get_accuracy_trends_and_alerts,
+    get_marketplace_graphs_for_monitoring,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
+    get_child_graph_executions,
     get_execution_kv_data,
+    get_execution_outputs_by_node_exec_id,
+    get_frequently_executed_graphs,
     get_graph_execution_meta,
     get_graph_executions,
+    get_graph_executions_count,
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
@@ -25,17 +34,27 @@ from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
     get_graph_metadata,
+    get_graph_settings,
     get_node,
+    validate_graph_execution_permissions,
+)
+from backend.data.human_review import (
+    get_or_create_human_review,
+    has_pending_reviews_for_graph_exec,
+    update_review_processed_status,
 )
 from backend.data.notifications import (
+    clear_all_user_notification_batches,
     create_or_add_to_user_notification_batch,
     empty_user_notification_batch,
     get_all_batches_by_type,
     get_user_notification_batch,
     get_user_notification_oldest_message_in_batch,
+    remove_notifications_from_batch,
 )
 from backend.data.user import (
     get_active_user_ids_in_timerange,
+    get_user_by_id,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_integrations,
@@ -53,8 +72,10 @@ from backend.util.service import (
 )
 from backend.util.settings import Config
 
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
 config = Config()
-_user_credit_model = get_user_credit_model()
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -63,28 +84,41 @@ R = TypeVar("R")
 async def _spend_credits(
     user_id: str, cost: int, metadata: UsageTransactionMetadata
 ) -> int:
-    return await _user_credit_model.spend_credits(user_id, cost, metadata)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.spend_credits(user_id, cost, metadata)
 
 
 async def _get_credits(user_id: str) -> int:
-    return await _user_credit_model.get_credits(user_id)
+    user_credit_model = await get_user_credit_model(user_id)
+    return await user_credit_model.get_credits(user_id)
 
 
 class DatabaseManager(AppService):
+    @asynccontextmanager
+    async def lifespan(self, app: "FastAPI"):
+        async with super().lifespan(app):
+            logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
+            await db.connect()
 
-    def run_service(self) -> None:
-        logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
-        self.run_and_wait(db.connect())
-        super().run_service()
+            logger.info(f"[{self.service_name}] ✅ Ready")
+            yield
 
-    def cleanup(self):
-        super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
-        self.run_and_wait(db.disconnect())
+            logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+            await db.disconnect()
 
     async def health_check(self) -> str:
         if not db.is_connected():
             raise UnhealthyServiceError("Database is not connected")
+
+        try:
+            # Test actual database connectivity by executing a simple query
+            # This will fail if Prisma query engine is not responding
+            result = await db.query_raw_with_schema("SELECT 1 as health_check")
+            if not result or result[0].get("health_check") != 1:
+                raise UnhealthyServiceError("Database query test failed")
+        except Exception as e:
+            raise UnhealthyServiceError(f"Database health check failed: {e}")
+
         return await super().health_check()
 
     @classmethod
@@ -100,7 +134,9 @@ class DatabaseManager(AppService):
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
     # Executions
+    get_child_graph_executions = _(get_child_graph_executions)
     get_graph_executions = _(get_graph_executions)
+    get_graph_executions_count = _(get_graph_executions_count)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
     get_node_execution = _(get_node_execution)
@@ -112,15 +148,20 @@ class DatabaseManager(AppService):
     update_graph_execution_stats = _(update_graph_execution_stats)
     upsert_execution_input = _(upsert_execution_input)
     upsert_execution_output = _(upsert_execution_output)
+    get_execution_outputs_by_node_exec_id = _(get_execution_outputs_by_node_exec_id)
     get_execution_kv_data = _(get_execution_kv_data)
     set_execution_kv_data = _(set_execution_kv_data)
     get_block_error_stats = _(get_block_error_stats)
+    get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
 
     # Graphs
     get_node = _(get_node)
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
     get_graph_metadata = _(get_graph_metadata)
+    get_graph_settings = _(get_graph_settings)
 
     # Credits
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -132,15 +173,23 @@ class DatabaseManager(AppService):
 
     # User Comms - async
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
+    get_user_by_id = _(get_user_by_id)
     get_user_email_by_id = _(get_user_email_by_id)
     get_user_email_verification = _(get_user_email_verification)
     get_user_notification_preference = _(get_user_notification_preference)
 
+    # Human In The Loop
+    get_or_create_human_review = _(get_or_create_human_review)
+    has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
+    update_review_processed_status = _(update_review_processed_status)
+
     # Notifications - async
+    clear_all_user_notification_batches = _(clear_all_user_notification_batches)
     create_or_add_to_user_notification_batch = _(
         create_or_add_to_user_notification_batch
     )
     empty_user_notification_batch = _(empty_user_notification_batch)
+    remove_notifications_from_batch = _(remove_notifications_from_batch)
     get_all_batches_by_type = _(get_all_batches_by_type)
     get_user_notification_batch = _(get_user_notification_batch)
     get_user_notification_oldest_message_in_batch = _(
@@ -150,6 +199,7 @@ class DatabaseManager(AppService):
     # Library
     list_library_agents = _(list_library_agents)
     add_store_agent_to_library = _(add_store_agent_to_library)
+    validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
     # Store
     get_store_agents = _(get_store_agents)
@@ -169,6 +219,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Executions
     get_graph_executions = _(d.get_graph_executions)
+    get_graph_executions_count = _(d.get_graph_executions_count)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     get_node_executions = _(d.get_node_executions)
     update_node_execution_status = _(d.update_node_execution_status)
@@ -185,6 +236,13 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
+    # Execution accuracy monitoring
+    get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
+
+    # Human In The Loop
+    has_pending_reviews_for_graph_exec = _(d.has_pending_reviews_for_graph_exec)
 
     # User Emails
     get_user_email_by_id = _(d.get_user_email_by_id)
@@ -192,6 +250,7 @@ class DatabaseManagerClient(AppServiceClient):
     # Library
     list_library_agents = _(d.list_library_agents)
     add_store_agent_to_library = _(d.add_store_agent_to_library)
+    validate_graph_execution_permissions = _(d.validate_graph_execution_permissions)
 
     # Store
     get_store_agents = _(d.get_store_agents)
@@ -206,23 +265,31 @@ class DatabaseManagerAsyncClient(AppServiceClient):
         return DatabaseManager
 
     create_graph_execution = d.create_graph_execution
+    get_child_graph_executions = d.get_child_graph_executions
     get_connected_output_nodes = d.get_connected_output_nodes
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
+    get_graph_settings = d.get_graph_settings
     get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
+    get_user_by_id = d.get_user_by_id
     get_user_integrations = d.get_user_integrations
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output
+    get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
     update_graph_execution_stats = d.update_graph_execution_stats
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch
     update_user_integrations = d.update_user_integrations
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
+
+    # Human In The Loop
+    get_or_create_human_review = d.get_or_create_human_review
+    update_review_processed_status = d.update_review_processed_status
 
     # User Comms
     get_active_user_ids_in_timerange = d.get_active_user_ids_in_timerange
@@ -231,10 +298,12 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_notification_preference = d.get_user_notification_preference
 
     # Notifications
+    clear_all_user_notification_batches = d.clear_all_user_notification_batches
     create_or_add_to_user_notification_batch = (
         d.create_or_add_to_user_notification_batch
     )
     empty_user_notification_batch = d.empty_user_notification_batch
+    remove_notifications_from_batch = d.remove_notifications_from_batch
     get_all_batches_by_type = d.get_all_batches_by_type
     get_user_notification_batch = d.get_user_notification_batch
     get_user_notification_oldest_message_in_batch = (
@@ -244,6 +313,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # Library
     list_library_agents = d.list_library_agents
     add_store_agent_to_library = d.add_store_agent_to_library
+    validate_graph_execution_permissions = d.validate_graph_execution_permissions
 
     # Store
     get_store_agents = d.get_store_agents
