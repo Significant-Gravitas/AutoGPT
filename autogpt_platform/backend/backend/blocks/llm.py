@@ -203,6 +203,7 @@ MODEL_METADATA = {
     LlmModel.GPT5_2_PRO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_PRO: ModelMetadata("openai", 400000, 272000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
