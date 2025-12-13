@@ -70,6 +70,53 @@ class ErrorResponse(BaseModel):
     error_description: Optional[str] = None
 
 
+class OAuthApplicationPublicInfo(BaseModel):
+    """Public information about an OAuth application (for consent screen)"""
+
+    name: str
+    description: Optional[str] = None
+    scopes: list[str]
+
+
+# ============================================================================
+# Application Info Endpoint
+# ============================================================================
+
+
+@router.get(
+    "/app/{client_id}",
+    responses={
+        404: {"description": "Application not found or disabled"},
+    },
+)
+async def get_oauth_app_info(
+    client_id: str, user_id: str = Security(get_user_id)
+) -> OAuthApplicationPublicInfo:
+    """
+    Get public information about an OAuth application.
+
+    This endpoint is used by the consent screen to display application details
+    to the user before they authorize access.
+
+    Returns:
+    - name: Application name
+    - description: Application description (if provided)
+    - scopes: List of scopes the application is allowed to request
+    """
+    app = await get_oauth_application(client_id)
+    if not app or not app.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    return OAuthApplicationPublicInfo(
+        name=app.name,
+        description=app.description,
+        scopes=[s.value for s in app.scopes],
+    )
+
+
 # ============================================================================
 # Authorization Endpoint
 # ============================================================================

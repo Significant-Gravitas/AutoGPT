@@ -40,7 +40,7 @@ keysmith = APIKeySmith()
 
 def generate_client_id() -> str:
     """Generate a unique client ID"""
-    return f"autogpt_client_{secrets.token_urlsafe(16)}"
+    return f"agpt_client_{secrets.token_urlsafe(16)}"
 
 
 def generate_client_secret() -> tuple[str, str, str]:

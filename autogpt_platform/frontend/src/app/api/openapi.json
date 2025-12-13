@@ -5370,6 +5370,47 @@
         }
       }
     },
+    "/oauth/app/{client_id}": {
+      "get": {
+        "tags": ["oauth"],
+        "summary": "Get Oauth App Info",
+        "description": "Get public information about an OAuth application.\n\nThis endpoint is used by the consent screen to display application details\nto the user before they authorize access.\n\nReturns:\n- name: Application name\n- description: Application description (if provided)\n- scopes: List of scopes the application is allowed to request",
+        "operationId": "getOauthGetOauthAppInfo",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationPublicInfo"
+                }
+              }
+            }
+          },
+          "404": { "description": "Application not found or disabled" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/oauth/authorize": {
       "get": {
         "tags": ["oauth"],
@@ -8143,6 +8184,24 @@
         "type": "object",
         "required": ["provider", "access_token", "scopes"],
         "title": "OAuth2Credentials"
+      },
+      "OAuthApplicationPublicInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": ["name", "scopes"],
+        "title": "OAuthApplicationPublicInfo",
+        "description": "Public information about an OAuth application (for consent screen)"
       },
       "OnboardingStep": {
         "type": "string",
