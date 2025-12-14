@@ -14,7 +14,7 @@ from fastapi import APIRouter, Security
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
-from backend.data.api_key import APIKeyInfo
+from backend.data.auth.base import APIAuthorizationInfo
 from backend.server.external.middleware import require_permission
 from backend.server.v2.chat.model import ChatSession
 from backend.server.v2.chat.tools import find_agent_tool, run_agent_tool
@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 tools_router = APIRouter(prefix="/tools", tags=["tools"])
 
-# Note: We use Security() as a function parameter dependency (api_key: APIKeyInfo = Security(...))
+# Note: We use Security() as a function parameter dependency (auth: APIAuthorizationInfo = Security(...))
 # rather than in the decorator's dependencies= list. This avoids duplicate permission checks
-# while still enforcing auth AND giving us access to the api_key for extracting user_id.
+# while still enforcing auth AND giving us access to auth for extracting user_id.
 
 
 # Request models
@@ -80,7 +80,9 @@ def _create_ephemeral_session(user_id: str | None) -> ChatSession:
 )
 async def find_agent(
     request: FindAgentRequest,
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.USE_TOOLS)
+    ),
 ) -> dict[str, Any]:
     """
     Search for agents in the marketplace based on capabilities and user needs.
@@ -91,9 +93,9 @@ async def find_agent(
     Returns:
         List of matching agents or no results response
     """
-    session = _create_ephemeral_session(api_key.user_id)
+    session = _create_ephemeral_session(auth.user_id)
     result = await find_agent_tool._execute(
-        user_id=api_key.user_id,
+        user_id=auth.user_id,
         session=session,
         query=request.query,
     )
@@ -105,7 +107,9 @@ async def find_agent(
 )
 async def run_agent(
     request: RunAgentRequest,
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.USE_TOOLS)),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.USE_TOOLS)
+    ),
 ) -> dict[str, Any]:
     """
     Run or schedule an agent from the marketplace.
@@ -129,9 +133,9 @@ async def run_agent(
         - execution_started: If agent was run or scheduled successfully
         - error: If something went wrong
     """
-    session = _create_ephemeral_session(api_key.user_id)
+    session = _create_ephemeral_session(auth.user_id)
     result = await run_agent_tool._execute(
-        user_id=api_key.user_id,
+        user_id=auth.user_id,
         session=session,
         username_agent_slug=request.username_agent_slug,
         inputs=request.inputs,

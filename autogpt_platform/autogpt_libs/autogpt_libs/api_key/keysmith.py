@@ -57,6 +57,9 @@ class APIKeySmith:
 
     def hash_key(self, raw_key: str) -> tuple[str, str]:
         """Migrate a legacy hash to secure hash format."""
+        if not raw_key.startswith(self.PREFIX):
+            raise ValueError("Key without 'agpt_' prefix would fail validation")
+
         salt = self._generate_salt()
         hash = self._hash_key_with_salt(raw_key, salt)
         return hash, salt.hex()

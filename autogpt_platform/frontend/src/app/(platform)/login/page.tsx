@@ -11,8 +11,16 @@ import { environment } from "@/services/environment";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
+import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const nextUrl = searchParams.get("next");
+  // Preserve next parameter when switching between login/signup
+  const signupHref = nextUrl
+    ? `/signup?next=${encodeURIComponent(nextUrl)}`
+    : "/signup";
+
   const {
     user,
     form,
@@ -108,7 +116,7 @@ export default function LoginPage() {
         </Form>
         <AuthCard.BottomText
           text="Don't have an account?"
-          link={{ text: "Sign up", href: "/signup" }}
+          link={{ text: "Sign up", href: signupHref }}
         />
       </AuthCard>
       <MobileWarningBanner />

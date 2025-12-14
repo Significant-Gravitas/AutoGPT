@@ -12,7 +12,7 @@ import backend.server.v2.store.cache as store_cache
 import backend.server.v2.store.model as store_model
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
-from backend.data.api_key import APIKeyInfo
+from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.executor.utils import add_graph_execution
 from backend.server.external.middleware import require_permission
@@ -65,7 +65,9 @@ async def get_graph_blocks() -> Sequence[dict[Any, Any]]:
 async def execute_graph_block(
     block_id: str,
     data: BlockInput,
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.EXECUTE_BLOCK)),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.EXECUTE_BLOCK)
+    ),
 ) -> CompletedBlockOutput:
     obj = backend.data.block.get_block(block_id)
     if not obj:
@@ -85,12 +87,14 @@ async def execute_graph(
     graph_id: str,
     graph_version: int,
     node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.EXECUTE_GRAPH)
+    ),
 ) -> dict[str, Any]:
     try:
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
-            user_id=api_key.user_id,
+            user_id=auth.user_id,
             inputs=node_input,
             graph_version=graph_version,
         )
@@ -107,10 +111,12 @@ async def execute_graph(
 async def get_graph_execution_results(
     graph_id: str,
     graph_exec_id: str,
-    api_key: APIKeyInfo = Security(require_permission(APIKeyPermission.READ_GRAPH)),
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.READ_GRAPH)
+    ),
 ) -> GraphExecutionResult:
     graph_exec = await execution_db.get_graph_execution(
-        user_id=api_key.user_id,
+        user_id=auth.user_id,
         execution_id=graph_exec_id,
         include_node_executions=True,
     )
@@ -122,7 +128,7 @@ async def get_graph_execution_results(
     if not await graph_db.get_graph(
         graph_id=graph_exec.graph_id,
         version=graph_exec.graph_version,
-        user_id=api_key.user_id,
+        user_id=auth.user_id,
     ):
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 

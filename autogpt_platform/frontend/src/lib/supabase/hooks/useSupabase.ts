@@ -1,8 +1,8 @@
 "use client";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { ServerLogoutOptions } from "../actions";
 import { useSupabaseStore } from "./useSupabaseStore";
@@ -10,7 +10,14 @@ import { useSupabaseStore } from "./useSupabaseStore";
 export function useSupabase() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const api = useBackendAPI();
+
+  // Combine pathname and search params to get full path for redirect preservation
+  const fullPath = useMemo(() => {
+    const search = searchParams.toString();
+    return search ? `${pathname}?${search}` : pathname;
+  }, [pathname, searchParams]);
 
   const {
     user,
@@ -36,9 +43,9 @@ export function useSupabase() {
     void initialize({
       api,
       router,
-      pathname,
+      path: fullPath,
     });
-  }, [api, initialize, pathname, router]);
+  }, [api, initialize, fullPath, router]);
 
   function handleLogout(options: ServerLogoutOptions = {}) {
     return logOut({
@@ -49,7 +56,7 @@ export function useSupabase() {
 
   function handleValidateSession() {
     return validateSession({
-      pathname,
+      path: fullPath,
       router,
     });
   }

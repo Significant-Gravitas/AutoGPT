@@ -38,16 +38,16 @@ type Props = {
 export function CredentialsInput({
   schema,
   className,
-  selectedCredentials,
-  onSelectCredentials,
+  selectedCredentials: selectedCredential,
+  onSelectCredentials: onSelectCredential,
   siblingInputs,
   onLoaded,
   readOnly = false,
 }: Props) {
   const hookData = useCredentialsInputs({
     schema,
-    selectedCredentials,
-    onSelectCredentials,
+    selectedCredential,
+    onSelectCredential,
     siblingInputs,
     onLoaded,
     readOnly,
@@ -103,7 +103,7 @@ export function CredentialsInput({
               credentials={credentialsToShow}
               provider={provider}
               displayName={displayName}
-              selectedCredentials={selectedCredentials}
+              selectedCredentials={selectedCredential}
               onSelectCredential={handleCredentialSelect}
               readOnly={readOnly}
             />
@@ -164,7 +164,7 @@ export function CredentialsInput({
               open={isAPICredentialsModalOpen}
               onClose={() => setAPICredentialsModalOpen(false)}
               onCredentialsCreate={(credsMeta) => {
-                onSelectCredentials(credsMeta);
+                onSelectCredential(credsMeta);
                 setAPICredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}
@@ -183,7 +183,7 @@ export function CredentialsInput({
               open={isUserPasswordCredentialsModalOpen}
               onClose={() => setUserPasswordCredentialsModalOpen(false)}
               onCredentialsCreate={(creds) => {
-                onSelectCredentials(creds);
+                onSelectCredential(creds);
                 setUserPasswordCredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}
@@ -195,7 +195,7 @@ export function CredentialsInput({
               open={isHostScopedCredentialsModalOpen}
               onClose={() => setHostScopedCredentialsModalOpen(false)}
               onCredentialsCreate={(creds) => {
-                onSelectCredentials(creds);
+                onSelectCredential(creds);
                 setHostScopedCredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}

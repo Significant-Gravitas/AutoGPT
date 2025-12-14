@@ -74,6 +74,9 @@ export async function GET(request: Request) {
         );
       }
 
+      // Get redirect destination from 'next' query parameter
+      next = searchParams.get("next") || next;
+
       const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
       const isLocalEnv = process.env.NODE_ENV === "development";
       if (isLocalEnv) {
