@@ -1,21 +1,25 @@
-import json
-from typing import Any, Type, TypeGuard, TypeVar, overload
+import logging
+import re
+from typing import Any, Type, TypeVar, overload
 
 import jsonschema
-from fastapi.encoders import jsonable_encoder
+import orjson
+from fastapi.encoders import jsonable_encoder as to_dict
 from prisma import Json
-from pydantic import BaseModel
 
+from .truncate import truncate
 from .type import type_match
 
+logger = logging.getLogger(__name__)
 
-def to_dict(data) -> dict:
-    if isinstance(data, BaseModel):
-        data = data.model_dump()
-    return jsonable_encoder(data)
+# Precompiled regex to remove PostgreSQL-incompatible control characters
+# Removes \u0000-\u0008, \u000B-\u000C, \u000E-\u001F, \u007F (keeps tab \u0009, newline \u000A, carriage return \u000D)
+POSTGRES_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
 
 
-def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
+def dumps(
+    data: Any, *args: Any, indent: int | None = None, option: int = 0, **kwargs: Any
+) -> str:
     """
     Serialize data to JSON string with automatic conversion of Pydantic models and complex types.
 
@@ -28,9 +32,13 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
     data : Any
         The data to serialize. Can be any type including Pydantic models, dicts, lists, etc.
     *args : Any
-        Additional positional arguments passed to json.dumps()
+        Additional positional arguments
+    indent : int | None
+        If not None, pretty-print with indentation
+    option : int
+        orjson option flags (default: 0)
     **kwargs : Any
-        Additional keyword arguments passed to json.dumps() (e.g., indent, separators)
+        Additional keyword arguments. Supported: default, ensure_ascii, separators, indent
 
     Returns
     -------
@@ -45,7 +53,21 @@ def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
     >>> dumps(pydantic_model_instance, indent=2)
     '{\n  "field1": "value1",\n  "field2": "value2"\n}'
     """
-    return json.dumps(to_dict(data), *args, **kwargs)
+    serializable_data = to_dict(data)
+
+    # Handle indent parameter
+    if indent is not None or kwargs.get("indent") is not None:
+        option |= orjson.OPT_INDENT_2
+
+    # orjson only accepts specific parameters, filter out stdlib json params
+    # ensure_ascii: orjson always produces UTF-8 (better than ASCII)
+    # separators: orjson uses compact separators by default
+    supported_orjson_params = {"default"}
+    orjson_kwargs = {k: v for k, v in kwargs.items() if k in supported_orjson_params}
+
+    return orjson.dumps(serializable_data, option=option, **orjson_kwargs).decode(
+        "utf-8"
+    )
 
 
 T = TypeVar("T")
@@ -62,9 +84,8 @@ def loads(data: str | bytes, *args, **kwargs) -> Any: ...
 def loads(
     data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
 ) -> Any:
-    if isinstance(data, bytes):
-        data = data.decode("utf-8")
-    parsed = json.loads(data, *args, **kwargs)
+    parsed = orjson.loads(data)
+
     if target_type:
         return type_match(parsed, target_type)
     return parsed
@@ -84,31 +105,57 @@ def validate_with_jsonschema(
         return str(e)
 
 
-def is_list_of_basemodels(value: object) -> TypeGuard[list[BaseModel]]:
-    return isinstance(value, list) and all(
-        isinstance(item, BaseModel) for item in value
-    )
+def _sanitize_string(value: str) -> str:
+    """Remove PostgreSQL-incompatible control characters from string."""
+    return POSTGRES_CONTROL_CHARS.sub("", value)
 
 
-def convert_pydantic_to_json(output_data: Any) -> Any:
-    if isinstance(output_data, BaseModel):
-        return output_data.model_dump()
-    if is_list_of_basemodels(output_data):
-        return [item.model_dump() for item in output_data]
-    return output_data
-
-
-def SafeJson(data: Any) -> Json:
-    """Safely serialize data and return Prisma's Json type."""
-    if isinstance(data, BaseModel):
-        return Json(
-            data.model_dump(
-                mode="json",
-                warnings="error",
-                exclude_none=True,
-                fallback=lambda v: None,
-            )
+def sanitize_json(data: Any) -> Any:
+    try:
+        # Use two-pass approach for consistent string sanitization:
+        # 1. First convert to basic JSON-serializable types (handles Pydantic models)
+        # 2. Then sanitize strings in the result
+        basic_result = to_dict(data)
+        return to_dict(basic_result, custom_encoder={str: _sanitize_string})
+    except Exception as e:
+        # Log the failure and fall back to string representation
+        logger.error(
+            "SafeJson fallback to string representation due to serialization error: %s (%s). "
+            "Data type: %s, Data preview: %s",
+            type(e).__name__,
+            truncate(str(e), 200),
+            type(data).__name__,
+            truncate(str(data), 100),
         )
-    # Round-trip through JSON to ensure proper serialization with fallback for non-serializable values
-    json_string = dumps(data, default=lambda v: None)
-    return Json(json.loads(json_string))
+
+        # Ultimate fallback: convert to string representation and sanitize
+        return _sanitize_string(str(data))
+
+
+class SafeJson(Json):
+    """
+    Safely serialize data and return Prisma's Json type.
+    Sanitizes control characters to prevent PostgreSQL 22P05 errors.
+
+    This function:
+    1. Converts Pydantic models to dicts (recursively using to_dict)
+    2. Recursively removes PostgreSQL-incompatible control characters from strings
+    3. Returns a Prisma Json object safe for database storage
+
+    Uses to_dict (jsonable_encoder) with a custom encoder to handle both Pydantic
+    conversion and control character sanitization in a two-pass approach.
+
+    Args:
+        data: Input data to sanitize and convert to Json
+
+    Returns:
+        Prisma Json object with control characters removed
+
+    Examples:
+        >>> SafeJson({"text": "Hello\\x00World"})  # null char removed
+        >>> SafeJson({"path": "C:\\\\temp"})  # backslashes preserved
+        >>> SafeJson({"data": "Text\\\\u0000here"})  # literal backslash-u preserved
+    """
+
+    def __init__(self, data: Any):
+        super().__init__(sanitize_json(data))

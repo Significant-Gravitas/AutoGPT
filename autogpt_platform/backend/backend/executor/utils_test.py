@@ -3,7 +3,7 @@ from typing import cast
 import pytest
 from pytest_mock import MockerFixture
 
-from backend.executor.utils import merge_execution_input, parse_execution_output
+from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.util.mock import MockObject
 
 
@@ -110,6 +110,35 @@ def test_parse_execution_output():
     assert (
         parse_execution_output(output, "result_@_attr_$_0_#_key") is None
     )  # Should fail at @_attr
+
+    # Test case 7: Tool pin routing with matching node ID and pin name
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "tools", "node123", "query") == "search term"
+
+    # Test case 8: Tool pin routing with node ID mismatch
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "tools", "node456", "query") is None
+
+    # Test case 9: Tool pin routing with pin name mismatch
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "tools", "node123", "different_pin") is None
+
+    # Test case 10: Tool pin routing with complex field names
+    output = ("tools_^_node789_~_nested_field", {"key": "value"})
+    result = parse_execution_output(output, "tools", "node789", "nested_field")
+    assert result == {"key": "value"}
+
+    # Test case 11: Tool pin routing missing required parameters should raise error
+    output = ("tools_^_node123_~_query", "search term")
+    try:
+        parse_execution_output(output, "tools", "node123")  # Missing sink_pin_name
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "must be provided for tool pin routing" in str(e)
+
+    # Test case 12: Non-tool pin with similar pattern should use normal logic
+    output = ("tools_^_node123_~_query", "search term")
+    assert parse_execution_output(output, "different_name", "node123", "query") is None
 
 
 def test_merge_execution_input():
@@ -319,9 +348,6 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_graph_exec.node_executions = []  # Add this to avoid AttributeError
     mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
 
-    # Mock user context
-    mock_user_context = {"user_id": user_id, "context": "test_context"}
-
     # Mock the queue and event bus
     mock_queue = mocker.AsyncMock()
     mock_event_bus = mocker.MagicMock()
@@ -333,7 +359,8 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
-    mock_get_user_context = mocker.patch("backend.executor.utils.get_user_context")
+    mock_udb = mocker.patch("backend.executor.utils.user_db")
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
     mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
@@ -351,7 +378,14 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         return_value=mock_graph_exec
     )
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
-    mock_get_user_context.return_value = mock_user_context
+    # Mock user and settings data
+    mock_user = mocker.MagicMock()
+    mock_user.timezone = "UTC"
+    mock_settings = mocker.MagicMock()
+    mock_settings.human_in_the_loop_safe_mode = True
+
+    mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
     mock_get_queue.return_value = mock_queue
     mock_get_event_bus.return_value = mock_event_bus
 
@@ -379,6 +413,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         nodes_input_masks=nodes_input_masks,
         starting_nodes_input=starting_nodes_input,
         preset_id=preset_id,
+        parent_graph_exec_id=None,
     )
 
     # Set up the graph execution mock to have properties we can extract

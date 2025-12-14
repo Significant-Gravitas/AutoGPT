@@ -48,16 +48,24 @@ async def test_smart_decision_maker_handles_dynamic_dict_fields():
     assert "parameters" in signature["function"]
     assert "properties" in signature["function"]["parameters"]
 
-    # Check that dynamic fields are handled
+    # Check that dynamic fields are handled with original names
     properties = signature["function"]["parameters"]["properties"]
     assert len(properties) == 3  # Should have all three fields
 
-    # Each dynamic field should have proper schema
-    for prop_value in properties.values():
+    # Check that field names are cleaned (for Anthropic API compatibility)
+    assert "values___name" in properties
+    assert "values___age" in properties
+    assert "values___city" in properties
+
+    # Each dynamic field should have proper schema with descriptive text
+    for field_name, prop_value in properties.items():
         assert "type" in prop_value
         assert prop_value["type"] == "string"  # Dynamic fields get string type
         assert "description" in prop_value
-        assert "Dynamic value for" in prop_value["description"]
+        # Check that descriptions properly explain the dynamic field
+        if field_name == "values___name":
+            assert "Dictionary field 'name'" in prop_value["description"]
+            assert "values['name']" in prop_value["description"]
 
 
 @pytest.mark.asyncio
@@ -96,10 +104,18 @@ async def test_smart_decision_maker_handles_dynamic_list_fields():
     properties = signature["function"]["parameters"]["properties"]
     assert len(properties) == 2  # Should have both list items
 
-    # Each dynamic field should have proper schema
-    for prop_value in properties.values():
+    # Check that field names are cleaned (for Anthropic API compatibility)
+    assert "entries___0" in properties
+    assert "entries___1" in properties
+
+    # Each dynamic field should have proper schema with descriptive text
+    for field_name, prop_value in properties.items():
         assert prop_value["type"] == "string"
-        assert "Dynamic value for" in prop_value["description"]
+        assert "description" in prop_value
+        # Check that descriptions properly explain the list field
+        if field_name == "entries___0":
+            assert "List item 0" in prop_value["description"]
+            assert "entries[0]" in prop_value["description"]
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import datetime
 import json
+from unittest.mock import AsyncMock
 
 import fastapi.testclient
 import pytest
@@ -55,6 +56,7 @@ async def test_get_library_agents_success(
                 can_access_graph=True,
                 is_latest_version=True,
                 is_favorite=False,
+                created_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
             library_model.LibraryAgent(
@@ -76,6 +78,7 @@ async def test_get_library_agents_success(
                 can_access_graph=False,
                 is_latest_version=True,
                 is_favorite=False,
+                created_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
         ],
@@ -149,6 +152,7 @@ async def test_get_favorite_library_agents_success(
                 can_access_graph=True,
                 is_latest_version=True,
                 is_favorite=True,
+                created_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
                 updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
         ],
@@ -214,6 +218,7 @@ def test_add_agent_to_library_success(
         can_access_graph=True,
         is_latest_version=True,
         is_favorite=False,
+        created_at=FIXED_NOW,
         updated_at=FIXED_NOW,
     )
 
@@ -221,6 +226,10 @@ def test_add_agent_to_library_success(
         "backend.server.v2.library.db.add_store_agent_to_library"
     )
     mock_db_call.return_value = mock_library_agent
+    mock_complete_onboarding = mocker.patch(
+        "backend.server.v2.library.routes.agents.complete_onboarding_step",
+        new_callable=AsyncMock,
+    )
 
     response = client.post(
         "/agents", json={"store_listing_version_id": "test-version-id"}
@@ -235,6 +244,7 @@ def test_add_agent_to_library_success(
     mock_db_call.assert_called_once_with(
         store_listing_version_id="test-version-id", user_id=test_user_id
     )
+    mock_complete_onboarding.assert_awaited_once()
 
 
 def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture, test_user_id: str):

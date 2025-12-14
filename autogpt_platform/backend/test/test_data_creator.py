@@ -21,6 +21,7 @@ import random
 from datetime import datetime
 
 import prisma.enums
+import pytest
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from faker import Faker
 from prisma import Json, Prisma
@@ -471,7 +472,7 @@ async def main():
                 data={
                     "userId": user.id,
                     "completedSteps": completed_steps,
-                    "notificationDot": random.choice([True, False]),
+                    "walletShown": random.choice([True, False]),
                     "notified": (
                         random.sample(completed_steps, k=min(3, len(completed_steps)))
                         if completed_steps
@@ -497,9 +498,6 @@ async def main():
                         random.choice(store_listing_versions).id
                         if store_listing_versions and random.random() < 0.5
                         else None
-                    ),
-                    "agentInput": (
-                        Json({"test": "data"}) if random.random() < 0.3 else None
                     ),
                     "onboardingAgentExecutionId": (
                         random.choice(agent_graph_executions).id
@@ -568,6 +566,12 @@ async def main():
 
     await db.disconnect()
     print("Test data creation completed successfully!")
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_main_function_runs_without_errors():
+    await main()
 
 
 if __name__ == "__main__":

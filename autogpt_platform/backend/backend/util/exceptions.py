@@ -1,6 +1,41 @@
 from typing import Mapping
 
 
+class BlockError(Exception):
+    """An error occurred during the running of a block"""
+
+    def __init__(self, message: str, block_name: str, block_id: str) -> None:
+        super().__init__(
+            f"raised by {block_name} with message: {message}. block_id: {block_id}"
+        )
+
+
+class BlockInputError(BlockError, ValueError):
+    """The block had incorrect inputs, resulting in an error condition"""
+
+
+class BlockOutputError(BlockError, ValueError):
+    """The block had incorrect outputs, resulting in an error condition"""
+
+
+class BlockExecutionError(BlockError, ValueError):
+    """The block failed to execute at runtime, resulting in a handled error"""
+
+    def __init__(self, message: str | None, block_name: str, block_id: str) -> None:
+        if message is None:
+            message = "Output error was None"
+        super().__init__(message, block_name, block_id)
+
+
+class BlockUnknownError(BlockError):
+    """Critical unknown error with block handling"""
+
+    def __init__(self, message: str | None, block_name: str, block_id: str) -> None:
+        if not message:
+            message = "Unknown error occurred"
+        super().__init__(message, block_name, block_id)
+
+
 class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
@@ -9,12 +44,24 @@ class NotFoundError(ValueError):
     """The requested record was not found, resulting in an error condition"""
 
 
+class GraphNotFoundError(ValueError):
+    """The requested Agent Graph was not found, resulting in an error condition"""
+
+
 class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 
 
 class NotAuthorizedError(ValueError):
     """The user is not authorized to perform the requested operation"""
+
+
+class GraphNotAccessibleError(NotAuthorizedError):
+    """Raised when attempting to execute a graph that is not accessible to the user."""
+
+
+class GraphNotInLibraryError(GraphNotAccessibleError):
+    """Raised when attempting to execute a graph that is not / no longer in the user's library."""
 
 
 class InsufficientBalanceError(ValueError):
@@ -86,3 +133,15 @@ class GraphValidationError(ValueError):
                 for node_id, errors in self.node_errors.items()
             ]
         )
+
+
+class DatabaseError(Exception):
+    """Raised when there is an error interacting with the database"""
+
+    pass
+
+
+class RedisError(Exception):
+    """Raised when there is an error interacting with Redis"""
+
+    pass

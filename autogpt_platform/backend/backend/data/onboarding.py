@@ -1,5 +1,7 @@
 import re
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Literal, Optional
+from zoneinfo import ZoneInfo
 
 import prisma
 import pydantic
@@ -7,12 +9,18 @@ from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
-from backend.data.block import get_blocks
+from backend.data import execution as execution_db
 from backend.data.credit import get_user_credit_model
-from backend.data.graph import GraphModel
-from backend.data.model import CredentialsMetaInput
+from backend.data.notification_bus import (
+    AsyncRedisNotificationEventBus,
+    NotificationEvent,
+)
+from backend.data.user import get_user_by_id
+from backend.server.model import OnboardingNotificationPayload
 from backend.server.v2.store.model import StoreAgentDetails
+from backend.util.cache import cached
 from backend.util.json import SafeJson
+from backend.util.timezone_utils import get_user_timezone_or_utc
 
 # Mapping from user reason id to categories to search for when choosing agent to show
 REASON_MAPPING: dict[str, list[str]] = {
@@ -25,12 +33,21 @@ REASON_MAPPING: dict[str, list[str]] = {
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
 MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
-user_credit = get_user_credit_model()
+FrontendOnboardingStep = Literal[
+    OnboardingStep.WELCOME,
+    OnboardingStep.USAGE_REASON,
+    OnboardingStep.INTEGRATIONS,
+    OnboardingStep.AGENT_CHOICE,
+    OnboardingStep.AGENT_NEW_RUN,
+    OnboardingStep.AGENT_INPUT,
+    OnboardingStep.CONGRATS,
+    OnboardingStep.MARKETPLACE_VISIT,
+    OnboardingStep.BUILDER_OPEN,
+]
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
-    completedSteps: Optional[list[OnboardingStep]] = None
-    notificationDot: Optional[bool] = None
+    walletShown: Optional[bool] = None
     notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
@@ -38,7 +55,6 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     selectedStoreListingVersionId: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
     onboardingAgentExecutionId: Optional[str] = None
-    agentRuns: Optional[int] = None
 
 
 async def get_user_onboarding(user_id: str):
@@ -51,24 +67,36 @@ async def get_user_onboarding(user_id: str):
     )
 
 
+async def reset_user_onboarding(user_id: str):
+    return await UserOnboarding.prisma().upsert(
+        where={"userId": user_id},
+        data={
+            "create": UserOnboardingCreateInput(userId=user_id),
+            "update": {
+                "completedSteps": [],
+                "walletShown": False,
+                "notified": [],
+                "usageReason": None,
+                "integrations": [],
+                "otherIntegrations": None,
+                "selectedStoreListingVersionId": None,
+                "agentInput": prisma.Json({}),
+                "onboardingAgentExecutionId": None,
+                "agentRuns": 0,
+                "lastRunAt": None,
+                "consecutiveRunDays": 0,
+            },
+        },
+    )
+
+
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
-    if data.completedSteps is not None:
-        update["completedSteps"] = list(set(data.completedSteps))
-        for step in (
-            OnboardingStep.AGENT_NEW_RUN,
-            OnboardingStep.RUN_AGENTS,
-            OnboardingStep.MARKETPLACE_ADD_AGENT,
-            OnboardingStep.MARKETPLACE_RUN_AGENT,
-            OnboardingStep.BUILDER_SAVE_AGENT,
-            OnboardingStep.BUILDER_RUN_AGENT,
-        ):
-            if step in data.completedSteps:
-                await reward_user(user_id, step)
-    if data.notificationDot is not None:
-        update["notificationDot"] = data.notificationDot
+    onboarding = await get_user_onboarding(user_id)
+    if data.walletShown:
+        update["walletShown"] = data.walletShown
     if data.notified is not None:
-        update["notified"] = list(set(data.notified))
+        update["notified"] = list(set(data.notified + onboarding.notified))
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:
@@ -81,8 +109,6 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
-    if data.agentRuns is not None:
-        update["agentRuns"] = data.agentRuns
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -93,7 +119,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     )
 
 
-async def reward_user(user_id: str, step: OnboardingStep):
+async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
     reward = 0
     match step:
         # Reward user when they clicked New Run during onboarding
@@ -101,38 +127,96 @@ async def reward_user(user_id: str, step: OnboardingStep):
         # This is seen as a reward for the GET_RESULTS step in the wallet
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
-        case OnboardingStep.RUN_AGENTS:
-            reward = 300
+        case OnboardingStep.MARKETPLACE_VISIT:
+            reward = 100
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 100
         case OnboardingStep.MARKETPLACE_RUN_AGENT:
             reward = 100
         case OnboardingStep.BUILDER_SAVE_AGENT:
             reward = 100
-        case OnboardingStep.BUILDER_RUN_AGENT:
+        case OnboardingStep.RE_RUN_AGENT:
             reward = 100
+        case OnboardingStep.SCHEDULE_AGENT:
+            reward = 100
+        case OnboardingStep.RUN_AGENTS:
+            reward = 300
+        case OnboardingStep.RUN_3_DAYS:
+            reward = 100
+        case OnboardingStep.TRIGGER_WEBHOOK:
+            reward = 100
+        case OnboardingStep.RUN_14_DAYS:
+            reward = 300
+        case OnboardingStep.RUN_AGENTS_100:
+            reward = 300
 
     if reward == 0:
         return
-
-    onboarding = await get_user_onboarding(user_id)
 
     # Skip if already rewarded
     if step in onboarding.rewardedFor:
         return
 
-    onboarding.rewardedFor.append(step)
-    await user_credit.onboarding_reward(user_id, reward, step)
+    user_credit_model = await get_user_credit_model(user_id)
+    await user_credit_model.onboarding_reward(user_id, reward, step)
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
-            "completedSteps": list(set(onboarding.completedSteps + [step])),
-            "rewardedFor": onboarding.rewardedFor,
+            "rewardedFor": list(set(onboarding.rewardedFor + [step])),
         },
     )
 
 
-def clean_and_split(text: str) -> list[str]:
+async def complete_onboarding_step(user_id: str, step: OnboardingStep):
+    """
+    Completes the specified onboarding step for the user if not already completed.
+    """
+    onboarding = await get_user_onboarding(user_id)
+    if step not in onboarding.completedSteps:
+        await UserOnboarding.prisma().update(
+            where={"userId": user_id},
+            data={
+                "completedSteps": list(set(onboarding.completedSteps + [step])),
+            },
+        )
+        await _reward_user(user_id, onboarding, step)
+        await _send_onboarding_notification(user_id, step)
+
+
+async def _send_onboarding_notification(
+    user_id: str, step: OnboardingStep | None, event: str = "step_completed"
+):
+    """
+    Sends an onboarding notification to the user.
+    """
+    payload = OnboardingNotificationPayload(
+        type="onboarding",
+        event=event,
+        step=step,
+    )
+    await AsyncRedisNotificationEventBus().publish(
+        NotificationEvent(user_id=user_id, payload=payload)
+    )
+
+
+async def complete_re_run_agent(user_id: str, graph_id: str) -> None:
+    """
+    Complete RE_RUN_AGENT step when a user runs a graph they've run before.
+    Keeps overhead low by only counting executions if the step is still pending.
+    """
+    onboarding = await get_user_onboarding(user_id)
+    if OnboardingStep.RE_RUN_AGENT in onboarding.completedSteps:
+        return
+
+    # Includes current execution, so count > 1 means there was at least one prior run.
+    previous_exec_count = await execution_db.get_graph_executions_count(
+        user_id=user_id, graph_id=graph_id
+    )
+    if previous_exec_count > 1:
+        await complete_onboarding_step(user_id, OnboardingStep.RE_RUN_AGENT)
+
+
+def _clean_and_split(text: str) -> list[str]:
     """
     Removes all special characters from a string, truncates it to 100 characters,
     and splits it by whitespace and commas.
@@ -155,7 +239,7 @@ def clean_and_split(text: str) -> list[str]:
     return words
 
 
-def calculate_points(
+def _calculate_points(
     agent, categories: list[str], custom: list[str], integrations: list[str]
 ) -> int:
     """
@@ -199,18 +283,85 @@ def calculate_points(
     return int(points)
 
 
-def get_credentials_blocks() -> dict[str, str]:
-    # Returns a dictionary of block id to credentials field name
-    creds: dict[str, str] = {}
-    blocks = get_blocks()
-    for id, block in blocks.items():
-        for field_name, field_info in block().input_schema.model_fields.items():
-            if field_info.annotation == CredentialsMetaInput:
-                creds[id] = field_name
-    return creds
+def _normalize_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
-CREDENTIALS_FIELDS: dict[str, str] = get_credentials_blocks()
+def _calculate_consecutive_run_days(
+    last_run_at: datetime | None, current_consecutive_days: int, user_timezone: str
+) -> tuple[datetime, int]:
+    tz = ZoneInfo(user_timezone)
+    local_now = datetime.now(tz)
+    normalized_last_run = _normalize_datetime(last_run_at)
+
+    if normalized_last_run is None:
+        return local_now.astimezone(timezone.utc), 1
+
+    last_run_local = normalized_last_run.astimezone(tz)
+    last_run_date = last_run_local.date()
+    today = local_now.date()
+
+    if last_run_date == today:
+        return local_now.astimezone(timezone.utc), current_consecutive_days
+
+    if last_run_date == today - timedelta(days=1):
+        return local_now.astimezone(timezone.utc), current_consecutive_days + 1
+
+    return local_now.astimezone(timezone.utc), 1
+
+
+def _get_run_milestone_steps(
+    new_run_count: int, consecutive_days: int
+) -> list[OnboardingStep]:
+    milestones: list[OnboardingStep] = []
+    if new_run_count >= 10:
+        milestones.append(OnboardingStep.RUN_AGENTS)
+    if new_run_count >= 100:
+        milestones.append(OnboardingStep.RUN_AGENTS_100)
+    if consecutive_days >= 3:
+        milestones.append(OnboardingStep.RUN_3_DAYS)
+    if consecutive_days >= 14:
+        milestones.append(OnboardingStep.RUN_14_DAYS)
+    return milestones
+
+
+async def _get_user_timezone(user_id: str) -> str:
+    user = await get_user_by_id(user_id)
+    return get_user_timezone_or_utc(user.timezone if user else None)
+
+
+async def increment_runs(user_id: str):
+    """
+    Increment a user's run counters and trigger any onboarding milestones.
+    """
+    user_timezone = await _get_user_timezone(user_id)
+    onboarding = await get_user_onboarding(user_id)
+    new_run_count = onboarding.agentRuns + 1
+    last_run_at, consecutive_run_days = _calculate_consecutive_run_days(
+        onboarding.lastRunAt, onboarding.consecutiveRunDays, user_timezone
+    )
+
+    await UserOnboarding.prisma().update(
+        where={"userId": user_id},
+        data={
+            "agentRuns": {"increment": 1},
+            "lastRunAt": last_run_at,
+            "consecutiveRunDays": consecutive_run_days,
+        },
+    )
+
+    milestones = _get_run_milestone_steps(new_run_count, consecutive_run_days)
+    new_steps = [step for step in milestones if step not in onboarding.completedSteps]
+
+    for step in new_steps:
+        await complete_onboarding_step(user_id, step)
+    # Send progress notification if no steps were completed, so client refetches onboarding state
+    if not new_steps:
+        await _send_onboarding_notification(user_id, None, event="increment_runs")
 
 
 async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
@@ -219,7 +370,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
 
     where_clause: dict[str, Any] = {}
 
-    custom = clean_and_split((user_onboarding.usageReason or "").lower())
+    custom = _clean_and_split((user_onboarding.usageReason or "").lower())
 
     if categories:
         where_clause["OR"] = [
@@ -236,8 +387,14 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         for word in user_onboarding.integrations
     ]
 
+    where_clause["is_available"] = True
+
+    # Try to take only agents that are available and allowed for onboarding
     storeAgents = await prisma.models.StoreAgent.prisma().find_many(
-        where=prisma.types.StoreAgentWhereInput(**where_clause),
+        where={
+            "is_available": True,
+            "useForOnboarding": True,
+        },
         order=[
             {"featured": "desc"},
             {"runs": "desc"},
@@ -246,65 +403,22 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         take=100,
     )
 
-    agentListings = await prisma.models.StoreListingVersion.prisma().find_many(
-        where={
-            "id": {"in": [agent.storeListingVersionId for agent in storeAgents]},
-        },
-        include={"AgentGraph": True},
-    )
-
-    for listing in agentListings:
-        agent = listing.AgentGraph
-        if agent is None:
-            continue
-        graph = GraphModel.from_db(agent)
-        # Remove agents with empty input schema
-        if not graph.input_schema:
-            storeAgents = [
-                a for a in storeAgents if a.storeListingVersionId != listing.id
-            ]
-            continue
-
-        # Remove agents with empty credentials
-        # Get nodes from this agent that have credentials
-        nodes = await prisma.models.AgentNode.prisma().find_many(
-            where={
-                "agentGraphId": agent.id,
-                "agentBlockId": {"in": list(CREDENTIALS_FIELDS.keys())},
-            },
-        )
-        for node in nodes:
-            block_id = node.agentBlockId
-            field_name = CREDENTIALS_FIELDS[block_id]
-            # If there are no credentials or they are empty, remove the agent
-            # FIXME ignores default values
-            if (
-                field_name not in node.constantInput
-                or node.constantInput[field_name] is None
-            ):
-                storeAgents = [
-                    a for a in storeAgents if a.storeListingVersionId != listing.id
-                ]
-                break
-
-    # If there are less than 2 agents, add more agents to the list
+    # If not enough agents found, relax the useForOnboarding filter
     if len(storeAgents) < 2:
-        storeAgents += await prisma.models.StoreAgent.prisma().find_many(
-            where={
-                "listing_id": {"not_in": [agent.listing_id for agent in storeAgents]},
-            },
+        storeAgents = await prisma.models.StoreAgent.prisma().find_many(
+            where=prisma.types.StoreAgentWhereInput(**where_clause),
             order=[
                 {"featured": "desc"},
                 {"runs": "desc"},
                 {"rating": "desc"},
             ],
-            take=2 - len(storeAgents),
+            take=100,
         )
 
     # Calculate points for the first X agents and choose the top 2
     agent_points = []
     for agent in storeAgents[:POINTS_AGENT_COUNT]:
-        points = calculate_points(
+        points = _calculate_points(
             agent, categories, custom, user_onboarding.integrations
         )
         agent_points.append((agent, points))
@@ -318,6 +432,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
             slug=agent.slug,
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
+            agent_output_demo=agent.agent_output_demo or "",
             agent_image=agent.agent_image,
             creator=agent.creator_username,
             creator_avatar=agent.creator_avatar,
@@ -333,8 +448,13 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     ]
 
 
+@cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
 async def onboarding_enabled() -> bool:
+    """
+    Check if onboarding should be enabled based on store agent count.
+    Cached to prevent repeated slow database queries.
+    """
+    # Use a more efficient query that stops counting after finding enough agents
     count = await prisma.models.StoreAgent.prisma().count(take=MIN_AGENT_COUNT + 1)
-
-    # Onboading is enabled if there are at least 2 agents in the store
+    # Onboarding is enabled if there are at least 2 agents in the store
     return count >= MIN_AGENT_COUNT

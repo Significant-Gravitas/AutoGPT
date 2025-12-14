@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
-from autogpt_libs.utils.cache import cached
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
-@cached()
+@cached(ttl_seconds=3600)
 def load_all_blocks() -> dict[str, type["Block"]]:
     from backend.data.block import Block
     from backend.util.settings import Config

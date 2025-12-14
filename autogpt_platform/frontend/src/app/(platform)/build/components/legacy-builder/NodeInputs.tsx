@@ -1,18 +1,34 @@
+import {
+  ConnectionData,
+  CustomNodeData,
+} from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { Button } from "@/components/__legacy__/ui/button";
 import { Calendar } from "@/components/__legacy__/ui/calendar";
+import { LocalValuedInput } from "@/components/__legacy__/ui/input";
+import {
+  MultiSelector,
+  MultiSelectorContent,
+  MultiSelectorInput,
+  MultiSelectorItem,
+  MultiSelectorList,
+  MultiSelectorTrigger,
+} from "@/components/__legacy__/ui/multiselect";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
-import { beautifyString, cn } from "@/lib/utils";
-import { Node, useNodeId, useNodesData } from "@xyflow/react";
 import {
-  ConnectionData,
-  CustomNodeData,
-} from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
-import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/__legacy__/ui/select";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePickerInput";
+import { NodeTableInput } from "@/components/node-table-input";
 import {
   BlockIOArraySubSchema,
   BlockIOBooleanSubSchema,
@@ -25,37 +41,24 @@ import {
   BlockIOSimpleTypeSubSchema,
   BlockIOStringSubSchema,
   BlockIOSubSchema,
+  BlockIOTableSubSchema,
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
+import { beautifyString, cn } from "@/lib/utils";
+import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+import { Node, useNodeId, useNodesData } from "@xyflow/react";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
 import React, {
   FC,
   useCallback,
   useEffect,
   useMemo,
-  useState,
   useRef,
+  useState,
 } from "react";
-import { Button } from "../../../../../components/__legacy__/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../../../../components/__legacy__/ui/select";
-import {
-  MultiSelector,
-  MultiSelectorContent,
-  MultiSelectorInput,
-  MultiSelectorItem,
-  MultiSelectorList,
-  MultiSelectorTrigger,
-} from "../../../../../components/__legacy__/ui/multiselect";
-import { LocalValuedInput } from "../../../../../components/__legacy__/ui/input";
 import NodeHandle from "./NodeHandle";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { Switch } from "../../../../../components/atoms/Switch/Switch";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -106,6 +109,7 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
               handleInputChange={handleInputChange}
               handleInputClick={handleInputClick}
               displayName={propSchema.title || beautifyString(propKey)}
+              parentContext={object}
             />
           </div>
         );
@@ -315,6 +319,7 @@ export const NodeGenericInputField: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
+  parentContext?: { [key: string]: any };
 }> = ({
   nodeId,
   propKey,
@@ -326,6 +331,7 @@ export const NodeGenericInputField: FC<{
   handleInputClick,
   className,
   displayName,
+  parentContext,
 }) => {
   className = cn(className);
   displayName ||= propSchema.title || beautifyString(propKey);
@@ -365,6 +371,22 @@ export const NodeGenericInputField: FC<{
           handleInputChange={handleInputChange}
         />
       );
+    case DataType.GOOGLE_DRIVE_PICKER: {
+      const pickerSchema = propSchema as any;
+      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
+        pickerSchema.google_drive_picker_config || {};
+
+      return (
+        <GoogleDrivePickerInput
+          config={config}
+          value={currentValue}
+          onChange={(value) => handleInputChange(propKey, value)}
+          error={errors[propKey]}
+          className={className}
+          showRemoveButton={true}
+        />
+      );
+    }
 
     case DataType.DATE:
     case DataType.TIME:
@@ -467,6 +489,28 @@ export const NodeGenericInputField: FC<{
         />
       );
 
+    case DataType.TABLE:
+      const tableSchema = propSchema as BlockIOTableSubSchema;
+      // Extract headers from the schema's items properties
+      const headers = tableSchema.items?.properties
+        ? Object.keys(tableSchema.items.properties)
+        : ["Column 1", "Column 2", "Column 3"];
+      return (
+        <NodeTableInput
+          nodeId={nodeId}
+          selfKey={propKey}
+          schema={tableSchema}
+          headers={headers}
+          rows={currentValue}
+          errors={errors}
+          connections={connections}
+          handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
+        />
+      );
+
     case DataType.ARRAY:
       return (
         <NodeArrayInput
@@ -480,6 +524,7 @@ export const NodeGenericInputField: FC<{
           connections={connections}
           handleInputChange={handleInputChange}
           handleInputClick={handleInputClick}
+          parentContext={parentContext}
         />
       );
 
@@ -894,6 +939,7 @@ const NodeArrayInput: FC<{
   handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
+  parentContext?: { [key: string]: any };
 }> = ({
   nodeId,
   selfKey,
@@ -905,6 +951,7 @@ const NodeArrayInput: FC<{
   handleInputClick,
   className,
   displayName,
+  parentContext: _parentContext,
 }) => {
   entries ??= schema.default;
   if (!entries || !Array.isArray(entries)) entries = [];
@@ -934,15 +981,17 @@ const NodeArrayInput: FC<{
           );
         return (
           <div key={entryKey}>
-            <NodeHandle
-              title={`#${index + 1}`}
-              className="text-sm text-gray-500"
-              keyName={entryKey}
-              schema={schema.items!}
-              isConnected={isConnected}
-              isRequired={false}
-              side="left"
-            />
+            {schema.items && (
+              <NodeHandle
+                title={`#${index + 1}`}
+                className="text-sm text-gray-500"
+                keyName={entryKey}
+                schema={schema.items}
+                isConnected={isConnected}
+                isRequired={false}
+                side="left"
+              />
+            )}
             <div className="mb-2 flex space-x-2">
               {!isConnected &&
                 (schema.items ? (

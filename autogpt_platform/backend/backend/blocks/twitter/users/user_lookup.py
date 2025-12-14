@@ -24,7 +24,7 @@ from backend.blocks.twitter._types import (
     UserExpansionsFilter,
 )
 from backend.blocks.twitter.tweepy_exceptions import handle_tweepy_exception
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchemaOutput
 from backend.data.model import SchemaField
 
 
@@ -56,7 +56,7 @@ class TwitterGetUserBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         id: str = SchemaField(description="User ID")
         username_: str = SchemaField(description="User username")
@@ -67,7 +67,6 @@ class TwitterGetUserBlock(Block):
         included: dict = SchemaField(
             description="Additional data requested via expansions"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
@@ -233,7 +232,7 @@ class TwitterGetUsersBlock(Block):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         # Common outputs
         ids: list[str] = SchemaField(description="User IDs")
         usernames_: list[str] = SchemaField(description="User usernames")
@@ -244,7 +243,6 @@ class TwitterGetUsersBlock(Block):
         included: dict = SchemaField(
             description="Additional data requested via expansions"
         )
-        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(

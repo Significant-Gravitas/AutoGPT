@@ -1,15 +1,12 @@
+import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { ImpersonationState } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { environment } from "@/services/environment";
+import { Key, storage } from "@/services/storage/local-storage";
+import * as Sentry from "@sentry/nextjs";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Key, storage } from "@/services/storage/local-storage";
-import {
-  getAgptServerApiUrl,
-  getAgptWsServerUrl,
-  getSupabaseUrl,
-  getSupabaseAnonKey,
-} from "@/lib/env-config";
-import * as Sentry from "@sentry/nextjs";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -58,7 +55,6 @@ import type {
   Schedule,
   ScheduleCreatable,
   ScheduleID,
-  StoreAgentDetails,
   StoreAgentsResponse,
   StoreListingsWithVersionsResponse,
   StoreReview,
@@ -69,13 +65,12 @@ import type {
   SubmissionStatus,
   TransactionHistory,
   User,
-  UserOnboarding,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
+  WebSocketNotification,
 } from "./types";
-import { isServerSide } from "../utils/is-server-side";
 
-const isClient = !isServerSide();
+const isClient = environment.isClientSide();
 
 export default class BackendAPI {
   private baseUrl: string;
@@ -93,8 +88,8 @@ export default class BackendAPI {
   heartbeatTimeoutID: number | null = null;
 
   constructor(
-    baseUrl: string = getAgptServerApiUrl(),
-    wsUrl: string = getAgptWsServerUrl(),
+    baseUrl: string = environment.getAGPTServerApiUrl(),
+    wsUrl: string = environment.getAGPTWsServerUrl(),
   ) {
     this.baseUrl = baseUrl;
     this.wsUrl = wsUrl;
@@ -102,9 +97,13 @@ export default class BackendAPI {
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
-      ? createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey(), {
-          isSingleton: true,
-        })
+      ? createBrowserClient(
+          environment.getSupabaseUrl(),
+          environment.getSupabaseAnonKey(),
+          {
+            isSingleton: true,
+          },
+        )
       : await getServerSupabase();
   }
 
@@ -193,29 +192,6 @@ export default class BackendAPI {
   }
 
   ////////////////////////////////////////
-  ////////////// ONBOARDING //////////////
-  ////////////////////////////////////////
-
-  getUserOnboarding(): Promise<UserOnboarding> {
-    return this._get("/onboarding");
-  }
-
-  updateUserOnboarding(
-    onboarding: Omit<Partial<UserOnboarding>, "rewardedFor">,
-  ): Promise<void> {
-    return this._request("PATCH", "/onboarding", onboarding);
-  }
-
-  getOnboardingAgents(): Promise<StoreAgentDetails[]> {
-    return this._get("/onboarding/agents");
-  }
-
-  /** Check if onboarding is enabled not if user finished it or not. */
-  isOnboardingEnabled(): Promise<boolean> {
-    return this._get("/onboarding/enabled");
-  }
-
-  ////////////////////////////////////////
   //////////////// GRAPHS ////////////////
   ////////////////////////////////////////
 
@@ -248,8 +224,14 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}/versions`);
   }
 
-  createGraph(graph: GraphCreatable): Promise<Graph> {
-    const requestBody = { graph } as GraphCreateRequestBody;
+  createGraph(
+    graph: GraphCreatable,
+    source?: GraphCreationSource,
+  ): Promise<Graph> {
+    const requestBody: GraphCreateRequestBody = { graph };
+    if (source) {
+      requestBody.source = source;
+    }
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -273,11 +255,13 @@ export default class BackendAPI {
     version: number,
     inputs: { [key: string]: any } = {},
     credentials_inputs: { [key: string]: CredentialsMetaInput } = {},
+    source?: GraphExecutionSource,
   ): Promise<GraphExecutionMeta> {
-    return this._request("POST", `/graphs/${id}/execute/${version}`, {
-      inputs,
-      credentials_inputs,
-    });
+    const body: GraphExecuteRequestBody = { inputs, credentials_inputs };
+    if (source) {
+      body.source = source;
+    }
+    return this._request("POST", `/graphs/${id}/execute/${version}`, body);
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {
@@ -467,27 +451,10 @@ export default class BackendAPI {
     return this._get("/store/agents", params);
   }
 
-  getStoreAgent(
-    username: string,
-    agentName: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(
-      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
-        agentName,
-      )}`,
-    );
-  }
-
   getGraphMetaByStoreListingVersionID(
     storeListingVersionID: string,
   ): Promise<GraphMeta> {
     return this._get(`/store/graph/${storeListingVersionID}`);
-  }
-
-  getStoreAgentByVersionId(
-    storeListingVersionID: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(`/store/agents/${storeListingVersionID}`);
   }
 
   getStoreCreators(params?: {
@@ -685,14 +652,6 @@ export default class BackendAPI {
   ): Promise<LibraryAgent> {
     return this._get(`/library/agents/by-graph/${graphID}`, {
       version: graphVersion,
-    });
-  }
-
-  addMarketplaceAgentToLibrary(
-    storeListingVersionID: string,
-  ): Promise<LibraryAgent> {
-    return this._request("POST", "/library/agents", {
-      store_listing_version_id: storeListingVersionID,
     });
   }
 
@@ -1005,8 +964,13 @@ export default class BackendAPI {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
-    const { buildClientUrl, buildUrlWithQuery, handleFetchError } =
-      await import("./helpers");
+    const {
+      buildClientUrl,
+      buildUrlWithQuery,
+      handleFetchError,
+      isLogoutInProgress,
+      isAuthenticationError,
+    } = await import("./helpers");
 
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
     let url = buildClientUrl(path);
@@ -1015,17 +979,36 @@ export default class BackendAPI {
       url = buildUrlWithQuery(url, payload);
     }
 
+    // Prepare headers with admin impersonation support
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    const impersonatedUserId = ImpersonationState.get();
+    if (impersonatedUserId) {
+      headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+    }
+
     const response = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
       credentials: "include",
     });
 
     if (!response.ok) {
-      throw await handleFetchError(response);
+      const error = await handleFetchError(response);
+      if (
+        isAuthenticationError(response, error.message) &&
+        isLogoutInProgress()
+      ) {
+        console.debug(
+          "Authentication request failed during logout, ignoring:",
+          error.message,
+        );
+        return null;
+      }
+      throw error;
     }
 
     return await response.json();
@@ -1040,7 +1023,22 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
-    return await makeAuthenticatedRequest(method, url, payload);
+
+    // For server-side requests, try to read impersonation from cookies
+    const impersonationUserId = await ImpersonationState.getServerSide();
+    const fakeRequest = impersonationUserId
+      ? new Request(url, {
+          headers: { "X-Act-As-User-Id": impersonationUserId },
+        })
+      : undefined;
+
+    return await makeAuthenticatedRequest(
+      method,
+      url,
+      payload,
+      "application/json",
+      fakeRequest,
+    );
   }
 
   ////////////////////////////////////////
@@ -1126,6 +1124,11 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
+    // Do not attempt to connect if a disconnect intent is present (e.g., during logout)
+    if (this._hasDisconnectIntent()) {
+      return;
+    }
+
     this.isIntentionallyDisconnected = false;
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
@@ -1139,7 +1142,19 @@ export default class BackendAPI {
           }
         } catch (error) {
           console.warn("Failed to get token for WebSocket connection:", error);
-          // Continue with empty token, connection might still work
+          // Intentionally fall through; we'll bail out below if no token is available
+        }
+
+        // If we don't have a token, skip attempting a connection.
+        if (!token) {
+          console.info(
+            "[BackendAPI] Skipping WebSocket connect: no auth token available",
+          );
+          // Resolve first, then clear wsConnecting to avoid races for awaiters
+          resolve();
+          this.wsConnecting = null;
+          this.webSocket = null;
+          return;
         }
 
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
@@ -1178,6 +1193,9 @@ export default class BackendAPI {
           if (!wasIntentional) {
             this.wsOnDisconnectHandlers.forEach((handler) => handler());
             setTimeout(() => this.connectWebSocket().then(resolve), 1000);
+          } else {
+            // Ensure pending connect calls settle on intentional close
+            resolve();
           }
         };
 
@@ -1197,9 +1215,14 @@ export default class BackendAPI {
   disconnectWebSocket() {
     this.isIntentionallyDisconnected = true;
     this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
-    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+    if (
+      this.webSocket &&
+      (this.webSocket.readyState === WebSocket.OPEN ||
+        this.webSocket.readyState === WebSocket.CONNECTING)
+    ) {
       this.webSocket.close();
     }
+    this.wsConnecting = null;
   }
 
   private _hasDisconnectIntent(): boolean {
@@ -1291,8 +1314,18 @@ declare global {
 
 /* *** UTILITY TYPES *** */
 
+type GraphCreationSource = "builder" | "upload";
+type GraphExecutionSource = "builder" | "library" | "onboarding";
+
 type GraphCreateRequestBody = {
   graph: GraphCreatable;
+  source?: GraphCreationSource;
+};
+
+type GraphExecuteRequestBody = {
+  inputs: { [key: string]: any };
+  credentials_inputs: { [key: string]: CredentialsMetaInput };
+  source?: GraphExecutionSource;
 };
 
 type WebsocketMessageTypeMap = {
@@ -1300,6 +1333,7 @@ type WebsocketMessageTypeMap = {
   subscribe_graph_executions: { graph_id: GraphID };
   graph_execution_event: GraphExecution;
   node_execution_event: NodeExecutionResult;
+  notification: WebSocketNotification;
   heartbeat: "ping" | "pong";
 };
 

@@ -9,6 +9,7 @@
     "forked_from_id": null,
     "forked_from_version": null,
     "has_external_trigger": false,
+    "has_human_in_the_loop": false,
     "id": "graph-123",
     "input_schema": {
       "properties": {},
@@ -26,7 +27,7 @@
     "recommended_schedule_cron": null,
     "sub_graphs": [],
     "trigger_setup_info": null,
-    "user_id": "test-user-id",
+    "user_id": "3e53486c-cf57-477e-ba2a-cb02dc828e1a",
     "version": 1
   }
 ]

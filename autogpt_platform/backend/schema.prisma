@@ -5,10 +5,11 @@ datasource db {
 }
 
 generator client {
-  provider             = "prisma-client-py"
-  recursive_type_depth = -1
-  interface            = "asyncio"
-  previewFeatures      = ["views"]
+  provider               = "prisma-client-py"
+  recursive_type_depth   = -1
+  interface              = "asyncio"
+  previewFeatures        = ["views", "fullTextSearch"]
+  partial_type_generator = "backend/data/partial_types.py"
 }
 
 // User model to mirror Auth provider users
@@ -45,18 +46,21 @@ model User {
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
   CreditTransactions   CreditTransaction[]
+  UserBalance          UserBalance?
 
   AgentPresets  AgentPreset[]
   LibraryAgents LibraryAgent[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
+  BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  PendingHumanReviews   PendingHumanReview[]
 }
 
 enum OnboardingStep {
@@ -68,15 +72,23 @@ enum OnboardingStep {
   AGENT_NEW_RUN
   AGENT_INPUT
   CONGRATS
+  // First Wins
   GET_RESULTS
-  RUN_AGENTS
-  // Marketplace
   MARKETPLACE_VISIT
   MARKETPLACE_ADD_AGENT
   MARKETPLACE_RUN_AGENT
-  // Builder
-  BUILDER_OPEN
   BUILDER_SAVE_AGENT
+  // Consistency Challenge
+  RE_RUN_AGENT
+  SCHEDULE_AGENT
+  RUN_AGENTS
+  RUN_3_DAYS
+  // The Pro Playground
+  TRIGGER_WEBHOOK
+  RUN_14_DAYS
+  RUN_AGENTS_100
+  // No longer rewarded but exist for analytical purposes
+  BUILDER_OPEN
   BUILDER_RUN_AGENT
 }
 
@@ -86,7 +98,7 @@ model UserOnboarding {
   updatedAt DateTime? @updatedAt
 
   completedSteps                OnboardingStep[] @default([])
-  notificationDot               Boolean          @default(true)
+  walletShown                   Boolean          @default(false)
   notified                      OnboardingStep[] @default([])
   rewardedFor                   OnboardingStep[] @default([])
   usageReason                   String?
@@ -96,8 +108,23 @@ model UserOnboarding {
   agentInput                    Json?
   onboardingAgentExecutionId    String?
   agentRuns                     Int              @default(0)
+  lastRunAt                     DateTime?
+  consecutiveRunDays            Int              @default(0)
 
   userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BuilderSearchHistory {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  searchQuery String
+  filter      String[]  @default([])
+  byCreator   String[]  @default([])
+
+  userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -108,9 +135,9 @@ model AgentGraph {
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
-  name        String?
-  description String?
-  instructions String?
+  name                    String?
+  description             String?
+  instructions            String?
   recommendedScheduleCron String?
 
   isActive Boolean @default(true)
@@ -135,7 +162,7 @@ model AgentGraph {
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
-  @@index([userId, isActive])
+  @@index([userId, isActive, id, version])
   @@index([forkedFromId, forkedFromVersion])
 }
 
@@ -253,6 +280,8 @@ model LibraryAgent {
   isArchived      Boolean @default(false)
   isDeleted       Boolean @default(false)
 
+  settings Json @default("{}")
+
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
@@ -339,6 +368,7 @@ enum AgentExecutionStatus {
   COMPLETED
   TERMINATED
   FAILED
+  REVIEW
 }
 
 // This model describes the execution of an AgentGraph.
@@ -371,16 +401,24 @@ model AgentGraphExecution {
 
   stats Json?
 
+  // Parent-child execution tracking for nested agent graphs
+  parentGraphExecutionId String?
+  ParentExecution        AgentGraphExecution?  @relation("ParentChildExecution", fields: [parentGraphExecutionId], references: [id], onDelete: SetNull)
+  ChildExecutions        AgentGraphExecution[] @relation("ParentChildExecution")
+
   // Sharing fields
-  isShared    Boolean   @default(false)
-  shareToken  String?   @unique
-  sharedAt    DateTime?
+  isShared   Boolean   @default(false)
+  shareToken String?   @unique
+  sharedAt   DateTime?
+
+  PendingHumanReviews PendingHumanReview[]
 
   @@index([agentGraphId, agentGraphVersion])
-  @@index([userId])
+  @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
   @@index([agentPresetId])
   @@index([shareToken])
+  @@index([parentGraphExecutionId])
 }
 
 // This model describes the execution of an AgentNode.
@@ -404,6 +442,8 @@ model AgentNodeExecution {
   endedTime       DateTime?
 
   stats Json?
+
+  PendingHumanReview PendingHumanReview?
 
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
   @@index([agentNodeId, executionStatus])
@@ -444,6 +484,39 @@ model AgentNodeExecutionKeyValueData {
   updatedAt            DateTime? @updatedAt
 
   @@id([userId, key])
+}
+
+enum ReviewStatus {
+  WAITING
+  APPROVED
+  REJECTED
+}
+
+// Pending human reviews for Human-in-the-loop blocks
+model PendingHumanReview {
+  nodeExecId    String       @id
+  userId        String
+  graphExecId   String
+  graphId       String
+  graphVersion  Int
+  payload       Json // The actual payload data to be reviewed
+  instructions  String? // Instructions/message for the reviewer
+  editable      Boolean      @default(true) // Whether the reviewer can edit the data
+  status        ReviewStatus @default(WAITING)
+  reviewMessage String? // Optional message from the reviewer
+  wasEdited     Boolean? // Whether the data was modified during review
+  processed     Boolean      @default(false) // Whether the review result has been processed by the execution engine
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime?    @updatedAt
+  reviewedAt    DateTime?
+
+  User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  NodeExecution  AgentNodeExecution  @relation(fields: [nodeExecId], references: [id], onDelete: Cascade)
+  GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeExecId]) // One pending review per node execution
+  @@index([userId, status])
+  @@index([graphExecId, status])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
@@ -535,7 +608,7 @@ model CreditTransaction {
   createdAt      DateTime @default(now())
 
   userId String
-  User   User?   @relation(fields: [userId], references: [id], onDelete: NoAction)
+  User   User?  @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType
@@ -576,6 +649,16 @@ model CreditRefundRequest {
 //////////////   Store TABLES    ///////////////////////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
+
+model SearchTerms {
+  // User ID not being logged as this is anonymous analytics data
+  // Not using uuid as we want to minimise table size
+  id          BigInt   @id @default(autoincrement())
+  createdDate DateTime
+  searchTerm  String
+
+  @@index([createdDate])
+}
 
 model Profile {
   id        String   @id @default(uuid())
@@ -632,21 +715,24 @@ view StoreAgent {
   storeListingVersionId String
   updated_at            DateTime
 
-  slug        String
-  agent_name  String
-  agent_video String?
-  agent_image String[]
+  slug                String
+  agent_name          String
+  agent_video         String?
+  agent_output_demo   String?
+  agent_image         String[]
 
-  featured         Boolean  @default(false)
+  featured         Boolean                  @default(false)
   creator_username String?
   creator_avatar   String?
   sub_heading      String
   description      String
   categories       String[]
+  search           Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
   runs             Int
   rating           Float
   versions         String[]
-  is_available     Boolean  @default(true)
+  is_available     Boolean                  @default(true)
+  useForOnboarding Boolean                  @default(false)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -724,6 +810,9 @@ model StoreListing {
   // URL-friendly identifier for this agent (moved from StoreListingVersion)
   slug String
 
+  // Allow this agent to be used during onboarding
+  useForOnboarding Boolean @default(false)
+
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
@@ -759,19 +848,22 @@ model StoreListingVersion {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // Content fields
-  name        String
-  subHeading  String
-  videoUrl    String?
-  imageUrls   String[]
-  description String
-  instructions String?
-  categories  String[]
+  name                String
+  subHeading          String
+  videoUrl            String?
+  agentOutputDemoUrl  String?
+  imageUrls           String[]
+  description         String
+  instructions        String?
+  categories          String[]
 
   isFeatured Boolean @default(false)
 
   isDeleted   Boolean @default(false)
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
+
+  search Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
@@ -836,6 +928,11 @@ enum APIKeyPermission {
   READ_GRAPH // Can get graph versions and details
   EXECUTE_BLOCK // Can execute individual blocks
   READ_BLOCK // Can get block information
+  READ_STORE // Can read store agents and creators
+  USE_TOOLS // Can use chat tools via external API
+  MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them
+  READ_INTEGRATIONS // Can list credentials and providers
+  DELETE_INTEGRATIONS // Can delete credentials
 }
 
 model APIKey {
@@ -861,6 +958,16 @@ model APIKey {
 
   @@index([head, name])
   @@index([userId, status])
+}
+
+model UserBalance {
+  userId    String   @id
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum APIKeyStatus {

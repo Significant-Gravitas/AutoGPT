@@ -23,7 +23,7 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
 
   if (hasError) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <div className="flex min-h-[60vh] items-center justify-center">
           <ErrorCard
             isSuccess={false}
@@ -39,7 +39,7 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
 
   if (creator)
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="mt-5 px-4">
           <Breadcrumbs
             items={[

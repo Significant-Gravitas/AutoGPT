@@ -11,8 +11,6 @@ from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
-_user_credit_model = get_user_credit_model()
-
 
 router = APIRouter(
     prefix="/admin",
@@ -33,7 +31,8 @@ async def add_user_credits(
     logger.info(
         f"Admin user {admin_user_id} is adding {amount} credits to user {user_id}"
     )
-    new_balance, transaction_key = await _user_credit_model._add_transaction(
+    user_credit_model = await get_user_credit_model(user_id)
+    new_balance, transaction_key = await user_credit_model._add_transaction(
         user_id,
         amount,
         transaction_type=CreditTransactionType.GRANT,

@@ -9,6 +9,7 @@ from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyWhereUniqueInput
 from pydantic import BaseModel, Field
 
+from backend.data.includes import MAX_USER_API_KEYS_FETCH
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -178,9 +179,13 @@ async def revoke_api_key(key_id: str, user_id: str) -> APIKeyInfo:
     return APIKeyInfo.from_db(updated_api_key)
 
 
-async def list_user_api_keys(user_id: str) -> list[APIKeyInfo]:
+async def list_user_api_keys(
+    user_id: str, limit: int = MAX_USER_API_KEYS_FETCH
+) -> list[APIKeyInfo]:
     api_keys = await PrismaAPIKey.prisma().find_many(
-        where={"userId": user_id}, order={"createdAt": "desc"}
+        where={"userId": user_id},
+        order={"createdAt": "desc"},
+        take=limit,
     )
 
     return [APIKeyInfo.from_db(key) for key in api_keys]
