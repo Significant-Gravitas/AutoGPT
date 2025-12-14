@@ -6,6 +6,7 @@ This script tests:
 2. All queue operations work correctly
 3. Thread-safety works as expected
 """
+
 import sys
 import threading
 import time
@@ -104,8 +105,12 @@ def test_thread_safety():
     consumer_thread.join(timeout=5)
 
     assert len(errors) == 0, f"FAIL: Thread errors occurred: {errors}"
-    assert len(results) == num_items, f"FAIL: Expected {num_items} items, got {len(results)}"
-    print(f"✓ Thread-safety test passed ({num_items} items transferred between threads)")
+    assert (
+        len(results) == num_items
+    ), f"FAIL: Expected {num_items} items, got {len(results)}"
+    print(
+        f"✓ Thread-safety test passed ({num_items} items transferred between threads)"
+    )
 
 
 def test_multiple_producers_consumers():
@@ -151,8 +156,7 @@ def test_multiple_producers_consumers():
 
     # Start multiple consumers (each consumes half of total)
     consumer_threads = [
-        threading.Thread(target=consumer, args=(i, total_items // 2))
-        for i in range(2)
+        threading.Thread(target=consumer, args=(i, total_items // 2)) for i in range(2)
     ]
 
     for t in producer_threads:
@@ -166,18 +170,17 @@ def test_multiple_producers_consumers():
         t.join(timeout=10)
 
     assert len(errors) == 0, f"FAIL: Thread errors occurred: {errors}"
-    assert len(results) == total_items, f"FAIL: Expected {total_items} items, got {len(results)}"
-    print(f"✓ Multi-producer/consumer test passed ({num_producers} producers, 2 consumers, {total_items} items)")
+    assert (
+        len(results) == total_items
+    ), f"FAIL: Expected {total_items} items, got {len(results)}"
+    print(
+        f"✓ Multi-producer/consumer test passed ({num_producers} producers, 2 consumers, {total_items} items)"
+    )
 
 
 def test_no_subprocess_spawned():
     """Verify that no subprocess is spawned (unlike multiprocessing.Manager())."""
-    import os
-
     from backend.data.execution import ExecutionQueue
-
-    # Get current process ID
-    current_pid = os.getpid()
 
     # Create multiple queues (this would spawn subprocesses with Manager())
     queues = [ExecutionQueue() for _ in range(5)]
@@ -188,7 +191,9 @@ def test_no_subprocess_spawned():
         q.add("test")
         assert q.get() == "test"
 
-    print("✓ No subprocess spawning (5 queues created without spawning manager processes)")
+    print(
+        "✓ No subprocess spawning (5 queues created without spawning manager processes)"
+    )
 
 
 def main():
