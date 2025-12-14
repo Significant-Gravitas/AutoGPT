@@ -414,17 +414,6 @@ Once authenticated, you can access these endpoints with your access token.
 | `/external-api/v1/integrations/{provider}/oauth/initiate` | POST | `MANAGE_INTEGRATIONS` | Start OAuth flow for provider |
 | `/external-api/v1/integrations/{provider}/oauth/complete` | POST | `MANAGE_INTEGRATIONS` | Complete OAuth flow |
 
-## Testing Your Integration
-
-Use the CLI test server to test your OAuth implementation locally:
-
-```bash
-cd autogpt_platform/backend
-poetry run python -m backend.cli.oauth_admin test-server --owner-id YOUR_USER_ID
-```
-
-This creates a temporary OAuth application and runs a test client at `http://localhost:9876` where you can test both the SSO and Integration Setup flows.
-
 ## Security Best Practices
 
 1. **Store client secrets securely** - Never expose them in client-side code or version control

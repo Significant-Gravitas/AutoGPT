@@ -11,50 +11,55 @@ This page implements the OAuth 2.0 authorization consent screen, where users app
 
 ## Testing the Flow
 
-### 1. Register an OAuth Application
+### Option 1: Test Server (Recommended)
 
-First, generate credentials and register an app in the database using the CLI tool:
+The easiest way to test OAuth flows is using the built-in test server. It automatically:
+
+- Creates a temporary OAuth application in the database
+- Starts a web-based test client with "Sign in with AutoGPT" button
+- Handles PKCE, token exchange, and access token testing
+- Cleans up all test data when you stop the server
 
 ```bash
 cd autogpt_platform/backend
-poetry run python backend/cli/oauth_admin.py generate-app
+poetry run python -m backend.cli.oauth_admin test-server --owner-id YOUR_USER_ID
+```
+
+Replace `YOUR_USER_ID` with your Supabase user ID (you can find this in the Supabase dashboard or by inspecting your JWT).
+
+The test server starts at http://localhost:9876. Open it in your browser and click "Sign in with AutoGPT" to test the full flow.
+
+Options:
+
+- `--port`: Port for the test server (default: 9876)
+- `--platform-url`: Frontend URL (default: http://localhost:3000)
+- `--backend-url`: Backend URL (default: http://localhost:8006)
+
+### Option 2: Manual Setup
+
+If you need a persistent OAuth application or want to test from a real external client:
+
+#### 1. Register an OAuth Application
+
+Generate credentials using the CLI tool:
+
+```bash
+cd autogpt_platform/backend
+poetry run python -m backend.cli.oauth_admin generate-app
 ```
 
 Follow the interactive prompts:
 
-- **Application name**: e.g., "Test OAuth App"
-- **Description**: e.g., "Test application for OAuth flow"
+- **Application name**: e.g., "My OAuth App"
+- **Description**: e.g., "My application description"
 - **Redirect URIs**: e.g., `http://localhost:8080/callback`
-- **Scopes**: Select the permissions (e.g., `1,2` for `EXECUTE_GRAPH` and `READ_GRAPH`)
+- **Scopes**: Select permissions (e.g., `1,2` for `EXECUTE_GRAPH` and `READ_GRAPH`)
 
-The tool outputs SQL. Execute it in your database:
+The tool outputs SQL. Execute it in your database (replace `YOUR_USER_ID_HERE` with your user ID).
 
-```sql
--- Example output (your values will differ):
-INSERT INTO "OAuthApplication" (
-  id, "createdAt", "updatedAt", name, description,
-  "clientId", "clientSecret", "clientSecretSalt",
-  "redirectUris", "grantTypes", scopes, "ownerId", "isActive"
-)
-VALUES (
-  'uuid-here',
-  NOW(), NOW(),
-  'Test OAuth App',
-  'Test application for OAuth flow',
-  'agpt_client_xxxx',  -- Save this client_id
-  'hashed-secret',
-  'salt',
-  ARRAY['http://localhost:8080/callback']::TEXT[],
-  ARRAY['authorization_code', 'refresh_token']::TEXT[],
-  ARRAY['EXECUTE_GRAPH', 'READ_GRAPH']::"APIKeyPermission"[],
-  'YOUR_USER_ID_HERE',  -- Replace with your user ID
-  true
-);
-```
+**Important**: Save the `client_id` and `client_secret` from the output - the secret is only shown once!
 
-**Important**: Save the `client_id` and `client_secret` from the CLI output - the secret is only shown once!
-
-### 2. Generate PKCE Parameters
+#### 2. Generate PKCE Parameters
 
 OAuth requires PKCE (Proof Key for Code Exchange). Generate a code verifier and challenge:
 
@@ -76,7 +81,7 @@ console.log("code_challenge:", codeChallenge);
 
 Or use an online PKCE generator like https://tonyxu-io.github.io/pkce-generator/
 
-### 3. Construct the Authorization URL
+#### 3. Construct the Authorization URL
 
 Build the URL with these parameters:
 
@@ -101,7 +106,7 @@ Parameters:
 - `code_challenge_method`: `S256` (recommended) or `plain`
 - `response_type`: Must be `code`
 
-### 4. Test the Flow
+#### 4. Test the Flow
 
 1. Open the authorization URL in your browser
 2. Log in if not already authenticated
@@ -122,12 +127,12 @@ http://localhost:8080/callback?code=AUTH_CODE&state=random-state-string
 http://localhost:8080/callback?error=access_denied&error_description=User%20denied%20access&state=random-state-string
 ```
 
-### 5. Exchange Code for Tokens (Optional)
+#### 5. Exchange Code for Tokens
 
-To complete the flow, exchange the authorization code for tokens:
+Exchange the authorization code for tokens:
 
 ```bash
-curl -X POST http://localhost:8006/oauth/token \
+curl -X POST http://localhost:8006/api/oauth/token \
   -H "Content-Type: application/json" \
   -d '{
     "grant_type": "authorization_code",
@@ -138,6 +143,39 @@ curl -X POST http://localhost:8006/oauth/token \
     "code_verifier": "your-code-verifier-from-step-2"
   }'
 ```
+
+## CLI Tool Commands
+
+The `oauth_admin` CLI provides these commands:
+
+| Command           | Description                                                    |
+| ----------------- | -------------------------------------------------------------- |
+| `generate-app`    | Generate credentials for a new OAuth application (outputs SQL) |
+| `test-server`     | Run an interactive test server for OAuth flows                 |
+| `hash-secret`     | Hash a plaintext secret using Scrypt                           |
+| `validate-secret` | Validate a plaintext secret against a hash and salt            |
+
+Run with `--help` for full options:
+
+```bash
+poetry run python -m backend.cli.oauth_admin --help
+poetry run python -m backend.cli.oauth_admin generate-app --help
+poetry run python -m backend.cli.oauth_admin test-server --help
+```
+
+## Available Scopes
+
+| Scope                 | Description                                        |
+| --------------------- | -------------------------------------------------- |
+| `EXECUTE_GRAPH`       | Execute agents/graphs                              |
+| `READ_GRAPH`          | Read agent/graph definitions and execution results |
+| `EXECUTE_BLOCK`       | Execute individual blocks                          |
+| `READ_BLOCK`          | Read block definitions                             |
+| `READ_STORE`          | Access the agent store                             |
+| `USE_TOOLS`           | Use platform tools                                 |
+| `MANAGE_INTEGRATIONS` | Create and update user integrations                |
+| `READ_INTEGRATIONS`   | Read user integration status                       |
+| `DELETE_INTEGRATIONS` | Remove user integrations                           |
 
 ## Error Scenarios to Test
 
@@ -153,8 +191,17 @@ curl -X POST http://localhost:8006/oauth/token \
 
 ## Related Files
 
-- Backend endpoint: `backend/server/routers/oauth.py`
-- App info endpoint: `GET /oauth/app/{client_id}`
-- Authorization endpoint: `GET /oauth/authorize`
-- Token endpoint: `POST /oauth/token`
+- Backend OAuth endpoints: `backend/server/routers/oauth.py`
+- OAuth data layer: `backend/data/auth/oauth.py`
 - CLI tool: `backend/cli/oauth_admin.py`
+- SSO integration guide: `autogpt_platform/SSO.md`
+
+### API Endpoints
+
+| Endpoint                     | Method | Description                                     |
+| ---------------------------- | ------ | ----------------------------------------------- |
+| `/api/oauth/app/{client_id}` | GET    | Get OAuth application info (for consent screen) |
+| `/api/oauth/authorize`       | POST   | Create authorization code (after user consent)  |
+| `/api/oauth/token`           | POST   | Exchange code for tokens / refresh tokens       |
+| `/api/oauth/introspect`      | POST   | Check if a token is valid                       |
+| `/api/oauth/revoke`          | POST   | Revoke an access or refresh token               |
