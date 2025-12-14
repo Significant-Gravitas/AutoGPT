@@ -584,7 +584,7 @@ def create_test_html(
             clientId: "{client_id}",
             clientSecret: "{client_secret}",
             redirectUri: "{redirect_uri}",
-            scopes: ["EXECUTE_GRAPH", "READ_GRAPH"]
+            scopes: ["EXECUTE_GRAPH", "READ_GRAPH", "READ_BLOCK"]
         }};
 
         let currentPkce = null;
@@ -784,19 +784,17 @@ def create_test_html(
         async function testAccessToken(token) {{
             log('Testing access token...');
             try {{
-                // Try to call an API endpoint that requires authentication
-                const response = await fetch(`${{config.backendUrl}}/api/graphs`, {{
-                    headers: {{
-                        'Authorization': `Bearer ${{token}}`
-                    }}
-                }});
+                // Use local proxy to call external API (OAuth tokens work with external-api, not internal api)
+                const response = await fetch(`/proxy/external-api/v1/blocks?token=${{encodeURIComponent(token)}}`);
 
                 if (response.ok) {{
                     const data = await response.json();
                     log('Access token is valid! API call successful.');
+                    const blockCount = Array.isArray(data) ? data.length : 'unknown';
                     showResult('✅ Access Token Valid', `
-                        <p>Successfully called /api/graphs endpoint!</p>
-                        <div class="token-display">Response: ${{JSON.stringify(data).substring(0, 500)}}...</div>
+                        <p>Successfully called /external-api/v1/blocks endpoint!</p>
+                        <p>Found ${{blockCount}} blocks.</p>
+                        <div class="token-display">Response (truncated): ${{JSON.stringify(data).substring(0, 500)}}...</div>
                     `);
                 }} else {{
                     const error = await response.json();
@@ -930,6 +928,8 @@ def run_test_server(
 
     class TestHandler(BaseHTTPRequestHandler):
         def do_GET(self):
+            from urllib.parse import parse_qs
+
             # Parse the path
             parsed = urlparse(self.path)
 
@@ -939,6 +939,51 @@ def run_test_server(
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(html_content.encode())
+
+            # Proxy API calls to backend (avoids CORS issues)
+            # Supports both /proxy/api/* and /proxy/external-api/*
+            elif parsed.path.startswith("/proxy/"):
+                try:
+                    # Extract the API path and token from query params
+                    api_path = parsed.path[len("/proxy") :]
+                    query_params = parse_qs(parsed.query)
+                    token = query_params.get("token", [None])[0]
+
+                    headers = {}
+                    if token:
+                        headers["Authorization"] = f"Bearer {token}"
+
+                    req = Request(
+                        f"{backend_url}{api_path}",
+                        headers=headers,
+                        method="GET",
+                    )
+
+                    with urlopen(req) as response:
+                        response_body = response.read()
+                        self.send_response(response.status)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(response_body)
+
+                except Exception as e:
+                    error_msg = str(e)
+                    status_code = 500
+                    if hasattr(e, "code"):
+                        status_code = e.code  # type: ignore
+                    if hasattr(e, "read"):
+                        try:
+                            error_body = e.read().decode()  # type: ignore
+                            error_data = json_module.loads(error_body)
+                            error_msg = error_data.get("detail", error_msg)
+                        except Exception:
+                            pass
+
+                    self.send_response(status_code)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps({"detail": error_msg}).encode())
+
             else:
                 self.send_response(404)
                 self.end_headers()
