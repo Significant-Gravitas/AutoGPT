@@ -370,15 +370,49 @@ Content-Type: application/json
 
 ## External API Endpoints
 
-Once authenticated, you can access these endpoints with your access token:
+Once authenticated, you can access these endpoints with your access token.
+
+### Blocks
 
 | Endpoint | Method | Scope Required | Description |
 |----------|--------|----------------|-------------|
 | `/external-api/v1/blocks` | GET | `READ_BLOCK` | List available blocks |
-| `/external-api/v1/blocks/{id}/execute` | POST | `EXECUTE_BLOCK` | Execute a block |
-| `/external-api/v1/graphs/{id}/execute/{version}` | POST | `EXECUTE_GRAPH` | Execute an agent |
-| `/external-api/v1/graphs/{id}/executions/{exec_id}/results` | GET | `READ_GRAPH` | Get execution results |
-| `/external-api/v1/store/agents` | GET | `READ_STORE` | Browse agent store |
+| `/external-api/v1/blocks/{block_id}/execute` | POST | `EXECUTE_BLOCK` | Execute a block |
+
+### Graphs (Agents)
+
+| Endpoint | Method | Scope Required | Description |
+|----------|--------|----------------|-------------|
+| `/external-api/v1/graphs/{graph_id}/execute/{version}` | POST | `EXECUTE_GRAPH` | Execute an agent |
+| `/external-api/v1/graphs/{graph_id}/executions/{exec_id}/results` | GET | `READ_GRAPH` | Get execution results |
+
+### Store
+
+| Endpoint | Method | Scope Required | Description |
+|----------|--------|----------------|-------------|
+| `/external-api/v1/store/agents` | GET | `READ_STORE` | List agents with filtering/sorting |
+| `/external-api/v1/store/agents/{username}/{agent_name}` | GET | `READ_STORE` | Get agent details |
+| `/external-api/v1/store/creators` | GET | `READ_STORE` | List creators with filtering/sorting |
+| `/external-api/v1/store/creators/{username}` | GET | `READ_STORE` | Get creator details |
+
+### Tools
+
+| Endpoint | Method | Scope Required | Description |
+|----------|--------|----------------|-------------|
+| `/external-api/v1/tools/find-agent` | POST | `USE_TOOLS` | Search for agents by query |
+| `/external-api/v1/tools/run-agent` | POST | `USE_TOOLS` | Run or schedule an agent |
+
+### Integrations
+
+| Endpoint | Method | Scope Required | Description |
+|----------|--------|----------------|-------------|
+| `/external-api/v1/integrations/providers` | GET | `READ_INTEGRATIONS` | List available providers |
+| `/external-api/v1/integrations/credentials` | GET | `READ_INTEGRATIONS` | List all user credentials |
+| `/external-api/v1/integrations/{provider}/credentials` | GET | `READ_INTEGRATIONS` | List credentials for provider |
+| `/external-api/v1/integrations/{provider}/credentials` | POST | `MANAGE_INTEGRATIONS` | Create credentials (API key, password, etc.) |
+| `/external-api/v1/integrations/{provider}/credentials/{id}` | DELETE | `DELETE_INTEGRATIONS` | Delete a credential |
+| `/external-api/v1/integrations/{provider}/oauth/initiate` | POST | `MANAGE_INTEGRATIONS` | Start OAuth flow for provider |
+| `/external-api/v1/integrations/{provider}/oauth/complete` | POST | `MANAGE_INTEGRATIONS` | Complete OAuth flow |
 
 ## Testing Your Integration
 
