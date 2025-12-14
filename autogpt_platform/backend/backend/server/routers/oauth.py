@@ -261,7 +261,7 @@ async def authorize(
 
         logger.info(
             f"Authorization code issued for user #{user_id} "
-            f"and app {app.name} (#{request.client_id})"
+            f"and app {app.name} (#{app.id})"
         )
 
         return AuthorizeResponse(redirect_url=redirect_url)
@@ -375,8 +375,8 @@ async def token(
         refresh_token = await create_refresh_token(app.id, user_id, scopes)
 
         logger.info(
-            f"Access token issued for user {user_id} and app {app.name} (#{app.id})"
-            "via authorization_code"
+            f"Access token issued for user #{user_id} and app {app.name} (#{app.id})"
+            "via authorization code"
         )
 
         if not access_token.token or not refresh_token.token:
@@ -408,7 +408,7 @@ async def token(
             )
 
         logger.info(
-            f"Access token refreshed for user #{new_access_token.user_id} "
+            f"Tokens refreshed for user #{new_access_token.user_id} "
             f"by app {app.name} (#{app.id})"
         )
 
