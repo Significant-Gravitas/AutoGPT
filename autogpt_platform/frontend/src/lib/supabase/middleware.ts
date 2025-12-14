@@ -58,7 +58,8 @@ export async function updateSession(request: NextRequest) {
 
       if (attemptingProtectedPage || attemptingAdminPage) {
         const currentDest = url.pathname + url.search;
-        url.pathname = `/login?next=${encodeURIComponent(currentDest)}`;
+        url.pathname = "/login";
+        url.search = `?next=${encodeURIComponent(currentDest)}`;
         return NextResponse.redirect(url);
       }
     }
