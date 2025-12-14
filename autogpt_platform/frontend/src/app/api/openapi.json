@@ -5415,7 +5415,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Authorize",
-        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scope: Space-separated list of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases return a redirect_url with error parameters, or raise HTTPException\nfor critical errors (like invalid redirect_uri).",
+        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scopes: List of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases return a redirect_url with error parameters, or raise HTTPException\nfor critical errors (like invalid redirect_uri).",
         "operationId": "postOauthAuthorize",
         "requestBody": {
           "content": {
@@ -5453,7 +5453,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Token",
-        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scope: Space-separated scopes",
+        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
         "operationId": "postOauthToken",
         "requestBody": {
           "content": {
@@ -5493,7 +5493,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Introspect",
-        "description": "OAuth 2.0 Token Introspection Endpoint (RFC 7662)\n\nAllows clients to check if a token is valid and get its metadata.\n\nReturns:\n- active: Whether the token is currently active\n- scope: Space-separated scopes (if active)\n- client_id: The client the token was issued to (if active)\n- user_id: The user the token represents (if active)\n- exp: Expiration timestamp (if active)\n- token_type: \"access_token\" or \"refresh_token\" (if active)",
+        "description": "OAuth 2.0 Token Introspection Endpoint (RFC 7662)\n\nAllows clients to check if a token is valid and get its metadata.\n\nReturns:\n- active: Whether the token is currently active\n- scopes: List of authorized scopes (if active)\n- client_id: The client the token was issued to (if active)\n- user_id: The user the token represents (if active)\n- exp: Expiration timestamp (if active)\n- token_type: \"access_token\" or \"refresh_token\" (if active)",
         "operationId": "postOauthIntrospect",
         "requestBody": {
           "content": {
@@ -5826,10 +5826,11 @@
             "title": "Redirect Uri",
             "description": "Redirect URI"
           },
-          "scope": {
-            "type": "string",
-            "title": "Scope",
-            "description": "Space-separated list of scopes"
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes",
+            "description": "List of scopes"
           },
           "state": {
             "type": "string",
@@ -5859,7 +5860,7 @@
         "required": [
           "client_id",
           "redirect_uri",
-          "scope",
+          "scopes",
           "state",
           "code_challenge"
         ],

@@ -78,7 +78,7 @@ export default function AuthorizePage() {
       const response = await postOauthAuthorize({
         client_id: clientID!,
         redirect_uri: redirectURI!,
-        scope: scope!,
+        scopes: requestedScopes,
         state: state!,
         response_type: responseType,
         code_challenge: codeChallenge!,

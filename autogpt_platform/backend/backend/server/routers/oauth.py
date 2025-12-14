@@ -126,7 +126,7 @@ class AuthorizeRequest(BaseModel):
 
     client_id: str = Field(description="Client identifier")
     redirect_uri: str = Field(description="Redirect URI")
-    scope: str = Field(description="Space-separated list of scopes")
+    scopes: list[str] = Field(description="List of scopes")
     state: str = Field(description="Anti-CSRF token from client")
     response_type: str = Field(
         default="code", description="Must be 'code' for authorization code flow"
@@ -162,7 +162,7 @@ async def authorize(
     Request Body:
     - client_id: The OAuth application's client ID
     - redirect_uri: Where to redirect after authorization (must match registered URI)
-    - scope: Space-separated list of permissions (e.g., "EXECUTE_GRAPH READ_GRAPH")
+    - scopes: List of permissions (e.g., "EXECUTE_GRAPH READ_GRAPH")
     - state: Anti-CSRF token provided by client (will be returned in redirect)
     - response_type: Must be "code" (for authorization code flow)
     - code_challenge: PKCE code challenge (required)
@@ -216,9 +216,7 @@ async def authorize(
 
         # Parse and validate scopes
         try:
-            requested_scopes = [
-                APIKeyPermission(s.strip()) for s in request.scope.split() if s.strip()
-            ]
+            requested_scopes = [APIKeyPermission(s.strip()) for s in request.scopes]
         except ValueError as e:
             return _error_redirect_url(
                 request.redirect_uri,
@@ -343,7 +341,7 @@ async def token(
     - token_type: "Bearer"
     - expires_in: Seconds until access token expires
     - refresh_token: Token for refreshing access (30 days TTL)
-    - scope: Space-separated scopes
+    - scopes: List of scopes
     """
     # Validate client credentials
     try:
@@ -458,7 +456,7 @@ async def introspect(
 
     Returns:
     - active: Whether the token is currently active
-    - scope: Space-separated scopes (if active)
+    - scopes: List of authorized scopes (if active)
     - client_id: The client the token was issued to (if active)
     - user_id: The user the token represents (if active)
     - exp: Expiration timestamp (if active)
