@@ -16,8 +16,8 @@ import {
 
 type Args = {
   schema: BlockIOCredentialsSubSchema;
-  selectedCredentials?: CredentialsMetaInput;
-  onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
+  selectedCredential?: CredentialsMetaInput;
+  onSelectCredential: (newValue?: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
@@ -25,8 +25,8 @@ type Args = {
 
 export function useCredentialsInputs({
   schema,
-  selectedCredentials,
-  onSelectCredentials,
+  selectedCredential,
+  onSelectCredential,
   siblingInputs,
   onLoaded,
   readOnly = false,
@@ -63,16 +63,12 @@ export function useCredentialsInputs({
           queryKey: [`/api/integrations/${credentials?.provider}/credentials`],
         });
         setCredentialToDelete(null);
-        if (selectedCredentials?.id === credentialToDelete?.id) {
-          onSelectCredentials(undefined);
+        if (selectedCredential?.id === credentialToDelete?.id) {
+          onSelectCredential(undefined);
         }
       },
     },
   });
-
-  const rawProvider = credentials
-    ? allProviders?.[credentials.provider as keyof typeof allProviders]
-    : null;
 
   useEffect(() => {
     if (onLoaded) {
@@ -80,40 +76,36 @@ export function useCredentialsInputs({
     }
   }, [credentials, onLoaded]);
 
+  // Unselect credential if not available
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
     if (
-      selectedCredentials &&
-      !credentials.savedCredentials.some((c) => c.id === selectedCredentials.id)
+      selectedCredential &&
+      !credentials.savedCredentials.some((c) => c.id === selectedCredential.id)
     ) {
-      onSelectCredentials(undefined);
+      onSelectCredential(undefined);
     }
-  }, [credentials, selectedCredentials, onSelectCredentials, readOnly]);
+  }, [credentials, selectedCredential, onSelectCredential, readOnly]);
 
-  const { singleCredential } = useMemo(() => {
+  // The available credential, if there is only one
+  const singleCredential = useMemo(() => {
     if (!credentials || !("savedCredentials" in credentials)) {
-      return {
-        singleCredential: null,
-      };
+      return null;
     }
 
-    const single =
-      credentials.savedCredentials.length === 1
-        ? credentials.savedCredentials[0]
-        : null;
-
-    return {
-      singleCredential: single,
-    };
+    return credentials.savedCredentials.length === 1
+      ? credentials.savedCredentials[0]
+      : null;
   }, [credentials]);
 
+  // Auto-select the one available credential
   useEffect(() => {
     if (readOnly) return;
-    if (singleCredential && !selectedCredentials) {
-      onSelectCredentials(singleCredential);
+    if (singleCredential && !selectedCredential) {
+      onSelectCredential(singleCredential);
     }
-  }, [singleCredential, selectedCredentials, onSelectCredentials, readOnly]);
+  }, [singleCredential, selectedCredential, onSelectCredential, readOnly]);
 
   if (
     !credentials ||
@@ -135,25 +127,6 @@ export function useCredentialsInputs({
     savedCredentials,
     oAuthCallback,
   } = credentials;
-
-  const allSavedCredentials = rawProvider?.savedCredentials || savedCredentials;
-
-  const credentialsToShow = (() => {
-    const creds = [...allSavedCredentials];
-    if (
-      !readOnly &&
-      selectedCredentials &&
-      !creds.some((c) => c.id === selectedCredentials.id)
-    ) {
-      creds.push({
-        id: selectedCredentials.id,
-        type: selectedCredentials.type,
-        title: selectedCredentials.title || "Selected credential",
-        provider: provider,
-      } as any);
-    }
-    return creds;
-  })();
 
   async function handleOAuthLogin() {
     setOAuthError(null);
@@ -207,7 +180,31 @@ export function useCredentialsInputs({
         console.debug("Processing OAuth callback");
         const credentials = await oAuthCallback(e.data.code, e.data.state);
         console.debug("OAuth callback processed successfully");
-        onSelectCredentials({
+
+        // Check if the credential's scopes match the required scopes
+        const requiredScopes = schema.credentials_scopes;
+        if (requiredScopes && requiredScopes.length > 0) {
+          const grantedScopes = new Set(credentials.scopes || []);
+          const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
+            grantedScopes,
+          );
+
+          if (!hasAllRequiredScopes) {
+            console.error(
+              `Newly created OAuth credential for ${providerName} has insufficient scopes. Required:`,
+              requiredScopes,
+              "Granted:",
+              credentials.scopes,
+            );
+            setOAuthError(
+              "Connection failed: the granted permissions don't match what's required. " +
+                "Please contact the application administrator.",
+            );
+            return;
+          }
+        }
+
+        onSelectCredential({
           id: credentials.id,
           type: "oauth2",
           title: credentials.title,
@@ -253,9 +250,9 @@ export function useCredentialsInputs({
   }
 
   function handleCredentialSelect(credentialId: string) {
-    const selectedCreds = credentialsToShow.find((c) => c.id === credentialId);
+    const selectedCreds = savedCredentials.find((c) => c.id === credentialId);
     if (selectedCreds) {
-      onSelectCredentials({
+      onSelectCredential({
         id: selectedCreds.id,
         type: selectedCreds.type,
         provider: provider,
@@ -285,8 +282,8 @@ export function useCredentialsInputs({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
-    credentialsToShow,
-    selectedCredentials,
+    credentialsToShow: savedCredentials,
+    selectedCredential,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
@@ -300,7 +297,7 @@ export function useCredentialsInputs({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
-      credentialsToShow.length > 0,
+      savedCredentials.length > 0,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
@@ -311,7 +308,7 @@ export function useCredentialsInputs({
     handleDeleteCredential,
     handleDeleteConfirm,
     handleOAuthLogin,
-    onSelectCredentials,
+    onSelectCredential,
     schema,
     siblingInputs,
   };
