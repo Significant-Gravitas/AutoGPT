@@ -900,23 +900,21 @@ class GoogleDocsInsertTableBlock(Block):
         # Determine rows/columns from content if provided
         content = input_data.content
 
-        # Check if content has any non-empty values
-        has_content = False
-        if content:
-            for row in content:
-                for cell in row:
-                    if cell:  # Non-empty string
-                        has_content = True
-                        break
-                if has_content:
-                    break
+        # Check if content is valid:
+        # 1. Has at least one row with at least one cell (even if empty string)
+        # 2. Has at least one non-empty cell value
+        has_valid_structure = bool(content and any(len(row) > 0 for row in content))
+        has_content = has_valid_structure and any(
+            cell for row in content for cell in row
+        )
 
         if has_content:
-            # Use content dimensions
+            # Use content dimensions - filter out empty rows for row count,
+            # use max column count across all rows
             rows = len(content)
-            columns = max(len(row) for row in content) if content else 0
+            columns = max(len(row) for row in content)
         else:
-            # No content or all empty - use explicit rows/columns, clear content
+            # No valid content - use explicit rows/columns, clear content
             rows = input_data.rows
             columns = input_data.columns
             content = []  # Clear so we skip population step
