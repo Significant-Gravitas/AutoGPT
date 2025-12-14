@@ -6,8 +6,8 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import {
+  postOauthAuthorize,
   useGetOauthGetOauthAppInfo,
-  getOauthAuthorize,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 
@@ -73,28 +73,21 @@ export default function AuthorizePage() {
     setAuthorizeError(null);
 
     try {
-      // Call the backend /oauth/authorize endpoint via the API client
-      // Use redirect: "manual" to capture the Location header instead of following
-      // Use allowRedirect: true to allow 302 responses without throwing
-      const response = await getOauthAuthorize(
-        {
-          client_id: clientID!,
-          redirect_uri: redirectURI!,
-          scope: scope!,
-          state: state!,
-          response_type: responseType,
-          code_challenge: codeChallenge!,
-          code_challenge_method: codeChallengeMethod as "S256" | "plain",
-        },
-        { redirect: "manual" },
-      );
+      // Call the backend /oauth/authorize POST endpoint
+      // Returns JSON with redirect_url that we use to redirect the user
+      const response = await postOauthAuthorize({
+        client_id: clientID!,
+        redirect_uri: redirectURI!,
+        scope: scope!,
+        state: state!,
+        response_type: responseType,
+        code_challenge: codeChallenge!,
+        code_challenge_method: codeChallengeMethod as "S256" | "plain",
+      });
 
-      // The response contains the redirect URL in the headers
-      const redirectURL = response.headers.get("Location");
-      if (redirectURL) {
-        window.location.href = redirectURL;
+      if (response.status === 200 && response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
       } else {
-        // If no redirect header, check if the response URL changed (redirect was followed)
         setAuthorizeError("Authorization failed: no redirect URL received");
         setIsAuthorizing(false);
       }

@@ -301,7 +301,7 @@ app.include_router(
 app.include_router(
     backend.server.routers.oauth.router,
     tags=["oauth"],
-    prefix="/oauth",
+    prefix="/api/oauth",
 )
 
 app.mount("/external-api", external_app)

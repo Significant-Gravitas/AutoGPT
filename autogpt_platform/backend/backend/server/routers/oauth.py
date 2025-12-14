@@ -19,8 +19,7 @@ from typing import Literal, Optional
 from urllib.parse import urlencode
 
 from autogpt_libs.auth import get_user_id
-from fastapi import APIRouter, Body, HTTPException, Query, Security, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Body, HTTPException, Security, status
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
@@ -122,30 +121,45 @@ async def get_oauth_app_info(
 # ============================================================================
 
 
-@router.get("/authorize")
-async def authorize(
-    client_id: str = Query(description="Client identifier"),
-    redirect_uri: str = Query(description="Redirect URI"),
-    scope: str = Query(description="Space-separated list of scopes"),
-    state: str = Query(description="Anti-CSRF token from client"),
-    response_type: str = Query(
+class AuthorizeRequest(BaseModel):
+    """OAuth 2.0 authorization request"""
+
+    client_id: str = Field(description="Client identifier")
+    redirect_uri: str = Field(description="Redirect URI")
+    scope: str = Field(description="Space-separated list of scopes")
+    state: str = Field(description="Anti-CSRF token from client")
+    response_type: str = Field(
         default="code", description="Must be 'code' for authorization code flow"
-    ),
-    code_challenge: str = Query(description="PKCE code challenge (required)"),
-    code_challenge_method: Literal["S256", "plain"] = Query(
+    )
+    code_challenge: str = Field(description="PKCE code challenge (required)")
+    code_challenge_method: Literal["S256", "plain"] = Field(
         default="S256", description="PKCE code challenge method (S256 recommended)"
-    ),
+    )
+
+
+class AuthorizeResponse(BaseModel):
+    """OAuth 2.0 authorization response with redirect URL"""
+
+    redirect_url: str = Field(description="URL to redirect the user to")
+
+
+@router.post("/authorize")
+async def authorize(
+    request: AuthorizeRequest = Body(),
     user_id: str = Security(get_user_id),
-) -> RedirectResponse:
+) -> AuthorizeResponse:
     """
     OAuth 2.0 Authorization Endpoint
 
     User must be logged in (authenticated with Supabase JWT).
-    This endpoint creates an authorization code and redirects back to the client.
+    This endpoint creates an authorization code and returns a redirect URL.
 
     PKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.
 
-    Query Parameters:
+    The frontend consent screen should call this endpoint after the user approves,
+    then redirect the user to the returned `redirect_url`.
+
+    Request Body:
     - client_id: The OAuth application's client ID
     - redirect_uri: Where to redirect after authorization (must match registered URI)
     - scope: Space-separated list of permissions (e.g., "EXECUTE_GRAPH READ_GRAPH")
@@ -155,42 +169,43 @@ async def authorize(
     - code_challenge_method: "S256" (recommended) or "plain"
 
     Returns:
-    - Redirect to redirect_uri with authorization code and state
+    - redirect_url: The URL to redirect the user to (includes authorization code)
 
-    Error cases redirect to redirect_uri with error parameters.
+    Error cases return a redirect_url with error parameters, or raise HTTPException
+    for critical errors (like invalid redirect_uri).
     """
     try:
         # Validate response_type
-        if response_type != "code":
-            return _redirect_error(
-                redirect_uri,
-                state,
+        if request.response_type != "code":
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
                 "unsupported_response_type",
                 "Only 'code' response type is supported",
             )
 
         # Get application
-        app = await get_oauth_application(client_id)
+        app = await get_oauth_application(request.client_id)
         if not app:
-            return _redirect_error(
-                redirect_uri,
-                state,
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
                 "invalid_client",
                 "Unknown client_id",
             )
 
         if not app.is_active:
-            return _redirect_error(
-                redirect_uri,
-                state,
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
                 "invalid_client",
                 "Application is not active",
             )
 
         # Validate redirect URI
-        if not validate_redirect_uri(app, redirect_uri):
+        if not validate_redirect_uri(app, request.redirect_uri):
             # For invalid redirect_uri, we can't redirect safely
-            # Must show error page instead
+            # Must return error instead
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
@@ -202,28 +217,28 @@ async def authorize(
         # Parse and validate scopes
         try:
             requested_scopes = [
-                APIKeyPermission(s.strip()) for s in scope.split() if s.strip()
+                APIKeyPermission(s.strip()) for s in request.scope.split() if s.strip()
             ]
         except ValueError as e:
-            return _redirect_error(
-                redirect_uri,
-                state,
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
                 "invalid_scope",
                 f"Invalid scope: {e}",
             )
 
         if not requested_scopes:
-            return _redirect_error(
-                redirect_uri,
-                state,
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
                 "invalid_scope",
                 "At least one scope is required",
             )
 
         if not validate_scopes(app, requested_scopes):
-            return _redirect_error(
-                redirect_uri,
-                state,
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
                 "invalid_scope",
                 "Application is not authorized for all requested scopes. "
                 f"Allowed: {', '.join(s.value for s in app.scopes)}",
@@ -234,44 +249,44 @@ async def authorize(
             application_id=app.id,
             user_id=user_id,
             scopes=requested_scopes,
-            redirect_uri=redirect_uri,
-            code_challenge=code_challenge,
-            code_challenge_method=code_challenge_method,
+            redirect_uri=request.redirect_uri,
+            code_challenge=request.code_challenge,
+            code_challenge_method=request.code_challenge_method,
         )
 
-        # Redirect back to client with authorization code
+        # Build redirect URL with authorization code
         params = {
             "code": auth_code.code,
-            "state": state,
+            "state": request.state,
         }
-        redirect_url = f"{redirect_uri}?{urlencode(params)}"
+        redirect_url = f"{request.redirect_uri}?{urlencode(params)}"
 
         logger.info(
             f"Authorization code issued for user #{user_id} "
-            f"and app {app.name} (#{client_id})"
+            f"and app {app.name} (#{request.client_id})"
         )
 
-        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+        return AuthorizeResponse(redirect_url=redirect_url)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in authorization endpoint: {e}", exc_info=True)
-        return _redirect_error(
-            redirect_uri,
-            state,
+        return _error_redirect_url(
+            request.redirect_uri,
+            request.state,
             "server_error",
             "An unexpected error occurred",
         )
 
 
-def _redirect_error(
+def _error_redirect_url(
     redirect_uri: str,
     state: str,
     error: str,
     error_description: Optional[str] = None,
-) -> RedirectResponse:
-    """Helper to redirect with OAuth error parameters"""
+) -> AuthorizeResponse:
+    """Helper to build redirect URL with OAuth error parameters"""
     params = {
         "error": error,
         "state": state,
@@ -280,7 +295,7 @@ def _redirect_error(
         params["error_description"] = error_description
 
     redirect_url = f"{redirect_uri}?{urlencode(params)}"
-    return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    return AuthorizeResponse(redirect_url=redirect_url)
 
 
 # ============================================================================
