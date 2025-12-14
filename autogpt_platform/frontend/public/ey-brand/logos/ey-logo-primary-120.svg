@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- EY Logo Primary - 120px (Login) -->
+<!-- Replace with official EY logo file -->
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>EY Logo</title>
+  <!-- Yellow beam -->
+  <path d="M0 60L60 0L120 60L60 120L0 60Z" fill="#FFD100"/>
+  <!-- EY text -->
+  <text x="60" y="72" font-family="EY Hellix, Inter, Helvetica Neue, sans-serif" font-size="40" font-weight="bold" fill="#000000" text-anchor="middle">EY</text>
+</svg>

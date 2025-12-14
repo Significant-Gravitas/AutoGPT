@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- EY Logo Stacked - 120px -->
+<!-- Replace with official EY logo file -->
+<svg width="120" height="140" viewBox="0 0 120 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>EY Logo Stacked</title>
+  <!-- Yellow beam -->
+  <path d="M0 50L60 0L120 50L60 100L0 50Z" fill="#FFD100"/>
+  <!-- EY text below -->
+  <text x="60" y="130" font-family="EY Hellix, Inter, Helvetica Neue, sans-serif" font-size="30" font-weight="bold" fill="#000000" text-anchor="middle">EY</text>
+</svg>

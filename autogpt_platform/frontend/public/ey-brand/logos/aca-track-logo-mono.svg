@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ACA Track Logo - Mono/White for Footer -->
+<svg width="100" height="24" viewBox="0 0 100 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>ACA Track</title>
+  <!-- Small EY mark -->
+  <path d="M0 12L12 0L24 12L12 24L0 12Z" fill="#FFFFFF" fill-opacity="0.9"/>
+  <!-- ACA Track text -->
+  <text x="32" y="17" font-family="EY Hellix, Inter, Helvetica Neue, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">ACA Track</text>
+</svg>

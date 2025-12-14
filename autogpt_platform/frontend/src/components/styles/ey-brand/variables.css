@@ -1,0 +1,137 @@
+/**
+ * EY Brand CSS Variables
+ *
+ * Design tokens for the ACA Track application
+ * NOTE: Replace --ey-yellow with official EY Yellow value
+ */
+
+:root {
+  /* ============================================
+   * PRIMARY COLORS
+   * ============================================ */
+  --ey-yellow: #FFD100;           /* EY Yellow - replace with official */
+  --ey-yellow-hover: #E6BC00;     /* Darker yellow for hover states */
+  --ey-yellow-light: #FFF9E6;     /* Light yellow for backgrounds */
+  --ey-black: #000000;            /* EY Black */
+
+  /* ============================================
+   * NEUTRALS
+   * ============================================ */
+  --ey-gray-900: #2B2B2B;         /* Dark Gray - primary text */
+  --ey-gray-600: #6B6B6B;         /* Medium Gray - secondary text */
+  --ey-gray-400: #9CA3AF;         /* Light Gray - disabled/placeholder */
+  --ey-gray-200: #E5E7EB;         /* Border color */
+  --ey-gray-100: #F4F6F8;         /* Background */
+  --ey-white: #FFFFFF;            /* White */
+
+  /* ============================================
+   * STATUS COLORS
+   * ============================================ */
+  --ey-success: #12A454;          /* Success / Verified */
+  --ey-success-light: #E8F5E9;    /* Success background */
+  --ey-warning: #FFB300;          /* Warning / At Risk */
+  --ey-warning-light: #FFF8E1;    /* Warning background */
+  --ey-critical: #D62828;         /* Critical / Error */
+  --ey-critical-light: #FFEBEE;   /* Critical background */
+  --ey-info: #2F80ED;             /* Info / Neutral */
+  --ey-info-light: #E3F2FD;       /* Info background */
+
+  /* ============================================
+   * ELEVATIONS & SHADOWS
+   * ============================================ */
+  --ey-shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.04);
+  --ey-shadow: 0 2px 6px rgba(15, 15, 15, 0.06);
+  --ey-shadow-md: 0 4px 12px rgba(15, 15, 15, 0.08);
+  --ey-shadow-lg: 0 8px 24px rgba(15, 15, 15, 0.12);
+  --ey-shadow-xl: 0 16px 48px rgba(15, 15, 15, 0.16);
+
+  /* ============================================
+   * BORDER RADIUS
+   * ============================================ */
+  --ey-radius-sm: 4px;            /* Small elements */
+  --ey-radius-button: 6px;        /* Buttons */
+  --ey-radius: 8px;               /* Components (default) */
+  --ey-radius-md: 12px;           /* Cards */
+  --ey-radius-lg: 16px;           /* Modals */
+  --ey-radius-full: 9999px;       /* Pills / Avatars */
+
+  /* ============================================
+   * SPACING (8px baseline)
+   * ============================================ */
+  --ey-space-1: 4px;
+  --ey-space-2: 8px;
+  --ey-space-3: 12px;
+  --ey-space-4: 16px;
+  --ey-space-5: 20px;
+  --ey-space-6: 24px;             /* Grid gutter */
+  --ey-space-8: 32px;
+  --ey-space-10: 40px;
+  --ey-space-12: 48px;
+  --ey-space-16: 64px;
+
+  /* ============================================
+   * LAYOUT
+   * ============================================ */
+  --ey-container-width: 1200px;
+  --ey-header-height: 56px;
+  --ey-nav-width: 220px;
+  --ey-nav-collapsed-width: 72px;
+  --ey-side-padding: 24px;
+  --ey-kpi-tile-height: 96px;
+
+  /* ============================================
+   * TYPOGRAPHY
+   * ============================================ */
+  --ey-font-family: "EY Hellix", Inter, "Helvetica Neue", Arial, sans-serif;
+  --ey-font-mono: "JetBrains Mono", "Fira Code", Consolas, monospace;
+
+  /* Font sizes */
+  --ey-font-h1: 28px;
+  --ey-font-h2: 20px;
+  --ey-font-h3: 16px;
+  --ey-font-body: 14px;
+  --ey-font-small: 12px;
+
+  /* Line heights */
+  --ey-line-h1: 36px;
+  --ey-line-h2: 28px;
+  --ey-line-h3: 22px;
+  --ey-line-body: 20px;
+  --ey-line-small: 18px;
+
+  /* Font weights */
+  --ey-weight-regular: 400;
+  --ey-weight-medium: 500;
+  --ey-weight-semibold: 600;
+  --ey-weight-bold: 700;
+
+  /* ============================================
+   * POD COLORS
+   * ============================================ */
+  --ey-pod-a: #2F80ED;
+  --ey-pod-b: #9B51E0;
+  --ey-pod-c: #27AE60;
+  --ey-pod-d: #F2994A;
+
+  /* ============================================
+   * Z-INDEX LAYERS
+   * ============================================ */
+  --ey-z-dropdown: 100;
+  --ey-z-sticky: 200;
+  --ey-z-fixed: 300;
+  --ey-z-modal-backdrop: 400;
+  --ey-z-modal: 500;
+  --ey-z-tooltip: 600;
+  --ey-z-toast: 700;
+}
+
+/* ============================================
+ * DARK MODE OVERRIDES (if needed)
+ * ============================================ */
+.dark {
+  --ey-gray-100: #1F1F1F;
+  --ey-gray-200: #2B2B2B;
+  --ey-gray-600: #9CA3AF;
+  --ey-gray-900: #F4F6F8;
+  --ey-white: #121212;
+}

@@ -1,0 +1,396 @@
+{
+  "customers": [
+    {
+      "customer_id": 1,
+      "customer_name": "Acme Manufacturing",
+      "EINs": "12-3456789",
+      "primary_contact_name": "Jane Doe",
+      "primary_contact_email": "jane.doe@acme.com",
+      "executive_pod": "Pod A",
+      "contract_tier": "Tier 2",
+      "PEPM_rate": 2.50,
+      "per_form_rate": 0.45,
+      "num_eins": 1,
+      "num_forms_last_year": 15000,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-12-01T09:12:00Z",
+      "last_file_type": "CSV",
+      "last_plan_update_timestamp": "2025-11-30T12:00:00Z",
+      "deadline_date": "2025-12-15",
+      "data_quality_score": 95,
+      "penalty_exposure": 0,
+      "printing_status": "Printed",
+      "mail_batch_id": "MB-20251201-01",
+      "1094_status": "Submitted",
+      "1095_status": "Accepted",
+      "filing_transaction_ids": ["TXN-1094-ACME-2025"],
+      "validation_errors_json": [],
+      "support_tickets_json": [],
+      "last_sla_review": "2025-11-20"
+    },
+    {
+      "customer_id": 2,
+      "customer_name": "Bay State Logistics",
+      "EINs": "98-7654321",
+      "primary_contact_name": "John Smith",
+      "primary_contact_email": "john.smith@baystate.com",
+      "executive_pod": "Pod B",
+      "contract_tier": "Tier 1",
+      "PEPM_rate": 1.50,
+      "per_form_rate": 0.50,
+      "num_eins": 3,
+      "num_forms_last_year": 45000,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-11-29T08:00:00Z",
+      "last_file_type": "SFTP",
+      "last_plan_update_timestamp": "2025-11-15T08:00:00Z",
+      "deadline_date": "2025-12-01",
+      "data_quality_score": 45,
+      "penalty_exposure": 12000,
+      "printing_status": "Not scheduled",
+      "mail_batch_id": "",
+      "1094_status": "Not started",
+      "1095_status": "Not filed",
+      "filing_transaction_ids": [],
+      "validation_errors_json": [
+        {
+          "code": "E001",
+          "severity": "Critical",
+          "count": 12,
+          "sample": "row 15-26"
+        }
+      ],
+      "support_tickets_json": [
+        {
+          "id": 1001,
+          "severity": "High",
+          "status": "Open"
+        }
+      ],
+      "last_sla_review": "2025-11-01"
+    },
+    {
+      "customer_id": 3,
+      "customer_name": "Cornerstone University",
+      "EINs": "11-2233445",
+      "primary_contact_name": "Mary Allen",
+      "primary_contact_email": "mary.allen@cornerstone.edu",
+      "executive_pod": "Pod C",
+      "contract_tier": "Tier 3",
+      "PEPM_rate": 3.00,
+      "per_form_rate": 0.40,
+      "num_eins": 2,
+      "num_forms_last_year": 25000,
+      "onboarding_status": "Partially onboarded",
+      "last_file_upload_timestamp": "2025-11-10T07:45:00Z",
+      "last_file_type": "Portal",
+      "last_plan_update_timestamp": "2025-12-05T10:00:00Z",
+      "deadline_date": "2025-12-01",
+      "data_quality_score": 60,
+      "penalty_exposure": 45000,
+      "printing_status": "Scheduled",
+      "mail_batch_id": "MB-20251130-02",
+      "1094_status": "Draft",
+      "1095_status": "Draft",
+      "filing_transaction_ids": [],
+      "validation_errors_json": [
+        {
+          "code": "P001",
+          "severity": "Medium",
+          "count": 5,
+          "sample": "plan missing start_date"
+        }
+      ],
+      "support_tickets_json": [],
+      "last_sla_review": "2025-11-30"
+    },
+    {
+      "customer_id": 4,
+      "customer_name": "Global Tech Solutions",
+      "EINs": "55-1234567",
+      "primary_contact_name": "Robert Chen",
+      "primary_contact_email": "r.chen@globaltech.io",
+      "executive_pod": "Pod A",
+      "contract_tier": "Tier 1",
+      "PEPM_rate": 1.75,
+      "per_form_rate": 0.55,
+      "num_eins": 5,
+      "num_forms_last_year": 82000,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-12-05T14:30:00Z",
+      "last_file_type": "CSV",
+      "last_plan_update_timestamp": "2025-12-04T09:00:00Z",
+      "deadline_date": "2025-12-20",
+      "data_quality_score": 88,
+      "penalty_exposure": 5200,
+      "printing_status": "In progress",
+      "mail_batch_id": "MB-20251205-03",
+      "1094_status": "Submitted",
+      "1095_status": "Pending",
+      "filing_transaction_ids": ["TXN-1094-GTS-2025"],
+      "validation_errors_json": [
+        {
+          "code": "W001",
+          "severity": "Warning",
+          "count": 3,
+          "sample": "row 45-47"
+        }
+      ],
+      "support_tickets_json": [],
+      "last_sla_review": "2025-12-01"
+    },
+    {
+      "customer_id": 5,
+      "customer_name": "Mountain View Healthcare",
+      "EINs": "33-9876543",
+      "primary_contact_name": "Sarah Johnson",
+      "primary_contact_email": "s.johnson@mvhc.org",
+      "executive_pod": "Pod B",
+      "contract_tier": "Tier 2",
+      "PEPM_rate": 2.25,
+      "per_form_rate": 0.48,
+      "num_eins": 2,
+      "num_forms_last_year": 28000,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-12-03T11:15:00Z",
+      "last_file_type": "SFTP",
+      "last_plan_update_timestamp": "2025-12-02T16:00:00Z",
+      "deadline_date": "2025-12-18",
+      "data_quality_score": 92,
+      "penalty_exposure": 0,
+      "printing_status": "Printed",
+      "mail_batch_id": "MB-20251203-04",
+      "1094_status": "Submitted",
+      "1095_status": "Accepted",
+      "filing_transaction_ids": ["TXN-1094-MVHC-2025"],
+      "validation_errors_json": [],
+      "support_tickets_json": [],
+      "last_sla_review": "2025-11-25"
+    },
+    {
+      "customer_id": 6,
+      "customer_name": "Riverside School District",
+      "EINs": "77-4455667",
+      "primary_contact_name": "Michael Torres",
+      "primary_contact_email": "m.torres@rsd.edu",
+      "executive_pod": "Pod C",
+      "contract_tier": "Tier 3",
+      "PEPM_rate": 2.80,
+      "per_form_rate": 0.42,
+      "num_eins": 1,
+      "num_forms_last_year": 12500,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-11-28T10:00:00Z",
+      "last_file_type": "Portal",
+      "last_plan_update_timestamp": "2025-11-27T14:00:00Z",
+      "deadline_date": "2025-12-10",
+      "data_quality_score": 78,
+      "penalty_exposure": 8500,
+      "printing_status": "Scheduled",
+      "mail_batch_id": "MB-20251128-05",
+      "1094_status": "Draft",
+      "1095_status": "Not filed",
+      "filing_transaction_ids": [],
+      "validation_errors_json": [
+        {
+          "code": "E002",
+          "severity": "Critical",
+          "count": 8,
+          "sample": "missing SSN rows 100-107"
+        }
+      ],
+      "support_tickets_json": [
+        {
+          "id": 1002,
+          "severity": "Medium",
+          "status": "In Progress"
+        }
+      ],
+      "last_sla_review": "2025-11-15"
+    },
+    {
+      "customer_id": 7,
+      "customer_name": "Coastal Financial Services",
+      "EINs": "22-8765432",
+      "primary_contact_name": "Emily Davis",
+      "primary_contact_email": "e.davis@coastalfs.com",
+      "executive_pod": "Pod A",
+      "contract_tier": "Tier 1",
+      "PEPM_rate": 1.60,
+      "per_form_rate": 0.52,
+      "num_eins": 4,
+      "num_forms_last_year": 55000,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-12-06T08:45:00Z",
+      "last_file_type": "CSV",
+      "last_plan_update_timestamp": "2025-12-05T12:00:00Z",
+      "deadline_date": "2025-12-22",
+      "data_quality_score": 96,
+      "penalty_exposure": 0,
+      "printing_status": "Printed",
+      "mail_batch_id": "MB-20251206-06",
+      "1094_status": "Submitted",
+      "1095_status": "Accepted",
+      "filing_transaction_ids": ["TXN-1094-CFS-2025"],
+      "validation_errors_json": [],
+      "support_tickets_json": [],
+      "last_sla_review": "2025-12-02"
+    },
+    {
+      "customer_id": 8,
+      "customer_name": "Metro Transit Authority",
+      "EINs": "44-3344556",
+      "primary_contact_name": "David Wilson",
+      "primary_contact_email": "d.wilson@metrotransit.gov",
+      "executive_pod": "Pod B",
+      "contract_tier": "Tier 2",
+      "PEPM_rate": 2.35,
+      "per_form_rate": 0.46,
+      "num_eins": 2,
+      "num_forms_last_year": 32000,
+      "onboarding_status": "Partially onboarded",
+      "last_file_upload_timestamp": "2025-11-25T09:30:00Z",
+      "last_file_type": "SFTP",
+      "last_plan_update_timestamp": "2025-11-20T11:00:00Z",
+      "deadline_date": "2025-12-05",
+      "data_quality_score": 52,
+      "penalty_exposure": 28000,
+      "printing_status": "Not scheduled",
+      "mail_batch_id": "",
+      "1094_status": "Not started",
+      "1095_status": "Not filed",
+      "filing_transaction_ids": [],
+      "validation_errors_json": [
+        {
+          "code": "E001",
+          "severity": "Critical",
+          "count": 15,
+          "sample": "row 200-214"
+        },
+        {
+          "code": "P002",
+          "severity": "Warning",
+          "count": 22,
+          "sample": "coverage gaps"
+        }
+      ],
+      "support_tickets_json": [
+        {
+          "id": 1003,
+          "severity": "High",
+          "status": "Open"
+        },
+        {
+          "id": 1004,
+          "severity": "High",
+          "status": "Open"
+        }
+      ],
+      "last_sla_review": "2025-11-10"
+    },
+    {
+      "customer_id": 9,
+      "customer_name": "Summit Energy Corp",
+      "EINs": "66-7788990",
+      "primary_contact_name": "Lisa Anderson",
+      "primary_contact_email": "l.anderson@summitenergy.com",
+      "executive_pod": "Pod C",
+      "contract_tier": "Tier 1",
+      "PEPM_rate": 1.55,
+      "per_form_rate": 0.54,
+      "num_eins": 6,
+      "num_forms_last_year": 95000,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-12-04T15:00:00Z",
+      "last_file_type": "CSV",
+      "last_plan_update_timestamp": "2025-12-03T10:00:00Z",
+      "deadline_date": "2025-12-25",
+      "data_quality_score": 90,
+      "penalty_exposure": 2100,
+      "printing_status": "In progress",
+      "mail_batch_id": "MB-20251204-07",
+      "1094_status": "Submitted",
+      "1095_status": "Pending",
+      "filing_transaction_ids": ["TXN-1094-SEC-2025"],
+      "validation_errors_json": [
+        {
+          "code": "W002",
+          "severity": "Warning",
+          "count": 2,
+          "sample": "address format row 5-6"
+        }
+      ],
+      "support_tickets_json": [],
+      "last_sla_review": "2025-11-28"
+    },
+    {
+      "customer_id": 10,
+      "customer_name": "Pacific Northwest Medical",
+      "EINs": "88-1122334",
+      "primary_contact_name": "James Brown",
+      "primary_contact_email": "j.brown@pnwmed.org",
+      "executive_pod": "Pod A",
+      "contract_tier": "Tier 2",
+      "PEPM_rate": 2.40,
+      "per_form_rate": 0.47,
+      "num_eins": 3,
+      "num_forms_last_year": 38000,
+      "onboarding_status": "Onboarded",
+      "last_file_upload_timestamp": "2025-12-02T13:20:00Z",
+      "last_file_type": "Portal",
+      "last_plan_update_timestamp": "2025-12-01T08:00:00Z",
+      "deadline_date": "2025-12-16",
+      "data_quality_score": 85,
+      "penalty_exposure": 3800,
+      "printing_status": "Scheduled",
+      "mail_batch_id": "MB-20251202-08",
+      "1094_status": "Draft",
+      "1095_status": "Draft",
+      "filing_transaction_ids": [],
+      "validation_errors_json": [
+        {
+          "code": "P001",
+          "severity": "Medium",
+          "count": 4,
+          "sample": "plan effective date mismatch"
+        }
+      ],
+      "support_tickets_json": [],
+      "last_sla_review": "2025-11-22"
+    }
+  ],
+  "errorCodes": {
+    "E001": "Missing or invalid employee SSN",
+    "E002": "Missing Social Security Number",
+    "P001": "Plan information incomplete",
+    "P002": "Coverage gap detected",
+    "W001": "Data format warning",
+    "W002": "Address format inconsistency"
+  },
+  "pods": [
+    {
+      "id": "pod-a",
+      "name": "Pod A",
+      "color": "#2F80ED",
+      "lead": "Jennifer Martinez",
+      "customerCount": 4,
+      "utilizationPercent": 85
+    },
+    {
+      "id": "pod-b",
+      "name": "Pod B",
+      "color": "#9B51E0",
+      "lead": "Christopher Lee",
+      "customerCount": 3,
+      "utilizationPercent": 72
+    },
+    {
+      "id": "pod-c",
+      "name": "Pod C",
+      "color": "#27AE60",
+      "lead": "Amanda White",
+      "customerCount": 3,
+      "utilizationPercent": 68
+    }
+  ]
+}
