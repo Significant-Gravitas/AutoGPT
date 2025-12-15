@@ -115,6 +115,8 @@ format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
 load-store-agents = "test.load_store_agents:run"
+export-api-schema = "backend.cli.generate_openapi_json:main"
+oauth-tool = "backend.cli.oauth_tool:cli"
 
 [tool.isort]
 profile = "black"

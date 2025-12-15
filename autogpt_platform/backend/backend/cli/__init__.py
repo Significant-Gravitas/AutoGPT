@@ -1,1 +1,1 @@
-"""CLI utilities for backend administration"""
+"""CLI utilities for backend development & administration"""

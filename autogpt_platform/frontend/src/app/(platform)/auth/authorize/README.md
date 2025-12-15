@@ -22,7 +22,7 @@ The easiest way to test OAuth flows is using the built-in test server. It automa
 
 ```bash
 cd autogpt_platform/backend
-poetry run python -m backend.cli.oauth_admin test-server --owner-id YOUR_USER_ID
+poetry run oauth-tool test-server --owner-id YOUR_USER_ID
 ```
 
 Replace `YOUR_USER_ID` with your Supabase user ID (you can find this in the Supabase dashboard or by inspecting your JWT).
@@ -45,7 +45,7 @@ Generate credentials using the CLI tool:
 
 ```bash
 cd autogpt_platform/backend
-poetry run python -m backend.cli.oauth_admin generate-app
+poetry run oauth-tool generate-app
 ```
 
 Follow the interactive prompts:
@@ -158,9 +158,9 @@ The `oauth_admin` CLI provides these commands:
 Run with `--help` for full options:
 
 ```bash
-poetry run python -m backend.cli.oauth_admin --help
-poetry run python -m backend.cli.oauth_admin generate-app --help
-poetry run python -m backend.cli.oauth_admin test-server --help
+poetry run oauth-tool --help
+poetry run oauth-tool generate-app --help
+poetry run oauth-tool test-server --help
 ```
 
 ## Available Scopes

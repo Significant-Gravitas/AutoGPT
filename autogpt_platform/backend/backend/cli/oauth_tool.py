@@ -7,26 +7,26 @@ Also provides a test server to test the OAuth flows end-to-end.
 
 Usage:
     # Generate credentials interactively (recommended)
-    python -m backend.cli.oauth_admin generate-app
+    poetry run oauth-tool generate-app
 
     # Generate credentials with all options provided
-    python -m backend.cli.oauth_admin generate-app \\
+    poetry run oauth-tool generate-app \\
         --name "My App" \\
         --description "My application description" \\
         --redirect-uris "https://app.example.com/callback,http://localhost:3000/callback" \\
         --scopes "EXECUTE_GRAPH,READ_GRAPH"
 
     # Mix of options and interactive prompts
-    python -m backend.cli.oauth_admin generate-app --name "My App"
+    poetry run oauth-tool generate-app --name "My App"
 
     # Hash an existing plaintext secret (for secret rotation)
-    python -m backend.cli.oauth_admin hash-secret "my-plaintext-secret"
+    poetry run oauth-tool hash-secret "my-plaintext-secret"
 
     # Validate a plaintext secret against a hash and salt
-    python -m backend.cli.oauth_admin validate-secret "my-plaintext-secret" "hash" "salt"
+    poetry run oauth-tool validate-secret "my-plaintext-secret" "hash" "salt"
 
     # Run a test server to test OAuth flows
-    python -m backend.cli.oauth_admin test-server --owner-id YOUR_USER_ID
+    poetry run oauth-tool test-server --owner-id YOUR_USER_ID
 """
 
 import asyncio
@@ -1138,7 +1138,7 @@ def test_server_command(
     4. Cleans up all test data (app, tokens, codes) when you stop the server
 
     Example:
-        python -m backend.cli.oauth_admin test-server --owner-id YOUR_USER_ID
+        poetry run oauth-tool test-server --owner-id YOUR_USER_ID
 
     The test server will be available at http://localhost:9876
     """
