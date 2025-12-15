@@ -67,7 +67,7 @@ export function CredentialRow({
         </Text>
         <Text
           variant="large"
-          className="relative top-1 font-mono tracking-tight"
+          className="relative top-1 hidden min-w-0 truncate font-mono tracking-tight md:block"
         >
           {"*".repeat(MASKED_KEY_LENGTH)}
         </Text>
