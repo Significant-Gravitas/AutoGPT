@@ -1,6 +1,7 @@
 "use client";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Text } from "@/components/atoms/Text/Text";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { CredentialsInput } from "../CredentialsInputs/CredentialsInputs";
 import { RunAgentInputs } from "../RunAgentInputs/RunAgentInputs";
@@ -34,7 +35,11 @@ export function AgentInputsReadOnly({
   const hasCredentials = credentialInputs && credentialFieldEntries.length > 0;
 
   if (!hasInputs && !hasCredentials) {
-    return <div className="text-neutral-600">No input for this run.</div>;
+    return (
+      <Text variant="body" className="text-zinc-700">
+        No input for this run.
+      </Text>
+    );
   }
 
   return (
