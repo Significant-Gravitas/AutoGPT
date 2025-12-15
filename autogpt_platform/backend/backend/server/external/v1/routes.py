@@ -20,10 +20,16 @@ from backend.executor.utils import add_graph_execution
 from backend.server.external.middleware import require_permission
 from backend.util.settings import Settings
 
+from .integrations import integrations_router
+from .tools import tools_router
+
 settings = Settings()
 logger = logging.getLogger(__name__)
 
 v1_router = APIRouter()
+
+v1_router.include_router(integrations_router)
+v1_router.include_router(tools_router)
 
 
 class UserInfoResponse(BaseModel):

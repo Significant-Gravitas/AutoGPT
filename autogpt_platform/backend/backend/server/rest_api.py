@@ -43,7 +43,7 @@ from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
-from backend.server.external.api import external_app
+from backend.server.external.fastapi_app import external_api
 from backend.server.middleware.security import SecurityHeadersMiddleware
 from backend.server.utils.cors import build_cors_params
 from backend.util import json
@@ -304,7 +304,7 @@ app.include_router(
     prefix="/api/oauth",
 )
 
-app.mount("/external-api", external_app)
+app.mount("/external-api", external_api)
 
 
 @app.get(path="/health", tags=["health"], dependencies=[])
