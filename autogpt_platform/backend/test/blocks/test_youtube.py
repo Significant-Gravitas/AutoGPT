@@ -1,10 +1,14 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from pydantic import SecretStr
 from youtube_transcript_api._errors import NoTranscriptFound
 from youtube_transcript_api._transcripts import FetchedTranscript, Transcript
+from youtube_transcript_api.proxies import WebshareProxyConfig
 
-from backend.blocks.youtube import TranscribeYoutubeVideoBlock
+from backend.blocks.youtube import TEST_CREDENTIALS, TranscribeYoutubeVideoBlock
+from backend.data.model import UserPasswordCredentials
+from backend.integrations.providers import ProviderName
 
 
 class TestTranscribeYoutubeVideoBlock:
@@ -13,6 +17,7 @@ class TestTranscribeYoutubeVideoBlock:
     def setup_method(self):
         """Set up test fixtures."""
         self.youtube_block = TranscribeYoutubeVideoBlock()
+        self.credentials = TEST_CREDENTIALS
 
     def test_extract_video_id_standard_url(self):
         """Test extracting video ID from standard YouTube URL."""
@@ -42,10 +47,41 @@ class TestTranscribeYoutubeVideoBlock:
         mock_api.fetch.return_value = mock_transcript
 
         # Execute
-        result = TranscribeYoutubeVideoBlock.get_transcript("test_video_id")
+        result = self.youtube_block.get_transcript("test_video_id", self.credentials)
 
         # Assert
         assert result == mock_transcript
+        mock_api_class.assert_called_once()
+        proxy_config = mock_api_class.call_args[1]["proxy_config"]
+        assert isinstance(proxy_config, WebshareProxyConfig)
+        mock_api.fetch.assert_called_once_with(video_id="test_video_id")
+        mock_api.list.assert_not_called()
+
+    @patch("backend.blocks.youtube.YouTubeTranscriptApi")
+    def test_get_transcript_with_custom_credentials(self, mock_api_class):
+        """Test getting transcript with custom proxy credentials."""
+        # Setup mock
+        mock_api = Mock()
+        mock_api_class.return_value = mock_api
+        mock_transcript = Mock(spec=FetchedTranscript)
+        mock_api.fetch.return_value = mock_transcript
+
+        credentials = UserPasswordCredentials(
+            provider=ProviderName.WEBSHARE_PROXY,
+            username=SecretStr("custom_user"),
+            password=SecretStr("custom_pass"),
+        )
+
+        # Execute
+        result = self.youtube_block.get_transcript("test_video_id", credentials)
+
+        # Assert
+        assert result == mock_transcript
+        mock_api_class.assert_called_once()
+        proxy_config = mock_api_class.call_args[1]["proxy_config"]
+        assert isinstance(proxy_config, WebshareProxyConfig)
+        assert proxy_config.proxy_username == "custom_user"
+        assert proxy_config.proxy_password == "custom_pass"
         mock_api.fetch.assert_called_once_with(video_id="test_video_id")
         mock_api.list.assert_not_called()
 
@@ -74,10 +110,11 @@ class TestTranscribeYoutubeVideoBlock:
         mock_api.list.return_value = mock_transcript_list
 
         # Execute
-        result = TranscribeYoutubeVideoBlock.get_transcript("test_video_id")
+        result = self.youtube_block.get_transcript("test_video_id", self.credentials)
 
         # Assert
         assert result == mock_fetched_transcript
+        mock_api_class.assert_called_once()
         mock_api.fetch.assert_called_once_with(video_id="test_video_id")
         mock_api.list.assert_called_once_with("test_video_id")
         mock_transcript_hu.fetch.assert_called_once()
@@ -109,10 +146,11 @@ class TestTranscribeYoutubeVideoBlock:
         mock_api.list.return_value = mock_transcript_list
 
         # Execute
-        result = TranscribeYoutubeVideoBlock.get_transcript("test_video_id")
+        result = self.youtube_block.get_transcript("test_video_id", self.credentials)
 
         # Assert - should use manually created transcript first
         assert result == mock_fetched_manual
+        mock_api_class.assert_called_once()
         mock_transcript_manual.fetch.assert_called_once()
         mock_transcript_generated.fetch.assert_not_called()
 
@@ -137,4 +175,5 @@ class TestTranscribeYoutubeVideoBlock:
 
         # Execute and assert exception is raised
         with pytest.raises(NoTranscriptFound):
-            TranscribeYoutubeVideoBlock.get_transcript("test_video_id")
+            self.youtube_block.get_transcript("test_video_id", self.credentials)
+        mock_api_class.assert_called_once()

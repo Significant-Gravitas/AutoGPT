@@ -80,6 +80,7 @@ export enum DataType {
   KEY_VALUE = "key-value",
   ARRAY = "array",
   TABLE = "table",
+  GOOGLE_DRIVE_PICKER = "google-drive-picker",
 }
 
 export type BlockIOSubSchemaMeta = {
@@ -114,6 +115,53 @@ export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   const?: Array<string>;
   default?: Array<string>;
   secret?: boolean;
+};
+
+export type GoogleDriveFile = {
+  id: string;
+  name?: string;
+  mimeType?: string;
+  url?: string;
+  iconUrl?: string;
+  isFolder?: boolean;
+};
+
+/** Valid view types for Google Drive Picker - matches backend AttachmentView */
+export type AttachmentView =
+  | "DOCS"
+  | "DOCUMENTS"
+  | "SPREADSHEETS"
+  | "PRESENTATIONS"
+  | "DOCS_IMAGES"
+  | "FOLDERS";
+
+export type GoogleDrivePickerConfig = {
+  multiselect?: boolean;
+  allow_folder_selection?: boolean;
+  allowed_views?: AttachmentView[];
+  allowed_mime_types?: string[];
+  scopes?: string[];
+  /**
+   * Auto-credentials configuration for combined picker + credentials fields.
+   * When present, the picker will include _credentials_id in the output.
+   */
+  auto_credentials?: {
+    provider: string;
+    type: string;
+    scopes?: string[];
+    kwarg_name: string;
+  };
+};
+
+/**
+ * Schema for Google Drive Picker input fields.
+ * When multiselect=false: type="object" (single GoogleDriveFile)
+ * When multiselect=true: type="array" with items={ type="object" } (array of GoogleDriveFile)
+ */
+export type GoogleDrivePickerSchema = BlockIOSubSchemaMeta & {
+  type: "object" | "array";
+  format: "google-drive-picker";
+  google_drive_picker_config?: GoogleDrivePickerConfig;
 };
 
 // Table cell values are typically primitives
@@ -277,7 +325,8 @@ export type GraphExecutionMeta = {
     | "COMPLETED"
     | "TERMINATED"
     | "FAILED"
-    | "INCOMPLETE";
+    | "INCOMPLETE"
+    | "REVIEW";
   started_at: Date;
   ended_at: Date;
   stats: {
@@ -414,7 +463,8 @@ export type NodeExecutionResult = {
     | "RUNNING"
     | "COMPLETED"
     | "TERMINATED"
-    | "FAILED";
+    | "FAILED"
+    | "REVIEW";
   input_data: Record<string, any>;
   output_data: Record<string, Array<any>>;
   add_time: Date;
@@ -711,28 +761,6 @@ export type StoreAgentsResponse = {
   pagination: Pagination;
 };
 
-export type StoreAgentDetails = {
-  store_listing_version_id: string;
-  slug: string;
-  updated_at: string;
-  agent_name: string;
-  agent_video: string;
-  agent_image: string[];
-  creator: string;
-  creator_avatar: string;
-  sub_heading: string;
-  description: string;
-  categories: string[];
-  runs: number;
-  rating: number;
-  versions: string[];
-
-  // Approval and status fields
-  active_version_id?: string;
-  has_approved_version?: boolean;
-  is_available?: boolean;
-};
-
 export type Creator = {
   name: string;
   username: string;
@@ -976,6 +1004,20 @@ export interface UserOnboarding {
   agentRuns: number;
 }
 
+export interface OnboardingNotificationPayload {
+  type: "onboarding";
+  event: "step_completed" | "increment_runs";
+  step: OnboardingStep | null;
+}
+
+export type WebSocketNotification =
+  | OnboardingNotificationPayload
+  | {
+      type: string;
+      event: string;
+      [key: string]: unknown;
+    };
+
 /* *** UTILITIES *** */
 
 /** Use branded types for IDs -> deny mixing IDs between different object classes */
@@ -1135,6 +1177,13 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
   // Credentials override
   if ("credentials_provider" in schema) {
     return DataType.CREDENTIALS;
+  }
+
+  if (
+    "google_drive_picker_config" in schema ||
+    ("format" in schema && schema.format === "google-drive-picker")
+  ) {
+    return DataType.GOOGLE_DRIVE_PICKER;
   }
 
   // enum == SELECT

@@ -15,6 +15,7 @@ from backend.data.model import (
     OAuth2Credentials,
     OAuthState,
     UserIntegrations,
+    UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
@@ -26,7 +27,6 @@ ollama_credentials = APIKeyCredentials(
     id="744fdc56-071a-4761-b5a5-0af0ce10a2b5",
     provider="ollama",
     api_key=SecretStr("FAKE_API_KEY"),
-    api_key_env_var=None,
     title="Use Credits for Ollama",
     expires_at=None,
 )
@@ -35,7 +35,6 @@ revid_credentials = APIKeyCredentials(
     id="fdb7f412-f519-48d1-9b5f-d2f73d0e01fe",
     provider="revid",
     api_key=SecretStr(settings.secrets.revid_api_key),
-    api_key_env_var="REVID_API_KEY",
     title="Use Credits for Revid",
     expires_at=None,
 )
@@ -43,7 +42,6 @@ ideogram_credentials = APIKeyCredentials(
     id="760f84fc-b270-42de-91f6-08efe1b512d0",
     provider="ideogram",
     api_key=SecretStr(settings.secrets.ideogram_api_key),
-    api_key_env_var="IDEOGRAM_API_KEY",
     title="Use Credits for Ideogram",
     expires_at=None,
 )
@@ -51,7 +49,6 @@ replicate_credentials = APIKeyCredentials(
     id="6b9fc200-4726-4973-86c9-cd526f5ce5db",
     provider="replicate",
     api_key=SecretStr(settings.secrets.replicate_api_key),
-    api_key_env_var="REPLICATE_API_KEY",
     title="Use Credits for Replicate",
     expires_at=None,
 )
@@ -59,7 +56,6 @@ openai_credentials = APIKeyCredentials(
     id="53c25cb8-e3ee-465c-a4d1-e75a4c899c2a",
     provider="openai",
     api_key=SecretStr(settings.secrets.openai_api_key),
-    api_key_env_var="OPENAI_API_KEY",
     title="Use Credits for OpenAI",
     expires_at=None,
 )
@@ -67,7 +63,6 @@ aiml_api_credentials = APIKeyCredentials(
     id="aad82a89-9794-4ebb-977f-d736aa5260a3",
     provider="aiml_api",
     api_key=SecretStr(settings.secrets.aiml_api_key),
-    api_key_env_var="AIML_API_KEY",
     title="Use Credits for AI/ML API",
     expires_at=None,
 )
@@ -75,7 +70,6 @@ anthropic_credentials = APIKeyCredentials(
     id="24e5d942-d9e3-4798-8151-90143ee55629",
     provider="anthropic",
     api_key=SecretStr(settings.secrets.anthropic_api_key),
-    api_key_env_var="ANTHROPIC_API_KEY",
     title="Use Credits for Anthropic",
     expires_at=None,
 )
@@ -83,7 +77,6 @@ groq_credentials = APIKeyCredentials(
     id="4ec22295-8f97-4dd1-b42b-2c6957a02545",
     provider="groq",
     api_key=SecretStr(settings.secrets.groq_api_key),
-    api_key_env_var="GROQ_API_KEY",
     title="Use Credits for Groq",
     expires_at=None,
 )
@@ -91,7 +84,6 @@ did_credentials = APIKeyCredentials(
     id="7f7b0654-c36b-4565-8fa7-9a52575dfae2",
     provider="d_id",
     api_key=SecretStr(settings.secrets.did_api_key),
-    api_key_env_var="DID_API_KEY",
     title="Use Credits for D-ID",
     expires_at=None,
 )
@@ -99,7 +91,6 @@ jina_credentials = APIKeyCredentials(
     id="7f26de70-ba0d-494e-ba76-238e65e7b45f",
     provider="jina",
     api_key=SecretStr(settings.secrets.jina_api_key),
-    api_key_env_var="JINA_API_KEY",
     title="Use Credits for Jina",
     expires_at=None,
 )
@@ -107,7 +98,6 @@ unreal_credentials = APIKeyCredentials(
     id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
     provider="unreal",
     api_key=SecretStr(settings.secrets.unreal_speech_api_key),
-    api_key_env_var="UNREAL_SPEECH_API_KEY",
     title="Use Credits for Unreal",
     expires_at=None,
 )
@@ -115,7 +105,6 @@ open_router_credentials = APIKeyCredentials(
     id="b5a0e27d-0c98-4df3-a4b9-10193e1f3c40",
     provider="open_router",
     api_key=SecretStr(settings.secrets.open_router_api_key),
-    api_key_env_var="OPEN_ROUTER_API_KEY",
     title="Use Credits for Open Router",
     expires_at=None,
 )
@@ -123,7 +112,6 @@ fal_credentials = APIKeyCredentials(
     id="6c0f5bd0-9008-4638-9d79-4b40b631803e",
     provider="fal",
     api_key=SecretStr(settings.secrets.fal_api_key),
-    api_key_env_var="FAL_API_KEY",
     title="Use Credits for FAL",
     expires_at=None,
 )
@@ -131,7 +119,6 @@ exa_credentials = APIKeyCredentials(
     id="96153e04-9c6c-4486-895f-5bb683b1ecec",
     provider="exa",
     api_key=SecretStr(settings.secrets.exa_api_key),
-    api_key_env_var="EXA_API_KEY",
     title="Use Credits for Exa search",
     expires_at=None,
 )
@@ -139,7 +126,6 @@ e2b_credentials = APIKeyCredentials(
     id="78d19fd7-4d59-4a16-8277-3ce310acf2b7",
     provider="e2b",
     api_key=SecretStr(settings.secrets.e2b_api_key),
-    api_key_env_var="E2B_API_KEY",
     title="Use Credits for E2B",
     expires_at=None,
 )
@@ -147,7 +133,6 @@ nvidia_credentials = APIKeyCredentials(
     id="96b83908-2789-4dec-9968-18f0ece4ceb3",
     provider="nvidia",
     api_key=SecretStr(settings.secrets.nvidia_api_key),
-    api_key_env_var="NVIDIA_API_KEY",
     title="Use Credits for Nvidia",
     expires_at=None,
 )
@@ -155,7 +140,6 @@ screenshotone_credentials = APIKeyCredentials(
     id="3b1bdd16-8818-4bc2-8cbb-b23f9a3439ed",
     provider="screenshotone",
     api_key=SecretStr(settings.secrets.screenshotone_api_key),
-    api_key_env_var="SCREENSHOTONE_API_KEY",
     title="Use Credits for ScreenshotOne",
     expires_at=None,
 )
@@ -163,7 +147,6 @@ mem0_credentials = APIKeyCredentials(
     id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
     provider="mem0",
     api_key=SecretStr(settings.secrets.mem0_api_key),
-    api_key_env_var="MEM0_API_KEY",
     title="Use Credits for Mem0",
     expires_at=None,
 )
@@ -172,7 +155,6 @@ apollo_credentials = APIKeyCredentials(
     id="544c62b5-1d0f-4156-8fb4-9525f11656eb",
     provider="apollo",
     api_key=SecretStr(settings.secrets.apollo_api_key),
-    api_key_env_var="APOLLO_API_KEY",
     title="Use Credits for Apollo",
     expires_at=None,
 )
@@ -181,7 +163,6 @@ smartlead_credentials = APIKeyCredentials(
     id="3bcdbda3-84a3-46af-8fdb-bfd2472298b8",
     provider="smartlead",
     api_key=SecretStr(settings.secrets.smartlead_api_key),
-    api_key_env_var="SMARTLEAD_API_KEY",
     title="Use Credits for SmartLead",
     expires_at=None,
 )
@@ -190,7 +171,6 @@ google_maps_credentials = APIKeyCredentials(
     id="9aa1bde0-4947-4a70-a20c-84daa3850d52",
     provider="google_maps",
     api_key=SecretStr(settings.secrets.google_maps_api_key),
-    api_key_env_var="GOOGLE_MAPS_API_KEY",
     title="Use Credits for Google Maps",
     expires_at=None,
 )
@@ -199,7 +179,6 @@ zerobounce_credentials = APIKeyCredentials(
     id="63a6e279-2dc2-448e-bf57-85776f7176dc",
     provider="zerobounce",
     api_key=SecretStr(settings.secrets.zerobounce_api_key),
-    api_key_env_var="ZEROBOUNCE_API_KEY",
     title="Use Credits for ZeroBounce",
     expires_at=None,
 )
@@ -208,7 +187,6 @@ enrichlayer_credentials = APIKeyCredentials(
     id="d9fce73a-6c1d-4e8b-ba2e-12a456789def",
     provider="enrichlayer",
     api_key=SecretStr(settings.secrets.enrichlayer_api_key),
-    api_key_env_var="ENRICHLAYER_API_KEY",
     title="Use Credits for Enrichlayer",
     expires_at=None,
 )
@@ -218,7 +196,6 @@ llama_api_credentials = APIKeyCredentials(
     id="d44045af-1c33-4833-9e19-752313214de2",
     provider="llama_api",
     api_key=SecretStr(settings.secrets.llama_api_key),
-    api_key_env_var="LLAMA_API_KEY",
     title="Use Credits for Llama API",
     expires_at=None,
 )
@@ -227,9 +204,16 @@ v0_credentials = APIKeyCredentials(
     id="c4e6d1a0-3b5f-4789-a8e2-9b123456789f",
     provider="v0",
     api_key=SecretStr(settings.secrets.v0_api_key),
-    api_key_env_var="V0_API_KEY",
     title="Use Credits for v0 by Vercel",
     expires_at=None,
+)
+
+webshare_proxy_credentials = UserPasswordCredentials(
+    id="a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d",
+    provider="webshare_proxy",
+    username=SecretStr(settings.secrets.webshare_proxy_username),
+    password=SecretStr(settings.secrets.webshare_proxy_password),
+    title="Use Credits for Webshare Proxy",
 )
 
 DEFAULT_CREDENTIALS = [
@@ -258,6 +242,7 @@ DEFAULT_CREDENTIALS = [
     google_maps_credentials,
     llama_api_credentials,
     v0_credentials,
+    webshare_proxy_credentials,
 ]
 
 
@@ -346,6 +331,11 @@ class IntegrationCredentialsStore:
             all_credentials.append(zerobounce_credentials)
         if settings.secrets.google_maps_api_key:
             all_credentials.append(google_maps_credentials)
+        if (
+            settings.secrets.webshare_proxy_username
+            and settings.secrets.webshare_proxy_password
+        ):
+            all_credentials.append(webshare_proxy_credentials)
         return all_credentials
 
     async def get_creds_by_id(
@@ -424,7 +414,15 @@ class IntegrationCredentialsStore:
     # ===================== OAUTH STATES ===================== #
 
     async def store_state_token(
-        self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
+        self,
+        user_id: str,
+        provider: str,
+        scopes: list[str],
+        use_pkce: bool = False,
+        # New parameters for external API OAuth flows
+        callback_url: Optional[str] = None,
+        state_metadata: Optional[dict] = None,
+        initiated_by_api_key_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -437,6 +435,10 @@ class IntegrationCredentialsStore:
             code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
+            # External API OAuth flow fields
+            callback_url=callback_url,
+            state_metadata=state_metadata or {},
+            initiated_by_api_key_id=initiated_by_api_key_id,
         )
 
         async with self.edit_user_integrations(user_id) as user_integrations:

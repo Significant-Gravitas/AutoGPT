@@ -7,8 +7,14 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.execution import UserContext
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 
 # Shared timezone literal type for all time/date blocks
@@ -131,7 +137,7 @@ class TimeISO8601Format(BaseModel):
 
 
 class GetCurrentTimeBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         trigger: str = SchemaField(
             description="Trigger any data to output the current time"
         )
@@ -141,7 +147,7 @@ class GetCurrentTimeBlock(Block):
             default=TimeStrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         time: str = SchemaField(
             description="Current time in the specified format (default: %H:%M:%S)"
         )
@@ -182,10 +188,9 @@ class GetCurrentTimeBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, user_context: UserContext, **kwargs
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
     ) -> BlockOutput:
-        # Extract timezone from user_context (always present)
-        effective_timezone = user_context.timezone
+        effective_timezone = execution_context.user_timezone
 
         # Get the appropriate timezone
         tz = _get_timezone(input_data.format_type, effective_timezone)
@@ -221,7 +226,7 @@ class DateISO8601Format(BaseModel):
 
 
 class GetCurrentDateBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         trigger: str = SchemaField(
             description="Trigger any data to output the current date"
         )
@@ -236,7 +241,7 @@ class GetCurrentDateBlock(Block):
             default=DateStrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         date: str = SchemaField(
             description="Current date in the specified format (default: YYYY-MM-DD)"
         )
@@ -292,10 +297,10 @@ class GetCurrentDateBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Extract timezone from user_context (required keyword argument)
-        user_context: UserContext = kwargs["user_context"]
-        effective_timezone = user_context.timezone
+    async def run(
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
+    ) -> BlockOutput:
+        effective_timezone = execution_context.user_timezone
 
         try:
             offset = int(input_data.offset)
@@ -332,7 +337,7 @@ class ISO8601Format(BaseModel):
 
 
 class GetCurrentDateAndTimeBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         trigger: str = SchemaField(
             description="Trigger any data to output the current date and time"
         )
@@ -342,7 +347,7 @@ class GetCurrentDateAndTimeBlock(Block):
             default=StrftimeFormat(discriminator="strftime"),
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         date_time: str = SchemaField(
             description="Current date and time in the specified format (default: YYYY-MM-DD HH:MM:SS)"
         )
@@ -398,10 +403,10 @@ class GetCurrentDateAndTimeBlock(Block):
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Extract timezone from user_context (required keyword argument)
-        user_context: UserContext = kwargs["user_context"]
-        effective_timezone = user_context.timezone
+    async def run(
+        self, input_data: Input, *, execution_context: ExecutionContext, **kwargs
+    ) -> BlockOutput:
+        effective_timezone = execution_context.user_timezone
 
         # Get the appropriate timezone
         tz = _get_timezone(input_data.format_type, effective_timezone)
@@ -419,7 +424,7 @@ class GetCurrentDateAndTimeBlock(Block):
 
 
 class CountdownTimerBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input_message: Any = SchemaField(
             advanced=False,
             description="Message to output after the timer finishes",
@@ -442,7 +447,7 @@ class CountdownTimerBlock(Block):
             default=1,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output_message: Any = SchemaField(
             description="Message after the timer finishes"
         )

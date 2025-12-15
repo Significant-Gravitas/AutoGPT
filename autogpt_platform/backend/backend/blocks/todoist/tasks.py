@@ -12,14 +12,20 @@ from backend.blocks.todoist._auth import (
     TodoistCredentialsField,
     TodoistCredentialsInput,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
 class TodoistCreateTaskBlock(Block):
     """Creates a new task in a Todoist project"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         content: str = SchemaField(description="Task content", advanced=False)
         description: Optional[str] = SchemaField(
@@ -72,13 +78,12 @@ class TodoistCreateTaskBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         id: str = SchemaField(description="Task ID")
         url: str = SchemaField(description="Task URL")
         complete_data: dict = SchemaField(
             description="Complete task data as dictionary"
         )
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -181,7 +186,7 @@ class TodoistCreateTaskBlock(Block):
 class TodoistGetTasksBlock(Block):
     """Get active tasks from Todoist"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         project_id: Optional[str] = SchemaField(
             description="Filter tasks by project ID", default=None, advanced=False
@@ -204,13 +209,12 @@ class TodoistGetTasksBlock(Block):
             description="List of task IDs to retrieve", default=None, advanced=False
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         ids: list[str] = SchemaField(description="Task IDs")
         urls: list[str] = SchemaField(description="Task URLs")
         complete_data: list[dict] = SchemaField(
             description="Complete task data as dictionary"
         )
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -293,17 +297,16 @@ class TodoistGetTasksBlock(Block):
 class TodoistGetTaskBlock(Block):
     """Get an active task from Todoist"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         task_id: str = SchemaField(description="Task ID to retrieve")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         project_id: str = SchemaField(description="Project ID containing the task")
         url: str = SchemaField(description="Task URL")
         complete_data: dict = SchemaField(
             description="Complete task data as dictionary"
         )
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -367,7 +370,7 @@ class TodoistGetTaskBlock(Block):
 class TodoistUpdateTaskBlock(Block):
     """Updates an existing task in Todoist"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         task_id: str = SchemaField(description="Task ID to update")
         content: str = SchemaField(description="Task content", advanced=False)
@@ -421,9 +424,8 @@ class TodoistUpdateTaskBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(description="Whether the update was successful")
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -506,15 +508,14 @@ class TodoistUpdateTaskBlock(Block):
 class TodoistCloseTaskBlock(Block):
     """Closes a task in Todoist"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         task_id: str = SchemaField(description="Task ID to close")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the task was successfully closed"
         )
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -557,15 +558,14 @@ class TodoistCloseTaskBlock(Block):
 class TodoistReopenTaskBlock(Block):
     """Reopens a task in Todoist"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         task_id: str = SchemaField(description="Task ID to reopen")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the task was successfully reopened"
         )
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -610,15 +610,14 @@ class TodoistReopenTaskBlock(Block):
 class TodoistDeleteTaskBlock(Block):
     """Deletes a task in Todoist"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         task_id: str = SchemaField(description="Task ID to delete")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the task was successfully deleted"
         )
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
