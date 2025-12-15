@@ -6,12 +6,17 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
+import {
+  ScrollableTabs,
+  ScrollableTabsContent,
+  ScrollableTabsList,
+  ScrollableTabsTrigger,
+} from "@/components/molecules/ScrollableTabs/ScrollableTabs";
 import { PendingReviewsList } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { usePendingReviewsForExecution } from "@/hooks/usePendingReviews";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useEffect } from "react";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
-import { AnchorLinksWrap } from "../AnchorLinksWrap";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
@@ -21,9 +26,6 @@ import { RunSummary } from "./components/RunSummary";
 import { SelectedRunActions } from "./components/SelectedRunActions/SelectedRunActions";
 import { WebhookTriggerSection } from "./components/WebhookTriggerSection";
 import { useSelectedRunView } from "./useSelectedRunView";
-
-const anchorStyles =
-  "border-b-2 border-transparent pb-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:border-slate-900";
 
 interface Props {
   agent: LibraryAgent;
@@ -58,13 +60,6 @@ export function SelectedRunView({
 
   const withSummary = run?.stats?.activity_status;
   const withReviews = run?.status === AgentExecutionStatus.REVIEW;
-
-  function scrollToSection(id: string) {
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
 
   if (responseError || httpError) {
     return (
@@ -106,115 +101,116 @@ export function SelectedRunView({
                 />
               )}
 
-            {/* Navigation Links */}
-            <AnchorLinksWrap>
-              {withSummary && (
-                <button
-                  onClick={() => scrollToSection("summary")}
-                  className={anchorStyles}
-                >
-                  Summary
-                </button>
-              )}
-              <button
-                onClick={() => scrollToSection("output")}
-                className={anchorStyles}
-              >
-                Output
-              </button>
-              <button
-                onClick={() => scrollToSection("input")}
-                className={anchorStyles}
-              >
-                Your input
-              </button>
-              {withReviews && (
-                <button
-                  onClick={() => scrollToSection("reviews")}
-                  className={anchorStyles}
-                >
-                  Reviews ({pendingReviews.length})
-                </button>
-              )}
-            </AnchorLinksWrap>
-
-            {/* Summary Section */}
-            {withSummary && (
-              <div id="summary" className="scroll-mt-4">
-                <RunDetailCard
-                  title={
-                    <div className="flex items-center gap-1">
-                      <Text variant="lead-semibold">Summary</Text>
-                      <InformationTooltip
-                        iconSize={20}
-                        description="This AI-generated summary describes how the agent handled your task. It's an experimental feature and may occasionally be inaccurate."
-                      />
-                    </div>
-                  }
-                >
-                  <RunSummary run={run} />
-                </RunDetailCard>
-              </div>
-            )}
-
-            {/* Output Section */}
-            <div id="output" className="scroll-mt-4">
-              <RunDetailCard title="Output">
-                {isLoading ? (
-                  <div className="text-neutral-500">
-                    <LoadingSpinner />
-                  </div>
-                ) : run && "outputs" in run ? (
-                  <RunOutputs outputs={run.outputs as any} />
-                ) : (
-                  <Text variant="body" className="text-neutral-600">
-                    No output from this run.
-                  </Text>
+            <ScrollableTabs
+              defaultValue="output"
+              className="-mt-2 flex flex-col"
+            >
+              <ScrollableTabsList className="px-4">
+                {withSummary && (
+                  <ScrollableTabsTrigger value="summary">
+                    Summary
+                  </ScrollableTabsTrigger>
                 )}
-              </RunDetailCard>
-            </div>
-
-            {/* Input Section */}
-            <div id="input" className="scroll-mt-4">
-              <RunDetailCard
-                title={
-                  <div className="flex items-center gap-1">
-                    <Text variant="lead-semibold">Your input</Text>
-                    <InformationTooltip
-                      iconSize={20}
-                      description="This is the input that was provided to the agent for running this task."
-                    />
-                  </div>
-                }
-              >
-                <AgentInputsReadOnly
-                  agent={agent}
-                  inputs={run?.inputs}
-                  credentialInputs={run?.credential_inputs}
-                />
-              </RunDetailCard>
-            </div>
-
-            {/* Reviews Section */}
-            {withReviews && (
-              <div id="reviews" className="scroll-mt-4">
-                <RunDetailCard>
-                  {reviewsLoading ? (
-                    <div className="text-neutral-500">Loading reviews…</div>
-                  ) : pendingReviews.length > 0 ? (
-                    <PendingReviewsList
-                      reviews={pendingReviews}
-                      onReviewComplete={refetchReviews}
-                      emptyMessage="No pending reviews for this execution"
-                    />
-                  ) : (
-                    <div className="text-neutral-600">
-                      No pending reviews for this execution
+                <ScrollableTabsTrigger value="output">
+                  Output
+                </ScrollableTabsTrigger>
+                <ScrollableTabsTrigger value="input">
+                  Your input
+                </ScrollableTabsTrigger>
+                {withReviews && (
+                  <ScrollableTabsTrigger value="reviews">
+                    Reviews ({pendingReviews.length})
+                  </ScrollableTabsTrigger>
+                )}
+              </ScrollableTabsList>
+              <div className="my-6 flex flex-col gap-6">
+                {/* Summary Section */}
+                {withSummary && (
+                  <ScrollableTabsContent value="summary">
+                    <div className="scroll-mt-4">
+                      <RunDetailCard
+                        title={
+                          <div className="flex items-center gap-1">
+                            <Text variant="lead-semibold">Summary</Text>
+                            <InformationTooltip
+                              iconSize={20}
+                              description="This AI-generated summary describes how the agent handled your task. It's an experimental feature and may occasionally be inaccurate."
+                            />
+                          </div>
+                        }
+                      >
+                        <RunSummary run={run} />
+                      </RunDetailCard>
                     </div>
-                  )}
-                </RunDetailCard>
+                  </ScrollableTabsContent>
+                )}
+
+                {/* Output Section */}
+                <ScrollableTabsContent value="output">
+                  <div className="scroll-mt-4">
+                    <RunDetailCard title="Output">
+                      {isLoading ? (
+                        <div className="text-neutral-500">
+                          <LoadingSpinner />
+                        </div>
+                      ) : run && "outputs" in run ? (
+                        <RunOutputs outputs={run.outputs as any} />
+                      ) : (
+                        <Text variant="body" className="text-neutral-600">
+                          No output from this run.
+                        </Text>
+                      )}
+                    </RunDetailCard>
+                  </div>
+                </ScrollableTabsContent>
+
+                {/* Input Section */}
+                <ScrollableTabsContent value="input">
+                  <div id="input" className="scroll-mt-4">
+                    <RunDetailCard
+                      title={
+                        <div className="flex items-center gap-1">
+                          <Text variant="lead-semibold">Your input</Text>
+                          <InformationTooltip
+                            iconSize={20}
+                            description="This is the input that was provided to the agent for running this task."
+                          />
+                        </div>
+                      }
+                    >
+                      <AgentInputsReadOnly
+                        agent={agent}
+                        inputs={run?.inputs}
+                        credentialInputs={run?.credential_inputs}
+                      />
+                    </RunDetailCard>
+                  </div>
+                </ScrollableTabsContent>
+
+                {/* Reviews Section */}
+                {withReviews && (
+                  <ScrollableTabsContent value="reviews">
+                    <div className="scroll-mt-4">
+                      <RunDetailCard>
+                        {reviewsLoading ? (
+                          <LoadingSpinner size="small" />
+                        ) : pendingReviews.length > 0 ? (
+                          <PendingReviewsList
+                            reviews={pendingReviews}
+                            onReviewComplete={refetchReviews}
+                            emptyMessage="No pending reviews for this execution"
+                          />
+                        ) : (
+                          <Text variant="body" className="text-zinc-700">
+                            No pending reviews for this execution
+                          </Text>
+                        )}
+                      </RunDetailCard>
+                    </div>
+                  </ScrollableTabsContent>
+                )}
               </div>
-            )}
+            </ScrollableTabs>
           </div>
         </SelectedViewLayout>
       </div>
