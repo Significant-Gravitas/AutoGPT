@@ -930,6 +930,7 @@ enum SubmissionStatus {
 }
 
 enum APIKeyPermission {
+  IDENTITY // Info about the authenticated user
   EXECUTE_GRAPH // Can execute agent graphs
   READ_GRAPH // Can get graph versions and details
   EXECUTE_BLOCK // Can execute individual blocks

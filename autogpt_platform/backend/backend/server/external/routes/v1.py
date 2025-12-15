@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Security
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
+from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 import backend.data.block
@@ -12,6 +13,7 @@ import backend.server.v2.store.cache as store_cache
 import backend.server.v2.store.model as store_model
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data import user as user_db
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.executor.utils import add_graph_execution
@@ -24,27 +26,33 @@ logger = logging.getLogger(__name__)
 v1_router = APIRouter()
 
 
-class NodeOutput(TypedDict):
-    key: str
-    value: Any
+class UserInfoResponse(BaseModel):
+    id: str
+    name: Optional[str]
+    email: str
+    timezone: str = Field(
+        description="The user's last known timezone (e.g. 'Europe/Amsterdam'), "
+        "or 'not-set' if not set"
+    )
 
 
-class ExecutionNode(TypedDict):
-    node_id: str
-    input: Any
-    output: dict[str, Any]
+@v1_router.get(
+    path="/me",
+    tags=["user", "meta"],
+)
+async def get_user_info(
+    auth: APIAuthorizationInfo = Security(
+        require_permission(APIKeyPermission.IDENTITY)
+    ),
+) -> UserInfoResponse:
+    user = await user_db.get_user_by_id(auth.user_id)
 
-
-class ExecutionNodeOutput(TypedDict):
-    node_id: str
-    outputs: list[NodeOutput]
-
-
-class GraphExecutionResult(TypedDict):
-    execution_id: str
-    status: str
-    nodes: list[ExecutionNode]
-    output: Optional[list[dict[str, str]]]
+    return UserInfoResponse(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        timezone=user.timezone,
+    )
 
 
 @v1_router.get(
@@ -102,6 +110,19 @@ async def execute_graph(
     except Exception as e:
         msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
+
+
+class ExecutionNode(TypedDict):
+    node_id: str
+    input: Any
+    output: dict[str, Any]
+
+
+class GraphExecutionResult(TypedDict):
+    execution_id: str
+    status: str
+    nodes: list[ExecutionNode]
+    output: Optional[list[dict[str, str]]]
 
 
 @v1_router.get(
