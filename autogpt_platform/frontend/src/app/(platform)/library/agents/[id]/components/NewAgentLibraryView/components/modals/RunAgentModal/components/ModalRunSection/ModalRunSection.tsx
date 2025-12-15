@@ -73,22 +73,15 @@ export function ModalRunSection() {
           title="Task Inputs"
           subtitle="Enter the information you want to provide to the agent for this task"
         >
-          {/* Regular inputs */}
           {inputFields.map(([key, inputSubSchema]) => (
-            <div key={key} className="flex w-full flex-col gap-0 space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
-                {inputSubSchema.title || key}
-                <InformationTooltip description={inputSubSchema.description} />
-              </label>
-
-              <RunAgentInputs
-                schema={inputSubSchema}
-                value={inputValues[key] ?? inputSubSchema.default}
-                placeholder={inputSubSchema.description}
-                onChange={(value) => setInputValue(key, value)}
-                data-testid={`agent-input-${key}`}
-              />
-            </div>
+            <RunAgentInputs
+              key={key}
+              schema={inputSubSchema}
+              value={inputValues[key] ?? inputSubSchema.default}
+              placeholder={inputSubSchema.description}
+              onChange={(value) => setInputValue(key, value)}
+              data-testid={`agent-input-${key}`}
+            />
           ))}
         </ModalSection>
       ) : null}

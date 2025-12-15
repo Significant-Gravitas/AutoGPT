@@ -680,28 +680,20 @@ export function AgentRunDraftView({
 
             {/* Regular inputs */}
             {Object.entries(agentInputFields).map(([key, inputSubSchema]) => (
-              <div key={key} className="flex flex-col space-y-2">
-                <label className="flex items-center gap-1 text-sm font-medium">
-                  {inputSubSchema.title || key}
-                  <InformationTooltip
-                    description={inputSubSchema.description}
-                  />
-                </label>
-
-                <RunAgentInputs
-                  schema={inputSubSchema}
-                  value={inputValues[key] ?? inputSubSchema.default}
-                  placeholder={inputSubSchema.description}
-                  onChange={(value) => {
-                    setInputValues((obj) => ({
-                      ...obj,
-                      [key]: value,
-                    }));
-                    setChangedPresetAttributes((prev) => prev.add("inputs"));
-                  }}
-                  data-testid={`agent-input-${key}`}
-                />
-              </div>
+              <RunAgentInputs
+                key={key}
+                schema={inputSubSchema}
+                value={inputValues[key] ?? inputSubSchema.default}
+                placeholder={inputSubSchema.description}
+                onChange={(value) => {
+                  setInputValues((obj) => ({
+                    ...obj,
+                    [key]: value,
+                  }));
+                  setChangedPresetAttributes((prev) => prev.add("inputs"));
+                }}
+                data-testid={`agent-input-${key}`}
+              />
             ))}
           </CardContent>
         </Card>
