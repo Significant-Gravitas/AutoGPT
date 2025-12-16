@@ -5252,11 +5252,51 @@
       }
     },
     "/api/chat/sessions/{session_id}/stream": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Chat Post",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "postV2StreamChatPost",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StreamChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Chat",
-        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
-        "operationId": "getV2StreamChat",
+        "summary": "Stream Chat Get",
+        "description": "Stream chat responses for a session (GET - legacy endpoint).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "getV2StreamChatGet",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -9235,6 +9275,30 @@
         "type": "object",
         "required": ["submissions", "pagination"],
         "title": "StoreSubmissionsResponse"
+      },
+      "StreamChatRequest": {
+        "properties": {
+          "message": { "type": "string", "title": "Message" },
+          "is_user_message": {
+            "type": "boolean",
+            "title": "Is User Message",
+            "default": true
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "StreamChatRequest",
+        "description": "Request model for streaming chat with optional context."
       },
       "SubmissionStatus": {
         "type": "string",

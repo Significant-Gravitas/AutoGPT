@@ -86,7 +86,11 @@ export function useChatContainer({
   }, [initialMessages, messages]);
 
   const sendMessage = useCallback(
-    async function sendMessage(content: string, isUserMessage: boolean = true) {
+    async function sendMessage(
+      content: string,
+      isUserMessage: boolean = true,
+      context?: { url: string; content: string },
+    ) {
       if (!sessionId) {
         console.error("Cannot send message: no session ID");
         return;
@@ -110,7 +114,13 @@ export function useChatContainer({
         setIsStreamingInitiated,
       });
       try {
-        await sendStreamMessage(sessionId, content, dispatcher, isUserMessage);
+        await sendStreamMessage(
+          sessionId,
+          content,
+          dispatcher,
+          isUserMessage,
+          context,
+        );
       } catch (err) {
         console.error("Failed to send message:", err);
         setIsStreamingInitiated(false);
