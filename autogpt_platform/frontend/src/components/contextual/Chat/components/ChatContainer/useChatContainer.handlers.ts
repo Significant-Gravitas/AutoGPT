@@ -102,11 +102,14 @@ export function handleToolResponse(
       parsedResult = null;
     }
     if (
-      chunk.tool_name === "run_agent" &&
+      (chunk.tool_name === "run_agent" || chunk.tool_name === "run_block") &&
       chunk.success &&
       parsedResult?.type === "setup_requirements"
     ) {
-      const credentialsMessage = extractCredentialsNeeded(parsedResult);
+      const credentialsMessage = extractCredentialsNeeded(
+        parsedResult,
+        chunk.tool_name,
+      );
       if (credentialsMessage) {
         deps.setMessages((prev) => [...prev, credentialsMessage]);
       }
