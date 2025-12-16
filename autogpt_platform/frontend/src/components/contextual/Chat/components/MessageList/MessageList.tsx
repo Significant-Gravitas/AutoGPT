@@ -31,7 +31,7 @@ export function MessageList({
     <div
       ref={messagesContainerRef}
       className={cn(
-        "flex-1 overflow-y-auto bg-white",
+        "flex-1 overflow-y-auto",
         "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
         className,
       )}

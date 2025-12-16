@@ -38,11 +38,11 @@ export function QuickActionsWelcome({
           {actions.map((action) => {
             // Use slate theme for all cards
             const theme = {
-              bg: "bg-slate-50/30",
-              border: "border-slate-200",
-              hoverBg: "hover:bg-slate-100",
+              bg: "bg-slate-50/10",
+              border: "border-slate-100",
+              hoverBg: "hover:bg-slate-50/20",
               hoverBorder: "hover:border-slate-200",
-              gradient: "from-slate-300/20 via-slate-400/10 to-transparent",
+              gradient: "from-slate-200/20 via-slate-300/10 to-transparent",
               text: "text-slate-900",
               hoverText: "group-hover:text-slate-900",
             };

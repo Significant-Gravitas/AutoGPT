@@ -12,16 +12,45 @@ export function MessageBubble({
   variant,
   className,
 }: MessageBubbleProps) {
+  const userTheme = {
+    bg: "bg-slate-900",
+    border: "border-slate-800",
+    gradient: "from-slate-900/30 via-slate-800/20 to-transparent",
+    text: "text-slate-50",
+  };
+
+  const assistantTheme = {
+    bg: "bg-slate-50/20",
+    border: "border-slate-100",
+    gradient: "from-slate-200/20 via-slate-300/10 to-transparent",
+    text: "text-slate-900",
+  };
+
+  const theme = variant === "user" ? userTheme : assistantTheme;
+
   return (
     <div
       className={cn(
-        "min-w-20 rounded-[20px] px-6 py-2.5 text-sm leading-relaxed",
-        variant === "user" && "bg-zinc-700 text-right text-neutral-50",
-        variant === "assistant" && "bg-zinc-100 text-left text-neutral-900",
+        "group relative min-w-20 overflow-hidden rounded-xl border px-6 py-2.5 text-sm leading-relaxed backdrop-blur-xl transition-all duration-500 ease-in-out",
+        theme.bg,
+        theme.border,
+        variant === "user" && "text-right",
+        variant === "assistant" && "text-left",
         className,
       )}
     >
-      {children}
+      {/* Gradient flare background */}
+      <div
+        className={cn("absolute inset-0 bg-gradient-to-br", theme.gradient)}
+      />
+      <div
+        className={cn(
+          "relative z-10 transition-all duration-500 ease-in-out",
+          theme.text,
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }

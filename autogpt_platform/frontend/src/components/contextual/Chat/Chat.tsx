@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import React from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
@@ -19,7 +21,7 @@ export interface ChatProps {
 
 export function Chat({
   className,
-  headerTitle = "Chat",
+  headerTitle = "AutoGPT Copilot",
   showHeader = true,
   showSessionInfo = true,
   showNewChatButton = true,
@@ -46,26 +48,37 @@ export function Chat({
     <div className={cn("flex h-full flex-col", className)}>
       {/* Header */}
       {showHeader && (
-        <header className="shrink-0 border-b border-zinc-200 bg-white p-4">
+        <header className="shrink-0 border-b border-zinc-200 bg-white p-3">
           <div className="flex items-center justify-between">
             {typeof headerTitle === "string" ? (
-              <h2 className="text-xl font-semibold">{headerTitle}</h2>
+              <Text variant="h2" className="text-lg font-semibold">
+                {headerTitle}
+              </Text>
             ) : (
               headerTitle
             )}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               {showSessionInfo && sessionId && (
                 <>
-                  <span className="text-sm text-zinc-600">
-                    Session: {sessionId.slice(0, 8)}...
-                  </span>
+                  <Text variant="body">
+                    <span
+                      className="inline-block bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 bg-clip-text text-transparent"
+                      style={{
+                        backgroundSize: "200% 100%",
+                        animation: "shimmer 2s ease-in-out infinite",
+                      }}
+                    >
+                      Session: {sessionId.slice(0, 8)}...
+                    </span>
+                  </Text>
                   {showNewChatButton && (
-                    <button
+                    <Button
+                      variant="outline"
+                      size="small"
                       onClick={handleNewChat}
-                      className="text-sm text-zinc-600 hover:text-zinc-900"
                     >
                       New Chat
-                    </button>
+                    </Button>
                   )}
                 </>
               )}

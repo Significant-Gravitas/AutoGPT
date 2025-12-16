@@ -44,7 +44,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
   const { open: openChatDrawer } = useChatDrawer();
 
   const linksWithChat = useMemo(() => {
-    const chatLink = { name: "Chat", href: "/chat" };
+    const chatLink = { name: "Copilot", href: "/chat" };
     return isChatEnabled ? [...loggedInLinks, chatLink] : loggedInLinks;
   }, [isChatEnabled]);
 
@@ -124,7 +124,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
                           ? IconType.Library
                           : link.name === "Build"
                             ? IconType.Builder
-                            : link.name === "Chat"
+                            : link.name === "Copilot"
                               ? IconType.Chat
                               : link.name === "Monitor"
                                 ? IconType.Library
@@ -132,7 +132,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
                     text: link.name,
                     href: link.href,
                     onClick:
-                      link.name === "Chat" && isChatEnabled
+                      link.name === "Copilot" && isChatEnabled
                         ? openChatDrawer
                         : undefined,
                   })),

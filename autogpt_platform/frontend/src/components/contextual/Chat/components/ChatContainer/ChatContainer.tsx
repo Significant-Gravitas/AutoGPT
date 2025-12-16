@@ -45,11 +45,20 @@ export function ChatContainer({
   ];
 
   return (
-    <div className={cn("flex h-full flex-col", className)}>
+    <div
+      className={cn("flex h-full flex-col", className)}
+      style={{
+        backgroundColor: "#ffffff",
+        backgroundImage:
+          "radial-gradient(#e5e5e5 0.5px, transparent 0.5px), radial-gradient(#e5e5e5 0.5px, #ffffff 0.5px)",
+        backgroundSize: "20px 20px",
+        backgroundPosition: "0 0, 10px 10px",
+      }}
+    >
       {/* Messages or Welcome Screen */}
       {messages.length === 0 ? (
         <QuickActionsWelcome
-          title="Welcome to AutoGPT Chat"
+          title="Welcome to AutoGPT Copilot"
           description="Start a conversation to discover and run AI agents."
           actions={quickActions}
           onActionClick={sendMessageWithContext}

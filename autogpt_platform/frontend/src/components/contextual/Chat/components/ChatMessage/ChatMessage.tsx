@@ -165,8 +165,8 @@ export function ChatMessage({
         <div className="flex w-full max-w-3xl gap-3">
           {!isUser && (
             <div className="flex-shrink-0">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-200">
-                <RobotIcon className="h-4 w-4 text-neutral-600" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500">
+                <RobotIcon className="h-4 w-4 text-indigo-50" />
               </div>
             </div>
           )}

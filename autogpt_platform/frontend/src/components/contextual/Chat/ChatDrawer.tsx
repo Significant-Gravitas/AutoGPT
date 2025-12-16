@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/__legacy__/ui/button";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -57,19 +56,14 @@ export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
         >
           <Chat
             headerTitle={
-              <Drawer.Title className="text-xl font-semibold">
-                Chat
+              <Drawer.Title className="text-lg font-semibold">
+                AutoGPT Copilot
               </Drawer.Title>
             }
             headerActions={
-              <Button
-                variant="link"
-                aria-label="Close"
-                onClick={close}
-                className="!focus-visible:ring-0 p-0"
-              >
-                <X width="1.5rem" />
-              </Button>
+              <button aria-label="Close" onClick={close} className="size-8">
+                <X width="1.25rem" height="1.25rem" />
+              </button>
             }
           />
         </Drawer.Content>
