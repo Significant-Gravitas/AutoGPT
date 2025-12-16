@@ -10,7 +10,7 @@ export interface PageContext {
  */
 export function usePageContext() {
   const capturePageContext = useCallback((): PageContext => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || typeof document === "undefined") {
       return { url: "", content: "" };
     }
 

@@ -338,6 +338,7 @@ export function RunAgentInputs({
           value={value ?? ""}
           onChange={(e) => onChange((e.target as HTMLInputElement).value)}
           placeholder={placeholder || "Enter text"}
+          disabled={readOnly}
           {...props}
         />
       );
@@ -349,11 +350,14 @@ export function RunAgentInputs({
         {schema.title || placeholder}
         <InformationTooltip description={schema.description} />
       </label>
-      <div
-        className="no-drag relative flex w-full"
-        style={readOnly ? { pointerEvents: "none", opacity: 0.7 } : undefined}
-      >
-        {innerInputElement}
+      <div className="no-drag relative flex w-full">
+        {readOnly ? (
+          <div style={{ pointerEvents: "none", opacity: 0.7 }}>
+            {innerInputElement}
+          </div>
+        ) : (
+          innerInputElement
+        )}
       </div>
     </div>
   );

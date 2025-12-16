@@ -4,7 +4,7 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { X } from "@phosphor-icons/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Drawer } from "vaul";
 import { Chat } from "./Chat";
 import { useChatDrawer } from "./useChatDrawer";
@@ -14,8 +14,13 @@ interface ChatDrawerProps {
 }
 
 export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
+  const [isMounted, setIsMounted] = useState(false);
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const { isOpen, close } = useChatDrawer();
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isChatEnabled === false && isOpen) {
@@ -23,7 +28,8 @@ export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
     }
   }, [isChatEnabled, isOpen, close]);
 
-  if (isChatEnabled === null || isChatEnabled === false) {
+  // Don't render on server - vaul drawer accesses document during SSR
+  if (!isMounted || isChatEnabled === null || isChatEnabled === false) {
     return null;
   }
 
