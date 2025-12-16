@@ -1,5 +1,6 @@
 """Pydantic models for tool responses."""
 
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -20,6 +21,7 @@ class ResponseType(str, Enum):
     NO_RESULTS = "no_results"
     SUCCESS = "success"
     DOC_SEARCH_RESULTS = "doc_search_results"
+    AGENT_OUTPUT = "agent_output"
 
 
 # Base response model
@@ -196,3 +198,28 @@ class DocSearchResultsResponse(ToolResponseBase):
     results: list[DocSearchResult]
     count: int
     query: str
+
+
+# Agent output models
+class ExecutionOutputInfo(BaseModel):
+    """Summary of a single execution's outputs."""
+
+    execution_id: str
+    status: str
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    outputs: dict[str, list[Any]]
+    inputs_summary: dict[str, Any] | None = None
+
+
+class AgentOutputResponse(ToolResponseBase):
+    """Response for agent_output tool."""
+
+    type: ResponseType = ResponseType.AGENT_OUTPUT
+    agent_name: str
+    agent_id: str
+    library_agent_id: str | None = None
+    library_agent_link: str | None = None
+    execution: ExecutionOutputInfo | None = None
+    available_executions: list[dict[str, Any]] | None = None
+    total_executions: int = 0

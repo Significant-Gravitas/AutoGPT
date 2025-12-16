@@ -30,6 +30,7 @@ from backend.server.v2.chat.tools.utils import (
     get_or_create_library_agent,
     match_user_credentials_to_graph,
 )
+from backend.server.v2.library import db as library_db
 from backend.util.clients import get_scheduler_client
 from backend.util.exceptions import DatabaseError, NotFoundError
 from backend.util.timezone_utils import (
@@ -56,6 +57,7 @@ class RunAgentInput(BaseModel):
     """Input parameters for the run_agent tool."""
 
     username_agent_slug: str = ""
+    library_agent_id: str = ""
     inputs: dict[str, Any] = Field(default_factory=dict)
     use_defaults: bool = False
     schedule_name: str = ""
@@ -63,7 +65,12 @@ class RunAgentInput(BaseModel):
     timezone: str = "UTC"
 
     @field_validator(
-        "username_agent_slug", "schedule_name", "cron", "timezone", mode="before"
+        "username_agent_slug",
+        "library_agent_id",
+        "schedule_name",
+        "cron",
+        "timezone",
+        mode="before",
     )
     @classmethod
     def strip_strings(cls, v: Any) -> Any:
@@ -89,13 +96,17 @@ class RunAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Run or schedule an agent from the marketplace.
+        return """Run or schedule an agent from the marketplace or user's library.
 
         The tool automatically handles the setup flow:
         - Returns missing inputs if required fields are not provided
         - Returns missing credentials if user needs to configure them
         - Executes immediately if all requirements are met
         - Schedules execution if cron expression is provided
+
+        Identify the agent using either:
+        - username_agent_slug: Marketplace format 'username/agent-name'
+        - library_agent_id: ID of an agent in the user's library
 
         For scheduled execution, provide: schedule_name, cron, and optionally timezone."""
 
@@ -107,6 +118,10 @@ class RunAgentTool(BaseTool):
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Agent identifier in format 'username/agent-name'",
+                },
+                "library_agent_id": {
+                    "type": "string",
+                    "description": "Library agent ID from user's library",
                 },
                 "inputs": {
                     "type": "object",
@@ -130,7 +145,7 @@ class RunAgentTool(BaseTool):
                     "description": "IANA timezone for schedule (default: UTC)",
                 },
             },
-            "required": ["username_agent_slug"],
+            "required": [],
         }
 
     @property
@@ -148,10 +163,16 @@ class RunAgentTool(BaseTool):
         params = RunAgentInput(**kwargs)
         session_id = session.session_id
 
-        # Validate agent slug format
-        if not params.username_agent_slug or "/" not in params.username_agent_slug:
+        # Validate at least one identifier is provided
+        has_slug = params.username_agent_slug and "/" in params.username_agent_slug
+        has_library_id = bool(params.library_agent_id)
+
+        if not has_slug and not has_library_id:
             return ErrorResponse(
-                message="Please provide an agent slug in format 'username/agent-name'",
+                message=(
+                    "Please provide either a username_agent_slug "
+                    "(format 'username/agent-name') or a library_agent_id"
+                ),
                 session_id=session_id,
             )
 
@@ -166,13 +187,41 @@ class RunAgentTool(BaseTool):
         is_schedule = bool(params.schedule_name or params.cron)
 
         try:
-            # Step 1: Fetch agent details (always happens first)
-            username, agent_name = params.username_agent_slug.split("/", 1)
-            graph, store_agent = await fetch_graph_from_store_slug(username, agent_name)
+            # Step 1: Fetch agent details
+            graph: GraphModel | None = None
+            library_agent = None
+
+            # Priority: library_agent_id if provided
+            if has_library_id:
+                library_agent = await library_db.get_library_agent(
+                    params.library_agent_id, user_id
+                )
+                if not library_agent:
+                    return ErrorResponse(
+                        message=f"Library agent '{params.library_agent_id}' not found",
+                        session_id=session_id,
+                    )
+                # Get the graph from the library agent
+                from backend.data.graph import get_graph
+
+                graph = await get_graph(
+                    library_agent.graph_id,
+                    library_agent.graph_version,
+                    user_id=user_id,
+                )
+            else:
+                # Fetch from marketplace slug
+                username, agent_name = params.username_agent_slug.split("/", 1)
+                graph, _ = await fetch_graph_from_store_slug(username, agent_name)
 
             if not graph:
+                identifier = (
+                    params.library_agent_id
+                    if has_library_id
+                    else params.username_agent_slug
+                )
                 return ErrorResponse(
-                    message=f"Agent '{params.username_agent_slug}' not found in marketplace",
+                    message=f"Agent '{identifier}' not found",
                     session_id=session_id,
                 )
 

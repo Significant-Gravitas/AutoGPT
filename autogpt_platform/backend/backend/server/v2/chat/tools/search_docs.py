@@ -275,10 +275,10 @@ class SearchDocsTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search the AutoGPT platform documentation for information about "
+            "Search the AutoGPT platform documentation and support Q&A for information about "
             "how to use the platform, create agents, configure blocks, "
-            "set up integrations, and more. Use this when users ask questions "
-            "about how to do something with AutoGPT."
+            "set up integrations, troubleshoot issues, and more. Use this when users ask "
+            "support questions or want to learn how to do something with AutoGPT."
         )
 
     @property
