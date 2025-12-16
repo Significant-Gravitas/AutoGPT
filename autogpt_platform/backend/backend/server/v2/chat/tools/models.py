@@ -19,6 +19,7 @@ class ResponseType(str, Enum):
     ERROR = "error"
     NO_RESULTS = "no_results"
     SUCCESS = "success"
+    DOC_SEARCH_RESULTS = "doc_search_results"
 
 
 # Base response model
@@ -173,3 +174,25 @@ class ErrorResponse(ToolResponseBase):
     type: ResponseType = ResponseType.ERROR
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+# Documentation search models
+class DocSearchResult(BaseModel):
+    """A single documentation search result."""
+
+    title: str
+    path: str
+    section: str
+    snippet: str  # Short excerpt for UI display
+    content: str  # Full text content for LLM to read and understand
+    score: float
+    doc_url: str | None = None
+
+
+class DocSearchResultsResponse(ToolResponseBase):
+    """Response for search_docs tool."""
+
+    type: ResponseType = ResponseType.DOC_SEARCH_RESULTS
+    results: list[DocSearchResult]
+    count: int
+    query: str
