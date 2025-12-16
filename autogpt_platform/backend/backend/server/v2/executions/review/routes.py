@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
-    tags=["executions", "review", "private"],
+    tags=["v2", "executions", "review"],
     dependencies=[Security(autogpt_auth_lib.requires_user)],
 )
 
