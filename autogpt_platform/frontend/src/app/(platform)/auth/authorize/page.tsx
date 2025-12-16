@@ -13,6 +13,7 @@ import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPerm
 
 // Human-readable scope descriptions
 const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
+  IDENTITY: "See your user ID, e-mail, and timezone",
   EXECUTE_GRAPH: "Run your agents",
   READ_GRAPH: "View your agents and their configurations",
   EXECUTE_BLOCK: "Execute individual blocks",

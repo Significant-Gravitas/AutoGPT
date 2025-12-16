@@ -6,646 +6,6 @@
     "version": "0.1"
   },
   "paths": {
-    "/api/integrations/{provider}/login": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Initiate OAuth flow",
-        "operationId": "getV1Initiate oauth flow",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The provider to initiate an OAuth flow for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
-            }
-          },
-          {
-            "name": "scopes",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "title": "Comma-separated list of authorization scopes",
-              "default": ""
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LoginResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/integrations/{provider}/callback": {
-      "post": {
-        "tags": ["v1", "integrations"],
-        "summary": "Exchange OAuth code for tokens",
-        "operationId": "postV1Exchange oauth code for tokens",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The target provider for this OAuth exchange",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postV1Exchange_oauth_code_for_tokens"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CredentialsMetaResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/integrations/credentials": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "List Credentials",
-        "operationId": "getV1List credentials",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/CredentialsMetaResponse"
-                  },
-                  "type": "array",
-                  "title": "Response Getv1List Credentials"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/integrations/{provider}/credentials": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "List Credentials By Provider",
-        "operationId": "getV1ListCredentialsByProvider",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The provider to list credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CredentialsMetaResponse"
-                  },
-                  "title": "Response Getv1Listcredentialsbyprovider"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      },
-      "post": {
-        "tags": ["v1", "integrations"],
-        "summary": "Create Credentials",
-        "operationId": "postV1Create credentials",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The provider to create credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  { "$ref": "#/components/schemas/OAuth2Credentials" },
-                  { "$ref": "#/components/schemas/APIKeyCredentials" },
-                  { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                  { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
-                ],
-                "discriminator": {
-                  "propertyName": "type",
-                  "mapping": {
-                    "oauth2": "#/components/schemas/OAuth2Credentials",
-                    "api_key": "#/components/schemas/APIKeyCredentials",
-                    "user_password": "#/components/schemas/UserPasswordCredentials",
-                    "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
-                  }
-                },
-                "title": "Credentials"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Postv1Create Credentials"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/integrations/{provider}/credentials/{cred_id}": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Specific Credential By ID",
-        "operationId": "getV1Get specific credential by id",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The provider to retrieve credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
-            }
-          },
-          {
-            "name": "cred_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The ID of the credentials to retrieve"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Getv1Get Specific Credential By Id"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      },
-      "delete": {
-        "tags": ["v1", "integrations"],
-        "summary": "Delete Credentials",
-        "operationId": "deleteV1DeleteCredentials",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The provider to delete credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
-            }
-          },
-          {
-            "name": "cred_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "The ID of the credentials to delete"
-            }
-          },
-          {
-            "name": "force",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "title": "Whether to proceed if any linked webhooks are still in use",
-              "default": false
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/CredentialsDeletionResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/CredentialsDeletionNeedsConfirmationResponse"
-                    }
-                  ],
-                  "title": "Response Deletev1Deletecredentials"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/integrations/{provider}/webhooks/{webhook_id}/ingress": {
-      "post": {
-        "tags": ["v1", "integrations"],
-        "summary": "Webhook Ingress Generic",
-        "operationId": "postV1WebhookIngressGeneric",
-        "parameters": [
-          {
-            "name": "provider",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Provider where the webhook was registered",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
-            }
-          },
-          {
-            "name": "webhook_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Our ID for the webhook" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/webhooks/{webhook_id}/ping": {
-      "post": {
-        "tags": ["v1", "integrations"],
-        "summary": "Webhook Ping",
-        "operationId": "postV1WebhookPing",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "webhook_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Our ID for the webhook" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/integrations/ayrshare/sso_url": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Ayrshare Sso Url",
-        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
-        "operationId": "getV1GetAyrshareSsoUrl",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/AyrshareSSOResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/integrations/providers": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "List Providers",
-        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
-        "operationId": "getV1ListProviders",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": { "type": "string" },
-                  "type": "array",
-                  "title": "Response Getv1Listproviders"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/providers/names": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Provider Names",
-        "description": "Get all provider names in a structured format.\n\nThis endpoint is specifically designed to expose the provider names\nin the OpenAPI schema so that code generators like Orval can create\nappropriate TypeScript constants.",
-        "operationId": "getV1GetProviderNames",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProviderNamesResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/providers/constants": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Provider Constants",
-        "description": "Get provider names as constants.\n\nThis endpoint returns a model with provider names as constants,\nspecifically designed for OpenAPI code generation tools to create\nTypeScript constants.",
-        "operationId": "getV1GetProviderConstants",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/ProviderConstants" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/providers/enum-example": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Provider Enum Example",
-        "description": "Example endpoint that uses the CompleteProviderNames enum.\n\nThis endpoint exists to ensure that the CompleteProviderNames enum is included\nin the OpenAPI schema, which will cause Orval to generate it as a\nTypeScript enum/constant.",
-        "operationId": "getV1GetProviderEnumExample",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProviderEnumResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/analytics/log_raw_metric": {
-      "post": {
-        "tags": ["v1", "analytics"],
-        "summary": "Log Raw Metric",
-        "operationId": "postV1LogRawMetric",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/analytics/log_raw_analytics": {
-      "post": {
-        "tags": ["v1", "analytics"],
-        "summary": "Log Raw Analytics",
-        "operationId": "postV1LogRawAnalytics",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postV1LogRawAnalytics"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -2626,6 +1986,646 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         }
+      }
+    },
+    "/api/integrations/{provider}/login": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Initiate OAuth flow",
+        "operationId": "getV1Initiate oauth flow",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider to initiate an OAuth flow for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "scopes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Comma-separated list of authorization scopes",
+              "default": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LoginResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/integrations/{provider}/callback": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Exchange OAuth code for tokens",
+        "operationId": "postV1Exchange oauth code for tokens",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The target provider for this OAuth exchange",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV1Exchange_oauth_code_for_tokens"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/integrations/credentials": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List Credentials",
+        "operationId": "getV1List credentials",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialsMetaResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Getv1List Credentials"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/integrations/{provider}/credentials": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List Credentials By Provider",
+        "operationId": "getV1ListCredentialsByProvider",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider to list credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialsMetaResponse"
+                  },
+                  "title": "Response Getv1Listcredentialsbyprovider"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Create Credentials",
+        "operationId": "postV1Create credentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider to create credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  { "$ref": "#/components/schemas/OAuth2Credentials" },
+                  { "$ref": "#/components/schemas/APIKeyCredentials" },
+                  { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                  { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
+                ],
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "oauth2": "#/components/schemas/OAuth2Credentials",
+                    "api_key": "#/components/schemas/APIKeyCredentials",
+                    "user_password": "#/components/schemas/UserPasswordCredentials",
+                    "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
+                  }
+                },
+                "title": "Credentials"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/OAuth2Credentials" },
+                    { "$ref": "#/components/schemas/APIKeyCredentials" },
+                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                    {
+                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "type",
+                    "mapping": {
+                      "oauth2": "#/components/schemas/OAuth2Credentials",
+                      "api_key": "#/components/schemas/APIKeyCredentials",
+                      "user_password": "#/components/schemas/UserPasswordCredentials",
+                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
+                    }
+                  },
+                  "title": "Response Postv1Create Credentials"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/integrations/{provider}/credentials/{cred_id}": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Specific Credential By ID",
+        "operationId": "getV1Get specific credential by id",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider to retrieve credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "cred_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The ID of the credentials to retrieve"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/OAuth2Credentials" },
+                    { "$ref": "#/components/schemas/APIKeyCredentials" },
+                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                    {
+                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "type",
+                    "mapping": {
+                      "oauth2": "#/components/schemas/OAuth2Credentials",
+                      "api_key": "#/components/schemas/APIKeyCredentials",
+                      "user_password": "#/components/schemas/UserPasswordCredentials",
+                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
+                    }
+                  },
+                  "title": "Response Getv1Get Specific Credential By Id"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["v1", "integrations"],
+        "summary": "Delete Credentials",
+        "operationId": "deleteV1DeleteCredentials",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider to delete credentials for",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "cred_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The ID of the credentials to delete"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "title": "Whether to proceed if any linked webhooks are still in use",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CredentialsDeletionResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CredentialsDeletionNeedsConfirmationResponse"
+                    }
+                  ],
+                  "title": "Response Deletev1Deletecredentials"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/integrations/{provider}/webhooks/{webhook_id}/ingress": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Webhook Ingress Generic",
+        "operationId": "postV1WebhookIngressGeneric",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider where the webhook was registered",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Our ID for the webhook" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/webhooks/{webhook_id}/ping": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Webhook Ping",
+        "operationId": "postV1WebhookPing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Our ID for the webhook" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/integrations/ayrshare/sso_url": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Ayrshare Sso Url",
+        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
+        "operationId": "getV1GetAyrshareSsoUrl",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AyrshareSSOResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/integrations/providers": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "List Providers",
+        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "operationId": "getV1ListProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Getv1Listproviders"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/names": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Names",
+        "description": "Get all provider names in a structured format.\n\nThis endpoint is specifically designed to expose the provider names\nin the OpenAPI schema so that code generators like Orval can create\nappropriate TypeScript constants.",
+        "operationId": "getV1GetProviderNames",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderNamesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/constants": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Constants",
+        "description": "Get provider names as constants.\n\nThis endpoint returns a model with provider names as constants,\nspecifically designed for OpenAPI code generation tools to create\nTypeScript constants.",
+        "operationId": "getV1GetProviderConstants",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProviderConstants" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/providers/enum-example": {
+      "get": {
+        "tags": ["v1", "integrations"],
+        "summary": "Get Provider Enum Example",
+        "description": "Example endpoint that uses the CompleteProviderNames enum.\n\nThis endpoint exists to ensure that the CompleteProviderNames enum is included\nin the OpenAPI schema, which will cause Orval to generate it as a\nTypeScript enum/constant.",
+        "operationId": "getV1GetProviderEnumExample",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderEnumResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/analytics/log_raw_metric": {
+      "post": {
+        "tags": ["analytics"],
+        "summary": "Log Raw Metric",
+        "operationId": "postAnalyticsLogRawMetric",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/analytics/log_raw_analytics": {
+      "post": {
+        "tags": ["analytics"],
+        "summary": "Log Raw Analytics",
+        "operationId": "postAnalyticsLogRawAnalytics",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postAnalyticsLogRawAnalytics"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/store/profile": {
@@ -6129,6 +6129,25 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
+      "Body_postAnalyticsLogRawAnalytics": {
+        "properties": {
+          "type": { "type": "string", "title": "Type" },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data",
+            "description": "The data to log"
+          },
+          "data_index": {
+            "type": "string",
+            "title": "Data Index",
+            "description": "Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc."
+          }
+        },
+        "type": "object",
+        "required": ["type", "data", "data_index"],
+        "title": "Body_postAnalyticsLogRawAnalytics"
+      },
       "Body_postOauthIntrospect": {
         "properties": {
           "token": {
@@ -6228,25 +6247,6 @@
         },
         "type": "object",
         "title": "Body_postV1Execute graph agent"
-      },
-      "Body_postV1LogRawAnalytics": {
-        "properties": {
-          "type": { "type": "string", "title": "Type" },
-          "data": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Data",
-            "description": "The data to log"
-          },
-          "data_index": {
-            "type": "string",
-            "title": "Data Index",
-            "description": "Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc."
-          }
-        },
-        "type": "object",
-        "required": ["type", "data", "data_index"],
-        "title": "Body_postV1LogRawAnalytics"
       },
       "Body_postV1Upload_file_to_cloud_storage": {
         "properties": {

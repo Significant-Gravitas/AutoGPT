@@ -9,6 +9,8 @@ from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
+from backend.api.features.store.model import StoreAgentDetails
+from backend.api.model import OnboardingNotificationPayload
 from backend.data import execution as execution_db
 from backend.data.credit import get_user_credit_model
 from backend.data.notification_bus import (
@@ -16,8 +18,6 @@ from backend.data.notification_bus import (
     NotificationEvent,
 )
 from backend.data.user import get_user_by_id
-from backend.server.model import OnboardingNotificationPayload
-from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.json import SafeJson
 from backend.util.timezone_utils import get_user_timezone_or_utc
