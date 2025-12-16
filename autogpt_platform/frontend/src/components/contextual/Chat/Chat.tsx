@@ -3,10 +3,12 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import React from "react";
+import { List } from "@phosphor-icons/react";
+import React, { useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatErrorState } from "./components/ChatErrorState/ChatErrorState";
 import { ChatLoadingState } from "./components/ChatLoadingState/ChatLoadingState";
+import { SessionsDrawer } from "./components/SessionsDrawer/SessionsDrawer";
 import { useChat } from "./useChat";
 
 export interface ChatProps {
@@ -37,11 +39,22 @@ export function Chat({
     createSession,
     clearSession,
     refreshSession,
+    loadSession,
   } = useChat();
+
+  const [isSessionsDrawerOpen, setIsSessionsDrawerOpen] = useState(false);
 
   const handleNewChat = () => {
     clearSession();
     onNewChat?.();
+  };
+
+  const handleSelectSession = async (sessionId: string) => {
+    try {
+      await loadSession(sessionId);
+    } catch (err) {
+      console.error("Failed to load session:", err);
+    }
   };
 
   return (
@@ -50,27 +63,25 @@ export function Chat({
       {showHeader && (
         <header className="shrink-0 border-b border-zinc-200 bg-white p-3">
           <div className="flex items-center justify-between">
-            {typeof headerTitle === "string" ? (
-              <Text variant="h2" className="text-lg font-semibold">
-                {headerTitle}
-              </Text>
-            ) : (
-              headerTitle
-            )}
+            <div className="flex items-center gap-3">
+              <button
+                aria-label="View sessions"
+                onClick={() => setIsSessionsDrawerOpen(true)}
+                className="flex size-8 items-center justify-center rounded hover:bg-zinc-100"
+              >
+                <List width="1.25rem" height="1.25rem" />
+              </button>
+              {typeof headerTitle === "string" ? (
+                <Text variant="h2" className="text-lg font-semibold">
+                  {headerTitle}
+                </Text>
+              ) : (
+                headerTitle
+              )}
+            </div>
             <div className="flex items-center gap-3">
               {showSessionInfo && sessionId && (
                 <>
-                  <Text variant="body">
-                    <span
-                      className="inline-block bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 bg-clip-text text-transparent"
-                      style={{
-                        backgroundSize: "200% 100%",
-                        animation: "shimmer 2s ease-in-out infinite",
-                      }}
-                    >
-                      Session: {sessionId.slice(0, 8)}...
-                    </span>
-                  </Text>
                   {showNewChatButton && (
                     <Button
                       variant="outline"
@@ -112,6 +123,14 @@ export function Chat({
           />
         )}
       </main>
+
+      {/* Sessions Drawer */}
+      <SessionsDrawer
+        isOpen={isSessionsDrawerOpen}
+        onClose={() => setIsSessionsDrawerOpen(false)}
+        onSelectSession={handleSelectSession}
+        currentSessionId={sessionId}
+      />
     </div>
   );
 }
