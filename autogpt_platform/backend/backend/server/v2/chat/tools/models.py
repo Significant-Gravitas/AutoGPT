@@ -22,6 +22,9 @@ class ResponseType(str, Enum):
     SUCCESS = "success"
     DOC_SEARCH_RESULTS = "doc_search_results"
     AGENT_OUTPUT = "agent_output"
+    BLOCK_LIST = "block_list"
+    BLOCK_OUTPUT = "block_output"
+    UNDERSTANDING_UPDATED = "understanding_updated"
 
 
 # Base response model
@@ -223,3 +226,43 @@ class AgentOutputResponse(ToolResponseBase):
     execution: ExecutionOutputInfo | None = None
     available_executions: list[dict[str, Any]] | None = None
     total_executions: int = 0
+
+
+# Block models
+class BlockInfoSummary(BaseModel):
+    """Summary of a block for search results."""
+
+    id: str
+    name: str
+    description: str
+    categories: list[str]
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+
+
+class BlockListResponse(ToolResponseBase):
+    """Response for find_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_LIST
+    blocks: list[BlockInfoSummary]
+    count: int
+    query: str
+
+
+class BlockOutputResponse(ToolResponseBase):
+    """Response for run_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_OUTPUT
+    block_id: str
+    block_name: str
+    outputs: dict[str, list[Any]]
+    success: bool = True
+
+
+# Business understanding models
+class UnderstandingUpdatedResponse(ToolResponseBase):
+    """Response for add_understanding tool."""
+
+    type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
+    updated_fields: list[str] = Field(default_factory=list)
+    current_understanding: dict[str, Any] = Field(default_factory=dict)

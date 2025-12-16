@@ -8,13 +8,15 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 import backend.server.v2.chat.config
-from backend.server.v2.chat.model import (
-    ChatMessage,
-    ChatSession,
-    Usage,
-    get_chat_session,
-    upsert_chat_session,
+from backend.data.understanding import (
+    format_understanding_for_prompt,
+    get_business_understanding,
 )
+from backend.server.v2.chat.model import ChatMessage, ChatSession, Usage
+from backend.server.v2.chat.model import (
+    create_chat_session as model_create_chat_session,
+)
+from backend.server.v2.chat.model import get_chat_session, upsert_chat_session
 from backend.server.v2.chat.response_model import (
     StreamBaseResponse,
     StreamEnd,
@@ -35,15 +37,38 @@ config = backend.server.v2.chat.config.ChatConfig()
 client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
+async def _build_system_prompt(user_id: str | None) -> str:
+    """Build the full system prompt including business understanding if available."""
+    # Start with the base system prompt
+    base_prompt = config.get_system_prompt()
+
+    # If user is authenticated, try to fetch their business understanding
+    if user_id:
+        try:
+            understanding = await get_business_understanding(user_id)
+            if understanding:
+                context = format_understanding_for_prompt(understanding)
+                if context:
+                    return (
+                        f"{base_prompt}\n\n---\n\n"
+                        f"{context}\n\n"
+                        "Use this context to provide more personalized recommendations "
+                        "and to better understand the user's business needs when "
+                        "suggesting agents and automations."
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to fetch business understanding: {e}")
+
+    return base_prompt
+
+
 async def create_chat_session(
     user_id: str | None = None,
 ) -> ChatSession:
     """
     Create a new chat session and persist it to the database.
     """
-    session = ChatSession.new(user_id)
-    # Persist the session immediately so it can be used for streaming
-    return await upsert_chat_session(session)
+    return await model_create_chat_session(user_id)
 
 
 async def get_session(
@@ -54,6 +79,21 @@ async def get_session(
     Get a chat session by ID.
     """
     return await get_chat_session(session_id, user_id)
+
+
+async def get_user_sessions(
+    user_id: str,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[ChatSession]:
+    """
+    Get all chat sessions for a user.
+    """
+    from backend.server.v2.chat.model import (
+        get_user_sessions as model_get_user_sessions,
+    )
+
+    return await model_get_user_sessions(user_id, limit, offset)
 
 
 async def assign_user_to_session(
@@ -150,6 +190,9 @@ async def stream_chat_completion(
     session = await upsert_chat_session(session)
     assert session, "Session not found"
 
+    # Build system prompt with business understanding
+    system_prompt = await _build_system_prompt(user_id)
+
     assistant_response = ChatMessage(
         role="assistant",
         content="",
@@ -168,6 +211,7 @@ async def stream_chat_completion(
         async for chunk in _stream_chat_chunks(
             session=session,
             tools=tools,
+            system_prompt=system_prompt,
         ):
 
             if isinstance(chunk, StreamTextChunk):
@@ -340,6 +384,7 @@ async def stream_chat_completion(
 async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
+    system_prompt: str | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """
     Pure streaming function for OpenAI chat completions with tool calling.
@@ -347,9 +392,9 @@ async def _stream_chat_chunks(
     This function is database-agnostic and focuses only on streaming logic.
 
     Args:
-        messages: Conversation context as ChatCompletionMessageParam list
-        session_id: Session ID
-        user_id: User ID for tool execution
+        session: Chat session with conversation history
+        tools: Available tools for the model
+        system_prompt: System prompt to prepend to messages
 
     Yields:
         SSE formatted JSON response objects
@@ -359,6 +404,17 @@ async def _stream_chat_chunks(
 
     logger.info("Starting pure chat stream")
 
+    # Build messages with system prompt prepended
+    messages = session.to_openai_messages()
+    if system_prompt:
+        from openai.types.chat import ChatCompletionSystemMessageParam
+
+        system_message = ChatCompletionSystemMessageParam(
+            role="system",
+            content=system_prompt,
+        )
+        messages = [system_message] + messages
+
     # Loop to handle tool calls and continue conversation
     while True:
         try:
@@ -367,7 +423,7 @@ async def _stream_chat_chunks(
             # Create the stream with proper types
             stream = await client.chat.completions.create(
                 model=model,
-                messages=session.to_openai_messages(),
+                messages=messages,
                 tools=tools,
                 tool_choice="auto",
                 stream=True,

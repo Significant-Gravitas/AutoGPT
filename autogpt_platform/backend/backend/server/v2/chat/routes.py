@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Query, Request, Security
+from fastapi import APIRouter, Depends, Query, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -27,6 +27,7 @@ router = APIRouter(
 
 class StreamChatRequest(BaseModel):
     """Request model for streaming chat with optional context."""
+
     message: str
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
@@ -50,7 +51,62 @@ class SessionDetailResponse(BaseModel):
     messages: list[dict]
 
 
+class SessionSummaryResponse(BaseModel):
+    """Response model for a session summary (without messages)."""
+
+    id: str
+    created_at: str
+    updated_at: str
+    title: str | None = None
+
+
+class ListSessionsResponse(BaseModel):
+    """Response model for listing chat sessions."""
+
+    sessions: list[SessionSummaryResponse]
+    total: int
+
+
 # ========== Routes ==========
+
+
+@router.get(
+    "/sessions",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_sessions(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> ListSessionsResponse:
+    """
+    List chat sessions for the authenticated user.
+
+    Returns a paginated list of chat sessions belonging to the current user,
+    ordered by most recently updated.
+
+    Args:
+        user_id: The authenticated user's ID.
+        limit: Maximum number of sessions to return (1-100).
+        offset: Number of sessions to skip for pagination.
+
+    Returns:
+        ListSessionsResponse: List of session summaries and total count.
+    """
+    sessions = await chat_service.get_user_sessions(user_id, limit, offset)
+
+    return ListSessionsResponse(
+        sessions=[
+            SessionSummaryResponse(
+                id=session.session_id,
+                created_at=session.started_at.isoformat(),
+                updated_at=session.updated_at.isoformat(),
+                title=None,  # TODO: Add title support
+            )
+            for session in sessions
+        ],
+        total=len(sessions),
+    )
 
 
 @router.post(
