@@ -37,10 +37,20 @@ config = backend.server.v2.chat.config.ChatConfig()
 client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
-async def _build_system_prompt(user_id: str | None) -> str:
-    """Build the full system prompt including business understanding if available."""
-    # Start with the base system prompt
-    base_prompt = config.get_system_prompt()
+async def _build_system_prompt(
+    user_id: str | None, prompt_type: str = "default"
+) -> str:
+    """Build the full system prompt including business understanding if available.
+
+    Args:
+        user_id: The user ID for fetching business understanding
+        prompt_type: The type of prompt to load ("default" or "onboarding")
+
+    Returns:
+        The full system prompt with business understanding context if available
+    """
+    # Start with the base system prompt for the specified type
+    base_prompt = config.get_system_prompt_for_type(prompt_type)
 
     # If user is authenticated, try to fetch their business understanding
     if user_id:
@@ -118,6 +128,7 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
+    prompt_type: str = "default",
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -129,6 +140,7 @@ async def stream_chat_completion(
         user_message: User's input message
         user_id: User ID for authentication (None for anonymous)
         session: Optional pre-loaded session object (for recursive calls to avoid Redis refetch)
+        prompt_type: The type of prompt to use ("default" or "onboarding")
 
     Yields:
         StreamBaseResponse objects formatted as SSE
@@ -191,7 +203,7 @@ async def stream_chat_completion(
     assert session, "Session not found"
 
     # Build system prompt with business understanding
-    system_prompt = await _build_system_prompt(user_id)
+    system_prompt = await _build_system_prompt(user_id, prompt_type)
 
     assistant_response = ChatMessage(
         role="assistant",
@@ -332,6 +344,7 @@ async def stream_chat_completion(
             user_id=user_id,
             retry_count=retry_count + 1,
             session=session,
+            prompt_type=prompt_type,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -377,6 +390,7 @@ async def stream_chat_completion(
             session_id=session.session_id,
             user_id=user_id,
             session=session,  # Pass session object to avoid Redis refetch
+            prompt_type=prompt_type,
         ):
             yield chunk
 
