@@ -172,6 +172,7 @@ class RunBlockTool(BaseTool):
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
         # Check credentials
+        creds_manager = IntegrationCredentialsManager()
         matched_credentials, missing_credentials = await self._check_block_credentials(
             user_id, block
         )
@@ -205,16 +206,31 @@ class RunBlockTool(BaseTool):
             )
 
         try:
-            # Inject matched credentials into input_data
+            # Fetch actual credentials and prepare kwargs for block execution
+            exec_kwargs: dict[str, Any] = {"user_id": user_id}
+
             for field_name, cred_meta in matched_credentials.items():
+                # Inject metadata into input_data (for validation)
                 if field_name not in input_data:
                     input_data[field_name] = cred_meta.model_dump()
+
+                # Fetch actual credentials and pass as kwargs (for execution)
+                actual_credentials = await creds_manager.get(
+                    user_id, cred_meta.id, lock=False
+                )
+                if actual_credentials:
+                    exec_kwargs[field_name] = actual_credentials
+                else:
+                    return ErrorResponse(
+                        message=f"Failed to retrieve credentials for {field_name}",
+                        session_id=session_id,
+                    )
 
             # Execute the block and collect outputs
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in block.execute(
                 input_data,
-                user_id=user_id,
+                **exec_kwargs,
             ):
                 outputs[output_name].append(output_data)
 

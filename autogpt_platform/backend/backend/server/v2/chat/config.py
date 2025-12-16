@@ -14,6 +14,10 @@ class ChatConfig(BaseSettings):
     model: str = Field(
         default="anthropic/claude-opus-4.5", description="Default model to use"
     )
+    title_model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="Model to use for generating session titles (should be fast/cheap)",
+    )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
         default="https://openrouter.ai/api/v1",

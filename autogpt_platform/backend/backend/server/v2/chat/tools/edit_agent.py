@@ -269,7 +269,7 @@ class EditAgentTool(BaseTool):
 
         try:
             created_graph, library_agent = await save_agent_to_library(
-                updated_agent, user_id
+                updated_agent, user_id, is_update=True
             )
 
             return AgentSavedResponse(

@@ -178,6 +178,11 @@ async def get_user_chat_sessions(
     )
 
 
+async def get_user_session_count(user_id: str) -> int:
+    """Get the total number of chat sessions for a user."""
+    return await PrismaChatSession.prisma().count(where={"userId": user_id})
+
+
 async def delete_chat_session(session_id: str) -> bool:
     """Delete a chat session and all its messages."""
     try:

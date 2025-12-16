@@ -60,9 +60,7 @@ async def main(batch_size: int = 100) -> int:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Backfill embeddings for store agents"
-    )
+    parser = argparse.ArgumentParser(description="Backfill embeddings for store agents")
     parser.add_argument(
         "--batch-size",
         type=int,

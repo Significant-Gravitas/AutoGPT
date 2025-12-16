@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
 import backend.server.v2.chat.config
+import backend.server.v2.chat.db as chat_db
 from backend.data.understanding import (
     format_understanding_for_prompt,
     get_business_understanding,
@@ -37,6 +38,19 @@ config = backend.server.v2.chat.config.ChatConfig()
 client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
+async def _is_first_session(user_id: str) -> bool:
+    """Check if this is the user's first chat session.
+
+    Returns True if the user has 1 or fewer sessions (meaning this is their first).
+    """
+    try:
+        session_count = await chat_db.get_user_session_count(user_id)
+        return session_count <= 1
+    except Exception as e:
+        logger.warning(f"Failed to check session count for user {user_id}: {e}")
+        return False  # Default to non-onboarding if we can't check
+
+
 async def _build_system_prompt(
     user_id: str | None, prompt_type: str = "default"
 ) -> str:
@@ -45,12 +59,20 @@ async def _build_system_prompt(
     Args:
         user_id: The user ID for fetching business understanding
         prompt_type: The type of prompt to load ("default" or "onboarding")
+                     If "default" and this is the user's first session, will use "onboarding" instead.
 
     Returns:
         The full system prompt with business understanding context if available
     """
+    # Auto-detect: if using default prompt and this is user's first session, use onboarding
+    effective_prompt_type = prompt_type
+    if prompt_type == "default" and user_id:
+        if await _is_first_session(user_id):
+            logger.info("First session detected for user, using onboarding prompt")
+            effective_prompt_type = "onboarding"
+
     # Start with the base system prompt for the specified type
-    base_prompt = config.get_system_prompt_for_type(prompt_type)
+    base_prompt = config.get_system_prompt_for_type(effective_prompt_type)
 
     # If user is authenticated, try to fetch their business understanding
     if user_id:
@@ -70,6 +92,46 @@ async def _build_system_prompt(
             logger.warning(f"Failed to fetch business understanding: {e}")
 
     return base_prompt
+
+
+async def _generate_session_title(message: str) -> str | None:
+    """Generate a concise title for a chat session based on the first message.
+
+    Args:
+        message: The first user message in the session
+
+    Returns:
+        A short title (3-6 words) or None if generation fails
+    """
+    try:
+        response = await client.chat.completions.create(
+            model=config.title_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate a very short title (3-6 words) for a chat conversation "
+                        "based on the user's first message. The title should capture the "
+                        "main topic or intent. Return ONLY the title, no quotes or punctuation."
+                    ),
+                },
+                {"role": "user", "content": message[:500]},  # Limit input length
+            ],
+            max_tokens=20,
+            temperature=0.7,
+        )
+        title = response.choices[0].message.content
+        if title:
+            # Clean up the title
+            title = title.strip().strip("\"'")
+            # Limit length
+            if len(title) > 50:
+                title = title[:47] + "..."
+            return title
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to generate session title: {e}")
+        return None
 
 
 async def create_chat_session(
@@ -201,6 +263,29 @@ async def stream_chat_completion(
     )
     session = await upsert_chat_session(session)
     assert session, "Session not found"
+
+    # Generate title for new sessions on first user message (non-blocking)
+    # Check: is_user_message, no title yet, and this is the first user message
+    if is_user_message and message and not session.title:
+        user_messages = [m for m in session.messages if m.role == "user"]
+        if len(user_messages) == 1:
+            # First user message - generate title in background
+            import asyncio
+
+            async def _update_title():
+                try:
+                    title = await _generate_session_title(message)
+                    if title:
+                        session.title = title
+                        await upsert_chat_session(session)
+                        logger.info(
+                            f"Generated title for session {session_id}: {title}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to update session title: {e}")
+
+            # Fire and forget - don't block the chat response
+            asyncio.create_task(_update_title())
 
     # Build system prompt with business understanding
     system_prompt = await _build_system_prompt(user_id, prompt_type)
@@ -581,8 +666,12 @@ async def _yield_tool_call(
     """
     logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
 
-    # Parse tool call arguments - exceptions will propagate to caller
-    arguments = orjson.loads(tool_calls[yield_idx]["function"]["arguments"])
+    # Parse tool call arguments - handle empty arguments gracefully
+    raw_arguments = tool_calls[yield_idx]["function"]["arguments"]
+    if raw_arguments:
+        arguments = orjson.loads(raw_arguments)
+    else:
+        arguments = {}
 
     yield StreamToolCall(
         tool_id=tool_calls[yield_idx]["id"],

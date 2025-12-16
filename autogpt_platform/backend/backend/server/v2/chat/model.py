@@ -49,6 +49,7 @@ class Usage(BaseModel):
 class ChatSession(BaseModel):
     session_id: str
     user_id: str | None
+    title: str | None = None
     messages: list[ChatMessage]
     usage: list[Usage]
     credentials: dict[str, dict] = {}  # Map of provider -> credential metadata
@@ -62,6 +63,7 @@ class ChatSession(BaseModel):
         return ChatSession(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
+            title=None,
             messages=[],
             usage=[],
             credentials={},
@@ -138,6 +140,7 @@ class ChatSession(BaseModel):
         return ChatSession(
             session_id=prisma_session.id,
             user_id=prisma_session.userId,
+            title=prisma_session.title,
             messages=messages,
             usage=usage,
             credentials=credentials,
@@ -246,7 +249,13 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
         return None
 
     try:
-        return ChatSession.model_validate_json(raw_session)
+        session = ChatSession.model_validate_json(raw_session)
+        logger.info(
+            f"Loading session {session_id} from cache: "
+            f"message_count={len(session.messages)}, "
+            f"roles={[m.role for m in session.messages]}"
+        )
+        return session
     except Exception as e:
         logger.error(f"Failed to deserialize session {session_id}: {e}", exc_info=True)
         raise RedisError(f"Corrupted session data for {session_id}") from e
@@ -265,7 +274,15 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
     if not prisma_session:
         return None
 
-    return ChatSession.from_prisma(prisma_session, prisma_session.Messages)
+    messages = prisma_session.Messages
+    logger.info(
+        f"Loading session {session_id} from DB: "
+        f"has_messages={messages is not None}, "
+        f"message_count={len(messages) if messages else 0}, "
+        f"roles={[m.role for m in messages] if messages else []}"
+    )
+
+    return ChatSession.from_prisma(prisma_session, messages)
 
 
 async def _save_session_to_db(
@@ -313,6 +330,11 @@ async def _save_session_to_db(
                     "function_call": msg.function_call,
                 }
             )
+        logger.info(
+            f"Saving {len(new_messages)} new messages to DB for session {session.session_id}: "
+            f"roles={[m['role'] for m in messages_data]}, "
+            f"start_sequence={existing_message_count}"
+        )
         await chat_db.add_chat_messages_batch(
             session_id=session.session_id,
             messages=messages_data,

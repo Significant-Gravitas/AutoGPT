@@ -47,14 +47,49 @@ def is_valid_uuid(value: str) -> bool:
     return isinstance(value, str) and UUID_REGEX.match(value) is not None
 
 
+def _compact_schema(schema: dict) -> dict[str, str]:
+    """Extract compact type info from a JSON schema properties dict.
+
+    Returns a dict of {field_name: type_string} for essential info only.
+    """
+    props = schema.get("properties", {})
+    result = {}
+
+    for name, prop in props.items():
+        # Skip internal/complex fields
+        if name.startswith("_"):
+            continue
+
+        # Get type string
+        type_str = prop.get("type", "any")
+
+        # Handle anyOf/oneOf (optional types)
+        if "anyOf" in prop:
+            types = [t.get("type", "?") for t in prop["anyOf"] if t.get("type")]
+            type_str = "|".join(types) if types else "any"
+        elif "allOf" in prop:
+            type_str = "object"
+
+        # Add array item type if present
+        if type_str == "array" and "items" in prop:
+            items = prop["items"]
+            if isinstance(items, dict):
+                item_type = items.get("type", "any")
+                type_str = f"array[{item_type}]"
+
+        result[name] = type_str
+
+    return result
+
+
 def get_block_summaries(include_schemas: bool = True) -> str:
-    """Generate block summaries for prompts.
+    """Generate compact block summaries for prompts.
 
     Args:
-        include_schemas: Whether to include full input/output schemas
+        include_schemas: Whether to include input/output type info
 
     Returns:
-        Formatted string of block summaries
+        Formatted string of block summaries (compact format)
     """
     blocks = get_blocks()
     summaries = []
@@ -64,51 +99,49 @@ def get_block_summaries(include_schemas: bool = True) -> str:
         name = block.name
         desc = getattr(block, "description", "") or ""
 
+        # Truncate description
+        if len(desc) > 150:
+            desc = desc[:147] + "..."
+
         if not include_schemas:
-            # Simple format
-            if len(desc) > 200:
-                desc = desc[:197] + "..."
             summaries.append(f"- {name} (id: {block_id}): {desc}")
         else:
-            # Full format with schemas
-            input_schema = {}
-            output_schema = {}
+            # Compact format with type info only
+            inputs = {}
+            outputs = {}
+            required = []
 
             if hasattr(block, "input_schema"):
                 try:
-                    full_schema = block.input_schema.jsonschema()
-                    input_schema = {
-                        "properties": full_schema.get("properties", {}),
-                        "required": full_schema.get("required", []),
-                    }
+                    schema = block.input_schema.jsonschema()
+                    inputs = _compact_schema(schema)
+                    required = schema.get("required", [])
                 except Exception:
                     pass
 
             if hasattr(block, "output_schema"):
                 try:
-                    full_schema = block.output_schema.jsonschema()
-                    output_schema = {
-                        "properties": full_schema.get("properties", {}),
-                    }
+                    schema = block.output_schema.jsonschema()
+                    outputs = _compact_schema(schema)
                 except Exception:
                     pass
 
-            block_info = {
-                "name": name,
-                "id": block_id,
-                "description": desc[:500] if len(desc) > 500 else desc,
-                "inputSchema": input_schema,
-                "outputSchema": output_schema,
-            }
+            # Build compact line format
+            # Format: NAME (id): desc | in: {field:type, ...} [required] | out: {field:type}
+            in_str = ", ".join(f"{k}:{v}" for k, v in inputs.items())
+            out_str = ", ".join(f"{k}:{v}" for k, v in outputs.items())
+            req_str = f" req=[{','.join(required)}]" if required else ""
 
-            # Check for static output
-            if getattr(block, "static_output", False):
-                block_info["staticOutput"] = True
+            static = " [static]" if getattr(block, "static_output", False) else ""
 
-            summaries.append(json.dumps(block_info, indent=2))
+            line = f"- {name} (id: {block_id}): {desc}"
+            if in_str:
+                line += f"\n  in: {{{in_str}}}{req_str}"
+            if out_str:
+                line += f"\n  out: {{{out_str}}}{static}"
 
-    if include_schemas:
-        return "\n\n".join(summaries)
+            summaries.append(line)
+
     return "\n".join(summaries)
 
 

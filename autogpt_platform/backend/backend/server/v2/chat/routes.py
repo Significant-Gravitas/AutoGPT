@@ -164,12 +164,20 @@ async def get_session(
     session = await chat_service.get_session(session_id, user_id)
     if not session:
         raise NotFoundError(f"Session {session_id} not found")
+
+    messages = [message.model_dump() for message in session.messages]
+    logger.info(
+        f"Returning session {session_id}: "
+        f"message_count={len(messages)}, "
+        f"roles={[m.get('role') for m in messages]}"
+    )
+
     return SessionDetailResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         updated_at=session.updated_at.isoformat(),
         user_id=session.user_id or None,
-        messages=[message.model_dump() for message in session.messages],
+        messages=messages,
     )
 
 
@@ -367,12 +375,20 @@ async def get_onboarding_session(
     session = await chat_service.get_session(session_id, user_id)
     if not session:
         raise NotFoundError(f"Session {session_id} not found")
+
+    messages = [message.model_dump() for message in session.messages]
+    logger.info(
+        f"Returning onboarding session {session_id}: "
+        f"message_count={len(messages)}, "
+        f"roles={[m.get('role') for m in messages]}"
+    )
+
     return SessionDetailResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         updated_at=session.updated_at.isoformat(),
         user_id=session.user_id or None,
-        messages=[message.model_dump() for message in session.messages],
+        messages=messages,
     )
 
 
