@@ -5677,6 +5677,7 @@
       "APIKeyPermission": {
         "type": "string",
         "enum": [
+          "IDENTITY",
           "EXECUTE_GRAPH",
           "READ_GRAPH",
           "EXECUTE_BLOCK",

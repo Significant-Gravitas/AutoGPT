@@ -174,12 +174,12 @@ async def test_authorize_creates_code_in_database(
     """Test that authorization endpoint creates a code in the database."""
     verifier, challenge = pkce_credentials
 
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH READ_GRAPH",
+            "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"],
             "state": "test_state_123",
             "response_type": "code",
             "code_challenge": challenge,
@@ -188,13 +188,13 @@ async def test_authorize_creates_code_in_database(
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
-    location = response.headers["location"]
+    assert response.status_code == 200
+    redirect_url = response.json()["redirect_url"]
 
     # Parse the redirect URL to get the authorization code
     from urllib.parse import parse_qs, urlparse
 
-    parsed = urlparse(location)
+    parsed = urlparse(redirect_url)
     query_params = parse_qs(parsed.query)
 
     assert "code" in query_params, f"Expected 'code' in query params: {query_params}"
@@ -227,12 +227,12 @@ async def test_authorize_with_pkce_stores_challenge(
     """Test that PKCE code challenge is stored correctly."""
     verifier, challenge = pkce_credentials
 
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "pkce_test_state",
             "response_type": "code",
             "code_challenge": challenge,
@@ -241,11 +241,11 @@ async def test_authorize_with_pkce_stores_challenge(
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
 
     from urllib.parse import parse_qs, urlparse
 
-    auth_code = parse_qs(urlparse(response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(response.json()["redirect_url"]).query)["code"][0]
 
     # Verify PKCE challenge is stored
     db_code = await PrismaOAuthAuthorizationCode.prisma().find_unique(
@@ -266,12 +266,12 @@ async def test_authorize_invalid_client_returns_error(
     """Test that invalid client_id returns error in redirect."""
     _, challenge = generate_pkce()
 
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": "nonexistent_client_id",
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "error_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -280,10 +280,10 @@ async def test_authorize_invalid_client_returns_error(
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
     from urllib.parse import parse_qs, urlparse
 
-    query_params = parse_qs(urlparse(response.headers["location"]).query)
+    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_client"
 
 
@@ -328,12 +328,12 @@ async def test_authorize_inactive_app(
     """Test that authorization with inactive app returns error."""
     _, challenge = generate_pkce()
 
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": inactive_oauth_app["client_id"],
             "redirect_uri": inactive_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "inactive_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -342,10 +342,10 @@ async def test_authorize_inactive_app(
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
     from urllib.parse import parse_qs, urlparse
 
-    query_params = parse_qs(urlparse(response.headers["location"]).query)
+    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_client"
 
 
@@ -358,12 +358,12 @@ async def test_authorize_invalid_redirect_uri(
     """Test authorization with unregistered redirect_uri returns HTTP error."""
     _, challenge = generate_pkce()
 
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": "https://malicious.com/callback",
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "invalid_redirect_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -386,12 +386,12 @@ async def test_authorize_invalid_scope(
     """Test authorization with invalid scope value."""
     _, challenge = generate_pkce()
 
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "INVALID_SCOPE_NAME",
+            "scopes": ["INVALID_SCOPE_NAME"],
             "state": "invalid_scope_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -400,10 +400,10 @@ async def test_authorize_invalid_scope(
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
     from urllib.parse import parse_qs, urlparse
 
-    query_params = parse_qs(urlparse(response.headers["location"]).query)
+    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_scope"
 
 
@@ -418,12 +418,12 @@ async def test_authorize_unauthorized_scope(
 
     # The test_oauth_app only has EXECUTE_GRAPH and READ_GRAPH scopes
     # DELETE_GRAPH is not in the app's allowed scopes
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "DELETE_GRAPH",  # Not authorized for this app
+            "scopes": ["DELETE_GRAPH"],  # Not authorized for this app
             "state": "unauthorized_scope_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -432,10 +432,10 @@ async def test_authorize_unauthorized_scope(
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
     from urllib.parse import parse_qs, urlparse
 
-    query_params = parse_qs(urlparse(response.headers["location"]).query)
+    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "invalid_scope"
 
 
@@ -448,12 +448,12 @@ async def test_authorize_unsupported_response_type(
     """Test authorization with unsupported response_type."""
     _, challenge = generate_pkce()
 
-    response = await client.get(
-        "/oauth/authorize",
-        params={
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "unsupported_response_test",
             "response_type": "token",  # Implicit flow not supported
             "code_challenge": challenge,
@@ -462,10 +462,10 @@ async def test_authorize_unsupported_response_type(
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
     from urllib.parse import parse_qs, urlparse
 
-    query_params = parse_qs(urlparse(response.headers["location"]).query)
+    query_params = parse_qs(urlparse(response.json()["redirect_url"]).query)
     assert query_params["error"][0] == "unsupported_response_type"
 
 
@@ -486,12 +486,12 @@ async def test_token_exchange_creates_tokens_in_database(
     verifier, challenge = generate_pkce()
 
     # First get an authorization code
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH READ_GRAPH",
+            "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"],
             "state": "token_test_state",
             "response_type": "code",
             "code_challenge": challenge,
@@ -500,11 +500,13 @@ async def test_token_exchange_creates_tokens_in_database(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     # Exchange code for tokens
     token_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -566,12 +568,12 @@ async def test_authorization_code_cannot_be_reused(
     verifier, challenge = generate_pkce()
 
     # Get authorization code
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "reuse_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -580,11 +582,13 @@ async def test_authorization_code_cannot_be_reused(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     # First exchange - should succeed
     first_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -598,7 +602,7 @@ async def test_authorization_code_cannot_be_reused(
 
     # Second exchange - should fail
     second_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -624,12 +628,12 @@ async def test_token_exchange_with_invalid_client_secret(
     verifier, challenge = generate_pkce()
 
     # Get authorization code
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "bad_secret_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -638,11 +642,13 @@ async def test_token_exchange_with_invalid_client_secret(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     # Try to exchange with wrong secret
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -664,7 +670,7 @@ async def test_token_authorization_code_invalid_code(
 ):
     """Test token exchange with invalid/nonexistent authorization code."""
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": "nonexistent_invalid_code_xyz",
@@ -704,7 +710,7 @@ async def test_token_authorization_code_expired(
     )
 
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": expired_code,
@@ -731,12 +737,12 @@ async def test_token_authorization_code_redirect_uri_mismatch(
     verifier, challenge = generate_pkce()
 
     # Get authorization code with one redirect_uri
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "redirect_mismatch_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -745,12 +751,14 @@ async def test_token_authorization_code_redirect_uri_mismatch(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     # Try to exchange with different redirect_uri
     # Note: localhost:3000 is in the app's registered redirect_uris
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -779,12 +787,12 @@ async def test_token_authorization_code_pkce_failure(
     verifier, challenge = pkce_credentials
 
     # Get authorization code with PKCE challenge
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "pkce_failure_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -793,11 +801,13 @@ async def test_token_authorization_code_pkce_failure(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     # Try to exchange with wrong verifier
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -829,12 +839,12 @@ async def test_refresh_token_creates_new_tokens(
     verifier, challenge = generate_pkce()
 
     # Get initial tokens
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "refresh_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -843,10 +853,12 @@ async def test_refresh_token_creates_new_tokens(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     initial_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -860,7 +872,7 @@ async def test_refresh_token_creates_new_tokens(
 
     # Use refresh token to get new tokens
     refresh_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "refresh_token",
             "refresh_token": initial_tokens["refresh_token"],
@@ -902,7 +914,7 @@ async def test_token_refresh_invalid_token(
 ):
     """Test token refresh with invalid/nonexistent refresh token."""
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "refresh_token",
             "refresh_token": "completely_invalid_refresh_token_xyz",
@@ -940,7 +952,7 @@ async def test_token_refresh_expired(
     )
 
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "refresh_token",
             "refresh_token": expired_token_value,
@@ -979,7 +991,7 @@ async def test_token_refresh_revoked(
     )
 
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "refresh_token",
             "refresh_token": revoked_token_value,
@@ -1051,7 +1063,7 @@ async def test_token_refresh_wrong_application(
 
     # Try to use it with `other_oauth_app`
     response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "refresh_token",
             "refresh_token": token_value,
@@ -1081,12 +1093,12 @@ async def test_introspect_valid_access_token(
     verifier, challenge = generate_pkce()
 
     # Get tokens
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH READ_GRAPH",
+            "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"],
             "state": "introspect_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -1095,10 +1107,12 @@ async def test_introspect_valid_access_token(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     token_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -1112,7 +1126,7 @@ async def test_introspect_valid_access_token(
 
     # Introspect the access token
     introspect_response = await client.post(
-        "/oauth/introspect",
+        "/api/oauth/introspect",
         json={
             "token": tokens["access_token"],
             "token_type_hint": "access_token",
@@ -1139,7 +1153,7 @@ async def test_introspect_invalid_token_returns_inactive(
 ):
     """Test introspection returns inactive for non-existent token."""
     introspect_response = await client.post(
-        "/oauth/introspect",
+        "/api/oauth/introspect",
         json={
             "token": "completely_invalid_token_that_does_not_exist",
             "client_id": test_oauth_app["client_id"],
@@ -1163,12 +1177,12 @@ async def test_introspect_active_refresh_token(
     verifier, challenge = generate_pkce()
 
     # Get tokens via the full flow
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH READ_GRAPH",
+            "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"],
             "state": "introspect_refresh_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -1177,10 +1191,12 @@ async def test_introspect_active_refresh_token(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     token_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -1194,7 +1210,7 @@ async def test_introspect_active_refresh_token(
 
     # Introspect the refresh token
     introspect_response = await client.post(
-        "/oauth/introspect",
+        "/api/oauth/introspect",
         json={
             "token": tokens["refresh_token"],
             "token_type_hint": "refresh_token",
@@ -1219,7 +1235,7 @@ async def test_introspect_invalid_client(
 ):
     """Test introspection with invalid client credentials."""
     introspect_response = await client.post(
-        "/oauth/introspect",
+        "/api/oauth/introspect",
         json={
             "token": "some_token",
             "client_id": test_oauth_app["client_id"],
@@ -1316,12 +1332,12 @@ async def test_revoke_access_token_updates_database(
     verifier, challenge = generate_pkce()
 
     # Get tokens
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "revoke_access_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -1330,10 +1346,12 @@ async def test_revoke_access_token_updates_database(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     token_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -1355,7 +1373,7 @@ async def test_revoke_access_token_updates_database(
 
     # Revoke the token
     revoke_response = await client.post(
-        "/oauth/revoke",
+        "/api/oauth/revoke",
         json={
             "token": tokens["access_token"],
             "token_type_hint": "access_token",
@@ -1382,7 +1400,7 @@ async def test_revoke_unknown_token_returns_ok(
 ):
     """Test that revoking unknown token returns 200 (per RFC 7009)."""
     revoke_response = await client.post(
-        "/oauth/revoke",
+        "/api/oauth/revoke",
         json={
             "token": "unknown_token_that_does_not_exist_anywhere",
             "client_id": test_oauth_app["client_id"],
@@ -1407,12 +1425,12 @@ async def test_revoke_refresh_token_updates_database(
     verifier, challenge = generate_pkce()
 
     # Get tokens
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "revoke_refresh_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -1421,10 +1439,12 @@ async def test_revoke_refresh_token_updates_database(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     token_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -1446,7 +1466,7 @@ async def test_revoke_refresh_token_updates_database(
 
     # Revoke the refresh token
     revoke_response = await client.post(
-        "/oauth/revoke",
+        "/api/oauth/revoke",
         json={
             "token": tokens["refresh_token"],
             "token_type_hint": "refresh_token",
@@ -1473,7 +1493,7 @@ async def test_revoke_invalid_client(
 ):
     """Test revocation with invalid client credentials."""
     revoke_response = await client.post(
-        "/oauth/revoke",
+        "/api/oauth/revoke",
         json={
             "token": "some_token",
             "client_id": test_oauth_app["client_id"],
@@ -1501,12 +1521,12 @@ async def test_revoke_token_from_different_app_fails_silently(
     verifier, challenge = generate_pkce()
 
     # Get tokens for app 1
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH",
+            "scopes": ["EXECUTE_GRAPH"],
             "state": "cross_app_revoke_test",
             "response_type": "code",
             "code_challenge": challenge,
@@ -1515,10 +1535,12 @@ async def test_revoke_token_from_different_app_fails_silently(
         follow_redirects=False,
     )
 
-    auth_code = parse_qs(urlparse(auth_response.headers["location"]).query)["code"][0]
+    auth_code = parse_qs(urlparse(auth_response.json()["redirect_url"]).query)["code"][
+        0
+    ]
 
     token_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -1556,7 +1578,7 @@ async def test_revoke_token_from_different_app_fails_silently(
 
     # App 2 tries to revoke App 1's access token
     revoke_response = await client.post(
-        "/oauth/revoke",
+        "/api/oauth/revoke",
         json={
             "token": tokens["access_token"],
             "token_type_hint": "access_token",
@@ -1579,7 +1601,7 @@ async def test_revoke_token_from_different_app_fails_silently(
 
     # Now app 1 revokes its own token - should work
     revoke_response2 = await client.post(
-        "/oauth/revoke",
+        "/api/oauth/revoke",
         json={
             "token": tokens["access_token"],
             "token_type_hint": "access_token",
@@ -1624,12 +1646,12 @@ async def test_complete_oauth_flow_end_to_end(
     verifier, challenge = pkce_credentials
 
     # Step 1: Authorization request with PKCE
-    auth_response = await client.get(
-        "/oauth/authorize",
-        params={
+    auth_response = await client.post(
+        "/api/oauth/authorize",
+        json={
             "client_id": test_oauth_app["client_id"],
             "redirect_uri": test_oauth_app["redirect_uri"],
-            "scope": "EXECUTE_GRAPH READ_GRAPH",
+            "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"],
             "state": "e2e_test_state",
             "response_type": "code",
             "code_challenge": challenge,
@@ -1638,10 +1660,10 @@ async def test_complete_oauth_flow_end_to_end(
         follow_redirects=False,
     )
 
-    assert auth_response.status_code == 302
+    assert auth_response.status_code == 200
 
-    location = auth_response.headers["location"]
-    query = parse_qs(urlparse(location).query)
+    redirect_url = auth_response.json()["redirect_url"]
+    query = parse_qs(urlparse(redirect_url).query)
 
     assert query["state"][0] == "e2e_test_state"
     auth_code = query["code"][0]
@@ -1655,7 +1677,7 @@ async def test_complete_oauth_flow_end_to_end(
 
     # Step 2: Exchange code for tokens
     token_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "authorization_code",
             "code": auth_code,
@@ -1679,7 +1701,7 @@ async def test_complete_oauth_flow_end_to_end(
 
     # Step 3: Introspect access token
     introspect_response = await client.post(
-        "/oauth/introspect",
+        "/api/oauth/introspect",
         json={
             "token": tokens["access_token"],
             "client_id": test_oauth_app["client_id"],
@@ -1694,7 +1716,7 @@ async def test_complete_oauth_flow_end_to_end(
 
     # Step 4: Refresh tokens
     refresh_response = await client.post(
-        "/oauth/token",
+        "/api/oauth/token",
         json={
             "grant_type": "refresh_token",
             "refresh_token": tokens["refresh_token"],
@@ -1717,7 +1739,7 @@ async def test_complete_oauth_flow_end_to_end(
 
     # Step 5: Verify new access token works
     new_introspect = await client.post(
-        "/oauth/introspect",
+        "/api/oauth/introspect",
         json={
             "token": new_tokens["access_token"],
             "client_id": test_oauth_app["client_id"],
@@ -1730,7 +1752,7 @@ async def test_complete_oauth_flow_end_to_end(
 
     # Step 6: Revoke new access token
     revoke_response = await client.post(
-        "/oauth/revoke",
+        "/api/oauth/revoke",
         json={
             "token": new_tokens["access_token"],
             "token_type_hint": "access_token",
@@ -1743,7 +1765,7 @@ async def test_complete_oauth_flow_end_to_end(
 
     # Step 7: Verify revoked token is inactive
     final_introspect = await client.post(
-        "/oauth/introspect",
+        "/api/oauth/introspect",
         json={
             "token": new_tokens["access_token"],
             "client_id": test_oauth_app["client_id"],
