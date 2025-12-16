@@ -234,6 +234,7 @@ export function isSetupInfo(value: unknown): value is {
 
 export function extractCredentialsNeeded(
   parsedResult: Record<string, unknown>,
+  toolName: string = "run_agent",
 ): ChatMessageData | null {
   try {
     const setupInfo = parsedResult?.setup_info as
@@ -246,7 +247,7 @@ export function extractCredentialsNeeded(
       | Record<string, Record<string, unknown>>
       | undefined;
     if (missingCreds && Object.keys(missingCreds).length > 0) {
-      const agentName = (setupInfo?.agent_name as string) || "this agent";
+      const agentName = (setupInfo?.agent_name as string) || "this block";
       const credentials = Object.values(missingCreds).map((credInfo) => ({
         provider: (credInfo.provider as string) || "unknown",
         providerName:
@@ -266,7 +267,7 @@ export function extractCredentialsNeeded(
       }));
       return {
         type: "credentials_needed",
-        toolName: "run_agent",
+        toolName,
         credentials,
         message: `To run ${agentName}, you need to add ${credentials.length === 1 ? "credentials" : `${credentials.length} credentials`}.`,
         agentName,

@@ -191,15 +191,12 @@ export function useChatStream() {
               }
 
               const streamError =
-                err instanceof Error
-                  ? err
-                  : new Error("Failed to read stream");
+                err instanceof Error ? err : new Error("Failed to read stream");
 
               if (retryCountRef.current < MAX_RETRIES) {
                 retryCountRef.current += 1;
                 const retryDelay =
-                  INITIAL_RETRY_DELAY *
-                  Math.pow(2, retryCountRef.current - 1);
+                  INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current - 1);
 
                 toast.info("Connection interrupted", {
                   description: `Retrying in ${retryDelay / 1000} seconds...`,
