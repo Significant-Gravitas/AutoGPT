@@ -25,9 +25,10 @@ export function useChatContainer({
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [streamingChunks, setStreamingChunks] = useState<string[]>([]);
   const [hasTextChunks, setHasTextChunks] = useState(false);
+  const [isStreamingInitiated, setIsStreamingInitiated] = useState(false);
   const streamingChunksRef = useRef<string[]>([]);
   const { error, sendMessage: sendStreamMessage } = useChatStream();
-  const isStreaming = hasTextChunks;
+  const isStreaming = isStreamingInitiated || hasTextChunks;
 
   const allMessages = useMemo(() => {
     const processedInitialMessages = initialMessages
@@ -99,17 +100,20 @@ export function useChatContainer({
       setStreamingChunks([]);
       streamingChunksRef.current = [];
       setHasTextChunks(false);
+      setIsStreamingInitiated(true);
       const dispatcher = createStreamEventDispatcher({
         setHasTextChunks,
         setStreamingChunks,
         streamingChunksRef,
         setMessages,
         sessionId,
+        setIsStreamingInitiated,
       });
       try {
         await sendStreamMessage(sessionId, content, dispatcher, isUserMessage);
       } catch (err) {
         console.error("Failed to send message:", err);
+        setIsStreamingInitiated(false);
         const errorMessage =
           err instanceof Error ? err.message : "Failed to send message";
         toast.error("Failed to send message", {

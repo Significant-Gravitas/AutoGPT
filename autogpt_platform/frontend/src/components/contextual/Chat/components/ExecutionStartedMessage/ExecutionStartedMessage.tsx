@@ -1,8 +1,7 @@
-import React from "react";
-import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import { CheckCircle, Play, ArrowSquareOut } from "@phosphor-icons/react";
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import { ArrowSquareOut, CheckCircle, Play } from "@phosphor-icons/react";
 
 export interface ExecutionStartedMessageProps {
   executionId: string;
@@ -22,7 +21,7 @@ export function ExecutionStartedMessage({
   return (
     <div
       className={cn(
-        "mx-4 my-2 flex flex-col gap-4 rounded-lg border border-green-200 bg-green-50 p-6 dark:border-green-900 dark:bg-green-950",
+        "mx-4 my-2 flex flex-col gap-4 rounded-lg border border-green-200 bg-green-50 p-6",
         className,
       )}
     >
@@ -32,48 +31,33 @@ export function ExecutionStartedMessage({
           <CheckCircle size={24} weight="bold" className="text-white" />
         </div>
         <div className="flex-1">
-          <Text
-            variant="h3"
-            className="mb-1 text-green-900 dark:text-green-100"
-          >
+          <Text variant="h3" className="mb-1 text-green-900">
             Execution Started
           </Text>
-          <Text variant="body" className="text-green-700 dark:text-green-300">
+          <Text variant="body" className="text-green-700">
             {message}
           </Text>
         </div>
       </div>
 
       {/* Details */}
-      <div className="rounded-md bg-green-100 p-4 dark:bg-green-900">
+      <div className="rounded-md bg-green-100 p-4">
         <div className="space-y-2">
           {agentName && (
             <div className="flex items-center justify-between">
-              <Text
-                variant="small"
-                className="font-semibold text-green-900 dark:text-green-100"
-              >
+              <Text variant="small" className="font-semibold text-green-900">
                 Agent:
               </Text>
-              <Text
-                variant="body"
-                className="text-green-800 dark:text-green-200"
-              >
+              <Text variant="body" className="text-green-800">
                 {agentName}
               </Text>
             </div>
           )}
           <div className="flex items-center justify-between">
-            <Text
-              variant="small"
-              className="font-semibold text-green-900 dark:text-green-100"
-            >
+            <Text variant="small" className="font-semibold text-green-900">
               Execution ID:
             </Text>
-            <Text
-              variant="small"
-              className="font-mono text-green-800 dark:text-green-200"
-            >
+            <Text variant="small" className="font-mono text-green-800">
               {executionId.slice(0, 16)}...
             </Text>
           </div>
@@ -94,7 +78,7 @@ export function ExecutionStartedMessage({
         </div>
       )}
 
-      <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+      <div className="flex items-center gap-2 text-green-600">
         <Play size={16} weight="fill" />
         <Text variant="small">
           Your agent is now running. You can monitor its progress in the monitor

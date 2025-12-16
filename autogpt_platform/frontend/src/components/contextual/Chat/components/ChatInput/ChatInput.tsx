@@ -1,6 +1,6 @@
+import { Input } from "@/components/atoms/Input/Input";
 import { cn } from "@/lib/utils";
-import { PaperPlaneRightIcon } from "@phosphor-icons/react";
-import { Button } from "@/components/atoms/Button/Button";
+import { ArrowUpIcon } from "@phosphor-icons/react";
 import { useChatInput } from "./useChatInput";
 
 export interface ChatInputProps {
@@ -16,48 +16,49 @@ export function ChatInput({
   placeholder = "Type your message...",
   className,
 }: ChatInputProps) {
-  const { value, setValue, handleKeyDown, handleSend, textareaRef } =
-    useChatInput({
-      onSend,
-      disabled,
-      maxRows: 5,
-    });
+  const inputId = "chat-input";
+  const { value, setValue, handleKeyDown, handleSend } = useChatInput({
+    onSend,
+    disabled,
+    maxRows: 5,
+    inputId,
+  });
 
   return (
-    <div className={cn("flex gap-2", className)}>
-      <textarea
-        ref={textareaRef}
+    <div className={cn("relative flex-1", className)}>
+      <Input
+        id={inputId}
+        label="Chat message input"
+        hideLabel
+        type="textarea"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
         rows={1}
-        autoComplete="off"
-        aria-label="Chat message input"
-        aria-describedby="chat-input-hint"
-        className={cn(
-          "flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm",
-          "placeholder:text-neutral-400",
-          "focus:border-violet-600 focus:outline-none focus:ring-2 focus:ring-violet-600/20",
-          "dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-500",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-        )}
+        wrapperClassName="mb-0 relative"
+        className="pr-12"
       />
       <span id="chat-input-hint" className="sr-only">
         Press Enter to send, Shift+Enter for new line
       </span>
 
-      <Button
-        variant="primary"
-        size="small"
+      <button
         onClick={handleSend}
         disabled={disabled || !value.trim()}
-        className="self-end"
+        className={cn(
+          "absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full",
+          "border border-zinc-800 bg-zinc-800 text-white",
+          "hover:border-zinc-900 hover:bg-zinc-900",
+          "disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-50",
+          "transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950",
+          "disabled:pointer-events-none",
+        )}
         aria-label="Send message"
       >
-        <PaperPlaneRightIcon className="h-4 w-4" weight="fill" />
-      </Button>
+        <ArrowUpIcon className="h-3 w-3" weight="bold" />
+      </button>
     </div>
   );
 }

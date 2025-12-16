@@ -75,7 +75,7 @@ export function ChatCredentialsSetup({
   return (
     <Card
       className={cn(
-        "mx-4 my-2 overflow-hidden border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950",
+        "mx-4 my-2 overflow-hidden border-orange-200 bg-orange-50",
         className,
       )}
     >
@@ -84,16 +84,10 @@ export function ChatCredentialsSetup({
           <KeyIcon size={24} weight="bold" className="text-white" />
         </div>
         <div className="flex-1">
-          <Text
-            variant="h3"
-            className="mb-2 text-orange-900 dark:text-orange-100"
-          >
+          <Text variant="h3" className="mb-2 text-orange-900">
             Credentials Required
           </Text>
-          <Text
-            variant="body"
-            className="mb-4 text-orange-700 dark:text-orange-300"
-          >
+          <Text variant="body" className="mb-4 text-orange-700">
             {message}
           </Text>
 
@@ -106,9 +100,8 @@ export function ChatCredentialsSetup({
                 <div
                   key={`${cred.provider}-${index}`}
                   className={cn(
-                    "relative rounded-lg border border-orange-200 bg-white p-4 dark:border-orange-800 dark:bg-orange-900/20",
-                    isSelected &&
-                      "border-green-500 bg-green-50 dark:border-green-700 dark:bg-green-950/30",
+                    "relative rounded-lg border border-orange-200 bg-white p-4",
+                    isSelected && "border-green-500 bg-green-50",
                   )}
                 >
                   <div className="mb-2 flex items-center justify-between">
@@ -128,7 +121,7 @@ export function ChatCredentialsSetup({
                       )}
                       <Text
                         variant="body"
-                        className="font-semibold text-orange-900 dark:text-orange-100"
+                        className="font-semibold text-orange-900"
                       >
                         {cred.providerName}
                       </Text>

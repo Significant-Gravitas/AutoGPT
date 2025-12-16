@@ -1,10 +1,9 @@
 "use client";
 
-import React from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/atoms/Button/Button";
-import { SignInIcon, UserPlusIcon, ShieldIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { ShieldIcon, SignInIcon, UserPlusIcon } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
 
 export interface AuthPromptWidgetProps {
   message: string;
@@ -54,8 +53,8 @@ export function AuthPromptWidget({
   return (
     <div
       className={cn(
-        "my-4 overflow-hidden rounded-lg border border-violet-200 dark:border-violet-800",
-        "bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30",
+        "my-4 overflow-hidden rounded-lg border border-violet-200",
+        "bg-gradient-to-br from-violet-50 to-purple-50",
         "duration-500 animate-in fade-in-50 slide-in-from-bottom-2",
         className,
       )}
@@ -66,21 +65,19 @@ export function AuthPromptWidget({
             <ShieldIcon size={20} weight="fill" className="text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+            <h3 className="text-lg font-semibold text-neutral-900">
               Authentication Required
             </h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            <p className="text-sm text-neutral-600">
               Sign in to set up and manage agents
             </p>
           </div>
         </div>
 
-        <div className="mb-5 rounded-md bg-white/50 p-4 dark:bg-neutral-900/50">
-          <p className="text-sm text-neutral-700 dark:text-neutral-300">
-            {message}
-          </p>
+        <div className="mb-5 rounded-md bg-white/50 p-4">
+          <p className="text-sm text-neutral-700">{message}</p>
           {agentInfo && (
-            <div className="mt-3 text-xs text-neutral-600 dark:text-neutral-400">
+            <div className="mt-3 text-xs text-neutral-600">
               <p>
                 Ready to set up:{" "}
                 <span className="font-medium">{agentInfo.name}</span>
@@ -114,7 +111,7 @@ export function AuthPromptWidget({
           </Button>
         </div>
 
-        <div className="mt-4 text-center text-xs text-neutral-500 dark:text-neutral-500">
+        <div className="mt-4 text-center text-xs text-neutral-500">
           Your chat session will be preserved after signing in
         </div>
       </div>

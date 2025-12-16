@@ -54,7 +54,7 @@ export function ChatContainer({
       )}
 
       {/* Input - Always visible */}
-      <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
+      <div className="border-t border-zinc-200 p-4">
         <ChatInput
           onSend={sendMessage}
           disabled={isStreaming || !sessionId}

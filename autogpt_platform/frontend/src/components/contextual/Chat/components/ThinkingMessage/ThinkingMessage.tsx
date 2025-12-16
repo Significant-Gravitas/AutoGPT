@@ -1,22 +1,12 @@
 import { cn } from "@/lib/utils";
 import { Robot } from "@phosphor-icons/react";
-import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
 import { MessageBubble } from "../MessageBubble/MessageBubble";
-import { useStreamingMessage } from "./useStreamingMessage";
 
-export interface StreamingMessageProps {
-  chunks: string[];
+export interface ThinkingMessageProps {
   className?: string;
-  onComplete?: () => void;
 }
 
-export function StreamingMessage({
-  chunks,
-  className,
-  onComplete,
-}: StreamingMessageProps) {
-  const { displayText } = useStreamingMessage({ chunks, onComplete });
-
+export function ThinkingMessage({ className }: ThinkingMessageProps) {
   return (
     <div
       className={cn(
@@ -33,7 +23,15 @@ export function StreamingMessage({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <MessageBubble variant="assistant">
-            <MarkdownContent content={displayText} />
+            <span
+              className="inline-block bg-gradient-to-r from-neutral-400 via-neutral-600 to-neutral-400 bg-clip-text text-transparent"
+              style={{
+                backgroundSize: "200% 100%",
+                animation: "shimmer 2s ease-in-out infinite",
+              }}
+            >
+              Thinking...
+            </span>
           </MessageBubble>
         </div>
       </div>

@@ -1,21 +1,22 @@
-import { KeyboardEvent, useCallback, useState, useRef, useEffect } from "react";
+import { KeyboardEvent, useCallback, useEffect, useState } from "react";
 
 interface UseChatInputArgs {
   onSend: (message: string) => void;
   disabled?: boolean;
   maxRows?: number;
+  inputId?: string;
 }
 
 export function useChatInput({
   onSend,
   disabled = false,
   maxRows = 5,
+  inputId = "chat-input",
 }: UseChatInputArgs) {
   const [value, setValue] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
+    const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
     if (!textarea) return;
     textarea.style.height = "auto";
     const lineHeight = parseInt(
@@ -27,23 +28,25 @@ export function useChatInput({
     textarea.style.height = `${newHeight}px`;
     textarea.style.overflowY =
       textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, [value, maxRows]);
+  }, [value, maxRows, inputId]);
 
   const handleSend = useCallback(() => {
     if (disabled || !value.trim()) return;
     onSend(value.trim());
     setValue("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
+    const textarea = document.getElementById(inputId) as HTMLTextAreaElement;
+    if (textarea) {
+      textarea.style.height = "auto";
     }
-  }, [value, onSend, disabled]);
+  }, [value, onSend, disabled, inputId]);
 
   const handleKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         handleSend();
       }
+      // Shift+Enter allows default behavior (new line) - no need to handle explicitly
     },
     [handleSend],
   );
@@ -53,6 +56,5 @@ export function useChatInput({
     setValue,
     handleKeyDown,
     handleSend,
-    textareaRef,
   };
 }

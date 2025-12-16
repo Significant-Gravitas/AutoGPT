@@ -1,8 +1,13 @@
 "use client";
 
+import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
+import Avatar, {
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/atoms/Avatar/Avatar";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
-import { CheckCircleIcon, RobotIcon, UserIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, RobotIcon } from "@phosphor-icons/react";
 import { useCallback } from "react";
 import { getToolActionPhrase } from "../../helpers";
 import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
@@ -28,14 +33,20 @@ export function ChatMessage({
 }: ChatMessageProps) {
   const { user } = useSupabase();
   const {
-    formattedTimestamp,
     isUser,
-    isAssistant,
     isToolCall,
     isToolResponse,
     isLoginNeeded,
     isCredentialsNeeded,
   } = useChatMessage(message);
+
+  const { data: profile } = useGetV2GetUserProfile({
+    query: {
+      select: (res) => (res.status === 200 ? res.data : null),
+      enabled: isUser && !!user,
+      queryKey: ["/api/store/profile", user?.id],
+    },
+  });
 
   const handleAllCredentialsComplete = useCallback(
     function handleAllCredentialsComplete() {
@@ -81,7 +92,7 @@ export function ChatMessage({
     if (user) {
       return (
         <div className={cn("px-4 py-2", className)}>
-          <div className="my-4 overflow-hidden rounded-lg border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 dark:border-green-800 dark:from-green-950/30 dark:to-emerald-950/30">
+          <div className="my-4 overflow-hidden rounded-lg border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50">
             <div className="px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-600">
@@ -92,10 +103,10 @@ export function ChatMessage({
                   />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                  <h3 className="text-lg font-semibold text-neutral-900">
                     Successfully Authenticated
                   </h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  <p className="text-sm text-neutral-600">
                     You&apos;re now signed in and ready to continue
                   </p>
                 </div>
@@ -146,43 +157,44 @@ export function ChatMessage({
     return (
       <div
         className={cn(
-          "flex gap-3 px-4 py-4",
-          isUser && "flex-row-reverse",
+          "group relative flex w-full gap-3 px-4 py-3",
+          isUser ? "justify-end" : "justify-start",
           className,
         )}
       >
-        {/* Avatar */}
-        <div className="flex-shrink-0">
+        <div className="flex w-full max-w-3xl gap-3">
+          {!isUser && (
+            <div className="flex-shrink-0">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-neutral-200">
+                <RobotIcon className="h-4 w-4 text-neutral-600" />
+              </div>
+            </div>
+          )}
+
           <div
             className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-full",
-              isUser && "bg-zinc-200 dark:bg-zinc-700",
-              isAssistant && "bg-purple-600 dark:bg-purple-500",
+              "flex min-w-0 flex-1 flex-col",
+              isUser && "items-end",
             )}
           >
-            {isUser ? (
-              <UserIcon className="h-5 w-5 text-zinc-700 dark:text-zinc-200" />
-            ) : (
-              <RobotIcon className="h-5 w-5 text-white" />
-            )}
+            <MessageBubble variant={isUser ? "user" : "assistant"}>
+              <MarkdownContent content={message.content} />
+            </MessageBubble>
           </div>
-        </div>
 
-        {/* Message Content */}
-        <div className={cn("flex max-w-[70%] flex-col", isUser && "items-end")}>
-          <MessageBubble variant={isUser ? "user" : "assistant"}>
-            <MarkdownContent content={message.content} />
-          </MessageBubble>
-
-          {/* Timestamp */}
-          <span
-            className={cn(
-              "mt-1 text-xs text-zinc-500 dark:text-zinc-400",
-              isUser && "text-right",
-            )}
-          >
-            {formattedTimestamp}
-          </span>
+          {isUser && (
+            <div className="flex-shrink-0">
+              <Avatar className="h-7 w-7">
+                <AvatarImage
+                  src={profile?.avatar_url ?? ""}
+                  alt={profile?.username ?? "User"}
+                />
+                <AvatarFallback className="rounded-lg bg-neutral-200 text-neutral-600">
+                  {profile?.username?.charAt(0)?.toUpperCase() || "U"}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          )}
         </div>
       </div>
     );

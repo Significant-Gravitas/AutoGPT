@@ -1,7 +1,6 @@
-import React from "react";
 import { Text } from "@/components/atoms/Text/Text";
-import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { ArrowClockwiseIcon } from "@phosphor-icons/react";
 
 export interface ChatLoadingStateProps {
   message?: string;
@@ -22,7 +21,7 @@ export function ChatLoadingState({
           weight="bold"
           className="animate-spin text-purple-500"
         />
-        <Text variant="body" className="text-zinc-600 dark:text-zinc-400">
+        <Text variant="body" className="text-zinc-600">
           {message}
         </Text>
       </div>

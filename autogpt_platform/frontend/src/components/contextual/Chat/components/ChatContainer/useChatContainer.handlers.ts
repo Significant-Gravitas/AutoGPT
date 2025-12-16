@@ -8,6 +8,7 @@ export interface HandlerDependencies {
   setStreamingChunks: Dispatch<SetStateAction<string[]>>;
   streamingChunksRef: MutableRefObject<string[]>;
   setMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
+  setIsStreamingInitiated: Dispatch<SetStateAction<boolean>>;
   sessionId: string;
 }
 
@@ -39,6 +40,7 @@ export function handleTextEnded(
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
   deps.setHasTextChunks(false);
+  deps.setIsStreamingInitiated(false);
 }
 
 export function handleToolCallStart(
@@ -197,10 +199,15 @@ export function handleStreamEnd(
   deps.setStreamingChunks([]);
   deps.streamingChunksRef.current = [];
   deps.setHasTextChunks(false);
+  deps.setIsStreamingInitiated(false);
   console.log("[Stream End] Stream complete, messages in local state");
 }
 
-export function handleError(chunk: StreamChunk, _deps: HandlerDependencies) {
+export function handleError(chunk: StreamChunk, deps: HandlerDependencies) {
   const errorMessage = chunk.message || chunk.content || "An error occurred";
   console.error("Stream error:", errorMessage);
+  deps.setIsStreamingInitiated(false);
+  deps.setHasTextChunks(false);
+  deps.setStreamingChunks([]);
+  deps.streamingChunksRef.current = [];
 }

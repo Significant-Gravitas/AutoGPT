@@ -15,10 +15,9 @@ export function MessageBubble({
   return (
     <div
       className={cn(
-        "rounded-lg px-4 py-3 text-sm",
-        variant === "user" && "bg-violet-600 text-white dark:bg-violet-500",
-        variant === "assistant" &&
-          "border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100",
+        "min-w-20 rounded-[20px] px-6 py-2.5 text-sm leading-relaxed",
+        variant === "user" && "bg-zinc-700 text-right text-neutral-50",
+        variant === "assistant" && "bg-zinc-100 text-left text-neutral-900",
         className,
       )}
     >

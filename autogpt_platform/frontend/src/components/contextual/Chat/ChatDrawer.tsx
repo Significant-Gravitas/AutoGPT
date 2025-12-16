@@ -13,7 +13,11 @@ import { ChatLoadingState } from "./components/ChatLoadingState/ChatLoadingState
 import { useChat } from "./useChat";
 import { useChatDrawer } from "./useChatDrawer";
 
-export function ChatDrawer() {
+interface ChatDrawerProps {
+  blurBackground?: boolean;
+}
+
+export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const { isOpen, close } = useChatDrawer();
   const {
@@ -49,14 +53,23 @@ export function ChatDrawer() {
       modal={false}
     >
       <Drawer.Portal>
+        {blurBackground && isOpen && (
+          <div
+            onClick={close}
+            className="fixed inset-0 z-[45] cursor-pointer bg-black/10 backdrop-blur-sm animate-in fade-in-0"
+            style={{ pointerEvents: "auto" }}
+          />
+        )}
         <Drawer.Content
+          onClick={(e) => e.stopPropagation()}
+          onInteractOutside={blurBackground ? close : undefined}
           className={cn(
-            "fixed right-0 top-0 z-50 flex h-full w-1/2 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900",
+            "fixed right-0 top-0 z-50 flex h-full w-1/2 flex-col border-l border-zinc-200 bg-white",
             scrollbarStyles,
           )}
         >
           {/* Header */}
-          <header className="shrink-0 border-b border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <header className="shrink-0 border-b border-zinc-200 bg-white p-4">
             <div className="flex items-center justify-between">
               <Drawer.Title className="text-xl font-semibold">
                 Chat
@@ -64,12 +77,12 @@ export function ChatDrawer() {
               <div className="flex items-center gap-4">
                 {sessionId && (
                   <>
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                    <span className="text-sm text-zinc-600">
                       Session: {sessionId.slice(0, 8)}...
                     </span>
                     <button
                       onClick={clearSession}
-                      className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                      className="text-sm text-zinc-600 hover:text-zinc-900"
                     >
                       New Chat
                     </button>

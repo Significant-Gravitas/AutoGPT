@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { ChatMessage } from "../ChatMessage/ChatMessage";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 import { StreamingMessage } from "../StreamingMessage/StreamingMessage";
+import { ThinkingMessage } from "../ThinkingMessage/ThinkingMessage";
 import { useMessageList } from "./useMessageList";
 
 export interface MessageListProps {
@@ -30,12 +31,12 @@ export function MessageList({
     <div
       ref={messagesContainerRef}
       className={cn(
-        "flex-1 overflow-y-auto",
-        "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700",
+        "flex-1 overflow-y-auto bg-white",
+        "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
         className,
       )}
     >
-      <div className="space-y-0">
+      <div className="mx-auto flex max-w-3xl flex-col py-4">
         {/* Render all persisted messages */}
         {messages.map((message, index) => (
           <ChatMessage
@@ -44,6 +45,9 @@ export function MessageList({
             onSendMessage={onSendMessage}
           />
         ))}
+
+        {/* Render thinking message when streaming but no chunks yet */}
+        {isStreaming && streamingChunks.length === 0 && <ThinkingMessage />}
 
         {/* Render streaming message if active */}
         {isStreaming && streamingChunks.length > 0 && (
