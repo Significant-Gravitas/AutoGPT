@@ -9,6 +9,7 @@ import prisma.enums
 
 import backend.server.v2.store.cache as store_cache
 import backend.server.v2.store.db
+import backend.server.v2.store.embeddings as store_embeddings
 import backend.server.v2.store.model
 import backend.util.json
 
@@ -151,4 +152,55 @@ async def admin_download_agent_file(
 
         return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
+        )
+
+
+@router.get(
+    "/embeddings/stats",
+    summary="Get Embedding Statistics",
+)
+async def get_embedding_stats() -> dict[str, typing.Any]:
+    """
+    Get statistics about embedding coverage for store listings.
+
+    Returns counts of total approved listings, listings with embeddings,
+    listings without embeddings, and coverage percentage.
+    """
+    try:
+        stats = await store_embeddings.get_embedding_stats()
+        return stats
+    except Exception as e:
+        logger.exception("Error getting embedding stats: %s", e)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="An error occurred while retrieving embedding stats",
+        )
+
+
+@router.post(
+    "/embeddings/backfill",
+    summary="Backfill Missing Embeddings",
+)
+async def backfill_embeddings(
+    batch_size: int = 10,
+) -> dict[str, typing.Any]:
+    """
+    Trigger backfill of embeddings for approved listings that don't have them.
+
+    Args:
+        batch_size: Number of embeddings to generate in one call (default 10)
+
+    Returns:
+        Dict with processed count, success count, failure count, and message
+    """
+    try:
+        result = await store_embeddings.backfill_missing_embeddings(
+            batch_size=batch_size
+        )
+        return result
+    except Exception as e:
+        logger.exception("Error backfilling embeddings: %s", e)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="An error occurred while backfilling embeddings",
         )

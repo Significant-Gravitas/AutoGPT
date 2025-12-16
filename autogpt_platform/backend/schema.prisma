@@ -982,6 +982,9 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
+  // Embedding for semantic search (one-to-one)
+  Embedding StoreListingEmbedding?
+
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
@@ -1005,6 +1008,24 @@ model StoreListingReview {
 
   @@unique([storeListingVersionId, reviewByUserId])
   @@index([reviewByUserId])
+}
+
+// Stores vector embeddings for semantic search of store listings
+// Uses pgvector extension for efficient similarity search
+model StoreListingEmbedding {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  storeListingVersionId String                @unique
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  // pgvector embedding - stored as Unsupported type since Prisma doesn't natively support vector
+  embedding      Unsupported("vector(1536)")?
+  searchableText String?  // The text that was embedded (for debugging/recomputation)
+  contentHash    String?  // MD5 hash for change detection
+
+  @@index([contentHash])
 }
 
 enum SubmissionStatus {
