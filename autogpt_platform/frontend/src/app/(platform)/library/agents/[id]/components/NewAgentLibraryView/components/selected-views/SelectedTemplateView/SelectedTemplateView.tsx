@@ -4,7 +4,6 @@ import type { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExe
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
@@ -138,25 +137,13 @@ export function SelectedTemplateView({
               <RunDetailCard title="Your Input">
                 <div className="flex flex-col gap-4">
                   {inputFields.map(([key, inputSubSchema]) => (
-                    <div
+                    <RunAgentInputs
                       key={key}
-                      className="flex w-full flex-col gap-0 space-y-2"
-                    >
-                      <label className="flex items-center gap-1 text-sm font-medium">
-                        {inputSubSchema.title || key}
-                        {inputSubSchema.description && (
-                          <InformationTooltip
-                            description={inputSubSchema.description}
-                          />
-                        )}
-                      </label>
-                      <RunAgentInputs
-                        schema={inputSubSchema}
-                        value={inputs[key] ?? inputSubSchema.default}
-                        placeholder={inputSubSchema.description}
-                        onChange={(value) => setInputValue(key, value)}
-                      />
-                    </div>
+                      schema={inputSubSchema}
+                      value={inputs[key] ?? inputSubSchema.default}
+                      placeholder={inputSubSchema.description}
+                      onChange={(value) => setInputValue(key, value)}
+                    />
                   ))}
                 </div>
               </RunDetailCard>
