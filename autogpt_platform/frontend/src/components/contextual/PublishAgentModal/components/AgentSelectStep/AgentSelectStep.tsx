@@ -22,6 +22,7 @@ interface Props {
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
+    publishedSubmissionData?: any,
   ) => void;
   onOpenBuilder: () => void;
 }
@@ -42,6 +43,8 @@ export function AgentSelectStep({
     // Handlers
     handleAgentClick,
     handleNext,
+    // Utils
+    getPublishedVersion,
     // Computed
     isNextDisabled,
   } = useAgentSelectStep({ onSelect, onNext });
@@ -162,10 +165,42 @@ export function AgentSelectStep({
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">
-                        <Text variant="large-medium">{agent.name}</Text>
-                        <Text variant="small" className="!text-neutral-500">
-                          Edited {agent.lastEdited}
+                        <Text variant="large-medium" className="line-clamp-2">
+                          {agent.name}
                         </Text>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1">
+                            <Text variant="small" className="!text-neutral-500">
+                              Edited {agent.lastEdited}
+                            </Text>
+                            {agent.isMarketplaceUpdate &&
+                              (() => {
+                                const publishedVersion = getPublishedVersion(
+                                  agent.id,
+                                );
+                                return (
+                                  publishedVersion && (
+                                    <Text
+                                      variant="small"
+                                      className="block text-xs !text-neutral-500"
+                                    >
+                                      v{publishedVersion} → v{agent.version}
+                                    </Text>
+                                  )
+                                );
+                              })()}
+                          </div>
+                          {agent.isMarketplaceUpdate && (
+                            <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                              Update
+                            </span>
+                          )}
+                          {!agent.isMarketplaceUpdate && (
+                            <span className="shrink-0 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
+                              New
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
