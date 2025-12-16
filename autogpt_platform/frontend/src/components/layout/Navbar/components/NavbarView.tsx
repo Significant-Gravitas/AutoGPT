@@ -2,6 +2,7 @@
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
+import { useChatDrawer } from "@/components/contextual/Chat/useChatDrawer";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -39,6 +40,8 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
 
   const { isUserLoading } = useSupabase();
   const isLoadingProfile = isProfileLoading || isUserLoading;
+
+  const { open: openChatDrawer } = useChatDrawer();
 
   const linksWithChat = useMemo(() => {
     const chatLink = { name: "Chat", href: "/chat" };
@@ -128,6 +131,10 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
                                 : IconType.LayoutDashboard,
                     text: link.name,
                     href: link.href,
+                    onClick:
+                      link.name === "Chat" && isChatEnabled
+                        ? openChatDrawer
+                        : undefined,
                   })),
                 },
                 ...dynamicMenuItems,

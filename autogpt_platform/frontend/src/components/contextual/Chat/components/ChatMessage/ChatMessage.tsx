@@ -1,17 +1,17 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { RobotIcon, UserIcon, CheckCircleIcon } from "@phosphor-icons/react";
-import { useCallback } from "react";
-import { MessageBubble } from "@/app/(platform)/chat/components/MessageBubble/MessageBubble";
-import { MarkdownContent } from "@/app/(platform)/chat/components/MarkdownContent/MarkdownContent";
-import { ToolCallMessage } from "@/app/(platform)/chat/components/ToolCallMessage/ToolCallMessage";
-import { ToolResponseMessage } from "@/app/(platform)/chat/components/ToolResponseMessage/ToolResponseMessage";
-import { AuthPromptWidget } from "@/app/(platform)/chat/components/AuthPromptWidget/AuthPromptWidget";
-import { ChatCredentialsSetup } from "@/app/(platform)/chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { cn } from "@/lib/utils";
+import { CheckCircleIcon, RobotIcon, UserIcon } from "@phosphor-icons/react";
+import { useCallback } from "react";
+import { getToolActionPhrase } from "../../helpers";
+import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
+import { ChatCredentialsSetup } from "../ChatCredentialsSetup/ChatCredentialsSetup";
+import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
+import { MessageBubble } from "../MessageBubble/MessageBubble";
+import { ToolCallMessage } from "../ToolCallMessage/ToolCallMessage";
+import { ToolResponseMessage } from "../ToolResponseMessage/ToolResponseMessage";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
-import { getToolActionPhrase } from "@/app/(platform)/chat/helpers";
 export interface ChatMessageProps {
   message: ChatMessageData;
   className?: string;
@@ -113,7 +113,6 @@ export function ChatMessage({
           message={message.message}
           sessionId={message.sessionId}
           agentInfo={message.agentInfo}
-          returnUrl="/chat"
         />
       </div>
     );

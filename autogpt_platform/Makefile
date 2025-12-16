@@ -1,4 +1,4 @@
-.PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend load-store-agents
+.PHONY: start-core stop-core logs-core format lint migrate run-backend stop-backend run-frontend load-store-agents
 
 # Run just Supabase + Redis + RabbitMQ
 start-core:
@@ -34,7 +34,14 @@ migrate:
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
 
-run-backend:
+stop-backend:
+	@echo "Stopping backend processes..."
+	@cd backend && poetry run cli stop 2>/dev/null || true
+	@echo "Killing any processes using backend ports..."
+	@lsof -ti:8001,8002,8003,8004,8005,8006,8007 | xargs kill -9 2>/dev/null || true
+	@echo "Backend stopped"
+
+run-backend: stop-backend
 	cd backend && poetry run app
 
 run-frontend:
@@ -55,7 +62,8 @@ help:
 	@echo "  logs-core - Tail the logs for core services"
 	@echo "  format - Format & lint backend (Python) and frontend (TypeScript) code"
 	@echo "  migrate - Run backend database migrations"
-	@echo "  run-backend - Run the backend FastAPI server"
+	@echo "  stop-backend - Stop any running backend processes"
+	@echo "  run-backend - Run the backend FastAPI server (stops existing processes first)"
 	@echo "  run-frontend - Run the frontend Next.js development server"
 	@echo "  test-data - Run the test data creator"
 	@echo "  load-store-agents - Load store agents from agents/ folder into test database"

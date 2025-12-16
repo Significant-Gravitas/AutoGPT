@@ -1,7 +1,6 @@
-import React from "react";
-import { WrenchIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { getToolActionPhrase } from "@/app/(platform)/chat/helpers";
+import { WrenchIcon } from "@phosphor-icons/react";
+import { getToolActionPhrase } from "../../helpers";
 
 export interface ToolResponseMessageProps {
   toolName: string;

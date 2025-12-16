@@ -1,14 +1,14 @@
+import type { StreamChunk } from "@/components/contextual/Chat/useChatStream";
 import { toast } from "sonner";
-import type { StreamChunk } from "@/app/(platform)/chat/useChatStream";
 import type { HandlerDependencies } from "./useChatContainer.handlers";
 import {
+  handleError,
+  handleLoginNeeded,
+  handleStreamEnd,
   handleTextChunk,
   handleTextEnded,
   handleToolCallStart,
   handleToolResponse,
-  handleLoginNeeded,
-  handleStreamEnd,
-  handleError,
 } from "./useChatContainer.handlers";
 
 export function createStreamEventDispatcher(

@@ -1,17 +1,12 @@
 "use client";
 
-import { useChatSession } from "@/components/contextual/Chat/useChatSession";
-import { useChatStream } from "@/components/contextual/Chat/useChatStream";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { useChatSession } from "./useChatSession";
+import { useChatStream } from "./useChatStream";
 
-export function useChatPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const urlSessionId =
-    searchParams.get("session_id") || searchParams.get("session");
+export function useChat() {
   const hasCreatedSessionRef = useRef(false);
   const hasClaimedSessionRef = useRef(false);
   const { user } = useSupabase();
@@ -29,25 +24,20 @@ export function useChatPage() {
     claimSession,
     clearSession: clearSessionBase,
   } = useChatSession({
-    urlSessionId,
+    urlSessionId: null,
     autoCreate: false,
   });
 
   useEffect(
     function autoCreateSession() {
-      if (
-        !urlSessionId &&
-        !hasCreatedSessionRef.current &&
-        !isCreating &&
-        !sessionIdFromHook
-      ) {
+      if (!hasCreatedSessionRef.current && !isCreating && !sessionIdFromHook) {
         hasCreatedSessionRef.current = true;
         createSession().catch((_err) => {
           hasCreatedSessionRef.current = false;
         });
       }
     },
-    [urlSessionId, isCreating, sessionIdFromHook, createSession],
+    [isCreating, sessionIdFromHook, createSession],
   );
 
   useEffect(
@@ -111,7 +101,6 @@ export function useChatPage() {
     clearSessionBase();
     hasCreatedSessionRef.current = false;
     hasClaimedSessionRef.current = false;
-    router.push("/chat");
   }
 
   return {
