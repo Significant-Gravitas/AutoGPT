@@ -12,7 +12,7 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="qwen/qwen3-235b-a22b-2507", description="Default model to use"
+        default="anthropic/claude-opus-4.5", description="Default model to use"
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
