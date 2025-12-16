@@ -30,9 +30,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Optional imports with graceful fallback
+# Check for OpenAI availability
 try:
-    from openai import OpenAI
+    import openai  # noqa: F401
 
     HAS_OPENAI = True
 except ImportError:

@@ -1,4 +1,4 @@
-.PHONY: start-core stop-core logs-core format lint migrate run-backend stop-backend run-frontend load-store-agents
+.PHONY: start-core stop-core logs-core format lint migrate run-backend stop-backend run-frontend load-store-agents backfill-store-embeddings
 
 # Run just Supabase + Redis + RabbitMQ
 start-core:
@@ -53,6 +53,9 @@ test-data:
 load-store-agents:
 	cd backend && poetry run load-store-agents
 
+backfill-store-embeddings:
+	cd backend && poetry run python -m backend.server.v2.store.backfill_embeddings
+
 help:
 	@echo "Usage: make <target>"
 	@echo "Targets:"
@@ -67,3 +70,4 @@ help:
 	@echo "  run-frontend - Run the frontend Next.js development server"
 	@echo "  test-data - Run the test data creator"
 	@echo "  load-store-agents - Load store agents from agents/ folder into test database"
+	@echo "  backfill-store-embeddings - Generate embeddings for store agents that don't have them"
