@@ -33,8 +33,10 @@ import {
   formatEdgeID,
   GraphExecutionID,
   GraphID,
+  GraphMeta,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
+import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate";
 import { Key, storage } from "@/services/storage/local-storage";
 import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
 import { history } from "../history";
@@ -72,12 +74,30 @@ import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
 const MINIMUM_MOVE_BEFORE_LOG = 50;
 
+export type ResolutionModeState = {
+  active: boolean;
+  nodeId: string | null;
+  incompatibilities: IncompatibilityInfo | null;
+  brokenEdgeIds: string[];
+  pendingUpdate: Record<string, unknown> | null; // The hardcoded values to apply after resolution
+};
+
 type BuilderContextType = {
   libraryAgent: LibraryAgent | null;
   visualizeBeads: "no" | "static" | "animate";
   setIsAnyModalOpen: (isOpen: boolean) => void;
   getNextNodeId: () => string;
   getNodeTitle: (nodeID: string) => string | null;
+  availableFlows: GraphMeta[];
+  resolutionMode: ResolutionModeState;
+  enterResolutionMode: (
+    nodeId: string,
+    incompatibilities: IncompatibilityInfo,
+    brokenEdgeIds: string[],
+    pendingUpdate: Record<string, unknown>,
+  ) => void;
+  exitResolutionMode: () => void;
+  applyPendingUpdate: () => void;
 };
 
 export type NodeDimension = {
@@ -171,6 +191,92 @@ const FlowEditor: React.FC<{
 
   // It stores the dimension of all nodes with position as well
   const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
+
+  // Resolution mode state for sub-agent incompatible updates
+  const [resolutionMode, setResolutionMode] = useState<ResolutionModeState>({
+    active: false,
+    nodeId: null,
+    incompatibilities: null,
+    brokenEdgeIds: [],
+    pendingUpdate: null,
+  });
+
+  const enterResolutionMode = useCallback(
+    (
+      nodeId: string,
+      incompatibilities: IncompatibilityInfo,
+      brokenEdgeIds: string[],
+      pendingUpdate: Record<string, unknown>,
+    ) => {
+      setResolutionMode({
+        active: true,
+        nodeId,
+        incompatibilities,
+        brokenEdgeIds,
+        pendingUpdate,
+      });
+    },
+    [],
+  );
+
+  const exitResolutionMode = useCallback(() => {
+    setResolutionMode({
+      active: false,
+      nodeId: null,
+      incompatibilities: null,
+      brokenEdgeIds: [],
+      pendingUpdate: null,
+    });
+  }, []);
+
+  // Apply pending update after resolution mode completes
+  const applyPendingUpdate = useCallback(() => {
+    if (!resolutionMode.nodeId || !resolutionMode.pendingUpdate) return;
+
+    const node = nodes.find((n) => n.id === resolutionMode.nodeId);
+    if (node) {
+      const pendingUpdate = resolutionMode.pendingUpdate as {
+        [key: string]: any;
+      };
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === resolutionMode.nodeId
+            ? { ...n, data: { ...n.data, hardcodedValues: pendingUpdate } }
+            : n,
+        ),
+      );
+    }
+    exitResolutionMode();
+    toast({
+      title: "Update complete",
+      description: "Agent has been updated to the new version.",
+    });
+  }, [resolutionMode, nodes, setNodes, exitResolutionMode, toast]);
+
+  // Check if all broken edges have been removed and auto-apply pending update
+  useEffect(() => {
+    if (!resolutionMode.active || resolutionMode.brokenEdgeIds.length === 0) {
+      return;
+    }
+
+    const currentEdgeIds = new Set(edges.map((e) => e.id));
+    const remainingBrokenEdges = resolutionMode.brokenEdgeIds.filter((id) =>
+      currentEdgeIds.has(id),
+    );
+
+    if (remainingBrokenEdges.length === 0) {
+      // All broken edges have been removed, apply pending update
+      applyPendingUpdate();
+    } else if (
+      remainingBrokenEdges.length !== resolutionMode.brokenEdgeIds.length
+    ) {
+      // Update the list of broken edges
+      setResolutionMode((prev) => ({
+        ...prev,
+        brokenEdgeIds: remainingBrokenEdges,
+      }));
+    }
+  }, [edges, resolutionMode, applyPendingUpdate]);
 
   // Set page title with or without graph name
   useEffect(() => {
@@ -890,8 +996,23 @@ const FlowEditor: React.FC<{
       setIsAnyModalOpen,
       getNextNodeId,
       getNodeTitle,
+      availableFlows,
+      resolutionMode,
+      enterResolutionMode,
+      exitResolutionMode,
+      applyPendingUpdate,
     }),
-    [libraryAgent, visualizeBeads, getNextNodeId, getNodeTitle],
+    [
+      libraryAgent,
+      visualizeBeads,
+      getNextNodeId,
+      getNodeTitle,
+      availableFlows,
+      resolutionMode,
+      enterResolutionMode,
+      applyPendingUpdate,
+      exitResolutionMode,
+    ],
   );
 
   return (
@@ -991,6 +1112,7 @@ const FlowEditor: React.FC<{
               onClickScheduleButton={handleScheduleButton}
               isDisabled={!savedAgent}
               isRunning={isRunning}
+              resolutionModeActive={resolutionMode.active}
             />
           ) : (
             <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 select-none">
