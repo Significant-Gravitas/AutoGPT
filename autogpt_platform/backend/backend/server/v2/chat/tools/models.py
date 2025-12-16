@@ -25,6 +25,10 @@ class ResponseType(str, Enum):
     BLOCK_LIST = "block_list"
     BLOCK_OUTPUT = "block_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
+    # Agent generation responses
+    AGENT_PREVIEW = "agent_preview"
+    AGENT_SAVED = "agent_saved"
+    CLARIFICATION_NEEDED = "clarification_needed"
 
 
 # Base response model
@@ -266,3 +270,41 @@ class UnderstandingUpdatedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
     updated_fields: list[str] = Field(default_factory=list)
     current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+# Agent generation models
+class ClarifyingQuestion(BaseModel):
+    """A question that needs user clarification."""
+
+    question: str
+    keyword: str
+    example: str | None = None
+
+
+class AgentPreviewResponse(ToolResponseBase):
+    """Response for previewing a generated agent before saving."""
+
+    type: ResponseType = ResponseType.AGENT_PREVIEW
+    agent_json: dict[str, Any]
+    agent_name: str
+    description: str
+    node_count: int
+    link_count: int = 0
+
+
+class AgentSavedResponse(ToolResponseBase):
+    """Response when an agent is saved to the library."""
+
+    type: ResponseType = ResponseType.AGENT_SAVED
+    agent_id: str
+    agent_name: str
+    library_agent_id: str
+    library_agent_link: str
+    agent_page_link: str  # Link to the agent builder/editor page
+
+
+class ClarificationNeededResponse(ToolResponseBase):
+    """Response when the LLM needs more information from the user."""
+
+    type: ResponseType = ResponseType.CLARIFICATION_NEEDED
+    questions: list[ClarifyingQuestion] = Field(default_factory=list)

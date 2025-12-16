@@ -7,6 +7,8 @@ from backend.server.v2.chat.model import ChatSession
 from .add_understanding import AddUnderstandingTool
 from .agent_output import AgentOutputTool
 from .base import BaseTool
+from .create_agent import CreateAgentTool
+from .edit_agent import EditAgentTool
 from .find_agent import FindAgentTool
 from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
@@ -19,6 +21,8 @@ if TYPE_CHECKING:
 
 # Initialize tool instances
 add_understanding_tool = AddUnderstandingTool()
+create_agent_tool = CreateAgentTool()
+edit_agent_tool = EditAgentTool()
 find_agent_tool = FindAgentTool()
 find_block_tool = FindBlockTool()
 find_library_agent_tool = FindLibraryAgentTool()
@@ -30,6 +34,8 @@ agent_output_tool = AgentOutputTool()
 # Export tools as OpenAI format
 tools: list[ChatCompletionToolParam] = [
     add_understanding_tool.as_openai_tool(),
+    create_agent_tool.as_openai_tool(),
+    edit_agent_tool.as_openai_tool(),
     find_agent_tool.as_openai_tool(),
     find_block_tool.as_openai_tool(),
     find_library_agent_tool.as_openai_tool(),
@@ -50,6 +56,8 @@ async def execute_tool(
 
     tool_map: dict[str, BaseTool] = {
         "add_understanding": add_understanding_tool,
+        "create_agent": create_agent_tool,
+        "edit_agent": edit_agent_tool,
         "find_agent": find_agent_tool,
         "find_block": find_block_tool,
         "find_library_agent": find_library_agent_tool,
