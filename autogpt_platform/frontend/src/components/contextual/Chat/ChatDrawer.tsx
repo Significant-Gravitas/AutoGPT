@@ -41,7 +41,7 @@ export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
       {blurBackground && isOpen && (
         <div
           onClick={close}
-          className="fixed inset-0 z-[45] cursor-pointer bg-black/10 backdrop-blur-sm animate-in fade-in-0"
+          className="fixed inset-0 z-[45] cursor-pointer animate-in fade-in-0"
           style={{ pointerEvents: "auto" }}
         />
       )}
@@ -49,10 +49,9 @@ export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
         onClick={(e) => e.stopPropagation()}
         onInteractOutside={blurBackground ? close : undefined}
         className={cn(
-          "flex h-full w-1/2 flex-col border-l border-zinc-200 bg-white",
+          "fixed right-0 top-[60px] z-50 flex h-[calc(100vh-60px)] w-1/2 flex-col border-l border-zinc-200 bg-white",
           scrollbarStyles,
         )}
-        style={{ position: "relative", zIndex: 50 }}
       >
         <Chat
           headerTitle={

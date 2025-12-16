@@ -61,7 +61,7 @@ export function Chat({
     <div className={cn("flex h-full flex-col", className)}>
       {/* Header */}
       {showHeader && (
-        <header className="shrink-0 border-b border-zinc-200 bg-white p-3">
+        <header className="shrink-0 border-t border-zinc-200 bg-white p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
