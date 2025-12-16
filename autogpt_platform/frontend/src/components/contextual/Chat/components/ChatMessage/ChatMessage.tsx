@@ -17,7 +17,6 @@ import {
 } from "@phosphor-icons/react";
 import { useCallback, useState } from "react";
 import { getToolActionPhrase } from "../../helpers";
-import { AgentInputsSetup } from "../AgentInputsSetup/AgentInputsSetup";
 import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "../ChatCredentialsSetup/ChatCredentialsSetup";
 import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
@@ -49,7 +48,6 @@ export function ChatMessage({
     isToolResponse,
     isLoginNeeded,
     isCredentialsNeeded,
-    isInputsNeeded,
   } = useChatMessage(message);
 
   const { data: profile } = useGetV2GetUserProfile({
@@ -84,48 +82,6 @@ export function ChatMessage({
     }
   }
 
-  const handleRunAgent = useCallback(
-    function handleRunAgent(
-      inputs: Record<string, any>,
-      credentials: Record<string, any>,
-    ) {
-      if (!onSendMessage || message.type !== "inputs_needed") return;
-
-      const agentId = message.agentId;
-      const graphVersion = message.graphVersion;
-
-      let messageText = "";
-      if (agentId) {
-        messageText = `Run the agent with these inputs:\n\`\`\`json\n${JSON.stringify(
-          {
-            library_agent_id: agentId,
-            ...(graphVersion && { graph_version: graphVersion }),
-            inputs,
-            ...(Object.keys(credentials).length > 0 && {
-              credentials_inputs: credentials,
-            }),
-          },
-          null,
-          2,
-        )}\n\`\`\``;
-      } else {
-        messageText = `Run the agent with these inputs:\n\`\`\`json\n${JSON.stringify(
-          {
-            inputs,
-            ...(Object.keys(credentials).length > 0 && {
-              credentials_inputs: credentials,
-            }),
-          },
-          null,
-          2,
-        )}\n\`\`\``;
-      }
-
-      onSendMessage(messageText);
-    },
-    [onSendMessage, message],
-  );
-
   const handleCopy = useCallback(async () => {
     if (message.type !== "message") return;
 
@@ -142,20 +98,6 @@ export function ChatMessage({
     if (message.type !== "message" || !onSendMessage) return;
     onSendMessage(message.content, message.role === "user");
   }, [message, onSendMessage]);
-
-  // Render inputs needed messages
-  if (isInputsNeeded && message.type === "inputs_needed") {
-    return (
-      <AgentInputsSetup
-        agentName={message.agentName}
-        inputSchema={message.inputSchema}
-        credentialsSchema={message.credentialsSchema}
-        message={message.message}
-        onRun={handleRunAgent}
-        className={className}
-      />
-    );
-  }
 
   // Render credentials needed messages
   if (isCredentialsNeeded && message.type === "credentials_needed") {

@@ -1,9 +1,8 @@
-import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
-import { CheckIcon, KeyIcon, WarningIcon } from "@phosphor-icons/react";
+import { CheckIcon, RobotIcon, WarningIcon } from "@phosphor-icons/react";
 import { useEffect, useRef } from "react";
 import { useChatCredentialsSetup } from "./useChatCredentialsSetup";
 
@@ -45,7 +44,6 @@ export function ChatCredentialsSetup({
   message,
   onAllCredentialsComplete,
   onCancel: _onCancel,
-  className,
 }: Props) {
   const { selectedCredentials, isAllComplete, handleCredentialSelect } =
     useChatCredentialsSetup(credentials);
@@ -73,74 +71,79 @@ export function ChatCredentialsSetup({
   );
 
   return (
-    <Card
-      className={cn(
-        "mx-4 my-2 overflow-hidden border-orange-200 bg-orange-50",
-        className,
-      )}
-    >
-      <div className="flex items-start gap-4 p-6">
-        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-orange-500">
-          <KeyIcon size={24} weight="bold" className="text-white" />
+    <div className="group relative flex w-full justify-start gap-3 px-4 py-3">
+      <div className="flex w-full max-w-3xl gap-3">
+        <div className="flex-shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500">
+            <RobotIcon className="h-4 w-4 text-indigo-50" />
+          </div>
         </div>
-        <div className="flex-1">
-          <Text variant="h3" className="mb-2 text-orange-900">
-            Credentials Required
-          </Text>
-          <Text variant="body" className="mb-4 text-orange-700">
-            {message}
-          </Text>
 
-          <div className="space-y-3">
-            {credentials.map((cred, index) => {
-              const schema = createSchemaFromCredentialInfo(cred);
-              const isSelected = !!selectedCredentials[cred.provider];
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="group relative min-w-20 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/20 px-6 py-2.5 text-sm leading-relaxed backdrop-blur-xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-slate-200/20 via-slate-300/10 to-transparent" />
+            <div className="relative z-10 space-y-3 text-slate-900">
+              <div>
+                <Text variant="h4" className="mb-1 text-slate-900">
+                  Credentials Required
+                </Text>
+                <Text variant="small" className="text-slate-600">
+                  {message}
+                </Text>
+              </div>
 
-              return (
-                <div
-                  key={`${cred.provider}-${index}`}
-                  className={cn(
-                    "relative rounded-lg border border-orange-200 bg-white p-4",
-                    isSelected && "border-green-500 bg-green-50",
-                  )}
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {isSelected ? (
-                        <CheckIcon
-                          size={20}
-                          className="text-green-500"
-                          weight="bold"
-                        />
-                      ) : (
-                        <WarningIcon
-                          size={20}
-                          className="text-orange-500"
-                          weight="bold"
-                        />
+              <div className="space-y-3">
+                {credentials.map((cred, index) => {
+                  const schema = createSchemaFromCredentialInfo(cred);
+                  const isSelected = !!selectedCredentials[cred.provider];
+
+                  return (
+                    <div
+                      key={`${cred.provider}-${index}`}
+                      className={cn(
+                        "relative rounded-lg border p-3",
+                        isSelected
+                          ? "border-green-500 bg-green-50/50"
+                          : "border-slate-200 bg-white/50",
                       )}
-                      <Text
-                        variant="body"
-                        className="font-semibold text-orange-900"
-                      >
-                        {cred.providerName}
-                      </Text>
-                    </div>
-                  </div>
+                    >
+                      <div className="mb-2 flex items-center gap-2">
+                        {isSelected ? (
+                          <CheckIcon
+                            size={16}
+                            className="text-green-500"
+                            weight="bold"
+                          />
+                        ) : (
+                          <WarningIcon
+                            size={16}
+                            className="text-slate-500"
+                            weight="bold"
+                          />
+                        )}
+                        <Text
+                          variant="small"
+                          className="font-semibold text-slate-900"
+                        >
+                          {cred.providerName}
+                        </Text>
+                      </div>
 
-                  <CredentialsInput
-                    schema={schema}
-                    selectedCredentials={selectedCredentials[cred.provider]}
-                    onSelectCredentials={(credMeta) =>
-                      handleCredentialSelect(cred.provider, credMeta)
-                    }
-                  />
-                </div>
-              );
-            })}
+                      <CredentialsInput
+                        schema={schema}
+                        selectedCredentials={selectedCredentials[cred.provider]}
+                        onSelectCredentials={(credMeta) =>
+                          handleCredentialSelect(cred.provider, credMeta)
+                        }
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
