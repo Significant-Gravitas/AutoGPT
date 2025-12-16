@@ -63,6 +63,7 @@ export function isAgentArray(value: unknown): value is Array<{
   name: string;
   description: string;
   version?: number;
+  image_url?: string;
 }> {
   if (!Array.isArray(value)) {
     return false;
@@ -77,7 +78,8 @@ export function isAgentArray(value: unknown): value is Array<{
       typeof item.name === "string" &&
       "description" in item &&
       typeof item.description === "string" &&
-      (!("version" in item) || typeof item.version === "number"),
+      (!("version" in item) || typeof item.version === "number") &&
+      (!("image_url" in item) || typeof item.image_url === "string"),
   );
 }
 

@@ -7,10 +7,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { X } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { Drawer } from "vaul";
-import { ChatContainer } from "./components/ChatContainer/ChatContainer";
-import { ChatErrorState } from "./components/ChatErrorState/ChatErrorState";
-import { ChatLoadingState } from "./components/ChatLoadingState/ChatLoadingState";
-import { useChat } from "./useChat";
+import { Chat } from "./Chat";
 import { useChatDrawer } from "./useChatDrawer";
 
 interface ChatDrawerProps {
@@ -20,16 +17,6 @@ interface ChatDrawerProps {
 export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
   const isChatEnabled = useGetFlag(Flag.CHAT);
   const { isOpen, close } = useChatDrawer();
-  const {
-    messages,
-    isLoading,
-    isCreating,
-    error,
-    sessionId,
-    createSession,
-    clearSession,
-    refreshSession,
-  } = useChat();
 
   useEffect(() => {
     if (isChatEnabled === false && isOpen) {
@@ -68,62 +55,23 @@ export function ChatDrawer({ blurBackground = true }: ChatDrawerProps) {
             scrollbarStyles,
           )}
         >
-          {/* Header */}
-          <header className="shrink-0 border-b border-zinc-200 bg-white p-4">
-            <div className="flex items-center justify-between">
+          <Chat
+            headerTitle={
               <Drawer.Title className="text-xl font-semibold">
                 Chat
               </Drawer.Title>
-              <div className="flex items-center gap-4">
-                {sessionId && (
-                  <>
-                    <span className="text-sm text-zinc-600">
-                      Session: {sessionId.slice(0, 8)}...
-                    </span>
-                    <button
-                      onClick={clearSession}
-                      className="text-sm text-zinc-600 hover:text-zinc-900"
-                    >
-                      New Chat
-                    </button>
-                  </>
-                )}
-                <Button
-                  variant="link"
-                  aria-label="Close"
-                  onClick={close}
-                  className="!focus-visible:ring-0 p-0"
-                >
-                  <X width="1.5rem" />
-                </Button>
-              </div>
-            </div>
-          </header>
-
-          {/* Main Content */}
-          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {/* Loading State - show when explicitly loading/creating OR when we don't have a session yet and no error */}
-            {(isLoading || isCreating || (!sessionId && !error)) && (
-              <ChatLoadingState
-                message={isCreating ? "Creating session..." : "Loading..."}
-              />
-            )}
-
-            {/* Error State */}
-            {error && !isLoading && (
-              <ChatErrorState error={error} onRetry={createSession} />
-            )}
-
-            {/* Session Content */}
-            {sessionId && !isLoading && !error && (
-              <ChatContainer
-                sessionId={sessionId}
-                initialMessages={messages}
-                onRefreshSession={refreshSession}
-                className="flex-1"
-              />
-            )}
-          </main>
+            }
+            headerActions={
+              <Button
+                variant="link"
+                aria-label="Close"
+                onClick={close}
+                className="!focus-visible:ring-0 p-0"
+              >
+                <X width="1.5rem" />
+              </Button>
+            }
+          />
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>

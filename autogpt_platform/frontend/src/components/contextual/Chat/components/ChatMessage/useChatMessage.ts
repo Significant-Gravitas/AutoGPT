@@ -1,5 +1,5 @@
-import { formatDistanceToNow } from "date-fns";
 import type { ToolArguments, ToolResult } from "@/types/chat";
+import { formatDistanceToNow } from "date-fns";
 
 export type ChatMessageData =
   | {
@@ -65,6 +65,7 @@ export type ChatMessageData =
         name: string;
         description: string;
         version?: number;
+        image_url?: string;
       }>;
       totalCount?: number;
       timestamp?: string | Date;

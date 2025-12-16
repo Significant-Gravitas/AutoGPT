@@ -3,12 +3,14 @@ import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { ArrowRight, List, Robot } from "@phosphor-icons/react";
+import Image from "next/image";
 
 export interface Agent {
   id: string;
   name: string;
   description: string;
   version?: number;
+  image_url?: string;
 }
 
 export interface AgentCarouselMessageProps {
@@ -56,8 +58,23 @@ export function AgentCarouselMessage({
             className="border border-purple-200 bg-white p-4"
           >
             <div className="flex gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-purple-100">
-                <Robot size={20} weight="bold" className="text-purple-600" />
+              <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg bg-purple-100">
+                {agent.image_url ? (
+                  <Image
+                    src={agent.image_url}
+                    alt={`${agent.name} preview image`}
+                    fill
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Robot
+                      size={20}
+                      weight="bold"
+                      className="text-purple-600"
+                    />
+                  </div>
+                )}
               </div>
               <div className="flex-1 space-y-2">
                 <div>
