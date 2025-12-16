@@ -1,5 +1,6 @@
 """Data models and access layer for user business understanding."""
 
+import logging
 from datetime import datetime
 from typing import Any, Optional, cast
 
@@ -10,7 +11,19 @@ from prisma.types import (
     UserBusinessUnderstandingUpdateInput,
 )
 
+from backend.data.redis_client import get_redis_async
 from backend.util.json import SafeJson
+
+logger = logging.getLogger(__name__)
+
+# Cache configuration
+CACHE_KEY_PREFIX = "understanding"
+CACHE_TTL_SECONDS = 48 * 60 * 60  # 48 hours
+
+
+def _cache_key(user_id: str) -> str:
+    """Generate cache key for user business understanding."""
+    return f"{CACHE_KEY_PREFIX}:{user_id}"
 
 
 def _json_to_list(value: Any) -> list[str]:
@@ -153,16 +166,68 @@ def _merge_lists(existing: list | None, new: list | None) -> list | None:
     return merged
 
 
+async def _get_from_cache(user_id: str) -> Optional[BusinessUnderstanding]:
+    """Get business understanding from Redis cache."""
+    try:
+        redis = await get_redis_async()
+        cached_data = await redis.get(_cache_key(user_id))
+        if cached_data:
+            return BusinessUnderstanding.model_validate_json(cached_data)
+    except Exception as e:
+        logger.warning(f"Failed to get understanding from cache: {e}")
+    return None
+
+
+async def _set_cache(user_id: str, understanding: BusinessUnderstanding) -> None:
+    """Set business understanding in Redis cache with TTL."""
+    try:
+        redis = await get_redis_async()
+        await redis.setex(
+            _cache_key(user_id),
+            CACHE_TTL_SECONDS,
+            understanding.model_dump_json(),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to set understanding in cache: {e}")
+
+
+async def _delete_cache(user_id: str) -> None:
+    """Delete business understanding from Redis cache."""
+    try:
+        redis = await get_redis_async()
+        await redis.delete(_cache_key(user_id))
+    except Exception as e:
+        logger.warning(f"Failed to delete understanding from cache: {e}")
+
+
 async def get_business_understanding(
     user_id: str,
 ) -> Optional[BusinessUnderstanding]:
-    """Get the business understanding for a user."""
+    """Get the business understanding for a user.
+
+    Checks cache first, falls back to database if not cached.
+    Results are cached for 48 hours.
+    """
+    # Try cache first
+    cached = await _get_from_cache(user_id)
+    if cached:
+        logger.debug(f"Business understanding cache hit for user {user_id}")
+        return cached
+
+    # Cache miss - load from database
+    logger.debug(f"Business understanding cache miss for user {user_id}")
     record = await UserBusinessUnderstanding.prisma().find_unique(
         where={"userId": user_id}
     )
     if record is None:
         return None
-    return BusinessUnderstanding.from_db(record)
+
+    understanding = BusinessUnderstanding.from_db(record)
+
+    # Store in cache for next time
+    await _set_cache(user_id, understanding)
+
+    return understanding
 
 
 async def upsert_business_understanding(
@@ -265,11 +330,19 @@ async def upsert_business_understanding(
         },
     )
 
-    return BusinessUnderstanding.from_db(record)
+    understanding = BusinessUnderstanding.from_db(record)
+
+    # Update cache with new understanding
+    await _set_cache(user_id, understanding)
+
+    return understanding
 
 
 async def clear_business_understanding(user_id: str) -> bool:
-    """Clear/delete business understanding for a user."""
+    """Clear/delete business understanding for a user from both DB and cache."""
+    # Delete from cache first
+    await _delete_cache(user_id)
+
     try:
         await UserBusinessUnderstanding.prisma().delete(where={"userId": user_id})
         return True

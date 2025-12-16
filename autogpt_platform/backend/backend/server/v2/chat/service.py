@@ -81,6 +81,21 @@ async def get_session(
     return await get_chat_session(session_id, user_id)
 
 
+async def get_user_sessions(
+    user_id: str,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[ChatSession]:
+    """
+    Get all chat sessions for a user.
+    """
+    from backend.server.v2.chat.model import (
+        get_user_sessions as model_get_user_sessions,
+    )
+
+    return await model_get_user_sessions(user_id, limit, offset)
+
+
 async def assign_user_to_session(
     session_id: str,
     user_id: str,
