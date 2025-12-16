@@ -33,6 +33,8 @@ export function useChatContainer({
 
   const allMessages = useMemo(() => {
     const processedInitialMessages: ChatMessageData[] = [];
+    // Map to track tool calls by their ID so we can look up tool names for tool responses
+    const toolCallMap = new Map<string, string>();
 
     for (const msg of initialMessages) {
       if (!isValidMessage(msg)) {
@@ -63,21 +65,7 @@ export function useChatContainer({
         continue;
       }
 
-      // Handle tool messages
-      if (role === "tool") {
-        const toolResponse = parseToolResponse(
-          content,
-          (msg.tool_call_id as string) || "",
-          "unknown",
-          timestamp,
-        );
-        if (toolResponse) {
-          processedInitialMessages.push(toolResponse);
-        }
-        continue;
-      }
-
-      // Handle assistant messages
+      // Handle assistant messages first (before tool messages) to build tool call map
       if (role === "assistant") {
         // Strip <thinking> tags from content
         content = content
@@ -87,12 +75,17 @@ export function useChatContainer({
         // If assistant has tool calls, create tool_call messages for each
         if (toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
           for (const toolCall of toolCalls) {
+            const toolName = toolCall.function.name;
+            const toolId = toolCall.id;
+            // Store tool name for later lookup
+            toolCallMap.set(toolId, toolName);
+
             try {
               const args = JSON.parse(toolCall.function.arguments || "{}");
               processedInitialMessages.push({
                 type: "tool_call",
-                toolId: toolCall.id,
-                toolName: toolCall.function.name,
+                toolId,
+                toolName,
                 arguments: args,
                 timestamp,
               });
@@ -100,8 +93,8 @@ export function useChatContainer({
               console.warn("Failed to parse tool call arguments:", err);
               processedInitialMessages.push({
                 type: "tool_call",
-                toolId: toolCall.id,
-                toolName: toolCall.function.name,
+                toolId,
+                toolName,
                 arguments: {},
                 timestamp,
               });
@@ -124,6 +117,22 @@ export function useChatContainer({
             content,
             timestamp,
           });
+        }
+        continue;
+      }
+
+      // Handle tool messages - look up tool name from tool call map
+      if (role === "tool") {
+        const toolCallId = (msg.tool_call_id as string) || "";
+        const toolName = toolCallMap.get(toolCallId) || "unknown";
+        const toolResponse = parseToolResponse(
+          content,
+          toolCallId,
+          toolName,
+          timestamp,
+        );
+        if (toolResponse) {
+          processedInitialMessages.push(toolResponse);
         }
         continue;
       }

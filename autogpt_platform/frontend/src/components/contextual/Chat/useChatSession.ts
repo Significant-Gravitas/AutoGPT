@@ -155,11 +155,17 @@ export function useChatSession({
     async function loadSession(id: string) {
       try {
         setError(null);
+        // Invalidate the query cache for this session to force a fresh fetch
+        await queryClient.invalidateQueries({
+          queryKey: getGetV2GetSessionQueryKey(id),
+        });
+        // Set sessionId after invalidation to ensure the hook refetches
         setSessionId(id);
         storage.set(Key.CHAT_SESSION_ID, id);
+        // Force fetch with fresh data (bypass cache)
         const queryOptions = getGetV2GetSessionQueryOptions(id, {
           query: {
-            staleTime: Infinity,
+            staleTime: 0, // Force fresh fetch
             retry: 1,
           },
         });
