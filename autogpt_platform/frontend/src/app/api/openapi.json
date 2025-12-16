@@ -3912,6 +3912,78 @@
         }
       }
     },
+    "/api/store/admin/embeddings/stats": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Get Embedding Statistics",
+        "description": "Get statistics about embedding coverage for store listings.\n\nReturns counts of total approved listings, listings with embeddings,\nlistings without embeddings, and coverage percentage.",
+        "operationId": "getV2Get embedding statistics",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Get Embedding Statistics"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/admin/embeddings/backfill": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Backfill Missing Embeddings",
+        "description": "Trigger backfill of embeddings for approved listings that don't have them.\n\nArgs:\n    batch_size: Number of embeddings to generate in one call (default 10)\n\nReturns:\n    Dict with processed count, success count, failure count, and message",
+        "operationId": "postV2Backfill missing embeddings",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "batch_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Batch Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Backfill Missing Embeddings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/credits/admin/add_credits": {
       "post": {
         "tags": ["v2", "admin", "credits", "admin"],
@@ -5428,6 +5500,112 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/onboarding/sessions": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Create Onboarding Session",
+        "description": "Create a new onboarding chat session.\n\nInitiates a new chat session specifically for user onboarding,\nusing a specialized prompt that guides users through their first\nexperience with AutoGPT.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT.\n\nReturns:\n    CreateSessionResponse: Details of the created onboarding session.",
+        "operationId": "postV2CreateOnboardingSession",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/onboarding/sessions/{session_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Onboarding Session",
+        "description": "Retrieve the details of an onboarding chat session.\n\nArgs:\n    session_id: The unique identifier for the onboarding session.\n    user_id: The optional authenticated user ID.\n\nReturns:\n    SessionDetailResponse: Details for the requested session.",
+        "operationId": "getV2GetOnboardingSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/chat/onboarding/sessions/{session_id}/stream": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Onboarding Chat",
+        "description": "Stream onboarding chat responses for a session.\n\nUses the specialized onboarding system prompt to guide new users\nthrough their first experience with AutoGPT. Streams AI responses\nin real time over Server-Sent Events (SSE).\n\nArgs:\n    session_id: The onboarding session identifier.\n    request: Request body containing message and optional context.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "postV2StreamOnboardingChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StreamChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
           },
           "422": {
             "description": "Validation Error",

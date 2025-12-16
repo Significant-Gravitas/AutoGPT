@@ -32,70 +32,112 @@ export function useChatContainer({
   const isStreaming = isStreamingInitiated || hasTextChunks;
 
   const allMessages = useMemo(() => {
-    const processedInitialMessages = initialMessages
-      .filter((msg: Record<string, unknown>) => {
-        if (!isValidMessage(msg)) {
-          console.warn("Invalid message structure from backend:", msg);
-          return false;
+    const processedInitialMessages: ChatMessageData[] = [];
+
+    for (const msg of initialMessages) {
+      if (!isValidMessage(msg)) {
+        console.warn("Invalid message structure from backend:", msg);
+        continue;
+      }
+
+      let content = String(msg.content || "");
+      const role = String(msg.role || "assistant").toLowerCase();
+      const toolCalls = msg.tool_calls;
+      const timestamp = msg.timestamp
+        ? new Date(msg.timestamp as string)
+        : undefined;
+
+      // Remove page context from user messages when loading existing sessions
+      if (role === "user") {
+        content = removePageContext(content);
+        // Skip user messages that become empty after removing page context
+        if (!content.trim()) {
+          continue;
         }
-        const content = String(msg.content || "").trim();
-        const toolCalls = msg.tool_calls;
-        return (
-          content.length > 0 ||
-          (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0)
+        processedInitialMessages.push({
+          type: "message",
+          role: "user",
+          content,
+          timestamp,
+        });
+        continue;
+      }
+
+      // Handle tool messages
+      if (role === "tool") {
+        const toolResponse = parseToolResponse(
+          content,
+          (msg.tool_call_id as string) || "",
+          "unknown",
+          timestamp,
         );
-      })
-      .map((msg: Record<string, unknown>) => {
-        let content = String(msg.content || "");
-        const role = String(msg.role || "assistant").toLowerCase();
-        const toolCalls = msg.tool_calls;
+        if (toolResponse) {
+          processedInitialMessages.push(toolResponse);
+        }
+        continue;
+      }
 
-        // Remove page context from user messages when loading existing sessions
-        if (role === "user") {
-          content = removePageContext(content);
-          // Skip user messages that become empty after removing page context
-          if (!content.trim()) {
-            return null;
+      // Handle assistant messages
+      if (role === "assistant") {
+        // Strip <thinking> tags from content
+        content = content
+          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+          .trim();
+
+        // If assistant has tool calls, create tool_call messages for each
+        if (toolCalls && isToolCallArray(toolCalls) && toolCalls.length > 0) {
+          for (const toolCall of toolCalls) {
+            try {
+              const args = JSON.parse(toolCall.function.arguments || "{}");
+              processedInitialMessages.push({
+                type: "tool_call",
+                toolId: toolCall.id,
+                toolName: toolCall.function.name,
+                arguments: args,
+                timestamp,
+              });
+            } catch (err) {
+              console.warn("Failed to parse tool call arguments:", err);
+              processedInitialMessages.push({
+                type: "tool_call",
+                toolId: toolCall.id,
+                toolName: toolCall.function.name,
+                arguments: {},
+                timestamp,
+              });
+            }
           }
-        }
-
-        if (
-          role === "assistant" &&
-          toolCalls &&
-          isToolCallArray(toolCalls) &&
-          toolCalls.length > 0
-        ) {
-          return null;
-        }
-        if (role === "tool") {
-          const timestamp = msg.timestamp
-            ? new Date(msg.timestamp as string)
-            : undefined;
-          const toolResponse = parseToolResponse(
+          // Only add assistant message if there's content after stripping thinking tags
+          if (content.trim()) {
+            processedInitialMessages.push({
+              type: "message",
+              role: "assistant",
+              content,
+              timestamp,
+            });
+          }
+        } else if (content.trim()) {
+          // Assistant message without tool calls, but with content
+          processedInitialMessages.push({
+            type: "message",
+            role: "assistant",
             content,
-            (msg.tool_call_id as string) || "",
-            "unknown",
             timestamp,
-          );
-          if (!toolResponse) {
-            return null;
-          }
-          return toolResponse;
+          });
         }
-        // Skip assistant messages with empty content (they're handled by tool calls)
-        if (role === "assistant" && !content.trim()) {
-          return null;
-        }
-        return {
+        continue;
+      }
+
+      // Handle other message types (system, etc.)
+      if (content.trim()) {
+        processedInitialMessages.push({
           type: "message",
           role: role as "user" | "assistant" | "system",
           content,
-          timestamp: msg.timestamp
-            ? new Date(msg.timestamp as string)
-            : undefined,
-        };
-      })
-      .filter((msg): msg is ChatMessageData => msg !== null);
+          timestamp,
+        });
+      }
+    }
 
     return [...processedInitialMessages, ...messages];
   }, [initialMessages, messages]);
