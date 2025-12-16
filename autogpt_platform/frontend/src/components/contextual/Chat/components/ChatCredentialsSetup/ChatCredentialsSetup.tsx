@@ -1,6 +1,6 @@
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Card } from "@/components/atoms/Card/Card";
 import { Text } from "@/components/atoms/Text/Text";
+import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { CheckIcon, KeyIcon, WarningIcon } from "@phosphor-icons/react";

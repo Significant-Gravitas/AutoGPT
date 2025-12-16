@@ -1,7 +1,11 @@
 import type { StreamChunk } from "@/components/contextual/Chat/useChatStream";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
-import { extractCredentialsNeeded, parseToolResponse } from "./helpers";
+import {
+  extractCredentialsNeeded,
+  extractInputsNeeded,
+  parseToolResponse,
+} from "./helpers";
 
 export interface HandlerDependencies {
   setHasTextChunks: Dispatch<SetStateAction<boolean>>;
@@ -106,6 +110,10 @@ export function handleToolResponse(
       chunk.success &&
       parsedResult?.type === "setup_requirements"
     ) {
+      const inputsMessage = extractInputsNeeded(parsedResult, chunk.tool_name);
+      if (inputsMessage) {
+        deps.setMessages((prev) => [...prev, inputsMessage]);
+      }
       const credentialsMessage = extractCredentialsNeeded(
         parsedResult,
         chunk.tool_name,

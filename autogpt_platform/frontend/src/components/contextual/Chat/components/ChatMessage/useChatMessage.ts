@@ -78,6 +78,17 @@ export type ChatMessageData =
       message?: string;
       libraryAgentLink?: string;
       timestamp?: string | Date;
+    }
+  | {
+      type: "inputs_needed";
+      toolName: string;
+      agentName?: string;
+      agentId?: string;
+      graphVersion?: number;
+      inputSchema: Record<string, any>;
+      credentialsSchema?: Record<string, any>;
+      message: string;
+      timestamp?: string | Date;
     };
 
 export function useChatMessage(message: ChatMessageData) {
@@ -97,5 +108,6 @@ export function useChatMessage(message: ChatMessageData) {
     isNoResults: message.type === "no_results",
     isAgentCarousel: message.type === "agent_carousel",
     isExecutionStarted: message.type === "execution_started",
+    isInputsNeeded: message.type === "inputs_needed",
   };
 }

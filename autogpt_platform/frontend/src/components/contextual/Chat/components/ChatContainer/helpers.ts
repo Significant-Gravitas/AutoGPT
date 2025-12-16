@@ -299,3 +299,81 @@ export function extractCredentialsNeeded(
     return null;
   }
 }
+
+export function extractInputsNeeded(
+  parsedResult: Record<string, unknown>,
+  toolName: string = "run_agent",
+): ChatMessageData | null {
+  try {
+    const setupInfo = parsedResult?.setup_info as
+      | Record<string, unknown>
+      | undefined;
+    const requirements = setupInfo?.requirements as
+      | Record<string, unknown>
+      | undefined;
+    const inputs = requirements?.inputs as
+      | Array<Record<string, unknown>>
+      | undefined;
+    const credentials = requirements?.credentials as
+      | Array<Record<string, unknown>>
+      | undefined;
+
+    if (!inputs || inputs.length === 0) {
+      return null;
+    }
+
+    const agentName = (setupInfo?.agent_name as string) || "this agent";
+    const agentId = parsedResult?.graph_id as string | undefined;
+    const graphVersion = parsedResult?.graph_version as number | undefined;
+
+    const inputSchema: Record<string, any> = {};
+    inputs.forEach((input) => {
+      const name = input.name as string;
+      if (name) {
+        inputSchema[name] = {
+          title: input.name as string,
+          description: (input.description as string) || "",
+          type: (input.type as string) || "string",
+          default: input.default,
+          required: (input.required as boolean) || false,
+          enum: input.options,
+          format: input.format,
+        };
+      }
+    });
+
+    const credentialsSchema: Record<string, any> = {};
+    if (credentials && credentials.length > 0) {
+      credentials.forEach((cred) => {
+        const id = cred.id as string;
+        if (id) {
+          credentialsSchema[id] = {
+            type: "object",
+            properties: {},
+            credentials_provider: [cred.provider as string],
+            credentials_types: [(cred.type as string) || "api_key"],
+            credentials_scopes: cred.scopes as string[] | undefined,
+          };
+        }
+      });
+    }
+
+    return {
+      type: "inputs_needed",
+      toolName,
+      agentName,
+      agentId,
+      graphVersion,
+      inputSchema,
+      credentialsSchema:
+        Object.keys(credentialsSchema).length > 0
+          ? credentialsSchema
+          : undefined,
+      message: `Please provide the required inputs to run ${agentName}.`,
+      timestamp: new Date(),
+    };
+  } catch (err) {
+    console.error("Failed to extract inputs from setup info:", err);
+    return null;
+  }
+}
