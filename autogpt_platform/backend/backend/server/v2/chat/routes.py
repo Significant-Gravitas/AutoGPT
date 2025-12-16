@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Query, Request, Security
+from fastapi import APIRouter, Depends, Query, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -27,6 +27,7 @@ router = APIRouter(
 
 class StreamChatRequest(BaseModel):
     """Request model for streaming chat with optional context."""
+
     message: str
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}

@@ -12,7 +12,7 @@ from prisma.types import (
     ChatSessionUpdateInput,
 )
 
-from backend.util import json
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,9 @@ async def create_chat_session(
     data: ChatSessionCreateInput = {
         "id": session_id,
         "userId": user_id,
-        "credentials": json.dumps({}),
-        "successfulAgentRuns": json.dumps({}),
-        "successfulAgentSchedules": json.dumps({}),
+        "credentials": SafeJson({}),
+        "successfulAgentRuns": SafeJson({}),
+        "successfulAgentSchedules": SafeJson({}),
     }
     return await PrismaChatSession.prisma().create(
         data=data,
@@ -60,11 +60,11 @@ async def update_chat_session(
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
 
     if credentials is not None:
-        data["credentials"] = json.dumps(credentials)
+        data["credentials"] = SafeJson(credentials)
     if successful_agent_runs is not None:
-        data["successfulAgentRuns"] = json.dumps(successful_agent_runs)
+        data["successfulAgentRuns"] = SafeJson(successful_agent_runs)
     if successful_agent_schedules is not None:
-        data["successfulAgentSchedules"] = json.dumps(successful_agent_schedules)
+        data["successfulAgentSchedules"] = SafeJson(successful_agent_schedules)
     if total_prompt_tokens is not None:
         data["totalPromptTokens"] = total_prompt_tokens
     if total_completion_tokens is not None:
@@ -109,9 +109,9 @@ async def add_chat_message(
     if refusal is not None:
         data["refusal"] = refusal
     if tool_calls is not None:
-        data["toolCalls"] = json.dumps(tool_calls)
+        data["toolCalls"] = SafeJson(tool_calls)
     if function_call is not None:
-        data["functionCall"] = json.dumps(function_call)
+        data["functionCall"] = SafeJson(function_call)
 
     # Update session's updatedAt timestamp
     await PrismaChatSession.prisma().update(
@@ -148,9 +148,9 @@ async def add_chat_messages_batch(
         if msg.get("refusal") is not None:
             data["refusal"] = msg["refusal"]
         if msg.get("tool_calls") is not None:
-            data["toolCalls"] = json.dumps(msg["tool_calls"])
+            data["toolCalls"] = SafeJson(msg["tool_calls"])
         if msg.get("function_call") is not None:
-            data["functionCall"] = json.dumps(msg["function_call"])
+            data["functionCall"] = SafeJson(msg["function_call"])
 
         created = await PrismaChatMessage.prisma().create(data=data)
         created_messages.append(created)
