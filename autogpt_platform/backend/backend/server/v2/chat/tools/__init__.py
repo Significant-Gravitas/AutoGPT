@@ -4,8 +4,10 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.server.v2.chat.model import ChatSession
 
+from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .find_agent import FindAgentTool
+from .find_library_agent import FindLibraryAgentTool
 from .run_agent import RunAgentTool
 from .search_docs import SearchDocsTool
 
@@ -14,14 +16,18 @@ if TYPE_CHECKING:
 
 # Initialize tool instances
 find_agent_tool = FindAgentTool()
+find_library_agent_tool = FindLibraryAgentTool()
 run_agent_tool = RunAgentTool()
 search_docs_tool = SearchDocsTool()
+agent_output_tool = AgentOutputTool()
 
 # Export tools as OpenAI format
 tools: list[ChatCompletionToolParam] = [
     find_agent_tool.as_openai_tool(),
+    find_library_agent_tool.as_openai_tool(),
     run_agent_tool.as_openai_tool(),
     search_docs_tool.as_openai_tool(),
+    agent_output_tool.as_openai_tool(),
 ]
 
 
@@ -35,8 +41,10 @@ async def execute_tool(
 
     tool_map: dict[str, BaseTool] = {
         "find_agent": find_agent_tool,
+        "find_library_agent": find_library_agent_tool,
         "run_agent": run_agent_tool,
         "search_platform_docs": search_docs_tool,
+        "agent_output": agent_output_tool,
     }
     if tool_name not in tool_map:
         raise ValueError(f"Tool {tool_name} not found")
