@@ -1,0 +1,356 @@
+"""Data models and access layer for user business understanding."""
+
+from datetime import datetime
+from typing import Any, Optional, cast
+
+import pydantic
+from prisma.models import UserBusinessUnderstanding
+from prisma.types import (
+    UserBusinessUnderstandingCreateInput,
+    UserBusinessUnderstandingUpdateInput,
+)
+
+from backend.util.json import SafeJson
+
+
+def _json_to_list(value: Any) -> list[str]:
+    """Convert Json field to list[str], handling None."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return cast(list[str], value)
+    return []
+
+
+class BusinessUnderstandingInput(pydantic.BaseModel):
+    """Input model for updating business understanding - all fields optional for incremental updates."""
+
+    # User info
+    user_name: Optional[str] = pydantic.Field(None, description="The user's name")
+    job_title: Optional[str] = pydantic.Field(None, description="The user's job title")
+
+    # Business basics
+    business_name: Optional[str] = pydantic.Field(
+        None, description="Name of the user's business"
+    )
+    industry: Optional[str] = pydantic.Field(None, description="Industry or sector")
+    business_size: Optional[str] = pydantic.Field(
+        None, description="Company size (e.g., '1-10', '11-50')"
+    )
+    user_role: Optional[str] = pydantic.Field(
+        None,
+        description="User's role in the organization (e.g., 'decision maker', 'implementer')",
+    )
+
+    # Processes & activities
+    key_workflows: Optional[list[str]] = pydantic.Field(
+        None, description="Key business workflows"
+    )
+    daily_activities: Optional[list[str]] = pydantic.Field(
+        None, description="Daily activities performed"
+    )
+
+    # Pain points & goals
+    pain_points: Optional[list[str]] = pydantic.Field(
+        None, description="Current pain points"
+    )
+    bottlenecks: Optional[list[str]] = pydantic.Field(
+        None, description="Process bottlenecks"
+    )
+    manual_tasks: Optional[list[str]] = pydantic.Field(
+        None, description="Manual/repetitive tasks"
+    )
+    automation_goals: Optional[list[str]] = pydantic.Field(
+        None, description="Desired automation goals"
+    )
+
+    # Current tools
+    current_software: Optional[list[str]] = pydantic.Field(
+        None, description="Software/tools currently used"
+    )
+    existing_automation: Optional[list[str]] = pydantic.Field(
+        None, description="Existing automations"
+    )
+
+    # Additional context
+    additional_notes: Optional[str] = pydantic.Field(
+        None, description="Any additional context"
+    )
+
+
+class BusinessUnderstanding(pydantic.BaseModel):
+    """Full business understanding model returned from database."""
+
+    id: str
+    user_id: str
+    created_at: datetime
+    updated_at: datetime
+
+    # User info
+    user_name: Optional[str] = None
+    job_title: Optional[str] = None
+
+    # Business basics
+    business_name: Optional[str] = None
+    industry: Optional[str] = None
+    business_size: Optional[str] = None
+    user_role: Optional[str] = None
+
+    # Processes & activities
+    key_workflows: list[str] = pydantic.Field(default_factory=list)
+    daily_activities: list[str] = pydantic.Field(default_factory=list)
+
+    # Pain points & goals
+    pain_points: list[str] = pydantic.Field(default_factory=list)
+    bottlenecks: list[str] = pydantic.Field(default_factory=list)
+    manual_tasks: list[str] = pydantic.Field(default_factory=list)
+    automation_goals: list[str] = pydantic.Field(default_factory=list)
+
+    # Current tools
+    current_software: list[str] = pydantic.Field(default_factory=list)
+    existing_automation: list[str] = pydantic.Field(default_factory=list)
+
+    # Additional context
+    additional_notes: Optional[str] = None
+
+    @classmethod
+    def from_db(cls, db_record: UserBusinessUnderstanding) -> "BusinessUnderstanding":
+        """Convert database record to Pydantic model."""
+        return cls(
+            id=db_record.id,
+            user_id=db_record.userId,
+            created_at=db_record.createdAt,
+            updated_at=db_record.updatedAt,
+            user_name=db_record.userName,
+            job_title=db_record.jobTitle,
+            business_name=db_record.businessName,
+            industry=db_record.industry,
+            business_size=db_record.businessSize,
+            user_role=db_record.userRole,
+            key_workflows=_json_to_list(db_record.keyWorkflows),
+            daily_activities=_json_to_list(db_record.dailyActivities),
+            pain_points=_json_to_list(db_record.painPoints),
+            bottlenecks=_json_to_list(db_record.bottlenecks),
+            manual_tasks=_json_to_list(db_record.manualTasks),
+            automation_goals=_json_to_list(db_record.automationGoals),
+            current_software=_json_to_list(db_record.currentSoftware),
+            existing_automation=_json_to_list(db_record.existingAutomation),
+            additional_notes=db_record.additionalNotes,
+        )
+
+
+def _merge_lists(existing: list | None, new: list | None) -> list | None:
+    """Merge two lists, removing duplicates while preserving order."""
+    if new is None:
+        return existing
+    if existing is None:
+        return new
+    # Preserve order, add new items that don't exist
+    merged = list(existing)
+    for item in new:
+        if item not in merged:
+            merged.append(item)
+    return merged
+
+
+async def get_business_understanding(
+    user_id: str,
+) -> Optional[BusinessUnderstanding]:
+    """Get the business understanding for a user."""
+    record = await UserBusinessUnderstanding.prisma().find_unique(
+        where={"userId": user_id}
+    )
+    if record is None:
+        return None
+    return BusinessUnderstanding.from_db(record)
+
+
+async def upsert_business_understanding(
+    user_id: str,
+    data: BusinessUnderstandingInput,
+) -> BusinessUnderstanding:
+    """
+    Create or update business understanding with incremental merge strategy.
+
+    - String fields: new value overwrites if provided (not None)
+    - List fields: new items are appended to existing (deduplicated)
+    """
+    # Get existing record for merge
+    existing = await UserBusinessUnderstanding.prisma().find_unique(
+        where={"userId": user_id}
+    )
+
+    # Build update data with merge strategy
+    update_data: UserBusinessUnderstandingUpdateInput = {}
+    create_data: dict[str, Any] = {"userId": user_id}
+
+    # String fields - overwrite if provided
+    if data.user_name is not None:
+        update_data["userName"] = data.user_name
+        create_data["userName"] = data.user_name
+    if data.job_title is not None:
+        update_data["jobTitle"] = data.job_title
+        create_data["jobTitle"] = data.job_title
+    if data.business_name is not None:
+        update_data["businessName"] = data.business_name
+        create_data["businessName"] = data.business_name
+    if data.industry is not None:
+        update_data["industry"] = data.industry
+        create_data["industry"] = data.industry
+    if data.business_size is not None:
+        update_data["businessSize"] = data.business_size
+        create_data["businessSize"] = data.business_size
+    if data.user_role is not None:
+        update_data["userRole"] = data.user_role
+        create_data["userRole"] = data.user_role
+    if data.additional_notes is not None:
+        update_data["additionalNotes"] = data.additional_notes
+        create_data["additionalNotes"] = data.additional_notes
+
+    # List fields - merge with existing
+    if data.key_workflows is not None:
+        existing_list = _json_to_list(existing.keyWorkflows) if existing else None
+        merged = _merge_lists(existing_list, data.key_workflows)
+        update_data["keyWorkflows"] = SafeJson(merged)
+        create_data["keyWorkflows"] = SafeJson(merged)
+
+    if data.daily_activities is not None:
+        existing_list = _json_to_list(existing.dailyActivities) if existing else None
+        merged = _merge_lists(existing_list, data.daily_activities)
+        update_data["dailyActivities"] = SafeJson(merged)
+        create_data["dailyActivities"] = SafeJson(merged)
+
+    if data.pain_points is not None:
+        existing_list = _json_to_list(existing.painPoints) if existing else None
+        merged = _merge_lists(existing_list, data.pain_points)
+        update_data["painPoints"] = SafeJson(merged)
+        create_data["painPoints"] = SafeJson(merged)
+
+    if data.bottlenecks is not None:
+        existing_list = _json_to_list(existing.bottlenecks) if existing else None
+        merged = _merge_lists(existing_list, data.bottlenecks)
+        update_data["bottlenecks"] = SafeJson(merged)
+        create_data["bottlenecks"] = SafeJson(merged)
+
+    if data.manual_tasks is not None:
+        existing_list = _json_to_list(existing.manualTasks) if existing else None
+        merged = _merge_lists(existing_list, data.manual_tasks)
+        update_data["manualTasks"] = SafeJson(merged)
+        create_data["manualTasks"] = SafeJson(merged)
+
+    if data.automation_goals is not None:
+        existing_list = _json_to_list(existing.automationGoals) if existing else None
+        merged = _merge_lists(existing_list, data.automation_goals)
+        update_data["automationGoals"] = SafeJson(merged)
+        create_data["automationGoals"] = SafeJson(merged)
+
+    if data.current_software is not None:
+        existing_list = _json_to_list(existing.currentSoftware) if existing else None
+        merged = _merge_lists(existing_list, data.current_software)
+        update_data["currentSoftware"] = SafeJson(merged)
+        create_data["currentSoftware"] = SafeJson(merged)
+
+    if data.existing_automation is not None:
+        existing_list = _json_to_list(existing.existingAutomation) if existing else None
+        merged = _merge_lists(existing_list, data.existing_automation)
+        update_data["existingAutomation"] = SafeJson(merged)
+        create_data["existingAutomation"] = SafeJson(merged)
+
+    # Upsert
+    record = await UserBusinessUnderstanding.prisma().upsert(
+        where={"userId": user_id},
+        data={
+            "create": UserBusinessUnderstandingCreateInput(**create_data),
+            "update": update_data,
+        },
+    )
+
+    return BusinessUnderstanding.from_db(record)
+
+
+async def clear_business_understanding(user_id: str) -> bool:
+    """Clear/delete business understanding for a user."""
+    try:
+        await UserBusinessUnderstanding.prisma().delete(where={"userId": user_id})
+        return True
+    except Exception:
+        # Record might not exist
+        return False
+
+
+def format_understanding_for_prompt(understanding: BusinessUnderstanding) -> str:
+    """Format business understanding as text for system prompt injection."""
+    sections = []
+
+    # User info section
+    user_info = []
+    if understanding.user_name:
+        user_info.append(f"Name: {understanding.user_name}")
+    if understanding.job_title:
+        user_info.append(f"Job Title: {understanding.job_title}")
+    if user_info:
+        sections.append("## User\n" + "\n".join(user_info))
+
+    # Business section
+    business_info = []
+    if understanding.business_name:
+        business_info.append(f"Company: {understanding.business_name}")
+    if understanding.industry:
+        business_info.append(f"Industry: {understanding.industry}")
+    if understanding.business_size:
+        business_info.append(f"Size: {understanding.business_size}")
+    if understanding.user_role:
+        business_info.append(f"Role Context: {understanding.user_role}")
+    if business_info:
+        sections.append("## Business\n" + "\n".join(business_info))
+
+    # Processes section
+    processes = []
+    if understanding.key_workflows:
+        processes.append(f"Key Workflows: {', '.join(understanding.key_workflows)}")
+    if understanding.daily_activities:
+        processes.append(
+            f"Daily Activities: {', '.join(understanding.daily_activities)}"
+        )
+    if processes:
+        sections.append("## Processes\n" + "\n".join(processes))
+
+    # Pain points section
+    pain_points = []
+    if understanding.pain_points:
+        pain_points.append(f"Pain Points: {', '.join(understanding.pain_points)}")
+    if understanding.bottlenecks:
+        pain_points.append(f"Bottlenecks: {', '.join(understanding.bottlenecks)}")
+    if understanding.manual_tasks:
+        pain_points.append(f"Manual Tasks: {', '.join(understanding.manual_tasks)}")
+    if pain_points:
+        sections.append("## Pain Points\n" + "\n".join(pain_points))
+
+    # Goals section
+    if understanding.automation_goals:
+        sections.append(
+            "## Automation Goals\n"
+            + "\n".join(f"- {goal}" for goal in understanding.automation_goals)
+        )
+
+    # Current tools section
+    tools_info = []
+    if understanding.current_software:
+        tools_info.append(
+            f"Current Software: {', '.join(understanding.current_software)}"
+        )
+    if understanding.existing_automation:
+        tools_info.append(
+            f"Existing Automation: {', '.join(understanding.existing_automation)}"
+        )
+    if tools_info:
+        sections.append("## Current Tools\n" + "\n".join(tools_info))
+
+    # Additional notes
+    if understanding.additional_notes:
+        sections.append(f"## Additional Context\n{understanding.additional_notes}")
+
+    if not sections:
+        return ""
+
+    return "# User Business Context\n\n" + "\n\n".join(sections)
