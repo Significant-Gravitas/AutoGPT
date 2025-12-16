@@ -38,13 +38,67 @@ export function MessageList({
     >
       <div className="mx-auto flex max-w-3xl flex-col py-4">
         {/* Render all persisted messages */}
-        {messages.map((message, index) => (
-          <ChatMessage
-            key={index}
-            message={message}
-            onSendMessage={onSendMessage}
-          />
-        ))}
+        {messages.map((message, index) => {
+          // Check if current message is an agent_output tool_response
+          // and if previous message is an assistant message
+          let agentOutput: ChatMessageData | undefined;
+
+          if (message.type === "tool_response" && message.result) {
+            let parsedResult: Record<string, unknown> | null = null;
+            try {
+              parsedResult =
+                typeof message.result === "string"
+                  ? JSON.parse(message.result)
+                  : (message.result as Record<string, unknown>);
+            } catch {
+              parsedResult = null;
+            }
+            if (parsedResult?.type === "agent_output") {
+              const prevMessage = messages[index - 1];
+              if (
+                prevMessage &&
+                prevMessage.type === "message" &&
+                prevMessage.role === "assistant"
+              ) {
+                // This agent output will be rendered inside the previous assistant message
+                // Skip rendering this message separately
+                return null;
+              }
+            }
+          }
+
+          // Check if next message is an agent_output tool_response to include in current assistant message
+          if (message.type === "message" && message.role === "assistant") {
+            const nextMessage = messages[index + 1];
+            if (
+              nextMessage &&
+              nextMessage.type === "tool_response" &&
+              nextMessage.result
+            ) {
+              let parsedResult: Record<string, unknown> | null = null;
+              try {
+                parsedResult =
+                  typeof nextMessage.result === "string"
+                    ? JSON.parse(nextMessage.result)
+                    : (nextMessage.result as Record<string, unknown>);
+              } catch {
+                parsedResult = null;
+              }
+              if (parsedResult?.type === "agent_output") {
+                agentOutput = nextMessage;
+              }
+            }
+          }
+
+          return (
+            <ChatMessage
+              key={index}
+              message={message}
+              onSendMessage={onSendMessage}
+              agentOutput={agentOutput}
+            />
+          );
+        })}
 
         {/* Render thinking message when streaming but no chunks yet */}
         {isStreaming && streamingChunks.length === 0 && <ThinkingMessage />}

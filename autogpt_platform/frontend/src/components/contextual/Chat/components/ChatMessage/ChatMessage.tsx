@@ -5,10 +5,17 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Button } from "@/components/atoms/Button/Button";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
-import { CheckCircleIcon, RobotIcon } from "@phosphor-icons/react";
-import { useCallback } from "react";
+import {
+  ArrowClockwise,
+  CheckCircleIcon,
+  CheckIcon,
+  CopyIcon,
+  RobotIcon,
+} from "@phosphor-icons/react";
+import { useCallback, useState } from "react";
 import { getToolActionPhrase } from "../../helpers";
 import { AgentInputsSetup } from "../AgentInputsSetup/AgentInputsSetup";
 import { AuthPromptWidget } from "../AuthPromptWidget/AuthPromptWidget";
@@ -24,6 +31,7 @@ export interface ChatMessageProps {
   onDismissLogin?: () => void;
   onDismissCredentials?: () => void;
   onSendMessage?: (content: string, isUserMessage?: boolean) => void;
+  agentOutput?: ChatMessageData;
 }
 
 export function ChatMessage({
@@ -31,8 +39,10 @@ export function ChatMessage({
   className,
   onDismissCredentials,
   onSendMessage,
+  agentOutput,
 }: ChatMessageProps) {
   const { user } = useSupabase();
+  const [copied, setCopied] = useState(false);
   const {
     isUser,
     isToolCall,
@@ -116,6 +126,23 @@ export function ChatMessage({
     [onSendMessage, message],
   );
 
+  const handleCopy = useCallback(async () => {
+    if (message.type !== "message") return;
+
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+    }
+  }, [message]);
+
+  const handleTryAgain = useCallback(() => {
+    if (message.type !== "message" || !onSendMessage) return;
+    onSendMessage(message.content, message.role === "user");
+  }, [message, onSendMessage]);
+
   // Render inputs needed messages
   if (isInputsNeeded && message.type === "inputs_needed") {
     return (
@@ -196,13 +223,30 @@ export function ChatMessage({
     );
   }
 
-  // Render tool response messages
+  // Render tool response messages (but skip agent_output if it's being rendered inside assistant message)
   if (
     (isToolResponse && message.type === "tool_response") ||
     message.type === "no_results" ||
     message.type === "agent_carousel" ||
     message.type === "execution_started"
   ) {
+    // Check if this is an agent_output that should be rendered inside assistant message
+    if (message.type === "tool_response" && message.result) {
+      let parsedResult: Record<string, unknown> | null = null;
+      try {
+        parsedResult =
+          typeof message.result === "string"
+            ? JSON.parse(message.result)
+            : (message.result as Record<string, unknown>);
+      } catch {
+        parsedResult = null;
+      }
+      if (parsedResult?.type === "agent_output") {
+        // Skip rendering - this will be rendered inside the assistant message
+        return null;
+      }
+    }
+
     return (
       <div className={cn("px-4 py-2", className)}>
         <ToolResponseMessage
@@ -240,7 +284,50 @@ export function ChatMessage({
           >
             <MessageBubble variant={isUser ? "user" : "assistant"}>
               <MarkdownContent content={message.content} />
+              {agentOutput &&
+                agentOutput.type === "tool_response" &&
+                !isUser && (
+                  <div className="mt-4">
+                    <ToolResponseMessage
+                      toolName={
+                        agentOutput.toolName
+                          ? getToolActionPhrase(agentOutput.toolName)
+                          : "Agent Output"
+                      }
+                      result={agentOutput.result}
+                    />
+                  </div>
+                )}
             </MessageBubble>
+            <div
+              className={cn(
+                "mt-1 flex gap-1",
+                isUser ? "justify-end" : "justify-start",
+              )}
+            >
+              {isUser && onSendMessage && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleTryAgain}
+                  aria-label="Try again"
+                >
+                  <ArrowClockwise className="size-3 text-neutral-500" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCopy}
+                aria-label="Copy message"
+              >
+                {copied ? (
+                  <CheckIcon className="size-3 text-green-600" />
+                ) : (
+                  <CopyIcon className="size-3 text-neutral-500" />
+                )}
+              </Button>
+            </div>
           </div>
 
           {isUser && (
