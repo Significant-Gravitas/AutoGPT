@@ -1,5 +1,7 @@
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { cn } from "@/lib/utils";
+import { useCallback } from "react";
+import { usePageContext } from "../../usePageContext";
 import { ChatInput } from "../ChatInput/ChatInput";
 import { MessageList } from "../MessageList/MessageList";
 import { QuickActionsWelcome } from "../QuickActionsWelcome/QuickActionsWelcome";
@@ -24,6 +26,16 @@ export function ChatContainer({
       initialMessages,
       onRefreshSession,
     });
+  const { capturePageContext } = usePageContext();
+
+  // Wrap sendMessage to automatically capture page context
+  const sendMessageWithContext = useCallback(
+    async (content: string, isUserMessage: boolean = true) => {
+      const context = capturePageContext();
+      await sendMessage(content, isUserMessage, context);
+    },
+    [sendMessage, capturePageContext],
+  );
 
   const quickActions = [
     "Find agents for social media management",
@@ -40,7 +52,7 @@ export function ChatContainer({
           title="Welcome to AutoGPT Chat"
           description="Start a conversation to discover and run AI agents."
           actions={quickActions}
-          onActionClick={sendMessage}
+          onActionClick={sendMessageWithContext}
           disabled={isStreaming || !sessionId}
         />
       ) : (
@@ -48,7 +60,7 @@ export function ChatContainer({
           messages={messages}
           streamingChunks={streamingChunks}
           isStreaming={isStreaming}
-          onSendMessage={sendMessage}
+          onSendMessage={sendMessageWithContext}
           className="flex-1"
         />
       )}
@@ -56,7 +68,7 @@ export function ChatContainer({
       {/* Input - Always visible */}
       <div className="border-t border-zinc-200 p-4">
         <ChatInput
-          onSend={sendMessage}
+          onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}
           placeholder={
             sessionId ? "Type your message..." : "Creating session..."

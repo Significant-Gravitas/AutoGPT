@@ -44,7 +44,6 @@ export interface StreamChunk {
 export function useChatStream() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
   const retryCountRef = useRef<number>(0);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -53,10 +52,6 @@ export function useChatStream() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
-    }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
     }
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -78,6 +73,7 @@ export function useChatStream() {
       message: string,
       onChunk: (chunk: StreamChunk) => void,
       isUserMessage: boolean = true,
+      context?: { url: string; content: string },
     ) => {
       stopStreaming();
 
@@ -93,96 +89,147 @@ export function useChatStream() {
       setError(null);
 
       try {
-        const url = `/api/chat/sessions/${sessionId}/stream?message=${encodeURIComponent(
+        const url = `/api/chat/sessions/${sessionId}/stream`;
+        const body = JSON.stringify({
           message,
-        )}&is_user_message=${isUserMessage}`;
-
-        const eventSource = new EventSource(url);
-        eventSourceRef.current = eventSource;
-
-        abortController.signal.addEventListener("abort", () => {
-          eventSource.close();
-          eventSourceRef.current = null;
+          is_user_message: isUserMessage,
+          context: context || null,
         });
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body,
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || `HTTP ${response.status}`);
+        }
+
+        if (!response.body) {
+          throw new Error("Response body is null");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
         return new Promise<void>((resolve, reject) => {
           const cleanup = () => {
-            eventSource.removeEventListener("message", messageHandler);
-            eventSource.removeEventListener("error", errorHandler);
+            reader.cancel().catch(() => {
+              // Ignore cancel errors
+            });
           };
 
-          const messageHandler = (event: MessageEvent) => {
+          const readStream = async () => {
             try {
-              const chunk = JSON.parse(event.data) as StreamChunk;
+              while (true) {
+                const { done, value } = await reader.read();
 
-              if (retryCountRef.current > 0) {
-                retryCountRef.current = 0;
-              }
+                if (done) {
+                  cleanup();
+                  stopStreaming();
+                  resolve();
+                  return;
+                }
 
-              // Call the chunk handler
-              onChunk(chunk);
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
 
-              // Handle stream lifecycle
-              if (chunk.type === "stream_end") {
-                cleanup();
-                stopStreaming();
-                resolve();
-              } else if (chunk.type === "error") {
-                cleanup();
-                reject(
-                  new Error(chunk.message || chunk.content || "Stream error"),
-                );
+                for (const line of lines) {
+                  if (line.startsWith("data: ")) {
+                    const data = line.slice(6);
+                    if (data === "[DONE]") {
+                      cleanup();
+                      stopStreaming();
+                      resolve();
+                      return;
+                    }
+
+                    try {
+                      const chunk = JSON.parse(data) as StreamChunk;
+
+                      if (retryCountRef.current > 0) {
+                        retryCountRef.current = 0;
+                      }
+
+                      // Call the chunk handler
+                      onChunk(chunk);
+
+                      // Handle stream lifecycle
+                      if (chunk.type === "stream_end") {
+                        cleanup();
+                        stopStreaming();
+                        resolve();
+                        return;
+                      } else if (chunk.type === "error") {
+                        cleanup();
+                        reject(
+                          new Error(
+                            chunk.message || chunk.content || "Stream error",
+                          ),
+                        );
+                        return;
+                      }
+                    } catch (err) {
+                      // Skip invalid JSON lines
+                      console.warn("Failed to parse SSE chunk:", err, data);
+                    }
+                  }
+                }
               }
             } catch (err) {
-              const parseError =
+              if (err instanceof Error && err.name === "AbortError") {
+                cleanup();
+                return;
+              }
+
+              const streamError =
                 err instanceof Error
                   ? err
-                  : new Error("Failed to parse stream chunk");
-              setError(parseError);
-              cleanup();
-              reject(parseError);
-            }
-          };
+                  : new Error("Failed to read stream");
 
-          const errorHandler = () => {
-            if (eventSourceRef.current) {
-              eventSourceRef.current.close();
-              eventSourceRef.current = null;
-            }
+              if (retryCountRef.current < MAX_RETRIES) {
+                retryCountRef.current += 1;
+                const retryDelay =
+                  INITIAL_RETRY_DELAY *
+                  Math.pow(2, retryCountRef.current - 1);
 
-            if (retryCountRef.current < MAX_RETRIES) {
-              retryCountRef.current += 1;
-              const retryDelay =
-                INITIAL_RETRY_DELAY * Math.pow(2, retryCountRef.current - 1);
+                toast.info("Connection interrupted", {
+                  description: `Retrying in ${retryDelay / 1000} seconds...`,
+                });
 
-              toast.info("Connection interrupted", {
-                description: `Retrying in ${retryDelay / 1000} seconds...`,
-              });
-
-              retryTimeoutRef.current = setTimeout(() => {
-                sendMessage(sessionId, message, onChunk, isUserMessage).catch(
-                  (_err) => {
+                retryTimeoutRef.current = setTimeout(() => {
+                  sendMessage(
+                    sessionId,
+                    message,
+                    onChunk,
+                    isUserMessage,
+                    context,
+                  ).catch((_err) => {
                     // Retry failed
-                  },
-                );
-              }, retryDelay);
-            } else {
-              const streamError = new Error(
-                "Stream connection failed after multiple retries",
-              );
-              setError(streamError);
-              toast.error("Connection Failed", {
-                description:
-                  "Unable to connect to chat service. Please try again.",
-              });
-              cleanup();
-              stopStreaming();
-              reject(streamError);
+                  });
+                }, retryDelay);
+              } else {
+                setError(streamError);
+                toast.error("Connection Failed", {
+                  description:
+                    "Unable to connect to chat service. Please try again.",
+                });
+                cleanup();
+                stopStreaming();
+                reject(streamError);
+              }
             }
           };
 
-          eventSource.addEventListener("message", messageHandler);
-          eventSource.addEventListener("error", errorHandler);
+          readStream();
         });
       } catch (err) {
         const streamError =

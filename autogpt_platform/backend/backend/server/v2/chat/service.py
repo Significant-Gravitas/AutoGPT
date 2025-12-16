@@ -102,6 +102,7 @@ async def stream_chat_completion(
     user_id: str | None = None,
     retry_count: int = 0,
     session: ChatSession | None = None,
+    context: dict[str, str] | None = None,  # {url: str, content: str}
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -145,9 +146,18 @@ async def stream_chat_completion(
         )
 
     if message:
+        # Build message content with context if provided
+        message_content = message
+        if context and context.get("url") and context.get("content"):
+            context_text = f"Page URL: {context['url']}\n\nPage Content:\n{context['content']}\n\n---\n\nUser Message: {message}"
+            message_content = context_text
+            logger.info(
+                f"Including page context: URL={context['url']}, content_length={len(context['content'])}"
+            )
+
         session.messages.append(
             ChatMessage(
-                role="user" if is_user_message else "assistant", content=message
+                role="user" if is_user_message else "assistant", content=message_content
             )
         )
         logger.info(

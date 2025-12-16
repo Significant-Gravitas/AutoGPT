@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, Query, Security
+from fastapi import APIRouter, Depends, Query, Request, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -23,6 +23,13 @@ router = APIRouter(
 )
 
 # ========== Request/Response Models ==========
+
+
+class StreamChatRequest(BaseModel):
+    """Request model for streaming chat with optional context."""
+    message: str
+    is_user_message: bool = True
+    context: dict[str, str] | None = None  # {url: str, content: str}
 
 
 class CreateSessionResponse(BaseModel):
@@ -110,17 +117,72 @@ async def get_session(
     )
 
 
+@router.post(
+    "/sessions/{session_id}/stream",
+)
+async def stream_chat_post(
+    session_id: str,
+    request: StreamChatRequest,
+    user_id: str | None = Depends(auth.get_user_id),
+):
+    """
+    Stream chat responses for a session (POST with context support).
+
+    Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
+      - Text fragments as they are generated
+      - Tool call UI elements (if invoked)
+      - Tool execution results
+
+    Args:
+        session_id: The chat session identifier to associate with the streamed messages.
+        request: Request body containing message, is_user_message, and optional context.
+        user_id: Optional authenticated user ID.
+    Returns:
+        StreamingResponse: SSE-formatted response chunks.
+
+    """
+    # Validate session exists before starting the stream
+    # This prevents errors after the response has already started
+    session = await chat_service.get_session(session_id, user_id)
+
+    if not session:
+        raise NotFoundError(f"Session {session_id} not found. ")
+    if session.user_id is None and user_id is not None:
+        session = await chat_service.assign_user_to_session(session_id, user_id)
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        async for chunk in chat_service.stream_chat_completion(
+            session_id,
+            request.message,
+            is_user_message=request.is_user_message,
+            user_id=user_id,
+            session=session,  # Pass pre-fetched session to avoid double-fetch
+            context=request.context,
+        ):
+            yield chunk.to_sse()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
 @router.get(
     "/sessions/{session_id}/stream",
 )
-async def stream_chat(
+async def stream_chat_get(
     session_id: str,
     message: Annotated[str, Query(min_length=1, max_length=10000)],
     user_id: str | None = Depends(auth.get_user_id),
     is_user_message: bool = Query(default=True),
 ):
     """
-    Stream chat responses for a session.
+    Stream chat responses for a session (GET - legacy endpoint).
 
     Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
       - Text fragments as they are generated
