@@ -23,6 +23,7 @@ export function useChat() {
     refreshSession,
     claimSession,
     clearSession: clearSessionBase,
+    loadSession,
   } = useChatSession({
     urlSessionId: null,
     autoCreate: false,
@@ -112,6 +113,7 @@ export function useChat() {
     createSession,
     refreshSession,
     clearSession,
+    loadSession,
     sessionId: sessionIdFromHook,
   };
 }

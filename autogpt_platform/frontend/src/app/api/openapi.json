@@ -5188,11 +5188,67 @@
       }
     },
     "/api/chat/sessions": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Sessions",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nordered by most recently updated.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "operationId": "getV2ListSessions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      },
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
         "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
+        "security": [{ "HTTPBearerJWT": [] }],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5207,8 +5263,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/chat/sessions/{session_id}": {
@@ -7505,6 +7560,20 @@
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
+      "ListSessionsResponse": {
+        "properties": {
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["sessions", "total"],
+        "title": "ListSessionsResponse",
+        "description": "Response model for listing chat sessions."
+      },
       "LogRawMetricRequest": {
         "properties": {
           "metric_name": {
@@ -8754,6 +8823,21 @@
         "required": ["id", "created_at", "updated_at", "user_id", "messages"],
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
+      },
+      "SessionSummaryResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "updated_at": { "type": "string", "title": "Updated At" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "updated_at"],
+        "title": "SessionSummaryResponse",
+        "description": "Response model for a session summary (without messages)."
       },
       "SetGraphActiveVersion": {
         "properties": {

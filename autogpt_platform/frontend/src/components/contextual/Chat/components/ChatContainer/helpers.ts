@@ -1,6 +1,25 @@
 import type { ToolResult } from "@/types/chat";
 import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 
+export function removePageContext(content: string): string {
+  // Remove "Page URL: ..." pattern (case insensitive, handles various formats)
+  let cleaned = content.replace(/Page URL:\s*[^\n\r]*/gi, "");
+
+  // Find "User Message:" marker to preserve the actual user message
+  const userMessageMatch = cleaned.match(/User Message:\s*([\s\S]*)$/i);
+  if (userMessageMatch) {
+    // If we found "User Message:", extract everything after it
+    cleaned = userMessageMatch[1];
+  } else {
+    // If no "User Message:" marker, remove "Page Content:" and everything after it
+    cleaned = cleaned.replace(/Page Content:[\s\S]*$/gi, "");
+  }
+
+  // Clean up extra whitespace and newlines
+  cleaned = cleaned.replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
+  return cleaned;
+}
+
 export function createUserMessage(content: string): ChatMessageData {
   return {
     type: "message",

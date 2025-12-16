@@ -10,6 +10,7 @@ import {
   isToolCallArray,
   isValidMessage,
   parseToolResponse,
+  removePageContext,
 } from "./helpers";
 
 interface UseChatContainerArgs {
@@ -45,9 +46,19 @@ export function useChatContainer({
         );
       })
       .map((msg: Record<string, unknown>) => {
-        const content = String(msg.content || "");
+        let content = String(msg.content || "");
         const role = String(msg.role || "assistant").toLowerCase();
         const toolCalls = msg.tool_calls;
+
+        // Remove page context from user messages when loading existing sessions
+        if (role === "user") {
+          content = removePageContext(content);
+          // Skip user messages that become empty after removing page context
+          if (!content.trim()) {
+            return null;
+          }
+        }
+
         if (
           role === "assistant" &&
           toolCalls &&
@@ -70,6 +81,10 @@ export function useChatContainer({
             return null;
           }
           return toolResponse;
+        }
+        // Skip assistant messages with empty content (they're handled by tool calls)
+        if (role === "assistant" && !content.trim()) {
+          return null;
         }
         return {
           type: "message",
