@@ -30,7 +30,14 @@ export function SessionsDrawer({
     },
   );
 
-  const sessions = data?.status === 200 ? data.data.sessions : [];
+  const sessions =
+    data?.status === 200
+      ? data.data.sessions.filter((session) => {
+          // Filter out sessions without messages (sessions that were never updated)
+          // If updated_at equals created_at, the session was created but never had messages
+          return session.updated_at !== session.created_at;
+        })
+      : [];
 
   function handleSelectSession(sessionId: string) {
     onSelectSession(sessionId);

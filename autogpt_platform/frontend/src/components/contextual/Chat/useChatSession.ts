@@ -1,5 +1,6 @@
 import {
   getGetV2GetSessionQueryKey,
+  getGetV2GetSessionQueryOptions,
   postV2CreateSession,
   useGetV2GetSession,
   usePatchV2SessionAssignUser,
@@ -156,8 +157,14 @@ export function useChatSession({
         setError(null);
         setSessionId(id);
         storage.set(Key.CHAT_SESSION_ID, id);
-        const result = await refetch();
-        if (!result.data || result.isError) {
+        const queryOptions = getGetV2GetSessionQueryOptions(id, {
+          query: {
+            staleTime: Infinity,
+            retry: 1,
+          },
+        });
+        const result = await queryClient.fetchQuery(queryOptions);
+        if (!result || ("status" in result && result.status !== 200)) {
           console.warn("Session not found on server, clearing local state");
           storage.clean(Key.CHAT_SESSION_ID);
           setSessionId(null);
@@ -170,7 +177,7 @@ export function useChatSession({
         throw error;
       }
     },
-    [refetch],
+    [queryClient],
   );
 
   const refreshSession = useCallback(
