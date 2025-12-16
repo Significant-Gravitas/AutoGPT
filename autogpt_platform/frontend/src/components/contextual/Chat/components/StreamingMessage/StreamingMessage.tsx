@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Robot } from "@phosphor-icons/react";
-import { MessageBubble } from "@/app/(platform)/chat/components/MessageBubble/MessageBubble";
-import { MarkdownContent } from "@/app/(platform)/chat/components/MarkdownContent/MarkdownContent";
+import { MarkdownContent } from "../MarkdownContent/MarkdownContent";
+import { MessageBubble } from "../MessageBubble/MessageBubble";
 import { useStreamingMessage } from "./useStreamingMessage";
 
 export interface StreamingMessageProps {

@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useState, useRef, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import {
-  usePostV2CreateSession,
+  getGetV2GetSessionQueryKey,
   postV2CreateSession,
   useGetV2GetSession,
   usePatchV2SessionAssignUser,
-  getGetV2GetSessionQueryKey,
+  usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import { storage, Key } from "@/services/storage/local-storage";
-import { isValidUUID } from "@/app/(platform)/chat/helpers";
+import { Key, storage } from "@/services/storage/local-storage";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { isValidUUID } from "./helpers";
 
 interface UseChatSessionArgs {
   urlSessionId?: string | null;

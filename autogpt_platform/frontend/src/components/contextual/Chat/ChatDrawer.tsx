@@ -5,20 +5,17 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { X } from "@phosphor-icons/react";
-import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Drawer } from "vaul";
+import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import { ChatErrorState } from "./components/ChatErrorState/ChatErrorState";
+import { ChatLoadingState } from "./components/ChatLoadingState/ChatLoadingState";
+import { useChat } from "./useChat";
+import { useChatDrawer } from "./useChatDrawer";
 
-import { ChatContainer } from "@/components/contextual/Chat/components/ChatContainer/ChatContainer";
-import { ChatErrorState } from "@/components/contextual/Chat/components/ChatErrorState/ChatErrorState";
-import { ChatLoadingState } from "@/components/contextual/Chat/components/ChatLoadingState/ChatLoadingState";
-import { useChatPage } from "./useChatPage";
-
-export default function ChatPage() {
+export function ChatDrawer() {
   const isChatEnabled = useGetFlag(Flag.CHAT);
-  const router = useRouter();
-  const pathname = usePathname();
-  const isOpen = pathname === "/chat";
+  const { isOpen, close } = useChatDrawer();
   const {
     messages,
     isLoading,
@@ -28,19 +25,13 @@ export default function ChatPage() {
     createSession,
     clearSession,
     refreshSession,
-  } = useChatPage();
+  } = useChat();
 
   useEffect(() => {
-    if (isChatEnabled === false) {
-      router.push("/404");
+    if (isChatEnabled === false && isOpen) {
+      close();
     }
-  }, [isChatEnabled, router]);
-
-  function handleOpenChange(open: boolean) {
-    if (!open) {
-      router.replace("/marketplace");
-    }
-  }
+  }, [isChatEnabled, isOpen, close]);
 
   if (isChatEnabled === null || isChatEnabled === false) {
     return null;
@@ -49,7 +40,11 @@ export default function ChatPage() {
   return (
     <Drawer.Root
       open={isOpen}
-      onOpenChange={handleOpenChange}
+      onOpenChange={(open) => {
+        if (!open) {
+          close();
+        }
+      }}
       direction="right"
       modal={false}
     >
@@ -83,7 +78,7 @@ export default function ChatPage() {
                 <Button
                   variant="link"
                   aria-label="Close"
-                  onClick={() => handleOpenChange(false)}
+                  onClick={close}
                   className="!focus-visible:ring-0 p-0"
                 >
                   <X width="1.5rem" />

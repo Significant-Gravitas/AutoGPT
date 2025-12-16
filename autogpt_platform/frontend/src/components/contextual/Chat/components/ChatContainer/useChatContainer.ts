@@ -1,16 +1,16 @@
-import { useState, useCallback, useRef, useMemo } from "react";
-import { toast } from "sonner";
-import { useChatStream } from "@/app/(platform)/chat/useChatStream";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
-import type { ChatMessageData } from "@/app/(platform)/chat/components/ChatMessage/useChatMessage";
+import { useChatStream } from "@/components/contextual/Chat/useChatStream";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import type { ChatMessageData } from "../ChatMessage/useChatMessage";
+import { createStreamEventDispatcher } from "./createStreamEventDispatcher";
 import {
-  parseToolResponse,
-  isValidMessage,
-  isToolCallArray,
   createUserMessage,
   filterAuthMessages,
+  isToolCallArray,
+  isValidMessage,
+  parseToolResponse,
 } from "./helpers";
-import { createStreamEventDispatcher } from "./createStreamEventDispatcher";
 
 interface UseChatContainerArgs {
   sessionId: string | null;

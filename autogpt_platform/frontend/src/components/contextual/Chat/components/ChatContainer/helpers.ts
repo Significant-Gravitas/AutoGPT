@@ -1,5 +1,5 @@
-import type { ChatMessageData } from "@/app/(platform)/chat/components/ChatMessage/useChatMessage";
 import type { ToolResult } from "@/types/chat";
+import type { ChatMessageData } from "../ChatMessage/useChatMessage";
 
 export function createUserMessage(content: string): ChatMessageData {
   return {

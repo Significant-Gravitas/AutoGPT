@@ -1,9 +1,9 @@
-import { cn } from "@/lib/utils";
-import { ChatInput } from "@/app/(platform)/chat/components/ChatInput/ChatInput";
-import { MessageList } from "@/app/(platform)/chat/components/MessageList/MessageList";
-import { QuickActionsWelcome } from "@/app/(platform)/chat/components/QuickActionsWelcome/QuickActionsWelcome";
-import { useChatContainer } from "./useChatContainer";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { cn } from "@/lib/utils";
+import { ChatInput } from "../ChatInput/ChatInput";
+import { MessageList } from "../MessageList/MessageList";
+import { QuickActionsWelcome } from "../QuickActionsWelcome/QuickActionsWelcome";
+import { useChatContainer } from "./useChatContainer";
 
 export interface ChatContainerProps {
   sessionId: string | null;

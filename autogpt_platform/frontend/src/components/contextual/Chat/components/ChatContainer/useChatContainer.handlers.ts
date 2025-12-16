@@ -1,7 +1,7 @@
-import type { Dispatch, SetStateAction, MutableRefObject } from "react";
-import type { StreamChunk } from "@/app/(platform)/chat/useChatStream";
-import type { ChatMessageData } from "@/app/(platform)/chat/components/ChatMessage/useChatMessage";
-import { parseToolResponse, extractCredentialsNeeded } from "./helpers";
+import type { StreamChunk } from "@/components/contextual/Chat/useChatStream";
+import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import type { ChatMessageData } from "../ChatMessage/useChatMessage";
+import { extractCredentialsNeeded, parseToolResponse } from "./helpers";
 
 export interface HandlerDependencies {
   setHasTextChunks: Dispatch<SetStateAction<boolean>>;
