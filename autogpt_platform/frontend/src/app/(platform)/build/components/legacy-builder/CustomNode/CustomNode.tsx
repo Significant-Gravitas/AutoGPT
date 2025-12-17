@@ -18,6 +18,8 @@ import {
   BlockIOSubSchema,
   BlockUIType,
   Category,
+  GraphInputSchema,
+  GraphOutputSchema,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
@@ -69,7 +71,6 @@ import {
   createUpdatedHardcodedValues,
   getBrokenEdgeIDs,
 } from "../../../hooks/useSubAgentUpdate";
-import { GraphIOSchema } from "@/lib/autogpt-server-api";
 
 export type ConnectionData = Array<{
   edge_id: string;
@@ -233,10 +234,10 @@ export const CustomNode = React.memo(
       graphId,
       graphVersion,
       isAgentBlock
-        ? (data.hardcodedValues?.input_schema as GraphIOSchema)
+        ? (data.hardcodedValues?.input_schema as GraphInputSchema)
         : undefined,
       isAgentBlock
-        ? (data.hardcodedValues?.output_schema as GraphIOSchema)
+        ? (data.hardcodedValues?.output_schema as GraphOutputSchema)
         : undefined,
       data.connections,
       availableFlows,

@@ -245,8 +245,8 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
 type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & {
-  type: never;
-  const: never;
+  type?: never;
+  const?: never;
 } & (
     | {
         allOf: [BlockIOSimpleTypeSubSchema];
@@ -368,8 +368,8 @@ export type GraphMeta = {
   recommended_schedule_cron: string | null;
   forked_from_id?: GraphID | null;
   forked_from_version?: number | null;
-  input_schema: GraphIOSchema;
-  output_schema: GraphIOSchema;
+  input_schema: GraphInputSchema;
+  output_schema: GraphOutputSchema;
   credentials_input_schema: CredentialsInputSchema;
 } & (
   | {
@@ -385,19 +385,51 @@ export type GraphMeta = {
 export type GraphID = Brand<string, "GraphID">;
 
 /* Derived from backend/data/graph.py:Graph._generate_schema() */
-export type GraphIOSchema = {
+export type GraphInputSchema = {
   type: "object";
-  properties: Record<string, GraphIOSubSchema>;
-  required: (keyof BlockIORootSchema["properties"])[];
+  properties: Record<string, GraphInputSubSchema>;
+  required: (keyof GraphInputSchema["properties"])[];
 };
-export type GraphIOSubSchema = Omit<
-  BlockIOSubSchemaMeta,
-  "placeholder" | "depends_on" | "hidden"
-> & {
-  type: never; // bodge to avoid type checking hell; doesn't exist at runtime
-  default?: string;
+export type GraphInputSubSchema = GraphOutputSubSchema &
+  (
+    | { type?: never; default: any | null } // AgentInputBlock (generic Any type)
+    | { type: "string"; format: "short-text"; default: string | null } // AgentShortTextInputBlock
+    | { type: "string"; format: "long-text"; default: string | null } // AgentLongTextInputBlock
+    | { type: "integer"; default: number | null } // AgentNumberInputBlock
+    | { type: "string"; format: "date"; default: string | null } // AgentDateInputBlock
+    | { type: "string"; format: "time"; default: string | null } // AgentTimeInputBlock
+    | { type: "string"; format: "file"; default: string | null } // AgentFileInputBlock
+    | { type: "string"; enum: string[]; default: string | null } // AgentDropdownInputBlock
+    | { type: "boolean"; default: boolean } // AgentToggleInputBlock
+    | {
+        // AgentTableInputBlock
+        type: "array";
+        format: "table";
+        items: {
+          type: "object";
+          properties: Record<string, { type: "string" }>;
+        };
+        default: Array<Record<string, string>> | null;
+      }
+    | {
+        // AgentGoogleDriveFileInputBlock
+        type: "object";
+        format: "google-drive-picker";
+        google_drive_picker_config?: GoogleDrivePickerConfig;
+        default: GoogleDriveFile | null;
+      }
+  );
+export type GraphOutputSchema = {
+  type: "object";
+  properties: Record<string, GraphOutputSubSchema>;
+  required: (keyof GraphOutputSchema["properties"])[];
+};
+export type GraphOutputSubSchema = {
+  // TODO: typed outputs based on the incoming edges?
+  title: string;
+  description?: string;
+  advanced: boolean;
   secret: boolean;
-  metadata?: any;
 };
 
 export type CredentialsInputSchema = {
@@ -440,8 +472,8 @@ export type GraphUpdateable = Omit<
   is_active?: boolean;
   nodes: NodeCreatable[];
   links: LinkCreatable[];
-  input_schema?: GraphIOSchema;
-  output_schema?: GraphIOSchema;
+  input_schema?: GraphInputSchema;
+  output_schema?: GraphOutputSchema;
 };
 
 export type GraphCreatable = _GraphCreatableInner & {
@@ -497,8 +529,8 @@ export type LibraryAgent = {
   name: string;
   description: string;
   instructions?: string | null;
-  input_schema: GraphIOSchema;
-  output_schema: GraphIOSchema;
+  input_schema: GraphInputSchema;
+  output_schema: GraphOutputSchema;
   credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;

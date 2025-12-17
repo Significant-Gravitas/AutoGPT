@@ -1,7 +1,12 @@
 import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
-import { cn } from "@/lib/utils";
-import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
-import { FC, memo, useCallback } from "react";
+import {
+  cn,
+  beautifyString,
+  getTypeBgColor,
+  getTypeTextColor,
+  getEffectiveType,
+} from "@/lib/utils";
+import { FC, memo, useCallback, useMemo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
@@ -57,7 +62,10 @@ const NodeHandle: FC<HandleProps> = ({
   className,
   isBroken = false,
 }) => {
-  const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${
+  // Extract effective type from schema (handles anyOf/oneOf/allOf wrappers)
+  const effectiveType = getEffectiveType(schema);
+
+  const typeClass = `text-sm ${getTypeTextColor(effectiveType || "any")} ${
     side === "left" ? "text-left" : "text-right"
   }`;
 
@@ -79,7 +87,7 @@ const NodeHandle: FC<HandleProps> = ({
           isBroken && "text-red-400",
         )}
       >
-        ({TYPE_NAME[schema.type as keyof typeof TYPE_NAME] || "any"})
+        ({TYPE_NAME[effectiveType as keyof typeof TYPE_NAME] || "any"})
       </span>
     </div>
   );
@@ -111,7 +119,7 @@ const NodeHandle: FC<HandleProps> = ({
           <div className="pointer-events-none flex items-center">
             <Dot
               isConnected={isConnected}
-              type={schema.type}
+              type={effectiveType}
               isBroken={isBroken}
             />
             {label}
@@ -142,7 +150,7 @@ const NodeHandle: FC<HandleProps> = ({
             {label}
             <Dot
               isConnected={isConnected}
-              type={schema.type}
+              type={effectiveType}
               isBroken={isBroken}
             />
           </div>

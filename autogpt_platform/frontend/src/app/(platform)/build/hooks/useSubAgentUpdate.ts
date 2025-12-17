@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { GraphMeta, GraphIOSchema } from "@/lib/autogpt-server-api";
+import {
+  GraphMeta,
+  GraphInputSchema,
+  GraphOutputSchema,
+} from "@/lib/autogpt-server-api";
+import { getEffectiveType } from "@/lib/utils";
 import { ConnectionData } from "../components/legacy-builder/CustomNode/CustomNode";
 
 export type IncompatibilityInfo = {
@@ -31,8 +36,8 @@ export function useSubAgentUpdate(
   nodeId: string,
   graphID: string | undefined,
   graphVersion: number | undefined,
-  currentInputSchema: GraphIOSchema | undefined,
-  currentOutputSchema: GraphIOSchema | undefined,
+  currentInputSchema: GraphInputSchema | undefined,
+  currentOutputSchema: GraphOutputSchema | undefined,
   connections: ConnectionData,
   availableFlows: GraphMeta[],
 ): SubAgentUpdateInfo {
@@ -103,15 +108,14 @@ export function useSubAgentUpdate(
         // Check for type mismatch on connected inputs
         const currentProp = currentInputProps[inputHandle];
         const newProp = newInputProps[inputHandle];
-        const currentType =
-          currentProp && "type" in currentProp ? currentProp.type : undefined;
-        const newType = newProp && "type" in newProp ? newProp.type : undefined;
+        const currentType = getEffectiveType(currentProp);
+        const newType = getEffectiveType(newProp);
 
         if (currentType && newType && currentType !== newType) {
           incompatibilities.inputTypeMismatches.push({
             name: inputHandle,
-            oldType: String(currentType),
-            newType: String(newType),
+            oldType: currentType,
+            newType: newType,
           });
         }
       }
