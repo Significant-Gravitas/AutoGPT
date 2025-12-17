@@ -144,7 +144,7 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Tab 1: Logout
   await getId1("profile-popout-menu-trigger").click();
   await getButton1("Log out").click();
-  await hasUrl(page1, "/login");
+  await hasUrl(page1, "/login?next=%2Fbuild");
 
   // Tab 2: Wait for cross-tab logout to take effect and check if redirected to login
   await page2.waitForTimeout(2000); // Give time for cross-tab logout mechanism
@@ -152,10 +152,10 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Check if Tab 2 has been redirected to login or refresh the page to trigger redirect
   try {
     await page2.reload();
-    await hasUrl(page2, "/login");
+    await hasUrl(page2, "/login?next=%2Fbuild");
   } catch {
     // If reload fails, the page might already be redirecting
-    await hasUrl(page2, "/login");
+    await hasUrl(page2, "/login?next=%2Fbuild");
   }
 
   // Verify the profile menu is no longer visible (user is logged out)

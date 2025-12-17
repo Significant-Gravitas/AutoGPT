@@ -20,7 +20,7 @@ test.describe("API Keys Page", () => {
 
     try {
       await page.goto("/profile/api_keys");
-      await hasUrl(page, "/login");
+      await hasUrl(page, "/login?next=%2Fprofile%2Fapi_keys");
     } finally {
       await page.close();
       await context.close();
