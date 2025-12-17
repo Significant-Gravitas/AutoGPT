@@ -55,6 +55,8 @@ class StoreAgentDetails(pydantic.BaseModel):
     runs: int
     rating: float
     versions: list[str]
+    agentGraphVersions: list[str]
+    agentGraphId: str
     last_updated: datetime.datetime
     recommended_schedule_cron: str | None = None
 

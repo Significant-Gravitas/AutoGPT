@@ -7426,6 +7426,11 @@
             "title": "Auto Update Version",
             "description": "Auto-update the agent version"
           },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version",
+            "description": "Specific graph version to update to"
+          },
           "is_favorite": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Favorite",
@@ -8902,6 +8907,12 @@
             "type": "array",
             "title": "Versions"
           },
+          "agentGraphVersions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Agentgraphversions"
+          },
+          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
           "last_updated": {
             "type": "string",
             "format": "date-time",
@@ -8937,6 +8948,8 @@
           "runs",
           "rating",
           "versions",
+          "agentGraphVersions",
+          "agentGraphId",
           "last_updated"
         ],
         "title": "StoreAgentDetails"

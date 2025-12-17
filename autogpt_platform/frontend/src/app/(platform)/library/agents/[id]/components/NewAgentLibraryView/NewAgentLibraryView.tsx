@@ -5,14 +5,15 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon, Clock } from "@phosphor-icons/react";
 import * as React from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
-import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
+import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { SectionWrap } from "./components/other/SectionWrap";
@@ -49,34 +50,106 @@ export function NewAgentLibraryView() {
 
   const {
     hasAgentMarketplaceUpdate,
+    hasMarketplaceUpdate,
+    latestMarketplaceVersion,
+    isUpdating,
     modalOpen,
     setModalOpen,
     handlePublishUpdate,
+    handleUpdateToLatest,
   } = useMarketplaceUpdate({ agent });
 
-  function renderMarketplaceUpdateBanner() {
-    if (!hasAgentMarketplaceUpdate) return null;
+  const [changelogOpen, setChangelogOpen] = React.useState(false);
 
-    return (
-      <div className="mx-6 mt-4 flex items-center justify-between">
-        <Text
-          variant="body"
-          size="small"
-          className="text-neutral-700 dark:text-neutral-300"
-        >
-          Your version of this agent is newer than the published one, do you
-          want to publish an update?
-        </Text>
-        <Button
-          size="small"
-          variant="ghost"
-          onClick={handlePublishUpdate}
-          className="ml-4 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-        >
-          Publish Update
-        </Button>
-      </div>
-    );
+  function renderMarketplaceUpdateBanner() {
+    // Show publish update banner (user is creator with newer version)
+    if (hasAgentMarketplaceUpdate) {
+      return (
+        <div className="mx-6 mt-4 flex items-center justify-between">
+          <Text
+            variant="body"
+            size="small"
+            className="text-neutral-700 dark:text-neutral-300"
+          >
+            Your version of this agent is newer than the published one, do you
+            want to publish an update?
+          </Text>
+          <div className="flex items-center gap-2">
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => setChangelogOpen(true)}
+              className="text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              View Changes
+            </Button>
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={handlePublishUpdate}
+              className="text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              Publish Update
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // Show marketplace update banner (marketplace has newer version)
+    if (hasMarketplaceUpdate && latestMarketplaceVersion) {
+      return (
+        <div className="mx-6 mt-4 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+              <Text
+                variant="small"
+                className="font-semibold text-blue-600 dark:text-blue-400"
+              >
+                ↑
+              </Text>
+            </div>
+            <div>
+              <Text
+                variant="body"
+                size="small"
+                className="font-medium text-blue-900 dark:text-blue-100"
+              >
+                A newer version of this agent is available
+              </Text>
+              <Text
+                variant="small"
+                size="small"
+                className="text-blue-700 dark:text-blue-300"
+              >
+                Update from v{agent?.graph_version} to v
+                {latestMarketplaceVersion}
+              </Text>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => setChangelogOpen(true)}
+              className="text-blue-600 hover:bg-blue-100 hover:text-blue-900 dark:text-blue-400 dark:hover:bg-blue-900 dark:hover:text-blue-100"
+            >
+              View Changes
+            </Button>
+            <Button
+              size="small"
+              onClick={handleUpdateToLatest}
+              disabled={isUpdating}
+              className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700"
+            >
+              {isUpdating ? "Updating..." : "Update to latest version"}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
   }
 
   function renderPublishAgentModal() {
@@ -130,6 +203,14 @@ export function NewAgentLibraryView() {
               initialInputValues={activeTemplate?.inputs}
               initialInputCredentials={activeTemplate?.credentials}
             />
+            <Button
+              size="small"
+              variant="ghost"
+              onClick={() => setChangelogOpen(true)}
+              className="mt-3 w-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            >
+              <Clock size={16} /> Version History
+            </Button>
           </div>
 
           <SidebarRunsList
@@ -202,6 +283,18 @@ export function NewAgentLibraryView() {
     );
   }
 
+  function renderVersionChangelog() {
+    if (!agent) return null;
+
+    return (
+      <AgentVersionChangelog
+        agent={agent}
+        isOpen={changelogOpen}
+        onClose={() => setChangelogOpen(false)}
+      />
+    );
+  }
+
   if (error) {
     return (
       <ErrorCard
@@ -238,6 +331,7 @@ export function NewAgentLibraryView() {
           />
         </div>
         {renderPublishAgentModal()}
+        {renderVersionChangelog()}
       </>
     );
   }
@@ -255,6 +349,7 @@ export function NewAgentLibraryView() {
       {renderMarketplaceUpdateBanner()}
       {renderAgentLibraryView()}
       {renderPublishAgentModal()}
+      {renderVersionChangelog()}
     </>
   );
 }

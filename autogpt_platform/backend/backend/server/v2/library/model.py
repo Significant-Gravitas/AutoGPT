@@ -385,6 +385,9 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     auto_update_version: Optional[bool] = pydantic.Field(
         default=None, description="Auto-update the agent version"
     )
+    graph_version: Optional[int] = pydantic.Field(
+        default=None, description="Specific graph version to update to"
+    )
     is_favorite: Optional[bool] = pydantic.Field(
         default=None, description="Mark the agent as a favorite"
     )

@@ -337,6 +337,8 @@ async def get_store_agent_details(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
             active_version_id=active_version_id,
             has_approved_version=has_approved_version,
@@ -408,6 +410,8 @@ async def get_store_agent_by_version_id(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
         )
     except backend.server.v2.store.exceptions.AgentNotFoundError:
