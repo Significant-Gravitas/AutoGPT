@@ -144,7 +144,7 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Tab 1: Logout
   await getId1("profile-popout-menu-trigger").click();
   await getButton1("Log out").click();
-  await hasUrl(page1, "/login?next=%2Fbuild");
+  await hasUrl(page1, "/login");
 
   // Tab 2: Wait for cross-tab logout to take effect and check if redirected to login
   await page2.waitForTimeout(2000); // Give time for cross-tab logout mechanism
