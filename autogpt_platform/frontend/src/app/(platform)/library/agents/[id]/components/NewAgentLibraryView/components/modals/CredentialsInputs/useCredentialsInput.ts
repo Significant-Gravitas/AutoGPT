@@ -14,7 +14,9 @@ import {
   OAuthPopupResultMessage,
 } from "./helpers";
 
-type Args = {
+export type CredentialsInputState = ReturnType<typeof useCredentialsInput>;
+
+type Params = {
   schema: BlockIOCredentialsSubSchema;
   selectedCredential?: CredentialsMetaInput;
   onSelectCredential: (newValue?: CredentialsMetaInput) => void;
@@ -23,14 +25,14 @@ type Args = {
   readOnly?: boolean;
 };
 
-export function useCredentialsInputs({
+export function useCredentialsInput({
   schema,
   selectedCredential,
   onSelectCredential,
   siblingInputs,
   onLoaded,
   readOnly = false,
-}: Args) {
+}: Params) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
   const [
@@ -51,7 +53,6 @@ export function useCredentialsInputs({
   const api = useBackendAPI();
   const queryClient = useQueryClient();
   const credentials = useCredentials(schema, siblingInputs);
-  const allProviders = useContext(CredentialsProvidersContext);
 
   const deleteCredentialsMutation = useDeleteV1DeleteCredentials({
     mutation: {

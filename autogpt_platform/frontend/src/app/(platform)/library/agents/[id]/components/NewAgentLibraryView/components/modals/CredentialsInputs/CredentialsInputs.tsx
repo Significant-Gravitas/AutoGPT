@@ -15,13 +15,14 @@ import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsMod
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
 import { getCredentialDisplayName } from "./helpers";
-import { useCredentialsInputs } from "./useCredentialsInputs";
-
-type UseCredentialsInputsReturn = ReturnType<typeof useCredentialsInputs>;
+import {
+  CredentialsInputState,
+  useCredentialsInput,
+} from "./useCredentialsInput";
 
 function isLoaded(
-  data: UseCredentialsInputsReturn,
-): data is Extract<UseCredentialsInputsReturn, { isLoading: false }> {
+  data: CredentialsInputState,
+): data is Extract<CredentialsInputState, { isLoading: false }> {
   return data.isLoading === false;
 }
 
@@ -44,7 +45,7 @@ export function CredentialsInput({
   onLoaded,
   readOnly = false,
 }: Props) {
-  const hookData = useCredentialsInputs({
+  const hookData = useCredentialsInput({
     schema,
     selectedCredential,
     onSelectCredential,
