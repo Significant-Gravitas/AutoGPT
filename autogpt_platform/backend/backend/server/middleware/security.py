@@ -1,12 +1,10 @@
 import re
 from typing import Set
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
     """
     Middleware to add security headers to responses, with cache control
     disabled by default for all endpoints except those explicitly allowed.
@@ -25,6 +23,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "/api/health",
         "/api/v1/health",
         "/api/status",
+        "/api/blocks",
+        "/api/v1/blocks",
         # Public store/marketplace pages (read-only)
         "/api/store/agents",
         "/api/v1/store/agents",
@@ -49,7 +49,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     }
 
     def __init__(self, app: ASGIApp):
-        super().__init__(app)
+        self.app = app
         # Compile regex patterns for wildcard matching
         self.cacheable_patterns = [
             re.compile(pattern.replace("*", "[^/]+"))
@@ -72,26 +72,42 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         return False
 
-    async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Pure ASGI middleware implementation for better performance than BaseHTTPMiddleware."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        # Add general security headers
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Extract path from scope
+        path = scope["path"]
 
-        # Add noindex header for shared execution pages
-        if "/public/shared" in request.url.path:
-            response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                # Add security headers to the response
+                headers = dict(message.get("headers", []))
 
-        # Default: Disable caching for all endpoints
-        # Only allow caching for explicitly permitted paths
-        if not self.is_cacheable_path(request.url.path):
-            response.headers["Cache-Control"] = (
-                "no-store, no-cache, must-revalidate, private"
-            )
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
+                # Add general security headers (HTTP spec requires proper capitalization)
+                headers[b"X-Content-Type-Options"] = b"nosniff"
+                headers[b"X-Frame-Options"] = b"DENY"
+                headers[b"X-XSS-Protection"] = b"1; mode=block"
+                headers[b"Referrer-Policy"] = b"strict-origin-when-cross-origin"
 
-        return response
+                # Add noindex header for shared execution pages
+                if "/public/shared" in path:
+                    headers[b"X-Robots-Tag"] = b"noindex, nofollow"
+
+                # Default: Disable caching for all endpoints
+                # Only allow caching for explicitly permitted paths
+                if not self.is_cacheable_path(path):
+                    headers[b"Cache-Control"] = (
+                        b"no-store, no-cache, must-revalidate, private"
+                    )
+                    headers[b"Pragma"] = b"no-cache"
+                    headers[b"Expires"] = b"0"
+
+                # Convert headers back to list format
+                message["headers"] = list(headers.items())
+
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)

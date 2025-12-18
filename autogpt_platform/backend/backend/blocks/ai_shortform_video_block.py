@@ -6,7 +6,13 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -148,7 +154,7 @@ logger = logging.getLogger(__name__)
 class AIShortformVideoCreatorBlock(Block):
     """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REVID], Literal["api_key"]
         ] = CredentialsField(
@@ -187,9 +193,8 @@ class AIShortformVideoCreatorBlock(Block):
             placeholder=VisualMediaType.STOCK_VIDEOS,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="The URL of the created video")
-        error: str = SchemaField(description="Error message if the request failed")
 
     async def create_webhook(self) -> tuple[str, str]:
         """Create a new webhook URL for receiving notifications."""
@@ -336,7 +341,7 @@ class AIShortformVideoCreatorBlock(Block):
 class AIAdMakerVideoCreatorBlock(Block):
     """Generates a 30‑second vertical AI advert using optional user‑supplied imagery."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REVID], Literal["api_key"]
         ] = CredentialsField(
@@ -364,9 +369,8 @@ class AIAdMakerVideoCreatorBlock(Block):
             description="Restrict visuals to supplied images only.", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="URL of the finished advert")
-        error: str = SchemaField(description="Error message on failure")
 
     async def create_webhook(self) -> tuple[str, str]:
         """Create a new webhook URL for receiving notifications."""
@@ -524,7 +528,7 @@ class AIAdMakerVideoCreatorBlock(Block):
 class AIScreenshotToVideoAdBlock(Block):
     """Creates an advert where the supplied screenshot is narrated by an AI avatar."""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REVID], Literal["api_key"]
         ] = CredentialsField(description="Revid.ai API key")
@@ -542,9 +546,8 @@ class AIScreenshotToVideoAdBlock(Block):
             default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         video_url: str = SchemaField(description="Rendered video URL")
-        error: str = SchemaField(description="Error, if encountered")
 
     async def create_webhook(self) -> tuple[str, str]:
         """Create a new webhook URL for receiving notifications."""

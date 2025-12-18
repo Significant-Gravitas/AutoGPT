@@ -11,7 +11,8 @@ from backend.sdk import (
     Block,
     BlockCategory,
     BlockOutput,
-    BlockSchema,
+    BlockSchemaInput,
+    BlockSchemaOutput,
     CredentialsMetaInput,
     Requests,
     SchemaField,
@@ -27,7 +28,7 @@ TEST_CREDENTIALS = APIKeyCredentials(
 )
 
 
-class TextModification(BlockSchema):
+class TextModification(BlockSchemaInput):
     name: str = SchemaField(
         description="The name of the layer to modify in the template"
     )
@@ -60,7 +61,7 @@ class TextModification(BlockSchema):
 
 
 class BannerbearTextOverlayBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = bannerbear.credentials_field(
             description="API credentials for Bannerbear"
         )
@@ -96,7 +97,7 @@ class BannerbearTextOverlayBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the image generation was successfully initiated"
         )
@@ -105,7 +106,6 @@ class BannerbearTextOverlayBlock(Block):
         )
         uid: str = SchemaField(description="Unique identifier for the generated image")
         status: str = SchemaField(description="Status of the image generation")
-        error: str = SchemaField(description="Error message if the operation failed")
 
     def __init__(self):
         super().__init__(

@@ -1,7 +1,10 @@
+import {
+  API_KEY_HEADER_NAME,
+  IMPERSONATION_HEADER_NAME,
+} from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
-import { getAgptServerApiUrl } from "@/lib/env-config";
-import { isServerSide } from "../utils/is-server-side";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -41,12 +44,11 @@ export function buildRequestUrl(
   method: string,
   payload?: Record<string, any>,
 ): string {
-  let url = baseUrl + path;
+  const url = baseUrl + path;
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
 
   if (payloadAsQuery && payload) {
-    const queryParams = new URLSearchParams(payload);
-    url += `?${queryParams.toString()}`;
+    return buildUrlWithQuery(url, payload);
   }
 
   return url;
@@ -57,25 +59,53 @@ export function buildClientUrl(path: string): string {
 }
 
 export function buildServerUrl(path: string): string {
-  return `${getAgptServerApiUrl()}${path}`;
+  return `${environment.getAGPTServerApiUrl()}${path}`;
 }
 
 export function buildUrlWithQuery(
   url: string,
-  payload?: Record<string, any>,
+  query?: Record<string, any>,
 ): string {
-  if (!payload) return url;
+  if (!query) return url;
 
-  const queryParams = new URLSearchParams(payload);
-  return `${url}?${queryParams.toString()}`;
+  // Filter out undefined values to prevent them from being included as "undefined" strings
+  const filteredQuery = Object.entries(query).reduce(
+    (acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = value;
+      }
+      return acc;
+    },
+    {} as Record<string, any>,
+  );
+
+  const queryParams = new URLSearchParams(filteredQuery);
+  return queryParams.size > 0 ? `${url}?${queryParams.toString()}` : url;
 }
 
 export async function handleFetchError(response: Response): Promise<ApiError> {
   const errorMessage = await parseApiError(response);
+
+  // Safely parse response body - it might not be JSON (e.g., HTML error pages)
+  let responseData: any = null;
+  try {
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      responseData = await response.json();
+    } else {
+      // For non-JSON responses, get the text content
+      responseData = await response.text();
+    }
+  } catch (e) {
+    // If parsing fails, use null as response data
+    console.warn("Failed to parse error response body:", e);
+    responseData = null;
+  }
+
   return new ApiError(
     errorMessage || "Request failed",
     response.status,
-    await response.json(),
+    responseData,
   );
 }
 
@@ -107,6 +137,7 @@ export function createRequestHeaders(
   token: string,
   hasRequestBody: boolean,
   contentType: string = "application/json",
+  originalRequest?: Request,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
 
@@ -116,6 +147,22 @@ export function createRequestHeaders(
 
   if (token && token !== "no-token-found") {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Forward admin impersonation header if present
+  if (originalRequest) {
+    const impersonationHeader = originalRequest.headers.get(
+      IMPERSONATION_HEADER_NAME,
+    );
+    if (impersonationHeader) {
+      headers[IMPERSONATION_HEADER_NAME] = impersonationHeader;
+    }
+
+    // Forward X-API-Key header if present
+    const apiKeyHeader = originalRequest.headers.get(API_KEY_HEADER_NAME);
+    if (apiKeyHeader) {
+      headers[API_KEY_HEADER_NAME] = apiKeyHeader;
+    }
   }
 
   return headers;
@@ -183,7 +230,7 @@ export async function parseApiResponse(response: Response): Promise<any> {
   }
 }
 
-function isAuthenticationError(
+export function isAuthenticationError(
   response: Response,
   errorDetail: string,
 ): boolean {
@@ -196,8 +243,8 @@ function isAuthenticationError(
   );
 }
 
-function isLogoutInProgress(): boolean {
-  if (isServerSide()) return false;
+export function isLogoutInProgress(): boolean {
+  if (environment.isServerSide()) return false;
 
   try {
     // Check if logout was recently triggered
@@ -223,6 +270,7 @@ export async function makeAuthenticatedRequest(
   url: string,
   payload?: Record<string, any>,
   contentType: string = "application/json",
+  originalRequest?: Request,
 ): Promise<any> {
   const token = await getServerAuthToken();
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
@@ -236,7 +284,12 @@ export async function makeAuthenticatedRequest(
 
   const response = await fetch(requestUrl, {
     method,
-    headers: createRequestHeaders(token, hasRequestBody, contentType),
+    headers: createRequestHeaders(
+      token,
+      hasRequestBody,
+      contentType,
+      originalRequest,
+    ),
     body: hasRequestBody
       ? serializeRequestBody(payload, contentType)
       : undefined,
@@ -274,13 +327,17 @@ export async function makeAuthenticatedRequest(
 export async function makeAuthenticatedFileUpload(
   url: string,
   formData: FormData,
+  originalRequest?: Request,
 ): Promise<string> {
   const token = await getServerAuthToken();
 
-  const headers: Record<string, string> = {};
-  if (token && token !== "no-token-found") {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  // Reuse existing header creation logic but exclude Content-Type for FormData
+  const headers = createRequestHeaders(
+    token,
+    false,
+    "application/json",
+    originalRequest,
+  );
 
   // Don't set Content-Type for FormData - let the browser set it with boundary
   const response = await fetch(url, {

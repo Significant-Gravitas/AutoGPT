@@ -2,7 +2,16 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
+# Import for Google Drive file input block
+from backend.blocks.google._drive import AttachmentView, GoogleDriveFile
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockSchemaInput,
+    BlockType,
+)
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.mock import MockObject
@@ -10,7 +19,6 @@ from backend.util.settings import Config
 from backend.util.text import TextFormatter
 from backend.util.type import LongTextType, MediaFileType, ShortTextType
 
-formatter = TextFormatter()
 config = Config()
 
 
@@ -23,7 +31,7 @@ class AgentInputBlock(Block):
     It Outputs the value passed as input.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         name: str = SchemaField(description="The name of the input.")
         value: Any = SchemaField(
             description="The value to be passed as input.",
@@ -61,6 +69,7 @@ class AgentInputBlock(Block):
             return schema
 
     class Output(BlockSchema):
+        # Use BlockSchema to avoid automatic error field for interface definition
         result: Any = SchemaField(description="The value passed as input.")
 
     def __init__(self, **kwargs):
@@ -110,7 +119,7 @@ class AgentOutputBlock(Block):
         If formatting fails or no `format` is provided, the raw `value` is output.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         value: Any = SchemaField(
             description="The value to be recorded as output.",
             default=None,
@@ -132,6 +141,11 @@ class AgentOutputBlock(Block):
             default="",
             advanced=True,
         )
+        escape_html: bool = SchemaField(
+            default=False,
+            advanced=True,
+            description="Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text.",
+        )
         advanced: bool = SchemaField(
             description="Whether to treat the output as advanced.",
             default=False,
@@ -147,6 +161,7 @@ class AgentOutputBlock(Block):
             return self.get_field_schema("value")
 
     class Output(BlockSchema):
+        # Use BlockSchema to avoid automatic error field for interface definition
         output: Any = SchemaField(description="The value recorded as output.")
         name: Any = SchemaField(description="The name of the value recorded as output.")
 
@@ -193,6 +208,7 @@ class AgentOutputBlock(Block):
         """
         if input_data.format:
             try:
+                formatter = TextFormatter(autoescape=input_data.escape_html)
                 yield "output", formatter.format_string(
                     input_data.format, {input_data.name: input_data.value}
                 )
@@ -549,6 +565,202 @@ class AgentToggleInputBlock(AgentInputBlock):
         )
 
 
+class AgentTableInputBlock(AgentInputBlock):
+    """
+    This block allows users to input data in a table format.
+
+    Configure the table columns at build time, then users can input
+    rows of data at runtime. Each row is output as a dictionary
+    with column names as keys.
+    """
+
+    class Input(AgentInputBlock.Input):
+        value: Optional[list[dict[str, Any]]] = SchemaField(
+            description="The table data as a list of dictionaries.",
+            default=None,
+            advanced=False,
+            title="Default Value",
+        )
+        column_headers: list[str] = SchemaField(
+            description="Column headers for the table.",
+            default_factory=lambda: ["Column 1", "Column 2", "Column 3"],
+            advanced=False,
+            title="Column Headers",
+        )
+
+        def generate_schema(self):
+            """Generate schema for the value field with table format."""
+            schema = super().generate_schema()
+            schema["type"] = "array"
+            schema["format"] = "table"
+            schema["items"] = {
+                "type": "object",
+                "properties": {
+                    header: {"type": "string"}
+                    for header in (
+                        self.column_headers or ["Column 1", "Column 2", "Column 3"]
+                    )
+                },
+            }
+            if self.value is not None:
+                schema["default"] = self.value
+            return schema
+
+    class Output(AgentInputBlock.Output):
+        result: list[dict[str, Any]] = SchemaField(
+            description="The table data as a list of dictionaries with headers as keys."
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="5603b273-f41e-4020-af7d-fbc9c6a8d928",
+            description="Block for table data input with customizable headers.",
+            disabled=not config.enable_agent_input_subtype_blocks,
+            input_schema=AgentTableInputBlock.Input,
+            output_schema=AgentTableInputBlock.Output,
+            test_input=[
+                {
+                    "name": "test_table",
+                    "column_headers": ["Name", "Age", "City"],
+                    "value": [
+                        {"Name": "John", "Age": "30", "City": "New York"},
+                        {"Name": "Jane", "Age": "25", "City": "London"},
+                    ],
+                    "description": "Example table input",
+                }
+            ],
+            test_output=[
+                (
+                    "result",
+                    [
+                        {"Name": "John", "Age": "30", "City": "New York"},
+                        {"Name": "Jane", "Age": "25", "City": "London"},
+                    ],
+                )
+            ],
+        )
+
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+        """
+        Yields the table data as a list of dictionaries.
+        """
+        # Pass through the value, defaulting to empty list if None
+        yield "result", input_data.value if input_data.value is not None else []
+
+
+class AgentGoogleDriveFileInputBlock(AgentInputBlock):
+    """
+    This block allows users to select a file from Google Drive.
+
+    It provides a Google Drive file picker UI that handles both authentication
+    and file selection. The selected file information (ID, name, URL, etc.)
+    is output for use by other blocks like Google Sheets Read.
+    """
+
+    class Input(AgentInputBlock.Input):
+        value: Optional[GoogleDriveFile] = SchemaField(
+            description="The selected Google Drive file.",
+            default=None,
+            advanced=False,
+            title="Selected File",
+        )
+        allowed_views: list[AttachmentView] = SchemaField(
+            description="Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.).",
+            default_factory=lambda: ["DOCS", "SPREADSHEETS", "PRESENTATIONS"],
+            advanced=False,
+            title="Allowed Views",
+        )
+        allow_folder_selection: bool = SchemaField(
+            description="Whether to allow selecting folders.",
+            default=False,
+            advanced=True,
+            title="Allow Folder Selection",
+        )
+
+        def generate_schema(self):
+            """Generate schema for the value field with Google Drive picker format."""
+            schema = super().generate_schema()
+
+            # Default scopes for drive.file access
+            scopes = ["https://www.googleapis.com/auth/drive.file"]
+
+            # Build picker configuration
+            picker_config = {
+                "multiselect": False,  # Single file selection only for now
+                "allow_folder_selection": self.allow_folder_selection,
+                "allowed_views": (
+                    list(self.allowed_views) if self.allowed_views else ["DOCS"]
+                ),
+                "scopes": scopes,
+                # Auto-credentials config tells frontend to include _credentials_id in output
+                "auto_credentials": {
+                    "provider": "google",
+                    "type": "oauth2",
+                    "scopes": scopes,
+                    "kwarg_name": "credentials",
+                },
+            }
+
+            # Set format and config for frontend to render Google Drive picker
+            schema["format"] = "google-drive-picker"
+            schema["google_drive_picker_config"] = picker_config
+            # Also keep auto_credentials at top level for backend detection
+            schema["auto_credentials"] = {
+                "provider": "google",
+                "type": "oauth2",
+                "scopes": scopes,
+                "kwarg_name": "credentials",
+            }
+
+            if self.value is not None:
+                schema["default"] = self.value.model_dump()
+
+            return schema
+
+    class Output(AgentInputBlock.Output):
+        result: GoogleDriveFile = SchemaField(
+            description="The selected Google Drive file with ID, name, URL, and other metadata."
+        )
+
+    def __init__(self):
+        test_file = GoogleDriveFile.model_validate(
+            {
+                "id": "test-file-id",
+                "name": "Test Spreadsheet",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "url": "https://docs.google.com/spreadsheets/d/test-file-id",
+            }
+        )
+        super().__init__(
+            id="d3b32f15-6fd7-40e3-be52-e083f51b19a2",
+            description="Block for selecting a file from Google Drive.",
+            disabled=not config.enable_agent_input_subtype_blocks,
+            input_schema=AgentGoogleDriveFileInputBlock.Input,
+            output_schema=AgentGoogleDriveFileInputBlock.Output,
+            test_input=[
+                {
+                    "name": "spreadsheet_input",
+                    "description": "Select a spreadsheet from Google Drive",
+                    "allowed_views": ["SPREADSHEETS"],
+                    "value": {
+                        "id": "test-file-id",
+                        "name": "Test Spreadsheet",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                        "url": "https://docs.google.com/spreadsheets/d/test-file-id",
+                    },
+                }
+            ],
+            test_output=[("result", test_file)],
+        )
+
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+        """
+        Yields the selected Google Drive file.
+        """
+        if input_data.value is not None:
+            yield "result", input_data.value
+
+
 IO_BLOCK_IDs = [
     AgentInputBlock().id,
     AgentOutputBlock().id,
@@ -560,4 +772,6 @@ IO_BLOCK_IDs = [
     AgentFileInputBlock().id,
     AgentDropdownInputBlock().id,
     AgentToggleInputBlock().id,
+    AgentTableInputBlock().id,
+    AgentGoogleDriveFileInputBlock().id,
 ]

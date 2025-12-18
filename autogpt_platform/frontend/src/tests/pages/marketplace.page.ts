@@ -98,7 +98,7 @@ export class MarketplacePage extends BasePage {
   }
 
   async searchAndNavigate(query: string, page: Page) {
-    const searchInput = await this.getSearchInput(page);
+    const searchInput = (await this.getSearchInput(page)).first();
     await searchInput.fill(query);
     await searchInput.press("Enter");
   }
