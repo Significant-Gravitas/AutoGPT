@@ -1,5 +1,5 @@
 "use client";
-import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+
 import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { providerIcons } from "@/components/renderers/input-renderer/fields/CredentialField/helpers";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";

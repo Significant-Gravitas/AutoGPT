@@ -40,8 +40,8 @@ import { cn, isEmpty } from "@/lib/utils";
 import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
-import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 import { analytics } from "@/services/analytics";
+import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 
 export function AgentRunDraftView({
   graph,
@@ -674,37 +674,26 @@ export function AgentRunDraftView({
                       prev.add("credentials"),
                     );
                   }}
-                  hideIfSingleCredentialAvailable={
-                    !agentPreset && !graph.has_external_trigger
-                  }
                 />
               ),
             )}
 
             {/* Regular inputs */}
             {Object.entries(agentInputFields).map(([key, inputSubSchema]) => (
-              <div key={key} className="flex flex-col space-y-2">
-                <label className="flex items-center gap-1 text-sm font-medium">
-                  {inputSubSchema.title || key}
-                  <InformationTooltip
-                    description={inputSubSchema.description}
-                  />
-                </label>
-
-                <RunAgentInputs
-                  schema={inputSubSchema}
-                  value={inputValues[key] ?? inputSubSchema.default}
-                  placeholder={inputSubSchema.description}
-                  onChange={(value) => {
-                    setInputValues((obj) => ({
-                      ...obj,
-                      [key]: value,
-                    }));
-                    setChangedPresetAttributes((prev) => prev.add("inputs"));
-                  }}
-                  data-testid={`agent-input-${key}`}
-                />
-              </div>
+              <RunAgentInputs
+                key={key}
+                schema={inputSubSchema}
+                value={inputValues[key] ?? inputSubSchema.default}
+                placeholder={inputSubSchema.description}
+                onChange={(value) => {
+                  setInputValues((obj) => ({
+                    ...obj,
+                    [key]: value,
+                  }));
+                  setChangedPresetAttributes((prev) => prev.add("inputs"));
+                }}
+                data-testid={`agent-input-${key}`}
+              />
             ))}
           </CardContent>
         </Card>
