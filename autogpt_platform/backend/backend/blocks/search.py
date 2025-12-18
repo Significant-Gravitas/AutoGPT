@@ -18,6 +18,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.request import HTTPClientError, HTTPServerError
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
@@ -45,10 +46,27 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         topic = input_data.topic
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
-        response = await self.get_request(url, json=True)
-        if "extract" not in response:
-            raise RuntimeError(f"Unable to parse Wikipedia response: {response}")
-        yield "summary", response["extract"]
+
+        # Note: User-Agent is now automatically set by the request library
+        # to comply with Wikimedia's robot policy (https://w.wiki/4wJS)
+        try:
+            response = await self.get_request(url, json=True)
+            if "extract" not in response:
+                raise ValueError(f"Unable to parse Wikipedia response: {response}")
+            yield "summary", response["extract"]
+        except HTTPClientError as e:
+            if e.status_code == 403:
+                raise ValueError(
+                    "Access denied by Wikipedia. This may be due to rate limiting or user-agent requirements."
+                ) from e
+            elif e.status_code == 404:
+                raise ValueError(f"Wikipedia page for '{topic}' not found.") from e
+            else:
+                raise ValueError(f"Wikipedia request failed: {e}") from e
+        except HTTPServerError as e:
+            raise ValueError(f"Wikipedia server error: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to fetch Wikipedia summary: {e}") from e
 
 
 TEST_CREDENTIALS = APIKeyCredentials(

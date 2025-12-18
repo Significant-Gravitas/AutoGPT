@@ -2,7 +2,6 @@ from enum import Enum
 from typing import Any, Dict, Literal, Optional
 
 from pydantic import SecretStr
-from requests.exceptions import RequestException
 
 from backend.data.block import (
     Block,
@@ -18,7 +17,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import Requests
+from backend.util.request import HTTPClientError, HTTPServerError, Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -332,8 +331,21 @@ class IdeogramModelBlock(Block):
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
-        except RequestException as e:
-            raise Exception(f"Failed to fetch image with V3 endpoint: {str(e)}")
+        except HTTPClientError as e:
+            # 4xx client errors - convert to ValueError with user-friendly message
+            if e.status_code == 401:
+                raise ValueError(
+                    "Invalid or expired API key. Please check your Ideogram API credentials."
+                ) from e
+            elif e.status_code in (400, 422):
+                raise ValueError(f"Invalid request parameters: {e}") from e
+            else:
+                raise ValueError(f"Client error: {e}") from e
+        except HTTPServerError as e:
+            # 5xx server errors - re-raise as server issue
+            raise RuntimeError(f"Ideogram server error: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to fetch image with V3 endpoint: {e}") from e
 
     async def _run_model_legacy(
         self,
@@ -385,8 +397,21 @@ class IdeogramModelBlock(Block):
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
-        except RequestException as e:
-            raise Exception(f"Failed to fetch image with legacy endpoint: {str(e)}")
+        except HTTPClientError as e:
+            # 4xx client errors - convert to ValueError with user-friendly message
+            if e.status_code == 401:
+                raise ValueError(
+                    "Invalid or expired API key. Please check your Ideogram API credentials."
+                ) from e
+            elif e.status_code in (400, 422):
+                raise ValueError(f"Invalid request parameters: {e}") from e
+            else:
+                raise ValueError(f"Client error: {e}") from e
+        except HTTPServerError as e:
+            # 5xx server errors - re-raise as server issue
+            raise RuntimeError(f"Ideogram server error: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to fetch image with legacy endpoint: {e}") from e
 
     async def upscale_image(self, api_key: SecretStr, image_url: str):
         url = "https://api.ideogram.ai/upscale"
@@ -413,5 +438,18 @@ class IdeogramModelBlock(Block):
 
             return (response.json())["data"][0]["url"]
 
-        except RequestException as e:
-            raise Exception(f"Failed to upscale image: {str(e)}")
+        except HTTPClientError as e:
+            # 4xx client errors - convert to ValueError with user-friendly message
+            if e.status_code == 401:
+                raise ValueError(
+                    "Invalid or expired API key. Please check your Ideogram API credentials."
+                ) from e
+            elif e.status_code in (400, 422):
+                raise ValueError(f"Invalid request parameters: {e}") from e
+            else:
+                raise ValueError(f"Client error: {e}") from e
+        except HTTPServerError as e:
+            # 5xx server errors - re-raise as server issue
+            raise RuntimeError(f"Ideogram server error: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to upscale image: {e}") from e

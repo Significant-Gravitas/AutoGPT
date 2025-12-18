@@ -18,6 +18,7 @@ from backend.data.block import (
     BlockSchemaOutput,
 )
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
+from backend.util.exceptions import BlockExecutionError, BlockInputError
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +112,58 @@ class ReplicateModelBlock(Block):
             yield "status", "succeeded"
             yield "model_name", input_data.model_name
         except Exception as e:
-            error_msg = f"Unexpected error running Replicate model: {str(e)}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            error_msg = str(e)
+            logger.error(f"Error running Replicate model: {error_msg}")
+
+            # Check for input validation errors (status 422)
+            if "422" in error_msg or "Input validation failed" in error_msg:
+                raise BlockInputError(
+                    message=f"Invalid model inputs: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
+            # Check for authentication errors (status 401/403)
+            elif (
+                "401" in error_msg
+                or "403" in error_msg
+                or "Unauthorized" in error_msg
+                or "authentication" in error_msg.lower()
+            ):
+                raise BlockExecutionError(
+                    message=f"Authentication failed: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
+            # Check for model not found errors (status 404)
+            elif "404" in error_msg or "not found" in error_msg.lower():
+                raise BlockInputError(
+                    message=f"Model not found: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
+            # Check for rate limiting (status 429)
+            elif "429" in error_msg or "rate limit" in error_msg.lower():
+                raise BlockExecutionError(
+                    message=f"Rate limit exceeded: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
+            # Check for server errors (5xx)
+            elif (
+                any(status in error_msg for status in ["500", "502", "503", "504"])
+                or "server error" in error_msg.lower()
+            ):
+                raise BlockExecutionError(
+                    message=f"Replicate service error: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
+            else:
+                raise BlockExecutionError(
+                    message=f"Unexpected error running Replicate model: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
 
     async def run_model(self, model_ref: str, model_inputs: dict, api_key: SecretStr):
         """
