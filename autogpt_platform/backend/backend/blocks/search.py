@@ -18,7 +18,6 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import HTTPClientError, HTTPServerError
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
@@ -54,17 +53,6 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
             if "extract" not in response:
                 raise ValueError(f"Unable to parse Wikipedia response: {response}")
             yield "summary", response["extract"]
-        except HTTPClientError as e:
-            if e.status_code == 403:
-                raise ValueError(
-                    "Access denied by Wikipedia. This may be due to rate limiting or user-agent requirements."
-                ) from e
-            elif e.status_code == 404:
-                raise ValueError(f"Wikipedia page for '{topic}' not found.") from e
-            else:
-                raise ValueError(f"Wikipedia request failed: {e}") from e
-        except HTTPServerError as e:
-            raise ValueError(f"Wikipedia server error: {e}") from e
         except Exception as e:
             raise ValueError(f"Failed to fetch Wikipedia summary: {e}") from e
 

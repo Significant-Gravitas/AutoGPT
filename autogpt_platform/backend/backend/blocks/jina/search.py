@@ -17,7 +17,6 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.request import HTTPClientError, HTTPServerError
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -63,21 +62,9 @@ class SearchTheWebBlock(Block, GetRequest):
             results = await self.get_request(
                 jina_search_url, headers=headers, json=False
             )
-        except HTTPClientError as e:
-            raise BlockExecutionError(
-                message=f"Search request failed: {e}",
-                block_name=self.name,
-                block_id=self.id,
-            ) from e
-        except HTTPServerError as e:
-            raise BlockExecutionError(
-                message=f"Search service unavailable: {e}",
-                block_name=self.name,
-                block_id=self.id,
-            ) from e
         except Exception as e:
             raise BlockExecutionError(
-                message=f"Unexpected error during search: {e}",
+                message=f"Search failed: {e}",
                 block_name=self.name,
                 block_id=self.id,
             ) from e

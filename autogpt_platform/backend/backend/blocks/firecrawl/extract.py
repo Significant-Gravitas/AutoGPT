@@ -68,30 +68,10 @@ class FirecrawlExtractBlock(Block):
                 enable_web_search=input_data.enable_web_search,
             )
         except Exception as e:
-            error_message = str(e)
-            if "504" in error_message or "Gateway Timeout" in error_message:
-                raise BlockExecutionError(
-                    message=f"Service timeout: {error_message}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
-            elif "503" in error_message or "Service Unavailable" in error_message:
-                raise BlockExecutionError(
-                    message=f"Service unavailable: {error_message}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
-            elif "500" in error_message or "Internal Server Error" in error_message:
-                raise BlockExecutionError(
-                    message=f"Server error: {error_message}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
-            else:
-                raise BlockExecutionError(
-                    message=f"Extract failed: {error_message}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
+            raise BlockExecutionError(
+                message=f"Extract failed: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
 
         yield "data", extract_result.data

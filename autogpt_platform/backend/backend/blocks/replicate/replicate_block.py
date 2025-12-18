@@ -115,52 +115,21 @@ class ReplicateModelBlock(Block):
             error_msg = str(e)
             logger.error(f"Error running Replicate model: {error_msg}")
 
-            # Check for input validation errors (status 422)
-            if "422" in error_msg or "Input validation failed" in error_msg:
+            # Input validation errors (422, 400) → BlockInputError
+            if (
+                "422" in error_msg
+                or "Input validation failed" in error_msg
+                or "400" in error_msg
+            ):
                 raise BlockInputError(
                     message=f"Invalid model inputs: {error_msg}",
                     block_name=self.name,
                     block_id=self.id,
                 ) from e
-            # Check for authentication errors (status 401/403)
-            elif (
-                "401" in error_msg
-                or "403" in error_msg
-                or "Unauthorized" in error_msg
-                or "authentication" in error_msg.lower()
-            ):
-                raise BlockExecutionError(
-                    message=f"Authentication failed: {error_msg}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
-            # Check for model not found errors (status 404)
-            elif "404" in error_msg or "not found" in error_msg.lower():
-                raise BlockInputError(
-                    message=f"Model not found: {error_msg}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
-            # Check for rate limiting (status 429)
-            elif "429" in error_msg or "rate limit" in error_msg.lower():
-                raise BlockExecutionError(
-                    message=f"Rate limit exceeded: {error_msg}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
-            # Check for server errors (5xx)
-            elif (
-                any(status in error_msg for status in ["500", "502", "503", "504"])
-                or "server error" in error_msg.lower()
-            ):
-                raise BlockExecutionError(
-                    message=f"Replicate service error: {error_msg}",
-                    block_name=self.name,
-                    block_id=self.id,
-                ) from e
+            # Everything else → BlockExecutionError
             else:
                 raise BlockExecutionError(
-                    message=f"Unexpected error running Replicate model: {error_msg}",
+                    message=f"Replicate model error: {error_msg}",
                     block_name=self.name,
                     block_id=self.id,
                 ) from e
