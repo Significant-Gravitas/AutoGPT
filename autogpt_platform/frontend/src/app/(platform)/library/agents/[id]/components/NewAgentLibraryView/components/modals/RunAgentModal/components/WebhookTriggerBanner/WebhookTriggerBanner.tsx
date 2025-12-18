@@ -1,6 +1,6 @@
 export function WebhookTriggerBanner() {
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
       <div className="flex items-start">
         <div className="flex-shrink-0">
           <svg
