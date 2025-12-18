@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import * as React from "react";
 
@@ -17,31 +18,47 @@ export function BecomeACreator({
   return (
     <div className="relative mx-auto h-auto min-h-[300px] w-full max-w-[1360px] md:min-h-[400px] lg:h-[459px]">
       {/* Title */}
-      <h2 className="sentry-unmask mb-[77px] font-poppins text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+      <Text
+        variant="h4"
+        as="h2"
+        className="mb-[77px] font-poppins text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200"
+      >
         {title}
-      </h2>
+      </Text>
 
       {/* Content Container */}
       <div className="mx-auto w-full max-w-[900px] px-4 text-center md:px-6 lg:px-0">
-        <h2 className="sentry-unmask mb-6 text-center font-poppins text-[48px] font-semibold leading-[54px] tracking-[-0.012em] text-neutral-950 dark:text-neutral-50 md:mb-8 lg:mb-12">
+        <Text
+          variant="h3"
+          as="h2"
+          className="mb-6 text-center font-poppins text-[48px] font-semibold leading-[54px] tracking-[-0.012em] text-neutral-950 dark:text-neutral-50 md:mb-8 lg:mb-12"
+        >
           Build AI agents and share
           <br />
           <span className="text-violet-600 dark:text-violet-400">
             your
           </span>{" "}
           vision
-        </h2>
+        </Text>
 
-        <p className="sentry-unmask mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 dark:text-neutral-300 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl">
+        <Text
+          variant="body"
+          as="p"
+          className="mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 dark:text-neutral-300 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl"
+        >
           {description}
-        </p>
+        </Text>
 
         <PublishAgentModal
           trigger={
             <button className="inline-flex h-[48px] cursor-pointer items-center justify-center rounded-[38px] bg-neutral-800 px-8 py-3 transition-colors hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600 md:h-[56px] md:px-10 md:py-4 lg:h-[68px] lg:px-12 lg:py-5">
-              <span className="sentry-unmask whitespace-nowrap font-poppins text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7">
+              <Text
+                variant="body"
+                as="span"
+                className="whitespace-nowrap font-poppins text-base font-medium leading-normal text-neutral-50 md:text-lg md:leading-relaxed lg:text-xl lg:leading-7"
+              >
                 {buttonText}
-              </span>
+              </Text>
             </button>
           }
         />

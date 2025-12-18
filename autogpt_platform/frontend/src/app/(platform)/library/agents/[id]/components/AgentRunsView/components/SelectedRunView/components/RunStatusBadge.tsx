@@ -71,6 +71,7 @@ export function RunStatusBadge({ status }: Props) {
       <Text
         variant="small-medium"
         className={cn(statusIconMap[status].textColor, "capitalize")}
+        unmask={false}
       >
         {status.toLowerCase()}
       </Text>

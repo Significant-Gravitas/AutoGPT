@@ -226,6 +226,7 @@ export const DateTimeInput = ({
             "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
             error ? "opacity-100" : "opacity-0",
           )}
+          unmask={false}
         >
           {error || " "}
         </Text>

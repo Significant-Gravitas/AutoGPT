@@ -162,8 +162,14 @@ export function AgentSelectStep({
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">
-                        <Text variant="large-medium">{agent.name}</Text>
-                        <Text variant="small" className="!text-neutral-500">
+                        <Text variant="large-medium" unmask={false}>
+                          {agent.name}
+                        </Text>
+                        <Text
+                          variant="small"
+                          className="!text-neutral-500"
+                          unmask={false}
+                        >
                           Edited {agent.lastEdited}
                         </Text>
                       </div>

@@ -14,11 +14,15 @@ export function Button(props: ButtonProps) {
     rightIcon,
     children,
     as = "button",
+    unmask = true,
     ...restProps
   } = props;
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
+
+  const applyUnmask = (...classes: Array<string | false | null | undefined>) =>
+    cn(...classes, unmask && "sentry-unmask");
 
   const buttonContent = (
     <>
@@ -34,11 +38,11 @@ export function Button(props: ButtonProps) {
   if (loading) {
     const loadingClassName =
       variant === "ghost"
-        ? cn(
+        ? applyUnmask(
             extendedButtonVariants({ variant, size, className }),
             "pointer-events-none",
           )
-        : cn(
+        : applyUnmask(
             extendedButtonVariants({ variant: "primary", size, className }),
             "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
           );
@@ -64,7 +68,7 @@ export function Button(props: ButtonProps) {
     return (
       <Link
         {...(restProps as LinkProps)}
-        className={cn(
+        className={applyUnmask(
           extendedButtonVariants({ variant, size, className }),
           loading && "pointer-events-none",
           isDisabled && "pointer-events-none opacity-50",
@@ -78,7 +82,7 @@ export function Button(props: ButtonProps) {
 
   return (
     <button
-      className={cn(
+      className={applyUnmask(
         extendedButtonVariants({ variant, size, className }),
         loading && "pointer-events-none",
       )}

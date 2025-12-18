@@ -30,11 +30,14 @@ export function EmptyAgentRuns({
               <Text
                 variant="h3"
                 className="truncate text-ellipsis !font-normal"
+                unmask={false}
               >
                 {agentName}
               </Text>
               {!isUnknownCreator ? (
-                <Text variant="body-medium">by {creatorName}</Text>
+                <Text variant="body-medium" unmask={false}>
+                  by {creatorName}
+                </Text>
               ) : null}
             </div>
             {description ? (
@@ -49,10 +52,10 @@ export function EmptyAgentRuns({
           </div>
 
           <div className="flex flex-col gap-4">
-            <Text variant="h4" className="sentry-unmask">
+            <Text variant="h4">
               You don&apos;t have any runs
             </Text>
-            <Text variant="large" className="sentry-unmask">
+            <Text variant="large">
               Get started with creating a run, and you&apos;ll see information
               here
             </Text>
@@ -60,8 +63,7 @@ export function EmptyAgentRuns({
           <RunAgentModal
             triggerSlot={
               <Button variant="primary" size="large" className="w-full">
-                <PlusIcon size={20} />{" "}
-                <span className="sentry-unmask">New Run</span>
+                <PlusIcon size={20} /> New Run
               </Button>
             }
             agent={agent}

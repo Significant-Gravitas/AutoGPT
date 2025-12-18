@@ -33,10 +33,11 @@ export function RunSidebarCard({
           <Text
             variant="body-medium"
             className="block w-full truncate text-ellipsis"
+            unmask={false}
           >
             {title}
           </Text>
-          <Text variant="small" className="!text-zinc-500">
+          <Text variant="small" className="!text-zinc-500" unmask={false}>
             {description}
           </Text>
         </div>

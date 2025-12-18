@@ -104,9 +104,7 @@ export default function LoginPage() {
               type="submit"
               className="mt-6 w-full"
             >
-              <span className="sentry-unmask">
-                {isLoading ? "Logging in..." : "Login"}
-              </span>
+              {isLoading ? "Logging in..." : "Login"}
             </Button>
           </form>
           {isCloudEnv ? (

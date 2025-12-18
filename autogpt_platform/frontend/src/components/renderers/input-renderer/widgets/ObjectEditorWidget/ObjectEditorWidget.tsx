@@ -118,7 +118,11 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                     side="left"
                   />
                 )}
-                <Text variant="small" className="!text-gray-500">
+                <Text
+                  variant="small"
+                  className="!text-gray-500"
+                  unmask={false}
+                >
                   #{key.trim() === "" ? "" : key}
                 </Text>
                 <Text variant="small" className="!text-green-500">

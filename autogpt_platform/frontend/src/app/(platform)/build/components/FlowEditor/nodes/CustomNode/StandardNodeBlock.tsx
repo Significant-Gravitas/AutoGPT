@@ -43,10 +43,15 @@ export const StandardNodeBlock = ({
             <Text
               variant="large-semibold"
               className="tracking-tight text-slate-800"
+              unmask={false}
             >
               {beautifyString(data.title)}
             </Text>
-            <Text variant="small" className="!font-medium !text-slate-500">
+            <Text
+              variant="small"
+              className="!font-medium !text-slate-500"
+              unmask={false}
+            >
               #{nodeId.split("-")[0]}
             </Text>
           </div>

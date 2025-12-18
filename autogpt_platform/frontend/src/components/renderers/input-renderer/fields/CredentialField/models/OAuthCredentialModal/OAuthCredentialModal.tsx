@@ -51,7 +51,7 @@ export const OAuthCredentialModal = ({
       </Button>
       {error && (
         <div className="mt-2 flex w-fit items-center rounded-full bg-red-50 p-1 px-3 ring-1 ring-red-600">
-          <Text variant="small" className="!text-red-600">
+          <Text variant="small" className="!text-red-600" unmask={false}>
             {error as string}
           </Text>
         </div>

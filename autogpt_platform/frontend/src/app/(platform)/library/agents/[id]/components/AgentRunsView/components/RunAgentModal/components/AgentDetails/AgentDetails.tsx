@@ -15,7 +15,7 @@ export function AgentDetails({ agent }: Props) {
           Version
         </Text>
         <div className="flex items-center gap-2">
-          <Text variant="body" className="!text-zinc-700">
+          <Text variant="body" className="!text-zinc-700" unmask={false}>
             v{agent.graph_version}
           </Text>
           {agent.is_latest_version && (
@@ -29,7 +29,7 @@ export function AgentDetails({ agent }: Props) {
         <Text variant="body-medium" className="mb-1 !text-black">
           Last Updated
         </Text>
-        <Text variant="body" className="!text-zinc-700">
+        <Text variant="body" className="!text-zinc-700" unmask={false}>
           {formatDate(agent.updated_at)}
         </Text>
       </div>

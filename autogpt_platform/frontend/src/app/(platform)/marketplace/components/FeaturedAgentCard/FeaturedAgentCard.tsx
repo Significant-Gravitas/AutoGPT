@@ -3,11 +3,11 @@ import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/__legacy__/ui/card";
+import { Text } from "@/components/atoms/Text/Text";
 import { useState } from "react";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 
@@ -34,9 +34,9 @@ export const FeaturedAgentCard = ({
         <CardTitle className="line-clamp-2 text-base sm:text-xl">
           {agent.agent_name}
         </CardTitle>
-        <CardDescription className="sentry-unmask text-sm">
+        <Text variant="small" as="p" className="text-sm">
           By {agent.creator}
-        </CardDescription>
+        </Text>
       </CardHeader>
       <CardContent className="flex-1 p-4">
         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
@@ -54,16 +54,21 @@ export const FeaturedAgentCard = ({
               isHovered ? "opacity-100" : "opacity-0"
             }`}
           >
-            <CardDescription className="line-clamp-[6] text-xs sm:line-clamp-[8] sm:text-sm">
+            <Text
+              variant="small"
+              as="p"
+              className="line-clamp-[6] text-xs sm:line-clamp-[8] sm:text-sm"
+              unmask={false}
+            >
               {agent.description}
-            </CardDescription>
+            </Text>
           </div>
         </div>
       </CardContent>
       <CardFooter className="flex items-center justify-between">
-        <div className="sentry-unmask font-semibold">
+        <Text variant="body-medium" className="font-semibold">
           {agent.runs?.toLocaleString() ?? "0"} runs
-        </div>
+        </Text>
         <div className="flex items-center gap-1.5">
           <p>{agent.rating.toFixed(1) ?? "0.0"}</p>
           {StarRatingIcons(agent.rating)}

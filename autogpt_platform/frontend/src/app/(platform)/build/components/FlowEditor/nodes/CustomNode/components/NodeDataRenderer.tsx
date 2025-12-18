@@ -63,7 +63,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                   >
                     Pin:
                   </Text>
-                  <Text variant="body" className="text-slate-700">
+                  <Text variant="body" className="text-slate-700" unmask={false}>
                     {beautifyString(key)}
                   </Text>
                 </div>
@@ -78,6 +78,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                     <Text
                       variant="small"
                       className="rounded-xlarge bg-zinc-50 p-3 text-slate-700"
+                      unmask={false}
                     >
                       {JSON.stringify(value, null, 2)}
                     </Text>

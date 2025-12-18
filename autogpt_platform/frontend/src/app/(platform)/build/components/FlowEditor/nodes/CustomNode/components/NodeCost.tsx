@@ -29,10 +29,10 @@ export const NodeCost = ({
   return (
     <div className="mr-3 flex items-center gap-1 text-base font-light">
       <CoinIcon className="h-3 w-3" />
-      <Text variant="small" className="!font-medium">
+      <Text variant="small" className="!font-medium" unmask={false}>
         {formatCredits(blockCost.cost_amount)}
       </Text>
-      <Text variant="small">
+      <Text variant="small" unmask={false}>
         {" \/"}
         {blockCost.cost_type}
       </Text>

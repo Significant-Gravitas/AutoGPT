@@ -58,6 +58,7 @@ export function RunDetailHeader({
               <Text
                 variant="h3"
                 className="truncate text-ellipsis !font-normal"
+                unmask={false}
               >
                 {agent.name}
               </Text>
@@ -116,17 +117,21 @@ export function RunDetailHeader({
           </div>
           {run ? (
             <div className="mt-1 flex flex-wrap items-center gap-2 gap-y-1 text-zinc-600">
-              <Text variant="small" className="!text-zinc-600">
+              <Text variant="small" className="!text-zinc-600" unmask={false}>
                 Started {moment(run.started_at).fromNow()}
               </Text>
               <span className="mx-1 inline-block text-zinc-200">|</span>
-              <Text variant="small" className="!text-zinc-600">
+              <Text variant="small" className="!text-zinc-600" unmask={false}>
                 Version: {run.graph_version}
               </Text>
               {run.stats?.node_exec_count !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text
+                    variant="small"
+                    className="!text-zinc-600"
+                    unmask={false}
+                  >
                     Steps: {run.stats.node_exec_count}
                   </Text>
                 </>
@@ -134,7 +139,11 @@ export function RunDetailHeader({
               {run.stats?.duration !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text
+                    variant="small"
+                    className="!text-zinc-600"
+                    unmask={false}
+                  >
                     Duration:{" "}
                     {moment.duration(run.stats.duration, "seconds").humanize()}
                   </Text>
@@ -143,7 +152,11 @@ export function RunDetailHeader({
               {run.stats?.cost !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text
+                    variant="small"
+                    className="!text-zinc-600"
+                    unmask={false}
+                  >
                     Cost: ${(run.stats.cost / 100).toFixed(2)}
                   </Text>
                 </>
@@ -151,14 +164,22 @@ export function RunDetailHeader({
               {run.stats?.activity_status && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
-                  <Text variant="small" className="!text-zinc-600">
+                  <Text
+                    variant="small"
+                    className="!text-zinc-600"
+                    unmask={false}
+                  >
                     {String(run.stats.activity_status)}
                   </Text>
                 </>
               )}
             </div>
           ) : scheduleRecurrence ? (
-            <Text variant="small" className="mt-1 !text-zinc-600">
+            <Text
+              variant="small"
+              className="mt-1 !text-zinc-600"
+              unmask={false}
+            >
               {scheduleRecurrence}
             </Text>
           ) : null}

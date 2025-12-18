@@ -18,9 +18,13 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
         <Badge variant="info">New Run</Badge>
       </div>
       <div>
-        <Text variant="h3">{agent.name}</Text>
+        <Text variant="h3" unmask={false}>
+          {agent.name}
+        </Text>
         {!isUnknownCreator ? (
-          <Text variant="body-medium">by {agent.creator_name}</Text>
+          <Text variant="body-medium" unmask={false}>
+            by {agent.creator_name}
+          </Text>
         ) : null}
         <ShowMoreText
           previewLimit={80}

@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Carousel,
   CarouselContent,
@@ -41,16 +42,21 @@ export const AgentsSection = ({
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        <h2
+        <Text
+          variant="h4"
+          as="h2"
           style={{ marginBottom: margin }}
-          className="sentry-unmask font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200"
+          className="font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200"
         >
           {sectionTitle}
-        </h2>
+        </Text>
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <div className="sentry-unmask text-center text-gray-500 dark:text-gray-400">
+          <Text
+            variant="body"
+            className="text-center text-gray-500 dark:text-gray-400"
+          >
             No agents found
-          </div>
+          </Text>
         ) : (
           <>
             {/* Mobile Carousel View */}

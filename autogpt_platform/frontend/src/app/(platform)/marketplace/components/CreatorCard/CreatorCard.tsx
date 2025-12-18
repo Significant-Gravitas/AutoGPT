@@ -1,3 +1,4 @@
+import { Text } from "@/components/atoms/Text/Text";
 import Image from "next/image";
 import { backgroundColor } from "./helper";
 
@@ -47,9 +48,12 @@ export const CreatorCard = ({
         <p className="text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {bio}
         </p>
-        <div className="sentry-unmask text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+        <Text
+          variant="body-medium"
+          className="text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200"
+        >
           {agentsUploaded} agents
-        </div>
+        </Text>
       </div>
     </div>
   );

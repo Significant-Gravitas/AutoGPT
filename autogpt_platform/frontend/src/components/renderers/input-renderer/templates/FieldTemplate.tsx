@@ -108,6 +108,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
                 isCredential && !shouldShowHandle && "ml-3",
                 size == "large" && "ml-0",
               )}
+              unmask={false}
             >
               {isCredential && credentialProvider
                 ? toDisplayName(credentialProvider) + " credentials"
@@ -115,7 +116,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
             </Text>
           )}
           {!fromAnyOf && (
-            <Text variant="small" className={colorClass}>
+            <Text variant="small" className={colorClass} unmask={false}>
               ({displayType})
             </Text>
           )}

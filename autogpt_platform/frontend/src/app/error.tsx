@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 import { IconCircleAlert } from "@/components/__legacy__/ui/icons";
-import { Button } from "@/components/__legacy__/ui/button";
-import Link from "next/link";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 
 export default function Error({
   error,
@@ -22,21 +22,23 @@ export default function Error({
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
           <IconCircleAlert className="size-10" />
         </div>
-        <h1 className="sentry-unmask mt-8 text-2xl font-bold tracking-tight text-foreground">
+        <Text
+          variant="h3"
+          as="h1"
+          className="mt-8 text-2xl font-bold tracking-tight text-foreground"
+        >
           Oops, something went wrong!
-        </h1>
-        <p className="sentry-unmask mt-4 text-muted-foreground">
+        </Text>
+        <Text as="p" className="mt-4 text-muted-foreground">
           We&apos;re sorry, but an unexpected error has occurred. Please try
           again later or contact support if the issue persists.
-        </p>
+        </Text>
         <div className="mt-6 flex flex-row justify-center gap-4">
           <Button onClick={reset} variant="outline">
-            <span className="sentry-unmask">Retry</span>
+            Retry
           </Button>
-          <Button>
-            <Link href="/" className="sentry-unmask">
-              Go to Homepage
-            </Link>
+          <Button as="NextLink" href="/">
+            Go to Homepage
           </Button>
         </div>
       </div>

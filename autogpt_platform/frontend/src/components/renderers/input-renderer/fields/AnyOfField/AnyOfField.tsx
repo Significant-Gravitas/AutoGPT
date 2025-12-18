@@ -142,10 +142,11 @@ export const AnyOfField = ({
             )}
             <Text
               variant={formContext.size === "small" ? "body" : "body-medium"}
+              unmask={false}
             >
               {name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
-            <Text variant="small" className={colorClass}>
+            <Text variant="small" className={colorClass} unmask={false}>
               ({displayType} | null)
             </Text>
           </div>
@@ -172,7 +173,10 @@ export const AnyOfField = ({
             side="left"
           />
         )}
-        <Text variant={formContext.size === "small" ? "body" : "body-medium"}>
+        <Text
+          variant={formContext.size === "small" ? "body" : "body-medium"}
+          unmask={false}
+        >
           {name.charAt(0).toUpperCase() + name.slice(1)}
         </Text>
         {!isConnected && (

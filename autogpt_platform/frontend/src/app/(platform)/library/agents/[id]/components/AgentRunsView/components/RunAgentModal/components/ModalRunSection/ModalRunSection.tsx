@@ -127,7 +127,7 @@ export function ModalRunSection() {
 
               return (
                 <div key={key} className="flex flex-col gap-4">
-                  <Text variant="body-medium" as="h3">
+                  <Text variant="body-medium" as="h3" unmask={false}>
                     {toDisplayName(credential.provider)} credentials
                   </Text>
                   <div className="flex flex-col gap-3">
@@ -143,6 +143,7 @@ export function ModalRunSection() {
                         variant="body"
                         as="span"
                         className="!text-neutral-600"
+                        unmask={false}
                       >
                         {getCredentialTypeDisplayName(credential.type)}
                       </Text>
@@ -152,6 +153,7 @@ export function ModalRunSection() {
                         variant="body"
                         as="span"
                         className="!text-neutral-900"
+                        unmask={false}
                       >
                         {credential.title || "Untitled"}
                       </Text>

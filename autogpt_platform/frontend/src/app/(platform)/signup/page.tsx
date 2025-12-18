@@ -124,7 +124,7 @@ export default function SignupPage() {
                       <FormLabel className="flex flex-wrap items-center gap-1">
                         <Text
                           variant="body-medium"
-                          className="sentry-unmask inline-block text-slate-950"
+                          className="inline-block text-slate-950"
                         >
                           I agree to the
                         </Text>
@@ -136,7 +136,7 @@ export default function SignupPage() {
                         </Link>
                         <Text
                           variant="body-medium"
-                          className="sentry-unmask inline-block text-slate-950"
+                          className="inline-block text-slate-950"
                         >
                           and
                         </Text>
@@ -152,7 +152,11 @@ export default function SignupPage() {
                   {termsError ? (
                     <div className="flex items-center gap-2">
                       <WarningOctagonIcon className="h-4 w-4 text-red-500" />
-                      <Text variant="small-medium" className="!text-red-500">
+                      <Text
+                        variant="small-medium"
+                        className="!text-red-500"
+                        unmask={false}
+                      >
                         {termsError}
                       </Text>
                     </div>
@@ -181,9 +185,7 @@ export default function SignupPage() {
               type="submit"
               className="mt-6 w-full"
             >
-              <span className="sentry-unmask">
-                {isLoading ? "Signing up..." : "Sign up"}
-              </span>
+              {isLoading ? "Signing up..." : "Sign up"}
             </Button>
           </form>
         </Form>

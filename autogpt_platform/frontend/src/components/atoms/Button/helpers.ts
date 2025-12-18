@@ -37,6 +37,11 @@ type BaseButtonProps = {
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   asChild?: boolean;
+  /**
+   * Adds the sentry-unmask class for static button labels.
+   * Disable for user-provided or dynamic strings.
+   */
+  unmask?: boolean;
 } & VariantProps<typeof extendedButtonVariants>;
 
 type ButtonAsButton = BaseButtonProps &
