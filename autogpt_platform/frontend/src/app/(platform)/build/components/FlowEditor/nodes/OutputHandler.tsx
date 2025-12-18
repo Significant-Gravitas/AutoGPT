@@ -14,20 +14,23 @@ import {
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { getTypeDisplayInfo } from "./helpers";
 import { generateHandleId } from "../handlers/helpers";
+import { BlockUIType } from "../../types";
 
 export const OutputHandler = ({
   outputSchema,
   nodeId,
+  uiType,
 }: {
   outputSchema: RJSFSchema;
   nodeId: string;
+  uiType: BlockUIType;
 }) => {
   const { isOutputConnected } = useEdgeStore();
   const properties = outputSchema?.properties || {};
   const [isOutputVisible, setIsOutputVisible] = useState(true);
 
   return (
-    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xl border-t border-slate-200/50 bg-white py-3.5">
+    <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-slate-200/50 bg-white py-3.5">
       <Button
         variant="ghost"
         className="mr-4 h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
@@ -79,7 +82,9 @@ export const OutputHandler = ({
                 </Text>
 
                 <NodeHandle
-                  handleId={generateHandleId(key)}
+                  handleId={
+                    uiType === BlockUIType.AGENT ? key : generateHandleId(key)
+                  }
                   isConnected={isConnected}
                   side="right"
                 />

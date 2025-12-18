@@ -58,7 +58,7 @@ python-multipart = "^0.0.20"
 redis = "^6.2.0"
 regex = "^2025.9.18"
 replicate = "^1.0.6"
-sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.33.2"}
+sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.44.0"}
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
 stripe = "^11.5.0"
@@ -86,16 +86,16 @@ stagehand = "^0.5.1"
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
-faker = "^37.8.0"
+faker = "^38.2.0"
 httpx = "^0.28.1"
 isort = "^5.13.2"
 poethepoet = "^0.37.0"
-pre-commit = "^4.3.0"
-pyright = "^1.1.406"
+pre-commit = "^4.4.0"
+pyright = "^1.1.407"
 pytest-mock = "^3.15.1"
 pytest-watcher = "^0.4.2"
 requests = "^2.32.5"
-ruff = "^0.13.3"
+ruff = "^0.14.5"
 # NOTE: please insert new dependencies in their alphabetical location
 
 [build-system]
@@ -114,6 +114,7 @@ cli = "backend.cli:main"
 format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
+load-store-agents = "test.load_store_agents:run"
 
 [tool.isort]
 profile = "black"

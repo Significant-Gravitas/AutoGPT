@@ -23,6 +23,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
+import { BlockUIType } from "@/app/(platform)/build/components/types";
 
 type TypeOption = {
   type: string;
@@ -47,7 +48,14 @@ export const AnyOfField = ({
   onBlur,
   onFocus,
 }: FieldProps) => {
-  const handleId = generateHandleId(idSchema.$id ?? "");
+  const handleId =
+    formContext.uiType === BlockUIType.AGENT
+      ? (idSchema.$id ?? "")
+          .split("_")
+          .filter((p) => p !== "root" && p !== "properties" && p.length > 0)
+          .join("_") || ""
+      : generateHandleId(idSchema.$id ?? "");
+
   const updatedFormContexrt = { ...formContext, fromAnyOf: true };
 
   const { nodeId, showHandles = true } = updatedFormContexrt;
@@ -131,7 +139,10 @@ export const AnyOfField = ({
       <div className="mb-0 flex flex-col">
         <div className="flex items-center justify-between gap-2">
           <div
-            className={cn("flex items-center gap-1", showHandles && "-ml-2")}
+            className={cn(
+              "ml-1 flex items-center gap-1",
+              showHandles && "-ml-2",
+            )}
           >
             {showHandles && (
               <NodeHandle
@@ -143,7 +154,7 @@ export const AnyOfField = ({
             <Text
               variant={formContext.size === "small" ? "body" : "body-medium"}
             >
-              {name.charAt(0).toUpperCase() + name.slice(1)}
+              {schema.title || name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
             <Text variant="small" className={colorClass}>
               ({displayType} | null)
@@ -157,14 +168,18 @@ export const AnyOfField = ({
             />
           )}
         </div>
-        <div>{!isConnected && isEnabled && renderInput(nonNull)}</div>
+        <div className="mt-2">
+          {!isConnected && isEnabled && renderInput(nonNull)}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="mb-0 flex flex-col">
-      <div className={cn("flex items-center gap-1", showHandles && "-ml-2")}>
+      <div
+        className={cn("ml-1 flex items-center gap-1", showHandles && "-ml-2")}
+      >
         {showHandles && (
           <NodeHandle
             handleId={handleId}
@@ -173,7 +188,7 @@ export const AnyOfField = ({
           />
         )}
         <Text variant={formContext.size === "small" ? "body" : "body-medium"}>
-          {name.charAt(0).toUpperCase() + name.slice(1)}
+          {schema.title || name.charAt(0).toUpperCase() + name.slice(1)}
         </Text>
         {!isConnected && (
           <Select
@@ -209,8 +224,9 @@ export const AnyOfField = ({
           </TooltipProvider>
         )}
       </div>
-
-      {!isConnected && currentTypeOption && renderInput(currentTypeOption)}
+      <div className="mt-2">
+        {!isConnected && currentTypeOption && renderInput(currentTypeOption)}
+      </div>
     </div>
   );
 };

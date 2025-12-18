@@ -90,7 +90,13 @@ test.describe("Build", () => { //(1)!
   });
 
   test("user can add blocks starting with e", async () => {
-    await addBlocksStartingWithSplit("e", 1, 1);
+    test.setTimeout(60000); // Increase timeout for many Exa blocks
+    await addBlocksStartingWithSplit("e", 1, 2);
+  });
+
+  test("user can add blocks starting with e pt 2", async () => {
+    test.setTimeout(60000); // Increase timeout for many Exa blocks
+    await addBlocksStartingWithSplit("e", 2, 2);
   });
 
   test("user can add blocks starting with f", async () => {

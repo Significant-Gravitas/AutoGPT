@@ -8,7 +8,10 @@ import {
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
-import { OnboardingStep } from "@/lib/autogpt-server-api";
+import {
+  OnboardingStep,
+  WebSocketNotification,
+} from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -20,6 +23,7 @@ import * as party from "party-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export interface Task {
   id: OnboardingStep;
@@ -163,6 +167,7 @@ export function Wallet() {
     ];
   }, [state]);
 
+  const api = useBackendAPI();
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
@@ -176,12 +181,8 @@ export function Wallet() {
     return groups.reduce((acc, group) => acc + group.tasks.length, 0);
   }, [groups]);
 
-  // Get total completed count for all groups
+  // Total completed task count across all groups
   const [completedCount, setCompletedCount] = useState<number | null>(null);
-  // Needed to show confetti when a new step is completed
-  const [prevCompletedCount, setPrevCompletedCount] = useState<number | null>(
-    null,
-  );
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
@@ -216,7 +217,7 @@ export function Wallet() {
     if (typeof credits !== "number") return;
     // Open once for first-time users
     if (state && state.walletShown === false) {
-      setWalletOpen(true);
+      requestAnimationFrame(() => setWalletOpen(true));
       // Mark as shown so it won't reopen on every reload
       updateState({ walletShown: true });
       return;
@@ -227,7 +228,7 @@ export function Wallet() {
       credits > lastSeenCredits &&
       walletOpen === false
     ) {
-      setWalletOpen(true);
+      requestAnimationFrame(() => setWalletOpen(true));
     }
   }, [credits, lastSeenCredits, state?.walletShown, updateState, walletOpen]);
 
@@ -249,48 +250,56 @@ export function Wallet() {
     [],
   );
 
-  // Confetti effect on the wallet button
-  useEffect(() => {
-    // It's enough to check completed count,
-    // because the order of completed steps is not important
-    // If the count is the same, we don't need to do anything
-    if (completedCount === null || completedCount === prevCompletedCount) {
-      return;
-    }
-    // Otherwise, we need to set the new prevCompletedCount
-    setPrevCompletedCount(completedCount);
-    // If there was no previous count, we don't show confetti
-    if (prevCompletedCount === null) {
-      return;
-    }
-    // And emit confetti
-    if (walletRef.current) {
-      // Fix confetti appearing in the top left corner
+  // React to onboarding notifications emitted by the provider
+  const handleNotification = useCallback(
+    (notification: WebSocketNotification) => {
+      if (
+        notification.type !== "onboarding" ||
+        notification.event !== "step_completed" ||
+        !walletRef.current
+      ) {
+        return;
+      }
+
+      // Only trigger confetti for tasks that are in groups
+      const taskIds = groups
+        .flatMap((group) => group.tasks)
+        .map((task) => task.id);
+      if (!taskIds.includes(notification.step as OnboardingStep)) {
+        return;
+      }
+
       const rect = walletRef.current.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) {
         return;
       }
-      setTimeout(() => {
-        fetchCredits();
-        party.confetti(walletRef.current!, {
-          count: 30,
-          spread: 120,
-          shapes: ["square", "circle"],
-          size: party.variation.range(1, 2),
-          speed: party.variation.range(200, 300),
-          modules: [fadeOut],
-        });
-      }, 800);
-    }
-  }, [
-    state?.completedSteps,
-    state?.notified,
-    fadeOut,
-    fetchCredits,
-    completedCount,
-    prevCompletedCount,
-    walletRef,
-  ]);
+
+      fetchCredits();
+      party.confetti(walletRef.current, {
+        count: 30,
+        spread: 120,
+        shapes: ["square", "circle"],
+        size: party.variation.range(1, 2),
+        speed: party.variation.range(200, 300),
+        modules: [fadeOut],
+      });
+    },
+    [fetchCredits, fadeOut],
+  );
+
+  // WebSocket setup for onboarding notifications
+  useEffect(() => {
+    const detachMessage = api.onWebSocketMessage(
+      "notification",
+      handleNotification,
+    );
+
+    api.connectWebSocket();
+
+    return () => {
+      detachMessage();
+    };
+  }, [api, handleNotification]);
 
   // Wallet flash on credits change
   useEffect(() => {
@@ -328,9 +337,7 @@ export function Wallet() {
         <div className="relative inline-block">
           <button
             ref={walletRef}
-            className={cn(
-              "relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm",
-            )}
+            className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
             onClick={onWalletOpen}
           >
             <WalletIcon size={20} className="inline-block md:hidden" />
@@ -339,7 +346,7 @@ export function Wallet() {
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}
               </span>
-              {completedCount && completedCount < totalCount && (
+              {completedCount !== null && completedCount < totalCount && (
                 <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
               )}
               <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">

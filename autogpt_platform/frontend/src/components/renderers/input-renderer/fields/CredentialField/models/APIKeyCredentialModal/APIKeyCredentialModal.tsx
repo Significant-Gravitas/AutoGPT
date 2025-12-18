@@ -109,12 +109,12 @@ export function APIKeyCredentialsModal({ schema, provider }: Props) {
       </Dialog>
       <Button
         type="button"
-        className="w-auto min-w-0"
+        className="w-fit px-2"
         size="small"
         onClick={() => setIsOpen(true)}
       >
         <KeyIcon />
-        <Text variant="body-medium" className="!text-white opacity-100">
+        <Text variant="small" className="!text-white opacity-100">
           Add API key
         </Text>
       </Button>
