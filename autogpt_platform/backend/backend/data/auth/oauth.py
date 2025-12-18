@@ -769,3 +769,49 @@ async def get_oauth_application_by_id(app_id: str) -> Optional[OAuthApplicationI
     if not app:
         return None
     return OAuthApplicationInfo.from_db(app)
+
+
+# ============================================================================
+# Token Cleanup
+# ============================================================================
+
+
+async def cleanup_expired_oauth_tokens() -> dict[str, int]:
+    """
+    Delete expired OAuth tokens from the database.
+
+    This removes:
+    - Expired authorization codes (10 min TTL)
+    - Expired access tokens (1 hour TTL)
+    - Expired refresh tokens (30 day TTL)
+
+    Returns a dict with counts of deleted tokens by type.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Delete expired authorization codes
+    codes_result = await PrismaOAuthAuthorizationCode.prisma().delete_many(
+        where={"expiresAt": {"lt": now}}
+    )
+
+    # Delete expired access tokens
+    access_result = await PrismaOAuthAccessToken.prisma().delete_many(
+        where={"expiresAt": {"lt": now}}
+    )
+
+    # Delete expired refresh tokens
+    refresh_result = await PrismaOAuthRefreshToken.prisma().delete_many(
+        where={"expiresAt": {"lt": now}}
+    )
+
+    deleted = {
+        "authorization_codes": codes_result,
+        "access_tokens": access_result,
+        "refresh_tokens": refresh_result,
+    }
+
+    total = sum(deleted.values())
+    if total > 0:
+        logger.info(f"Cleaned up {total} expired OAuth tokens: {deleted}")
+
+    return deleted
