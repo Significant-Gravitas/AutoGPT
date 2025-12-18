@@ -7,6 +7,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import {
   getGetV2ListLibraryAgentsQueryKey,
+  getV2GetLibraryAgent,
   usePostV2AddMarketplaceAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
 import {
@@ -151,7 +152,12 @@ export const useBlockMenuSearch = () => {
       });
 
       const libraryAgent = response.data as LibraryAgent;
-      addAgentToBuilder(libraryAgent);
+
+      const { data: libraryAgentDetails } = await getV2GetLibraryAgent(
+        libraryAgent.id,
+      );
+
+      addAgentToBuilder(libraryAgentDetails as LibraryAgent);
 
       toast({
         title: "Agent Added",
