@@ -168,6 +168,19 @@ async def get_store_agents(
             # RRF score filter is applied AFTER ranking to filter irrelevant results
             rrf_score_filter = f"rrf_score >= {RRF_SCORE_THRESHOLD}"
 
+            # Build ORDER BY clause - sorted_by takes precedence, rrf_score as secondary
+            if sorted_by == "rating":
+                order_by_clause = "rating DESC, rrf_score DESC"
+            elif sorted_by == "runs":
+                order_by_clause = "runs DESC, rrf_score DESC"
+            elif sorted_by == "name":
+                order_by_clause = "agent_name ASC, rrf_score DESC"
+            elif sorted_by == "updated_at":
+                order_by_clause = "updated_at DESC, rrf_score DESC"
+            else:
+                # Default: order by RRF relevance score
+                order_by_clause = "rrf_score DESC, updated_at DESC"
+
             # Add pagination params
             params.extend([page_size, offset])
             limit_param = f"${param_index}"
@@ -267,12 +280,14 @@ async def get_store_agents(
                     rrf_score
                 FROM rrf_scored
                 WHERE {rrf_score_filter}
-                ORDER BY rrf_score DESC, updated_at DESC
+                ORDER BY {order_by_clause}
                 LIMIT {limit_param} OFFSET {offset_param}
             """
 
-            # Count query (without pagination) - needs same CTEs for filtering
-            # Must compute RRF scores to filter by rrf_score_filter
+            # Count query (without pagination) - requires same CTE structure because:
+            # 1. RRF scoring requires computing ranks across ALL matching results
+            # 2. The rrf_score_filter threshold must be applied consistently
+            # Note: This is inherent to RRF - there's no way to count without ranking
             count_query = f"""
                 WITH scored_agents AS (
                     SELECT
