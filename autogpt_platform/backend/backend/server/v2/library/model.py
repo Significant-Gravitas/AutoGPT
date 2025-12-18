@@ -6,8 +6,8 @@ import prisma.enums
 import prisma.models
 import pydantic
 
-import backend.data.block as block_model
-import backend.data.graph as graph_model
+from backend.data.block import BlockInput
+from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput, is_credentials_field_name
 from backend.util.models import Pagination
 
@@ -20,6 +20,23 @@ class LibraryAgentStatus(str, Enum):
     HEALTHY = "HEALTHY"  # Agent is running (not all runs have completed)
     WAITING = "WAITING"  # Agent is queued or waiting to start
     ERROR = "ERROR"  # Agent is in an error state
+
+
+class MarketplaceListingCreator(pydantic.BaseModel):
+    """Creator information for a marketplace listing."""
+
+    name: str
+    id: str
+    slug: str
+
+
+class MarketplaceListing(pydantic.BaseModel):
+    """Marketplace listing information for a library agent."""
+
+    id: str
+    name: str
+    slug: str
+    creator: MarketplaceListingCreator
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -39,6 +56,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     status: LibraryAgentStatus
 
+    created_at: datetime.datetime
     updated_at: datetime.datetime
 
     name: str
@@ -54,7 +72,7 @@ class LibraryAgent(pydantic.BaseModel):
     has_external_trigger: bool = pydantic.Field(
         description="Whether the agent has an external trigger (e.g. webhook) node"
     )
-    trigger_setup_info: Optional[graph_model.GraphTriggerInfo] = None
+    trigger_setup_info: Optional[GraphTriggerInfo] = None
 
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
@@ -71,10 +89,18 @@ class LibraryAgent(pydantic.BaseModel):
     # Recommended schedule cron (from marketplace agents)
     recommended_schedule_cron: str | None = None
 
+    # User-specific settings for this library agent
+    settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
+
+    # Marketplace listing information if the agent has been published
+    marketplace_listing: Optional["MarketplaceListing"] = None
+
     @staticmethod
     def from_db(
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
+        store_listing: Optional[prisma.models.StoreListing] = None,
+        profile: Optional[prisma.models.Profile] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -83,7 +109,9 @@ class LibraryAgent(pydantic.BaseModel):
         if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
 
-        graph = graph_model.GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
+        graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
+
+        created_at = agent.createdAt
 
         agent_updated_at = agent.AgentGraph.updatedAt
         lib_agent_updated_at = agent.updatedAt
@@ -116,6 +144,21 @@ class LibraryAgent(pydantic.BaseModel):
         # Hard-coded to True until a method to check is implemented
         is_latest_version = True
 
+        # Build marketplace_listing if available
+        marketplace_listing_data = None
+        if store_listing and store_listing.ActiveVersion and profile:
+            creator_data = MarketplaceListingCreator(
+                name=profile.name,
+                id=profile.id,
+                slug=profile.username,
+            )
+            marketplace_listing_data = MarketplaceListing(
+                id=store_listing.id,
+                name=store_listing.ActiveVersion.name,
+                slug=store_listing.slug,
+                creator=creator_data,
+            )
+
         return LibraryAgent(
             id=agent.id,
             graph_id=agent.agentGraphId,
@@ -124,6 +167,7 @@ class LibraryAgent(pydantic.BaseModel):
             creator_name=creator_name,
             creator_image_url=creator_image_url,
             status=status,
+            created_at=created_at,
             updated_at=updated_at,
             name=graph.name,
             description=graph.description,
@@ -140,6 +184,8 @@ class LibraryAgent(pydantic.BaseModel):
             is_latest_version=is_latest_version,
             is_favorite=agent.isFavorite,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
+            settings=GraphSettings.model_validate(agent.settings),
+            marketplace_listing=marketplace_listing_data,
         )
 
 
@@ -207,7 +253,7 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     graph_id: str
     graph_version: int
 
-    inputs: block_model.BlockInput
+    inputs: BlockInput
     credentials: dict[str, CredentialsMetaInput]
 
     name: str
@@ -236,7 +282,7 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     Request model used when updating a preset for a library agent.
     """
 
-    inputs: Optional[block_model.BlockInput] = None
+    inputs: Optional[BlockInput] = None
     credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
     name: Optional[str] = None
@@ -279,7 +325,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
                 "Webhook must be included in AgentPreset query when webhookId is set"
             )
 
-        input_data: block_model.BlockInput = {}
+        input_data: BlockInput = {}
         input_credentials: dict[str, CredentialsMetaInput] = {}
 
         for preset_input in preset.InputPresets:
@@ -344,4 +390,7 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
+    )
+    settings: Optional[GraphSettings] = pydantic.Field(
+        default=None, description="User-specific settings for this library agent"
     )

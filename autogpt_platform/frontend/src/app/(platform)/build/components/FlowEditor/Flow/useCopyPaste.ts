@@ -1,20 +1,25 @@
 import { useCallback } from "react";
-import { Node, Edge, useReactFlow } from "@xyflow/react";
-import { Key, storage } from "@/services/storage/local-storage";
+import { useReactFlow } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
+import { useNodeStore } from "../../../stores/nodeStore";
+import { useEdgeStore } from "../../../stores/edgeStore";
+import { CustomNode } from "../nodes/CustomNode/CustomNode";
+import { CustomEdge } from "../edges/CustomEdge";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface CopyableData {
-  nodes: Node[];
-  edges: Edge[];
+  nodes: CustomNode[];
+  edges: CustomEdge[];
 }
 
+const CLIPBOARD_PREFIX = "autogpt-flow-data:";
+
 export function useCopyPaste() {
-  const { setNodes, addEdges, getNodes, getEdges, getViewport } =
-    useReactFlow();
+  const { getViewport } = useReactFlow();
+  const { toast } = useToast();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
-      // Prevent copy/paste if any modal is open or if the focus is on an input element
       const activeElement = document.activeElement;
       const isInputField =
         activeElement?.tagName === "INPUT" ||
@@ -24,15 +29,16 @@ export function useCopyPaste() {
       if (isInputField) return;
 
       if (event.ctrlKey || event.metaKey) {
-        // COPY: Ctrl+C or Cmd+C
         if (event.key === "c" || event.key === "C") {
-          const selectedNodes = getNodes().filter((node) => node.selected);
+          const { nodes } = useNodeStore.getState();
+          const { edges } = useEdgeStore.getState();
+
+          const selectedNodes = nodes.filter((node) => node.selected);
           const selectedNodeIds = new Set(selectedNodes.map((node) => node.id));
 
-          // Only copy edges where both source and target nodes are selected
-          const selectedEdges = getEdges().filter(
+          // Copy edges where both source and target nodes are selected
+          const selectedEdges = edges.filter(
             (edge) =>
-              edge.selected &&
               selectedNodeIds.has(edge.source) &&
               selectedNodeIds.has(edge.target),
           );
@@ -47,81 +53,102 @@ export function useCopyPaste() {
             edges: selectedEdges,
           };
 
-          storage.set(Key.COPIED_FLOW_DATA, JSON.stringify(copiedData));
+          const clipboardText = `${CLIPBOARD_PREFIX}${JSON.stringify(copiedData)}`;
+          navigator.clipboard
+            .writeText(clipboardText)
+            .then(() => {
+              toast({
+                title: "Copied successfully",
+                description: `${selectedNodes.length} node(s) copied to clipboard`,
+              });
+            })
+            .catch((error) => {
+              console.error("Failed to copy to clipboard:", error);
+            });
         }
 
-        // PASTE: Ctrl+V or Cmd+V
         if (event.key === "v" || event.key === "V") {
-          const copiedDataString = storage.get(Key.COPIED_FLOW_DATA);
-          if (copiedDataString) {
-            const copiedData = JSON.parse(copiedDataString) as CopyableData;
-            const oldToNewIdMap: Record<string, string> = {};
+          navigator.clipboard
+            .readText()
+            .then((clipboardText) => {
+              if (!clipboardText.startsWith(CLIPBOARD_PREFIX)) {
+                return; // Not our data, ignore
+              }
 
-            // Get fresh viewport values at paste time to ensure correct positioning
-            const { x, y, zoom } = getViewport();
-            const viewportCenter = {
-              x: (window.innerWidth / 2 - x) / zoom,
-              y: (window.innerHeight / 2 - y) / zoom,
-            };
+              const jsonString = clipboardText.slice(CLIPBOARD_PREFIX.length);
+              const copiedData = JSON.parse(jsonString) as CopyableData;
+              const oldToNewIdMap: Record<string, string> = {};
 
-            let minX = Infinity,
-              minY = Infinity,
-              maxX = -Infinity,
-              maxY = -Infinity;
-            copiedData.nodes.forEach((node: Node) => {
-              minX = Math.min(minX, node.position.x);
-              minY = Math.min(minY, node.position.y);
-              maxX = Math.max(maxX, node.position.x);
-              maxY = Math.max(maxY, node.position.y);
-            });
-
-            const offsetX = viewportCenter.x - (minX + maxX) / 2;
-            const offsetY = viewportCenter.y - (minY + maxY) / 2;
-
-            // Create new nodes with UNIQUE IDs using UUID
-            const pastedNodes = copiedData.nodes.map((node: Node) => {
-              const newNodeId = uuidv4(); // Generate unique UUID for each node
-              oldToNewIdMap[node.id] = newNodeId;
-              return {
-                ...node,
-                id: newNodeId, // Assign the new unique ID
-                selected: true, // Select the pasted nodes
-                position: {
-                  x: node.position.x + offsetX,
-                  y: node.position.y + offsetY,
-                },
-                data: {
-                  ...node.data,
-                  backend_id: undefined, // Clear backend_id so the new node.id is used when saving
-                  status: undefined, // Clear execution status
-                  nodeExecutionResult: undefined, // Clear execution results
-                },
+              const { x, y, zoom } = getViewport();
+              const viewportCenter = {
+                x: (window.innerWidth / 2 - x) / zoom,
+                y: (window.innerHeight / 2 - y) / zoom,
               };
-            });
 
-            // Create new edges with updated source/target IDs
-            const pastedEdges = copiedData.edges.map((edge) => {
-              const newSourceId = oldToNewIdMap[edge.source] ?? edge.source;
-              const newTargetId = oldToNewIdMap[edge.target] ?? edge.target;
-              return {
-                ...edge,
-                id: `${newSourceId}_${edge.sourceHandle}_${newTargetId}_${edge.targetHandle}_${Date.now()}`,
-                source: newSourceId,
-                target: newTargetId,
-              };
-            });
+              let minX = Infinity,
+                minY = Infinity,
+                maxX = -Infinity,
+                maxY = -Infinity;
+              copiedData.nodes.forEach((node) => {
+                minX = Math.min(minX, node.position.x);
+                minY = Math.min(minY, node.position.y);
+                maxX = Math.max(maxX, node.position.x);
+                maxY = Math.max(maxY, node.position.y);
+              });
 
-            // Deselect existing nodes and add pasted nodes
-            setNodes((existingNodes) => [
-              ...existingNodes.map((node) => ({ ...node, selected: false })),
-              ...pastedNodes,
-            ]);
-            addEdges(pastedEdges);
-          }
+              const offsetX = viewportCenter.x - (minX + maxX) / 2;
+              const offsetY = viewportCenter.y - (minY + maxY) / 2;
+
+              // Deselect existing nodes first
+              useNodeStore.setState((state) => ({
+                nodes: state.nodes.map((node) => ({
+                  ...node,
+                  selected: false,
+                })),
+              }));
+
+              // Create and add new nodes with UNIQUE IDs using UUID
+              copiedData.nodes.forEach((node) => {
+                const newNodeId = uuidv4();
+                oldToNewIdMap[node.id] = newNodeId;
+
+                const newNode: CustomNode = {
+                  ...node,
+                  id: newNodeId,
+                  selected: true,
+                  position: {
+                    x: node.position.x + offsetX,
+                    y: node.position.y + offsetY,
+                  },
+                };
+
+                useNodeStore.getState().addNode(newNode);
+              });
+
+              // Add edges with updated source/target IDs
+              const { addEdge } = useEdgeStore.getState();
+              copiedData.edges.forEach((edge) => {
+                const newSourceId = oldToNewIdMap[edge.source] ?? edge.source;
+                const newTargetId = oldToNewIdMap[edge.target] ?? edge.target;
+
+                addEdge({
+                  source: newSourceId,
+                  target: newTargetId,
+                  sourceHandle: edge.sourceHandle ?? "",
+                  targetHandle: edge.targetHandle ?? "",
+                  data: {
+                    ...edge.data,
+                  },
+                });
+              });
+            })
+            .catch((error) => {
+              console.error("Failed to read from clipboard:", error);
+            });
         }
       }
     },
-    [setNodes, addEdges, getNodes, getEdges, getViewport],
+    [getViewport, toast],
   );
 
   return handleCopyPaste;
