@@ -2690,7 +2690,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nWhen search_query is provided, uses hybrid search combining:\n- BM25 full-text search (lexical matching)\n- Vector semantic similarity (meaning-based matching)\n- Popularity signal (run counts)\n\nResults are ranked using Reciprocal Rank Fusion (RRF).\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n    filter_mode (str, optional): Controls result filtering when searching:\n        - \"strict\": Must match BOTH BM25 AND vector thresholds\n        - \"permissive\": Must match EITHER BM25 OR vector threshold\n        - \"combined\": No threshold filtering, rely on RRF score (default)\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -2756,6 +2756,17 @@
             "in": "query",
             "required": false,
             "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+          },
+          {
+            "name": "filter_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["strict", "permissive", "combined"],
+              "type": "string",
+              "default": "permissive",
+              "title": "Filter Mode"
+            }
           }
         ],
         "responses": {
@@ -3662,18 +3673,7 @@
             "required": false,
             "schema": {
               "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "enum": [
-                      "blocks",
-                      "integrations",
-                      "marketplace_agents",
-                      "my_agents"
-                    ],
-                    "type": "string"
-                  }
-                },
+                { "type": "array", "items": { "type": "string" } },
                 { "type": "null" }
               ],
               "title": "Filter"
@@ -8623,45 +8623,6 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
-      "SearchEntry": {
-        "properties": {
-          "search_query": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Query"
-          },
-          "filter": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "blocks",
-                    "integrations",
-                    "marketplace_agents",
-                    "my_agents"
-                  ]
-                },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Filter"
-          },
-          "by_creator": {
-            "anyOf": [
-              { "items": { "type": "string" }, "type": "array" },
-              { "type": "null" }
-            ],
-            "title": "By Creator"
-          },
-          "search_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Search Id"
-          }
-        },
-        "type": "object",
-        "title": "SearchEntry"
-      },
       "SearchResponse": {
         "properties": {
           "items": {
@@ -8675,7 +8636,6 @@
             "type": "array",
             "title": "Items"
           },
-          "search_id": { "type": "string", "title": "Search Id" },
           "total_items": {
             "additionalProperties": { "type": "integer" },
             "propertyNames": {
@@ -8689,10 +8649,11 @@
             "type": "object",
             "title": "Total Items"
           },
-          "pagination": { "$ref": "#/components/schemas/Pagination" }
+          "page": { "type": "integer", "title": "Page" },
+          "more_pages": { "type": "boolean", "title": "More Pages" }
         },
         "type": "object",
-        "required": ["items", "search_id", "total_items", "pagination"],
+        "required": ["items", "total_items", "page", "more_pages"],
         "title": "SearchResponse"
       },
       "SessionDetailResponse": {
@@ -9249,7 +9210,7 @@
             "title": "Otto Suggestions"
           },
           "recent_searches": {
-            "items": { "$ref": "#/components/schemas/SearchEntry" },
+            "items": { "type": "string" },
             "type": "array",
             "title": "Recent Searches"
           },
