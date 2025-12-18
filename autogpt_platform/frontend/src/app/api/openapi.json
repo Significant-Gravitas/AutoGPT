@@ -3673,7 +3673,18 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "array", "items": { "type": "string" } },
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "blocks",
+                      "integrations",
+                      "marketplace_agents",
+                      "my_agents"
+                    ],
+                    "type": "string"
+                  }
+                },
                 { "type": "null" }
               ],
               "title": "Filter"
@@ -8623,6 +8634,45 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "SearchEntry": {
+        "properties": {
+          "search_query": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Query"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "blocks",
+                    "integrations",
+                    "marketplace_agents",
+                    "my_agents"
+                  ]
+                },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Filter"
+          },
+          "by_creator": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "By Creator"
+          },
+          "search_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Id"
+          }
+        },
+        "type": "object",
+        "title": "SearchEntry"
+      },
       "SearchResponse": {
         "properties": {
           "items": {
@@ -8636,6 +8686,7 @@
             "type": "array",
             "title": "Items"
           },
+          "search_id": { "type": "string", "title": "Search Id" },
           "total_items": {
             "additionalProperties": { "type": "integer" },
             "propertyNames": {
@@ -8649,11 +8700,10 @@
             "type": "object",
             "title": "Total Items"
           },
-          "page": { "type": "integer", "title": "Page" },
-          "more_pages": { "type": "boolean", "title": "More Pages" }
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
         },
         "type": "object",
-        "required": ["items", "total_items", "page", "more_pages"],
+        "required": ["items", "search_id", "total_items", "pagination"],
         "title": "SearchResponse"
       },
       "SessionDetailResponse": {
@@ -9210,7 +9260,7 @@
             "title": "Otto Suggestions"
           },
           "recent_searches": {
-            "items": { "type": "string" },
+            "items": { "$ref": "#/components/schemas/SearchEntry" },
             "type": "array",
             "title": "Recent Searches"
           },
