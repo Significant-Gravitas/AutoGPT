@@ -3,7 +3,13 @@ from collections import defaultdict
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 
 
@@ -19,7 +25,7 @@ class SamplingMethod(str, Enum):
 
 
 class DataSamplingBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         data: Union[Dict[str, Any], List[Union[dict, List[Any]]]] = SchemaField(
             description="The dataset to sample from. Can be a single dictionary, a list of dictionaries, or a list of lists.",
             placeholder="{'id': 1, 'value': 'a'} or [{'id': 1, 'value': 'a'}, {'id': 2, 'value': 'b'}, ...]",
@@ -54,7 +60,7 @@ class DataSamplingBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         sampled_data: List[Union[dict, List[Any]]] = SchemaField(
             description="The sampled subset of the input data."
         )

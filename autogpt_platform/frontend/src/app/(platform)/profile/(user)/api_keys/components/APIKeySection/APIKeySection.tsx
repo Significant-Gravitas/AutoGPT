@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, MoreVertical } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   Table,
   TableBody,
@@ -9,14 +9,14 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+} from "@/components/__legacy__/ui/table";
+import { Badge } from "@/components/__legacy__/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/__legacy__/ui/dropdown-menu";
 import { useAPISection } from "./useAPISection";
 
 export function APIKeysSection() {
@@ -48,7 +48,7 @@ export function APIKeysSection() {
                   <TableCell>{key.name}</TableCell>
                   <TableCell data-testid="api-key-id">
                     <div className="rounded-md border p-1 px-2 text-xs">
-                      {`${key.prefix}******************${key.postfix}`}
+                      {`${key.head}******************${key.tail}`}
                     </div>
                   </TableCell>
                   <TableCell>

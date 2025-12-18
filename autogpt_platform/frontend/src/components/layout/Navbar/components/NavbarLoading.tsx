@@ -1,5 +1,5 @@
-import { IconAutoGPTLogo } from "@/components/ui/icons";
-import { Skeleton } from "@/components/ui/skeleton";
+import { IconAutoGPTLogo } from "@/components/__legacy__/ui/icons";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 
 export function NavbarLoading() {
   return (

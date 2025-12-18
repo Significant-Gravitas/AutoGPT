@@ -1,8 +1,8 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 
 export const MainMarketplacePageLoading = () => {
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
+    <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-4">
         <div className="flex flex-col gap-2 pt-16">
           <div className="flex flex-col items-center justify-center gap-8">

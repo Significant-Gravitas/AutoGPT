@@ -7,12 +7,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@/components/__legacy__/ui/dialog";
 import { LuCopy } from "react-icons/lu";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
+import { Label } from "@/components/__legacy__/ui/label";
+import { Input } from "@/components/__legacy__/ui/input";
+import { Checkbox } from "@/components/__legacy__/ui/checkbox";
+import { Button } from "@/components/__legacy__/ui/button";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";
 import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { PlayIcon } from "@radix-ui/react-icons";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/__legacy__/ui/button";
 import {
   getYouTubeVideoId,
   isValidVideoFile,

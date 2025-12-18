@@ -12,26 +12,35 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { CalendarClockIcon, Trash2Icon, ClockIcon } from "lucide-react";
-import { humanizeCronExpression } from "@/lib/cron-expression-utils";
-import { ScheduleTaskDialog } from "@/components/cron-scheduler-dialog";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/RunAgentInputs/RunAgentInputs";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { cn, isEmpty } from "@/lib/utils";
-import SchemaTooltip from "@/components/SchemaTooltip";
-import { CopyIcon } from "@phosphor-icons/react";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { RunAgentInputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/RunAgentInputs/RunAgentInputs";
+import { ScheduleTaskDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import ActionButtonGroup from "@/components/__legacy__/action-button-group";
+import type { ButtonAction } from "@/components/__legacy__/types";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/__legacy__/ui/card";
+import {
+  IconCross,
+  IconPlay,
+  IconSave,
+} from "@/components/__legacy__/ui/icons";
+import { Input } from "@/components/__legacy__/ui/input";
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/ui/input";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
   useToast,
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { cn, isEmpty } from "@/lib/utils";
+import { ClockIcon, CopyIcon, InfoIcon } from "@phosphor-icons/react";
+import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
+import { analytics } from "@/services/analytics";
 import { AgentStatus, AgentStatusChip } from "./agent-status-chip";
 
 export function AgentRunDraftView({
@@ -91,8 +100,6 @@ export function AgentRunDraftView({
   const [changedPresetAttributes, setChangedPresetAttributes] = useState<
     Set<keyof LibraryAgentPresetUpdatable>
   >(new Set());
-  const { state: onboardingState, completeStep: completeOnboardingStep } =
-    useOnboarding();
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] = useState(false);
 
   // Update values if agentPreset parameter is changed
@@ -129,18 +136,26 @@ export function AgentRunDraftView({
     const requiredInputs = new Set(
       agentInputSchema.required as string[] | undefined,
     );
-    return [
-      nonEmptyInputs.isSupersetOf(requiredInputs),
-      [...requiredInputs.difference(nonEmptyInputs)],
-    ];
+    // Backwards-compatible implementation of isSupersetOf and difference
+    const isSuperset = Array.from(requiredInputs).every((item) =>
+      nonEmptyInputs.has(item),
+    );
+    const difference = Array.from(requiredInputs).filter(
+      (item) => !nonEmptyInputs.has(item),
+    );
+    return [isSuperset, difference];
   }, [agentInputSchema.required, inputValues]);
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
     const availableCredentials = new Set(Object.keys(inputCredentials));
     const allCredentials = new Set(Object.keys(agentCredentialsInputFields));
-    return [
-      availableCredentials.isSupersetOf(allCredentials),
-      [...allCredentials.difference(availableCredentials)],
-    ];
+    // Backwards-compatible implementation of isSupersetOf and difference
+    const isSuperset = Array.from(allCredentials).every((item) =>
+      availableCredentials.has(item),
+    );
+    const difference = Array.from(allCredentials).filter(
+      (item) => !availableCredentials.has(item),
+    );
+    return [isSuperset, difference];
   }, [agentCredentialsInputFields, inputCredentials]);
   const notifyMissingInputs = useCallback(
     (needPresetName: boolean = true) => {
@@ -174,7 +189,13 @@ export function AgentRunDraftView({
       }
       // TODO: on executing preset with changes, ask for confirmation and offer save+run
       const newRun = await api
-        .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
+        .executeGraph(
+          graph.id,
+          graph.version,
+          inputValues,
+          inputCredentials,
+          "library",
+        )
         .catch(toastOnFail("execute agent"));
 
       if (newRun && onRun) onRun(newRun.id);
@@ -184,20 +205,12 @@ export function AgentRunDraftView({
         .then((newRun) => onRun && onRun(newRun.id))
         .catch(toastOnFail("execute agent preset"));
     }
-    // Mark run agent onboarding step as completed
-    if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
-      completeOnboardingStep("MARKETPLACE_RUN_AGENT");
-    }
-  }, [
-    api,
-    graph,
-    inputValues,
-    inputCredentials,
-    onRun,
-    toastOnFail,
-    onboardingState,
-    completeOnboardingStep,
-  ]);
+
+    analytics.sendDatafastEvent("run_agent", {
+      name: graph.name,
+      id: graph.id,
+    });
+  }, [api, graph, inputValues, inputCredentials, onRun, toastOnFail]);
 
   const doCreatePreset = useCallback(async () => {
     if (!onCreatePreset) return;
@@ -231,8 +244,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    onboardingState,
-    completeOnboardingStep,
   ]);
 
   const doUpdatePreset = useCallback(async () => {
@@ -271,8 +282,6 @@ export function AgentRunDraftView({
     onUpdatePreset,
     toast,
     toastOnFail,
-    onboardingState,
-    completeOnboardingStep,
   ]);
 
   const doSetPresetActive = useCallback(
@@ -309,11 +318,6 @@ export function AgentRunDraftView({
         setChangedPresetAttributes(new Set()); // reset change tracker
       })
       .catch(toastOnFail("set up agent trigger"));
-
-    // Mark run agent onboarding step as completed(?)
-    if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
-      completeOnboardingStep("MARKETPLACE_RUN_AGENT");
-    }
   }, [
     api,
     graph,
@@ -324,8 +328,6 @@ export function AgentRunDraftView({
     onCreatePreset,
     toast,
     toastOnFail,
-    onboardingState,
-    completeOnboardingStep,
   ]);
 
   const openScheduleDialog = useCallback(() => {
@@ -369,6 +371,12 @@ export function AgentRunDraftView({
           credentials: inputCredentials,
         })
         .catch(toastOnFail("set up agent run schedule"));
+
+      analytics.sendDatafastEvent("schedule_agent", {
+        name: graph.name,
+        id: graph.id,
+        cronExpression: cronExpression,
+      });
 
       if (schedule && onCreateSchedule) onCreateSchedule(schedule);
     },
@@ -587,13 +595,26 @@ export function AgentRunDraftView({
               </div>
             )}
 
+            {/* Setup Instructions */}
+            {graph.instructions && (
+              <div className="flex items-start gap-2 rounded-md border border-violet-200 bg-violet-50 p-3">
+                <InfoIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
+                <div className="text-sm text-violet-800">
+                  <strong>Setup Instructions:</strong>{" "}
+                  <span className="whitespace-pre-wrap">
+                    {graph.instructions}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {(agentPreset || graph.has_external_trigger) && (
               <>
                 {/* Preset name and description */}
                 <div className="flex flex-col space-y-2">
                   <label className="flex items-center gap-1 text-sm font-medium">
                     {graph.has_external_trigger ? "Trigger" : "Preset"} Name
-                    <SchemaTooltip
+                    <InformationTooltip
                       description={`Name of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
@@ -610,7 +631,7 @@ export function AgentRunDraftView({
                   <label className="flex items-center gap-1 text-sm font-medium">
                     {graph.has_external_trigger ? "Trigger" : "Preset"}{" "}
                     Description
-                    <SchemaTooltip
+                    <InformationTooltip
                       description={`Description of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
@@ -653,35 +674,26 @@ export function AgentRunDraftView({
                       prev.add("credentials"),
                     );
                   }}
-                  hideIfSingleCredentialAvailable={
-                    !agentPreset && !graph.has_external_trigger
-                  }
                 />
               ),
             )}
 
             {/* Regular inputs */}
             {Object.entries(agentInputFields).map(([key, inputSubSchema]) => (
-              <div key={key} className="flex flex-col space-y-2">
-                <label className="flex items-center gap-1 text-sm font-medium">
-                  {inputSubSchema.title || key}
-                  <SchemaTooltip description={inputSubSchema.description} />
-                </label>
-
-                <RunAgentInputs
-                  schema={inputSubSchema}
-                  value={inputValues[key] ?? inputSubSchema.default}
-                  placeholder={inputSubSchema.description}
-                  onChange={(value) => {
-                    setInputValues((obj) => ({
-                      ...obj,
-                      [key]: value,
-                    }));
-                    setChangedPresetAttributes((prev) => prev.add("inputs"));
-                  }}
-                  data-testid={`agent-input-${key}`}
-                />
-              </div>
+              <RunAgentInputs
+                key={key}
+                schema={inputSubSchema}
+                value={inputValues[key] ?? inputSubSchema.default}
+                placeholder={inputSubSchema.description}
+                onChange={(value) => {
+                  setInputValues((obj) => ({
+                    ...obj,
+                    [key]: value,
+                  }));
+                  setChangedPresetAttributes((prev) => prev.add("inputs"));
+                }}
+                data-testid={`agent-input-${key}`}
+              />
             ))}
           </CardContent>
         </Card>

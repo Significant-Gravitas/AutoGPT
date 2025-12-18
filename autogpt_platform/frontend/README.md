@@ -4,19 +4,11 @@ This is the frontend for AutoGPT's next generation
 
 This project uses [**pnpm**](https://pnpm.io/) as the package manager via **corepack**. [Corepack](https://github.com/nodejs/corepack) is a Node.js tool that automatically manages package managers without requiring global installations.
 
+For architecture, conventions, data fetching, feature flags, design system usage, state management, and PR process, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ### Prerequisites
 
 Make sure you have Node.js 16.10+ installed. Corepack is included with Node.js by default.
-
-### ⚠️ Migrating from yarn
-
-> This project was previously using yarn1, make sure to clean up the old files if you set it up previously with yarn:
->
-> ```bash
-> rm -f yarn.lock && rm -rf node_modules
-> ```
->
-> Then follow the setup steps below.
 
 ## Setup
 
@@ -96,184 +88,13 @@ Every time a new Front-end dependency is added by you or others, you will need t
 
 This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
 
-## 🔄 Data Fetching Strategy
+## 🔄 Data Fetching
 
-> [!NOTE]
-> You don't need to run the OpenAPI commands below to run the Front-end. You will only need to run them when adding or modifying endpoints on the Backend API and wanting to use those on the Frontend.
-
-This project uses an auto-generated API client powered by [**Orval**](https://orval.dev/), which creates type-safe API clients from OpenAPI specifications.
-
-### How It Works
-
-1. **Backend Requirements**: Each API endpoint needs a summary and tag in the OpenAPI spec
-2. **Operation ID Generation**: FastAPI generates operation IDs using the pattern `{method}{tag}{summary}`
-3. **Spec Fetching**: The OpenAPI spec is fetched from `http://localhost:8006/openapi.json` and saved to the frontend
-4. **Spec Transformation**: The OpenAPI spec is cleaned up using a custom transformer (see `autogpt_platform/frontend/src/app/api/transformers`)
-5. **Client Generation**: Auto-generated client includes TypeScript types, API endpoints, and Zod schemas, organized by tags
-
-### API Client Commands
-
-```bash
-# Fetch OpenAPI spec from backend and generate client
-pnpm generate:api
-
-# Only fetch the OpenAPI spec
-pnpm fetch:openapi
-
-# Only generate the client (after spec is fetched)
-pnpm generate:api-client
-```
-
-### Using the Generated Client
-
-The generated client provides React Query hooks for both queries and mutations:
-
-#### Queries (GET requests)
-
-```typescript
-import { useGetV1GetNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
-
-const { data, isLoading, isError } = useGetV1GetNotificationPreferences({
-  query: {
-    select: (res) => res.data,
-    // Other React Query options
-  },
-});
-```
-
-#### Mutations (POST, PUT, DELETE requests)
-
-```typescript
-import { useDeleteV2DeleteStoreSubmission } from "@/app/api/__generated__/endpoints/store/store";
-import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
-import { useQueryClient } from "@tanstack/react-query";
-
-const queryClient = useQueryClient();
-
-const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
-  mutation: {
-    onSuccess: () => {
-      // Invalidate related queries to refresh data
-      queryClient.invalidateQueries({
-        queryKey: getGetV2ListMySubmissionsQueryKey(),
-      });
-    },
-  },
-});
-
-// Usage
-await deleteSubmission({
-  submissionId: submission_id,
-});
-```
-
-#### Server Actions
-
-For server-side operations, you can also use the generated client functions directly:
-
-```typescript
-import { postV1UpdateNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
-
-// In a server action
-const preferences = {
-  email: "user@example.com",
-  preferences: {
-    AGENT_RUN: true,
-    ZERO_BALANCE: false,
-    // ... other preferences
-  },
-  daily_limit: 0,
-};
-
-await postV1UpdateNotificationPreferences(preferences);
-```
-
-#### Server-Side Prefetching
-
-For server-side components, you can prefetch data on the server and hydrate it in the client cache. This allows immediate access to cached data when queries are called:
-
-```typescript
-import { getQueryClient } from "@/lib/tanstack-query/getQueryClient";
-import {
-  prefetchGetV2ListStoreAgentsQuery,
-  prefetchGetV2ListStoreCreatorsQuery
-} from "@/app/api/__generated__/endpoints/store/store";
-import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
-
-// In your server component
-const queryClient = getQueryClient();
-
-await Promise.all([
-  prefetchGetV2ListStoreAgentsQuery(queryClient, {
-    featured: true,
-  }),
-  prefetchGetV2ListStoreAgentsQuery(queryClient, {
-    sorted_by: "runs",
-  }),
-  prefetchGetV2ListStoreCreatorsQuery(queryClient, {
-    featured: true,
-    sorted_by: "num_agents",
-  }),
-]);
-
-return (
-  <HydrationBoundary state={dehydrate(queryClient)}>
-    <MainMarkeplacePage />
-  </HydrationBoundary>
-);
-```
-
-This pattern improves performance by serving pre-fetched data from the server while maintaining the benefits of client-side React Query features.
-
-### Configuration
-
-The Orval configuration is located in `autogpt_platform/frontend/orval.config.ts`. It generates two separate clients:
-
-1. **autogpt_api_client**: React Query hooks for client-side data fetching
-2. **autogpt_zod_schema**: Zod schemas for validation
-
-For more details, see the [Orval documentation](https://orval.dev/) or check the configuration file.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidance on generated API hooks, SSR + hydration patterns, and usage examples. You generally do not need to run OpenAPI commands unless adding/modifying backend endpoints.
 
 ## 🚩 Feature Flags
 
-This project uses [LaunchDarkly](https://launchdarkly.com/) for feature flags, allowing us to control feature rollouts and A/B testing.
-
-### Using Feature Flags
-
-#### Check if a feature is enabled
-
-```typescript
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-
-function MyComponent() {
-  const isAgentActivityEnabled = useGetFlag(Flag.AGENT_ACTIVITY);
-
-  if (!isAgentActivityEnabled) {
-    return null; // Hide feature
-  }
-
-  return <div>Feature is enabled!</div>;
-}
-```
-
-#### Protect entire components
-
-```typescript
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
-
-const MyFeaturePage = withFeatureFlag(MyPageComponent, "my-feature-flag");
-```
-
-### Testing with Feature Flags
-
-For local development or running Playwright tests locally, use mocked feature flags by setting `NEXT_PUBLIC_PW_TEST=true` in your `.env` file. This bypasses LaunchDarkly and uses the mock values defined in the code.
-
-### Adding New Flags
-
-1. Add the flag to the `Flag` enum in `use-get-flag.ts`
-2. Add the flag type to `FlagValues` type
-3. Add mock value to `mockFlags` for testing
-4. Configure the flag in LaunchDarkly dashboard
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for feature flag usage patterns, local development with mocks, and how to add new flags.
 
 ## 🚚 Deploy
 
@@ -333,7 +154,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 - [**Tailwind CSS**](https://tailwindcss.com/) - Utility-first CSS framework
 - [**shadcn/ui**](https://ui.shadcn.com/) - Re-usable components built with Radix UI and Tailwind CSS
 - [**Radix UI**](https://www.radix-ui.com/) - Headless UI components for accessibility
-- [**Lucide React**](https://lucide.dev/guide/packages/lucide-react) - Beautiful & consistent icons
+- [**Phosphor Icons**](https://phosphoricons.com/) - Icon set used across the app
 - [**Framer Motion**](https://motion.dev/) - Animation library for React
 
 ### Development & Testing

@@ -1,5 +1,5 @@
 "use client";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { HeroSection } from "../HeroSection/HeroSection";
@@ -37,7 +37,7 @@ export const MainMarkeplacePage = () => {
 
   return (
     // FRONTEND-TODO : Need better state location, need to fetch creators and agents in their respective file, Can't do it right now because these files are used in some other pages of marketplace, will fix it when encounter with those pages
-    <div className="mx-auto w-screen max-w-[1360px]">
+    <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-4">
         <HeroSection />
         {featuredAgents && (

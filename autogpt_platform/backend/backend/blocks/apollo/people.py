@@ -14,14 +14,20 @@ from backend.blocks.apollo.models import (
     SearchPeopleRequest,
     SenorityLevels,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import CredentialsField, SchemaField
 
 
 class SearchPeopleBlock(Block):
     """Search for people in Apollo"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         person_titles: list[str] = SchemaField(
             description="""Job titles held by the people you want to find. For a person to be included in search results, they only need to match 1 of the job titles you add. Adding more job titles expands your search results.
 
@@ -109,7 +115,7 @@ class SearchPeopleBlock(Block):
             description="Apollo credentials",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         people: list[Contact] = SchemaField(
             description="List of people found",
             default_factory=list,

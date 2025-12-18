@@ -1,14 +1,21 @@
 import enum
 from typing import Any
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+    BlockType,
+)
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.type import MediaFileType, convert
 
 
 class FileStoreBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         file_in: MediaFileType = SchemaField(
             description="The file to store in the temporary directory, it can be a URL, data URI, or local path."
         )
@@ -19,7 +26,7 @@ class FileStoreBlock(Block):
             title="Produce Base64 Output",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         file_out: MediaFileType = SchemaField(
             description="The relative path to the stored file in the temporary directory."
         )
@@ -57,7 +64,7 @@ class StoreValueBlock(Block):
     The block output will be static, the output can be consumed multiple times.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input: Any = SchemaField(
             description="Trigger the block to produce the output. "
             "The value is only used when `data` is None."
@@ -68,7 +75,7 @@ class StoreValueBlock(Block):
             default=None,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: Any = SchemaField(description="The stored data retained in the block.")
 
     def __init__(self):
@@ -94,10 +101,10 @@ class StoreValueBlock(Block):
 
 
 class PrintToConsoleBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: Any = SchemaField(description="The data to print to the console.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: Any = SchemaField(description="The data printed to the console.")
         status: str = SchemaField(description="The status of the print operation.")
 
@@ -121,10 +128,10 @@ class PrintToConsoleBlock(Block):
 
 
 class NoteBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(description="The text to display in the sticky note.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="The text to display in the sticky note.")
 
     def __init__(self):
@@ -154,15 +161,14 @@ class TypeOptions(enum.Enum):
 
 
 class UniversalTypeConverterBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         value: Any = SchemaField(
             description="The value to convert to a universal type."
         )
         type: TypeOptions = SchemaField(description="The type to convert the value to.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         value: Any = SchemaField(description="The converted value.")
-        error: str = SchemaField(description="Error message if conversion failed.")
 
     def __init__(self):
         super().__init__(
@@ -195,10 +201,10 @@ class ReverseListOrderBlock(Block):
     A block which takes in a list and returns it in the opposite order.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input_list: list[Any] = SchemaField(description="The list to reverse")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         reversed_list: list[Any] = SchemaField(description="The list in reversed order")
 
     def __init__(self):

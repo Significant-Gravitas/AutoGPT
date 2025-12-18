@@ -14,19 +14,49 @@ def configured_snapshot(snapshot: Snapshot) -> Snapshot:
 @pytest.fixture
 def test_user_id() -> str:
     """Test user ID fixture."""
-    return "test-user-id"
+    return "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 
 
 @pytest.fixture
 def admin_user_id() -> str:
     """Admin user ID fixture."""
-    return "admin-user-id"
+    return "4e53486c-cf57-477e-ba2a-cb02dc828e1b"
 
 
 @pytest.fixture
 def target_user_id() -> str:
     """Target user ID fixture."""
-    return "target-user-id"
+    return "5e53486c-cf57-477e-ba2a-cb02dc828e1c"
+
+
+@pytest.fixture
+async def setup_test_user(test_user_id):
+    """Create test user in database before tests."""
+    from backend.data.user import get_or_create_user
+
+    # Create the test user in the database using JWT token format
+    user_data = {
+        "sub": test_user_id,
+        "email": "test@example.com",
+        "user_metadata": {"name": "Test User"},
+    }
+    await get_or_create_user(user_data)
+    return test_user_id
+
+
+@pytest.fixture
+async def setup_admin_user(admin_user_id):
+    """Create admin user in database before tests."""
+    from backend.data.user import get_or_create_user
+
+    # Create the admin user in the database using JWT token format
+    user_data = {
+        "sub": admin_user_id,
+        "email": "test-admin@example.com",
+        "user_metadata": {"name": "Test Admin"},
+    }
+    await get_or_create_user(user_data)
+    return admin_user_id
 
 
 @pytest.fixture

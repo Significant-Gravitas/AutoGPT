@@ -1,4 +1,4 @@
-import { isServerSide } from "@/lib/utils/is-server-side";
+import { environment } from "@/services/environment";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 interface useInfiniteScrollProps {
@@ -34,7 +34,8 @@ export const useInfiniteScroll = ({
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, onLoadMore]);
 
   useEffect(() => {
-    if (!hasNextPage || !endOfListRef.current || isServerSide()) return;
+    if (!hasNextPage || !endOfListRef.current || environment.isServerSide())
+      return;
 
     const observer = new IntersectionObserver(
       (entries) => {

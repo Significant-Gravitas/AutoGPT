@@ -9,6 +9,7 @@ packages = [{ include = "autogpt_libs" }]
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
 colorama = "^0.4.6"
+cryptography = "^45.0"
 expiringdict = "^1.2.2"
 fastapi = "^0.116.1"
 google-cloud-logging = "^3.12.1"
@@ -21,11 +22,12 @@ supabase = "^2.16.0"
 uvicorn = "^0.35.0"
 
 [tool.poetry.group.dev.dependencies]
-ruff = "^0.12.11"
+pyright = "^1.1.404"
 pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 pytest-mock = "^3.14.1"
 pytest-cov = "^6.2.1"
+ruff = "^0.12.11"
 
 [build-system]
 requires = ["poetry-core"]

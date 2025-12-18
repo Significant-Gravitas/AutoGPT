@@ -3,7 +3,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { useInfiniteScroll } from "./useInfiniteScroll";
-import LoadingBox from "@/components/ui/loading";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 
 type InfiniteScrollProps = {
   children: React.ReactNode;

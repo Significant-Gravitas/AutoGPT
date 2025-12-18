@@ -6,7 +6,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/__legacy__/ui/card";
 import { APIKeysModals } from "./components/APIKeysModals/APIKeysModals";
 
 export const metadata: Metadata = { title: "API Keys - AutoGPT Platform" };

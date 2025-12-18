@@ -1,14 +1,14 @@
 "use client";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
-import { useMainAgentPage } from "./useMainAgentPage";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
-import { Separator } from "@/components/ui/separator";
+import { AgentImages } from "../AgentImages/AgentImage";
+import { AgentInfo } from "../AgentInfo/AgentInfo";
+import { AgentPageLoading } from "../AgentPageLoading";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
-import { AgentPageLoading } from "../AgentPageLoading";
-import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { AgentInfo } from "../AgentInfo/AgentInfo";
-import { AgentImages } from "../AgentImages/AgentImage";
+import { useMainAgentPage } from "./useMainAgentPage";
 
 type MainAgentPageProps = {
   params: MarketplaceAgentPageParams;
@@ -30,7 +30,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
   }
   if (hasError) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
@@ -48,7 +48,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
 
   if (!agent) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
@@ -65,7 +65,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
   }
 
   const breadcrumbs = [
-    { name: "Markertplace", link: "/marketplace" },
+    { name: "Marketplace", link: "/marketplace" },
     {
       name: agent.creator,
       link: `/marketplace/creator/${encodeURIComponent(agent.creator)}`,
@@ -74,7 +74,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
   ];
 
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
+    <div className="mx-auto w-full max-w-[1360px]">
       <main className="mt-5 px-4">
         <Breadcrumbs items={breadcrumbs} />
 
@@ -82,6 +82,7 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
           <div className="w-full md:w-auto md:shrink-0">
             <AgentInfo
               user={user}
+              agentId={agent.active_version_id ?? "–"}
               name={agent.agent_name}
               creator={agent.creator}
               shortDescription={agent.sub_heading}
@@ -92,15 +93,35 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
               lastUpdated={agent.last_updated.toISOString()}
               version={agent.versions[agent.versions.length - 1]}
               storeListingVersionId={agent.store_listing_version_id}
-              libraryAgent={libraryAgent}
+              isAgentAddedToLibrary={Boolean(libraryAgent)}
             />
           </div>
           <AgentImages
-            images={
-              agent.agent_video
-                ? [agent.agent_video, ...agent.agent_image]
-                : agent.agent_image
-            }
+            images={(() => {
+              const orderedImages: string[] = [];
+
+              // 1. YouTube/Overview video (if it exists)
+              if (agent.agent_video) {
+                orderedImages.push(agent.agent_video);
+              }
+
+              // 2. First image (hero)
+              if (agent.agent_image.length > 0) {
+                orderedImages.push(agent.agent_image[0]);
+              }
+
+              // 3. Agent Output Demo (if it exists)
+              if ((agent as any).agent_output_demo) {
+                orderedImages.push((agent as any).agent_output_demo);
+              }
+
+              // 4. Additional images
+              if (agent.agent_image.length > 1) {
+                orderedImages.push(...agent.agent_image.slice(1));
+              }
+
+              return orderedImages;
+            })()}
           />
         </div>
         <Separator className="mb-[25px] mt-[60px]" />

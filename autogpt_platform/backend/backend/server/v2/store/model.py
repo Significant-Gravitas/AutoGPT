@@ -44,11 +44,13 @@ class StoreAgentDetails(pydantic.BaseModel):
     slug: str
     agent_name: str
     agent_video: str
+    agent_output_demo: str
     agent_image: list[str]
     creator: str
     creator_avatar: str
     sub_heading: str
     description: str
+    instructions: str | None = None
     categories: list[str]
     runs: int
     rating: float
@@ -103,6 +105,7 @@ class StoreSubmission(pydantic.BaseModel):
     sub_heading: str
     slug: str
     description: str
+    instructions: str | None = None
     image_urls: list[str]
     date_submitted: datetime.datetime
     status: prisma.enums.SubmissionStatus
@@ -119,6 +122,7 @@ class StoreSubmission(pydantic.BaseModel):
 
     # Additional fields for editing
     video_url: str | None = None
+    agent_output_demo_url: str | None = None
     categories: list[str] = []
 
 
@@ -155,8 +159,10 @@ class StoreSubmissionRequest(pydantic.BaseModel):
     name: str
     sub_heading: str
     video_url: str | None = None
+    agent_output_demo_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
+    instructions: str | None = None
     categories: list[str] = []
     changes_summary: str | None = None
     recommended_schedule_cron: str | None = None
@@ -166,8 +172,10 @@ class StoreSubmissionEditRequest(pydantic.BaseModel):
     name: str
     sub_heading: str
     video_url: str | None = None
+    agent_output_demo_url: str | None = None
     image_urls: list[str] = []
     description: str = ""
+    instructions: str | None = None
     categories: list[str] = []
     changes_summary: str | None = None
     recommended_schedule_cron: str | None = None
