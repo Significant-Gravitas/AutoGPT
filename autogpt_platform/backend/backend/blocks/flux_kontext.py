@@ -5,6 +5,7 @@ from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
+from backend.blocks.replicate._helper import run_replicate_with_retry
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -173,9 +174,10 @@ class AIImageEditorBlock(Block):
             **({"seed": seed} if seed is not None else {}),
         }
 
-        output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore
+        output: FileOutput | list[FileOutput] = await run_replicate_with_retry(  # type: ignore
+            client,
             model_name,
-            input=input_params,
+            input_params=input_params,
             wait=False,
         )
 
