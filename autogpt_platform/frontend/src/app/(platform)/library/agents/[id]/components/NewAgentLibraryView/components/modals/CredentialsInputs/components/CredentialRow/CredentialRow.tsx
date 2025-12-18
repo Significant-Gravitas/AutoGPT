@@ -66,8 +66,7 @@ export function CredentialRow({
           variant="body"
           className="line-clamp-1 flex-[0_0_50%] text-ellipsis tracking-tight"
         >
-          {getCredentialDisplayName(credential, displayName)} sdfl jslkf
-          jsdlkfjskldfjdsklfjdskl
+          {getCredentialDisplayName(credential, displayName)}
         </Text>
         <Text
           variant="large"
