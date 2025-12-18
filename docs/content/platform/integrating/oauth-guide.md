@@ -1,13 +1,38 @@
-# AutoGPT Platform SSO Integration Guide
+# AutoGPT Platform OAuth Integration Guide
 
-This guide explains how to integrate your application with AutoGPT Platform using OAuth 2.0 for Single Sign-On (SSO) and the Integration Setup Wizard for connecting third-party services.
+This guide explains how to integrate your application with AutoGPT Platform using OAuth 2.0. OAuth can be used for API access, Single Sign-On (SSO), or both.
+
+For general API information and endpoint documentation, see the [API Guide](api-guide.md) and the [Swagger documentation](https://backend.agpt.co/external-api/docs).
 
 ## Overview
 
-AutoGPT Platform provides two OAuth-based integration flows:
+AutoGPT Platform's OAuth implementation supports multiple use cases:
 
-1. **SSO ("Sign in with AutoGPT")** - Authenticate users and get access tokens to call AutoGPT APIs on their behalf
-2. **Integration Setup Wizard** - Guide users through connecting their third-party accounts (GitHub, Google, etc.) to AutoGPT
+### OAuth for API Access
+
+Use OAuth when your application needs to call AutoGPT APIs on behalf of users. This is the most common use case for third-party integrations.
+
+**When to use:**
+
+- Your app needs to run agents, access the store, or manage integrations for users
+- You want user-specific permissions rather than a single API key
+- Users should be able to revoke access to your app
+
+### SSO: "Sign in with AutoGPT"
+
+Use SSO when you want users to sign in to your app through their AutoGPT account. Request the `IDENTITY` scope to get user information.
+
+**When to use:**
+
+- You want to use AutoGPT as an identity provider
+- Users already have AutoGPT accounts and you want seamless login
+- You need to identify users without managing passwords
+
+**Note:** SSO and API access can be combined. Request `IDENTITY` along with other scopes to both authenticate users and access APIs on their behalf.
+
+### Integration Setup Wizard
+
+A separate flow that guides users through connecting third-party services (GitHub, Google, etc.) to their AutoGPT account. See [Integration Setup Wizard](#integration-setup-wizard) below.
 
 ## Prerequisites
 
@@ -17,7 +42,9 @@ Before integrating, you need an OAuth application registered with AutoGPT Platfo
 - **Client Secret** - Secret key for authenticating your application (keep this secure!)
 - **Registered Redirect URIs** - URLs where users will be redirected after authorization
 
-## SSO Flow: "Sign in with AutoGPT"
+## OAuth Flow
+
+The OAuth flow is technically the same whether you're using it for API access, SSO, or both. The main difference is which scopes you request.
 
 ### Step 1: Redirect User to Authorization
 
@@ -40,7 +67,7 @@ https://platform.agpt.co/auth/authorize?
 |-----------|----------|-------------|
 | `client_id` | Yes | Your OAuth application's client ID |
 | `redirect_uri` | Yes | URL to redirect after authorization (must match registered URI) |
-| `scope` | Yes | Space-separated list of permissions (see [Available Scopes](#available-scopes)) |
+| `scope` | Yes | Space-separated list of permissions (see [Available Scopes](api-guide.md#available-scopes)) |
 | `state` | Yes | Random string to prevent CSRF attacks (store and verify on callback) |
 | `code_challenge` | Yes | PKCE code challenge (see [PKCE](#pkce-implementation)) |
 | `code_challenge_method` | Yes | Must be `S256` |
@@ -97,12 +124,32 @@ Content-Type: application/json
 
 ### Step 4: Use the Access Token
 
-Include the access token in API requests to the External API:
+Include the access token in API requests:
 
 ```http
 GET /external-api/v1/blocks
 Authorization: Bearer agpt_access_...
 ```
+
+**For SSO:** If you requested the `IDENTITY` scope, fetch user info to identify the user:
+
+```http
+GET /external-api/v1/me
+Authorization: Bearer agpt_access_...
+```
+
+**Response:**
+
+```json
+{
+  "id": "user-uuid",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "timezone": "Europe/Amsterdam"
+}
+```
+
+See the [Swagger documentation](https://backend.agpt.co/external-api/docs) for all available endpoints.
 
 ### Step 5: Refresh Tokens
 
@@ -185,22 +232,6 @@ https://yourapp.com/callback?success=true&state=RANDOM_STATE_TOKEN
 ```url
 https://yourapp.com/callback?success=false&state=RANDOM_STATE_TOKEN
 ```
-
-## Available Scopes
-
-Request only the scopes your application needs:
-
-| Scope | Description |
-|-------|-------------|
-| `EXECUTE_GRAPH` | Execute agents/graphs |
-| `READ_GRAPH` | Read agent/graph definitions and execution results |
-| `EXECUTE_BLOCK` | Execute individual blocks |
-| `READ_BLOCK` | Read block definitions |
-| `READ_STORE` | Access the agent store |
-| `USE_TOOLS` | Use platform tools |
-| `MANAGE_INTEGRATIONS` | Create and update user integrations |
-| `READ_INTEGRATIONS` | Read user integration status |
-| `DELETE_INTEGRATIONS` | Remove user integrations |
 
 ## Provider Scopes Reference
 
@@ -368,52 +399,6 @@ Content-Type: application/json
 }
 ```
 
-## External API Endpoints
-
-Once authenticated, you can access these endpoints with your access token.
-
-### Blocks
-
-| Endpoint | Method | Scope Required | Description |
-|----------|--------|----------------|-------------|
-| `/external-api/v1/blocks` | GET | `READ_BLOCK` | List available blocks |
-| `/external-api/v1/blocks/{block_id}/execute` | POST | `EXECUTE_BLOCK` | Execute a block |
-
-### Graphs (Agents)
-
-| Endpoint | Method | Scope Required | Description |
-|----------|--------|----------------|-------------|
-| `/external-api/v1/graphs/{graph_id}/execute/{version}` | POST | `EXECUTE_GRAPH` | Execute an agent |
-| `/external-api/v1/graphs/{graph_id}/executions/{exec_id}/results` | GET | `READ_GRAPH` | Get execution results |
-
-### Store
-
-| Endpoint | Method | Scope Required | Description |
-|----------|--------|----------------|-------------|
-| `/external-api/v1/store/agents` | GET | `READ_STORE` | List agents with filtering/sorting |
-| `/external-api/v1/store/agents/{username}/{agent_name}` | GET | `READ_STORE` | Get agent details |
-| `/external-api/v1/store/creators` | GET | `READ_STORE` | List creators with filtering/sorting |
-| `/external-api/v1/store/creators/{username}` | GET | `READ_STORE` | Get creator details |
-
-### Tools
-
-| Endpoint | Method | Scope Required | Description |
-|----------|--------|----------------|-------------|
-| `/external-api/v1/tools/find-agent` | POST | `USE_TOOLS` | Search for agents by query |
-| `/external-api/v1/tools/run-agent` | POST | `USE_TOOLS` | Run or schedule an agent |
-
-### Integrations
-
-| Endpoint | Method | Scope Required | Description |
-|----------|--------|----------------|-------------|
-| `/external-api/v1/integrations/providers` | GET | `READ_INTEGRATIONS` | List available providers |
-| `/external-api/v1/integrations/credentials` | GET | `READ_INTEGRATIONS` | List all user credentials |
-| `/external-api/v1/integrations/{provider}/credentials` | GET | `READ_INTEGRATIONS` | List credentials for provider |
-| `/external-api/v1/integrations/{provider}/credentials` | POST | `MANAGE_INTEGRATIONS` | Create credentials (API key, password, etc.) |
-| `/external-api/v1/integrations/{provider}/credentials/{id}` | DELETE | `DELETE_INTEGRATIONS` | Delete a credential |
-| `/external-api/v1/integrations/{provider}/oauth/initiate` | POST | `MANAGE_INTEGRATIONS` | Start OAuth flow for provider |
-| `/external-api/v1/integrations/{provider}/oauth/complete` | POST | `MANAGE_INTEGRATIONS` | Complete OAuth flow |
-
 ## Security Best Practices
 
 1. **Store client secrets securely** - Never expose them in client-side code or version control
@@ -450,5 +435,6 @@ Once authenticated, you can access these endpoints with your access token.
 
 For issues or questions about OAuth integration:
 
-- Open an issue at https://github.com/Significant-Gravitas/AutoGPT
-- Check the API documentation at `/docs` (local development only)
+- Open an issue on [GitHub](https://github.com/Significant-Gravitas/AutoGPT)
+- See the [API Guide](api-guide.md) for general API information
+- Check the [Swagger documentation](https://backend.agpt.co/external-api/docs) for endpoint details
