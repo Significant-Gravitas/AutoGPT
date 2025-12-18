@@ -48,8 +48,8 @@ export function AccountLogoutOption() {
         <LoadingSpinner className="size-5" />
       ) : (
         <>
-          <div className="relative h-6 w-6">
-            <IconLogOut className="h-6 w-6" />
+          <div className="relative h-4 w-4">
+            <IconLogOut />
           </div>
           <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
             Log out

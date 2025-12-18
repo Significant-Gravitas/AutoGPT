@@ -64,6 +64,8 @@ import { useCopyPaste } from "../useCopyPaste";
 import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -926,6 +928,13 @@ const FlowEditor: React.FC<{
         >
           <Controls />
           <Background className="dark:bg-slate-800" />
+          {savedAgent && (
+            <FloatingSafeModeToggle
+              graph={savedAgent}
+              className="right-4 top-32 p-2"
+              variant="black"
+            />
+          )}
           {isNewBlockEnabled ? (
             <NewControlPanel
               flowExecutionID={flowExecutionID}
@@ -1024,6 +1033,11 @@ const FlowEditor: React.FC<{
           saveAndRun={saveAndRun}
         />
       )}
+      <FloatingReviewsPanel
+        executionId={flowExecutionID || undefined}
+        graphId={flowID || undefined}
+        className="fixed bottom-24 right-4"
+      />
       <Suspense fallback={null}>
         <OttoChatWidget
           graphID={flowID}
