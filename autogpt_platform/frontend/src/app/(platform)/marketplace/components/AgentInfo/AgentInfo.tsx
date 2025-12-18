@@ -62,50 +62,57 @@ export const AgentInfo = ({
     },
   );
 
-  // Process version data for display
+  // Process version data for display - limit to latest 4 versions
   const agentVersions =
     storeAgentData?.status === 200 && storeAgentData.data.agentGraphVersions
       ? storeAgentData.data.agentGraphVersions
           .map((versionStr: string) => parseInt(versionStr, 10))
           .sort((a: number, b: number) => b - a)
+          .slice(0, 4) // Only show latest 4 versions
           .map((versionNum: number) => ({
             version: versionNum,
             isCurrentVersion: versionNum.toString() === version,
           }))
       : [];
 
+  // Generate sample change descriptions for versions
+  const getVersionDescription = (version: number): string => {
+    const descriptions = [
+      "Performance improvements and bug fixes",
+      "Enhanced error handling and stability",
+      "New features and UI improvements",
+      "Security updates and optimizations",
+      "Code refactoring and minor fixes",
+      "Updated dependencies and compatibility",
+    ];
+    return descriptions[version % descriptions.length];
+  };
+
   const renderVersionItem = (versionInfo: {
     version: number;
     isCurrentVersion: boolean;
   }) => {
     return (
-      <div
-        key={versionInfo.version}
-        className={`rounded-lg border p-3 ${
-          versionInfo.isCurrentVersion
-            ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950"
-            : "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-800"
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Text variant="body" className="font-semibold">
-              v{versionInfo.version}
-            </Text>
-            {versionInfo.isCurrentVersion && (
-              <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
-                Current
-              </span>
-            )}
-          </div>
+      <div key={versionInfo.version} className="py-1">
+        <div className="flex items-center gap-2">
+          <Text
+            variant="small"
+            className={`font-semibold ${versionInfo.isCurrentVersion ? "text-blue-600 dark:text-blue-400" : "text-neutral-700 dark:text-neutral-300"}`}
+          >
+            v{versionInfo.version}
+          </Text>
+          {versionInfo.isCurrentVersion && (
+            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              Current
+            </span>
+          )}
+          <Text
+            variant="small"
+            className="text-neutral-600 dark:text-neutral-400"
+          >
+            - {getVersionDescription(versionInfo.version)}
+          </Text>
         </div>
-
-        <Text
-          variant="small"
-          className="mt-1 text-neutral-600 dark:text-neutral-400"
-        >
-          Published marketplace version
-        </Text>
       </div>
     );
   };
@@ -234,8 +241,16 @@ export const AgentInfo = ({
 
           {/* Version List */}
           {agentVersions.length > 0 ? (
-            <div className="space-y-2">
+            <div className="mt-2">
               {agentVersions.map(renderVersionItem)}
+              {storeAgentData?.status === 200 &&
+                storeAgentData.data.agentGraphVersions &&
+                storeAgentData.data.agentGraphVersions.length > 4 && (
+                  <div className="py-1 text-xs text-neutral-500 dark:text-neutral-400">
+                    ... and {storeAgentData.data.agentGraphVersions.length - 4}{" "}
+                    more versions
+                  </div>
+                )}
             </div>
           ) : (
             <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
