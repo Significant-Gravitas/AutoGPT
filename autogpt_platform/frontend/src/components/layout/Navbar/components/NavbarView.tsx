@@ -6,7 +6,6 @@ import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBann
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useMemo } from "react";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { AgentActivityDropdown } from "./AgentActivityDropdown/AgentActivityDropdown";
@@ -40,11 +39,6 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
   const { isUserLoading } = useSupabase();
   const isLoadingProfile = isProfileLoading || isUserLoading;
 
-  const linksWithChat = useMemo(() => {
-    const chatLink = { name: "Chat", href: "/chat" };
-    return isChatEnabled ? [...loggedInLinks, chatLink] : loggedInLinks;
-  }, [isChatEnabled]);
-
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
   return (
@@ -58,13 +52,19 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
           {!isSmallScreen ? (
             <div className="flex flex-1 items-center gap-5">
               {isLoggedIn
-                ? linksWithChat.map((link) => (
-                    <NavbarLink
-                      key={link.name}
-                      name={link.name}
-                      href={link.href}
-                    />
-                  ))
+                ? loggedInLinks.map((link) => {
+                    if (link.name === "Chat" && !isChatEnabled) {
+                      return null;
+                    }
+
+                    return (
+                      <NavbarLink
+                        key={link.name}
+                        name={link.name}
+                        href={link.href}
+                      />
+                    );
+                  })
                 : loggedOutLinks.map((link) => (
                     <NavbarLink
                       key={link.name}
@@ -113,22 +113,34 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: linksWithChat.map((link) => ({
-                    icon:
-                      link.name === "Marketplace"
-                        ? IconType.Marketplace
-                        : link.name === "Library"
-                          ? IconType.Library
-                          : link.name === "Build"
-                            ? IconType.Builder
-                            : link.name === "Chat"
-                              ? IconType.Chat
-                              : link.name === "Monitor"
-                                ? IconType.Library
-                                : IconType.LayoutDashboard,
-                    text: link.name,
-                    href: link.href,
-                  })),
+                  items: loggedInLinks
+                    .map((link) => {
+                      if (link.name === "Chat" && !isChatEnabled) {
+                        return null;
+                      }
+
+                      return {
+                        icon:
+                          link.name === "Marketplace"
+                            ? IconType.Marketplace
+                            : link.name === "Library"
+                              ? IconType.Library
+                              : link.name === "Build"
+                                ? IconType.Builder
+                                : link.name === "Chat"
+                                  ? IconType.Chat
+                                  : link.name === "Monitor"
+                                    ? IconType.Library
+                                    : IconType.LayoutDashboard,
+                        text: link.name,
+                        href: link.href,
+                      };
+                    })
+                    .filter((item) => item !== null) as Array<{
+                    icon: IconType;
+                    text: string;
+                    href: string;
+                  }>,
                 },
                 ...dynamicMenuItems,
               ]}
