@@ -1,5 +1,5 @@
 import { useMainDashboardPage } from "./useMainDashboardPage";
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { AgentTable } from "../AgentTable/AgentTable";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { EditAgentModal } from "@/components/contextual/EditAgentModal/EditAgentModal";

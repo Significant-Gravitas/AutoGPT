@@ -1,9 +1,10 @@
 import enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import pydantic
+from prisma.enums import OnboardingStep
 
-from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash
+from backend.data.api_key import APIKeyInfo, APIKeyPermission
 from backend.data.graph import Graph
 from backend.util.timezone_name import TimeZoneName
 
@@ -14,6 +15,7 @@ class WSMethod(enum.Enum):
     UNSUBSCRIBE = "unsubscribe"
     GRAPH_EXECUTION_EVENT = "graph_execution_event"
     NODE_EXECUTION_EVENT = "node_execution_event"
+    NOTIFICATION = "notification"
     ERROR = "error"
     HEARTBEAT = "heartbeat"
 
@@ -34,8 +36,13 @@ class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
     graph_id: str
 
 
+GraphCreationSource = Literal["builder", "upload"]
+GraphExecutionSource = Literal["builder", "library", "onboarding"]
+
+
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
+    source: GraphCreationSource | None = None
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):
@@ -45,7 +52,7 @@ class CreateAPIKeyRequest(pydantic.BaseModel):
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):
-    api_key: APIKeyWithoutHash
+    api_key: APIKeyInfo
     plain_text_key: str
 
 
@@ -76,3 +83,14 @@ class TimezoneResponse(pydantic.BaseModel):
 
 class UpdateTimezoneRequest(pydantic.BaseModel):
     timezone: TimeZoneName
+
+
+class NotificationPayload(pydantic.BaseModel):
+    type: str
+    event: str
+
+    model_config = pydantic.ConfigDict(extra="allow")
+
+
+class OnboardingNotificationPayload(NotificationPayload):
+    step: OnboardingStep | None

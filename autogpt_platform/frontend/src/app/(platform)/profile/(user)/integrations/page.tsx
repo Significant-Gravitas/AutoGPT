@@ -1,13 +1,7 @@
 "use client";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { IconKey, IconUser } from "@/components/ui/icons";
-import { Trash2Icon } from "lucide-react";
-import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
-import { providerIcons } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/CredentialsInputs/CredentialsInputs";
-import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
+
+import { IconKey, IconUser } from "@/components/__legacy__/ui/icons";
+import LoadingBox from "@/components/__legacy__/ui/loading";
 import {
   Table,
   TableBody,
@@ -15,26 +9,28 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/components/__legacy__/ui/table";
+import { Button } from "@/components/atoms/Button/Button";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { providerIcons } from "@/components/renderers/input-renderer/fields/CredentialField/helpers";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import LoadingBox from "@/components/ui/loading";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
+import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
+import { Trash2Icon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export default function UserIntegrationsPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
+
+  useEffect(() => {
+    document.title = "Integrations – AutoGPT Platform";
+  }, []);
 
   const [confirmationDialogState, setConfirmationDialogState] = useState<
     | {
@@ -141,7 +137,11 @@ export default function UserIntegrationsPage() {
         )
         .flatMap((provider) =>
           provider.savedCredentials
-            .filter((cred) => !hiddenCredentials.includes(cred.id))
+            .filter(
+              (cred) =>
+                !hiddenCredentials.includes(cred.id) &&
+                !cred.id.endsWith("-default"), // Hide SDK-registered default credentials
+            )
             .map((credentials) => ({
               ...credentials,
               provider: provider.provider,
@@ -207,24 +207,32 @@ export default function UserIntegrationsPage() {
         </TableBody>
       </Table>
 
-      <AlertDialog open={confirmationDialogState.open}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmationDialogState.open && confirmationDialogState.message}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
+      <Dialog
+        controlled={{
+          isOpen: confirmationDialogState.open,
+          set: (open) => {
+            if (!open) setConfirmationDialogState({ open: false });
+          },
+        }}
+        title="Are you sure?"
+        onClose={() => setConfirmationDialogState({ open: false })}
+        styling={{ maxWidth: "32rem" }}
+      >
+        <Dialog.Content>
+          <p className="text-sm text-zinc-600">
+            {confirmationDialogState.open && confirmationDialogState.message}
+          </p>
+          <Dialog.Footer>
+            <Button
+              variant="secondary"
               onClick={() =>
                 confirmationDialogState.open &&
                 confirmationDialogState.onReject()
               }
             >
               Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
+            </Button>
+            <Button
               variant="destructive"
               onClick={() =>
                 confirmationDialogState.open &&
@@ -232,10 +240,10 @@ export default function UserIntegrationsPage() {
               }
             >
               Continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
     </div>
   );
 }

@@ -1,19 +1,18 @@
 import logging
 import os
-from functools import cache
 
-from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 
+from backend.util.cache import cached, thread_cached
 from backend.util.retry import conn_retry
 
 load_dotenv()
 
 HOST = os.getenv("REDIS_HOST", "localhost")
 PORT = int(os.getenv("REDIS_PORT", "6379"))
-PASSWORD = os.getenv("REDIS_PASSWORD", "password")
+PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ def disconnect():
     get_redis().close()
 
 
-@cache
+@cached(ttl_seconds=3600)
 def get_redis() -> Redis:
     return connect()
 

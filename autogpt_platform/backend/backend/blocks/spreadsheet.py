@@ -1,13 +1,19 @@
 from pathlib import Path
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import ContributorDetails, SchemaField
 from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
 
 
 class ReadSpreadsheetBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         contents: str | None = SchemaField(
             description="The contents of the CSV/spreadsheet data to read",
             placeholder="a, b, c\n1,2,3\n4,5,6",
@@ -52,7 +58,7 @@ class ReadSpreadsheetBlock(Block):
             default=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         row: dict[str, str] = SchemaField(
             description="The data produced from each row in the spreadsheet"
         )

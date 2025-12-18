@@ -1,6 +1,6 @@
 "use client";
 
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@/components/__legacy__/ui/separator";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { MarketplaceCreatorPageParams } from "../../creator/[creator]/page";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
@@ -23,7 +23,7 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
 
   if (hasError) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <div className="flex min-h-[60vh] items-center justify-center">
           <ErrorCard
             isSuccess={false}
@@ -39,7 +39,7 @@ export const MainCreatorPage = ({ params }: MainCreatorPageProps) => {
 
   if (creator)
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="mt-5 px-4">
           <Breadcrumbs
             items={[

@@ -4,7 +4,7 @@ import * as React from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
-import { Form, FormField } from "@/components/ui/form";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { ThumbnailImages } from "../../PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";

@@ -1,11 +1,15 @@
 "use client";
 
-import FlowEditor from "@/components/Flow";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import LoadingBox from "@/components/ui/loading";
+import FlowEditor from "@/app/(platform)/build/components/legacy-builder/Flow/Flow";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
+// import LoadingBox from "@/components/__legacy__/ui/loading";
 import { GraphID } from "@/lib/autogpt-server-api/types";
+import { ReactFlowProvider } from "@xyflow/react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { useEffect } from "react";
+import { BuilderViewTabs } from "./components/BuilderViewTabs/BuilderViewTabs";
+import { useBuilderView } from "./components/BuilderViewTabs/useBuilderViewTabs";
+import { Flow } from "./components/FlowEditor/Flow/Flow";
 
 function BuilderContent() {
   const query = useSearchParams();
@@ -19,7 +23,7 @@ function BuilderContent() {
   const graphVersion = _graphVersion ? parseInt(_graphVersion) : undefined;
   return (
     <FlowEditor
-      className="flow-container"
+      className="flex h-full w-full"
       flowID={(query.get("flowID") as GraphID | null) ?? undefined}
       flowVersion={graphVersion}
     />
@@ -27,9 +31,34 @@ function BuilderContent() {
 }
 
 export default function BuilderPage() {
-  return (
-    <Suspense fallback={<LoadingBox className="h-[80vh]" />}>
-      <BuilderContent />
-    </Suspense>
+  const {
+    isSwitchEnabled,
+    selectedView,
+    setSelectedView,
+    isNewFlowEditorEnabled,
+  } = useBuilderView();
+
+  // Switch is temporary, we will remove it once our new flow editor is ready
+  if (isSwitchEnabled) {
+    return (
+      <div className="relative h-full w-full">
+        <BuilderViewTabs value={selectedView} onChange={setSelectedView} />
+        {selectedView === "new" ? (
+          <ReactFlowProvider>
+            <Flow />
+          </ReactFlowProvider>
+        ) : (
+          <BuilderContent />
+        )}
+      </div>
+    );
+  }
+
+  return isNewFlowEditorEnabled ? (
+    <ReactFlowProvider>
+      <Flow />
+    </ReactFlowProvider>
+  ) : (
+    <BuilderContent />
   );
 }

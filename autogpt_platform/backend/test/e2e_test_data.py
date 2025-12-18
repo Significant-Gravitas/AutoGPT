@@ -23,7 +23,7 @@ from typing import Any, Dict, List
 
 from faker import Faker
 
-from backend.data.api_key import generate_api_key
+from backend.data.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
@@ -402,7 +402,9 @@ class TestDataCreator:
                     from backend.data.graph import get_graph
 
                     graph = await get_graph(
-                        graph_data["id"], graph_data.get("version", 1), user["id"]
+                        graph_data["id"],
+                        graph_data.get("version", 1),
+                        user_id=user["id"],
                     )
                     if graph:
                         # Use the API function to create library agent
@@ -466,7 +468,7 @@ class TestDataCreator:
 
             try:
                 # Use the API function to create API key
-                api_key, _ = await generate_api_key(
+                api_key, _ = await create_api_key(
                     name=faker.word(),
                     user_id=user["id"],
                     permissions=[
@@ -749,10 +751,11 @@ class TestDataCreator:
         """Add credits to users."""
         print("Adding credits to users...")
 
-        credit_model = get_user_credit_model()
-
         for user in self.users:
             try:
+                # Get user-specific credit model
+                credit_model = await get_user_credit_model(user["id"])
+
                 # Skip credits for disabled credit model to avoid errors
                 if (
                     hasattr(credit_model, "__class__")

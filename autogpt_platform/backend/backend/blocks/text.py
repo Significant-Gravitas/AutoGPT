@@ -2,7 +2,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+import regex  # Has built-in timeout support
+
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
 from backend.util import json, text
 from backend.util.file import get_exec_file_path, store_media_file
@@ -12,7 +20,7 @@ formatter = text.TextFormatter()
 
 
 class MatchTextPatternBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to match")
         match: str = SchemaField(description="Pattern (Regex) to match")
         data: Any = SchemaField(description="Data to be forwarded to output")
@@ -21,7 +29,7 @@ class MatchTextPatternBlock(Block):
         )
         dot_all: bool = SchemaField(description="Dot matches all", default=True)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         positive: Any = SchemaField(description="Output data if match is found")
         negative: Any = SchemaField(description="Output data if match is not found")
 
@@ -66,7 +74,7 @@ class MatchTextPatternBlock(Block):
 
 
 class ExtractTextInformationBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to parse")
         pattern: str = SchemaField(description="Pattern (Regex) to parse")
         group: int = SchemaField(description="Group number to extract", default=0)
@@ -76,7 +84,7 @@ class ExtractTextInformationBlock(Block):
         dot_all: bool = SchemaField(description="Dot matches all", default=True)
         find_all: bool = SchemaField(description="Find all matches", default=False)
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         positive: str = SchemaField(description="Extracted text")
         negative: str = SchemaField(description="Original text")
         matched_results: list[str] = SchemaField(description="List of matched results")
@@ -137,6 +145,11 @@ class ExtractTextInformationBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Security fix: Add limits to prevent ReDoS and memory exhaustion
+        MAX_TEXT_LENGTH = 1_000_000  # 1MB character limit
+        MAX_MATCHES = 1000  # Maximum number of matches to prevent memory exhaustion
+        MAX_MATCH_LENGTH = 10_000  # Maximum length per match
+
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -148,32 +161,102 @@ class ExtractTextInformationBlock(Block):
         else:
             txt = json.dumps(input_data.text)
 
-        matches = [
-            match.group(input_data.group)
-            for match in re.finditer(input_data.pattern, txt, flags)
-            if input_data.group <= len(match.groups())
-        ]
-        if not input_data.find_all:
-            matches = matches[:1]
-        for match in matches:
-            yield "positive", match
-        if not matches:
-            yield "negative", input_data.text
+        # Limit text size to prevent DoS
+        if len(txt) > MAX_TEXT_LENGTH:
+            txt = txt[:MAX_TEXT_LENGTH]
 
-        yield "matched_results", matches
-        yield "matched_count", len(matches)
+        # Validate regex pattern to prevent dangerous patterns
+        dangerous_patterns = [
+            r".*\+.*\+",  # Nested quantifiers
+            r".*\*.*\*",  # Nested quantifiers
+            r"(?=.*\+)",  # Lookahead with quantifier
+            r"(?=.*\*)",  # Lookahead with quantifier
+            r"\(.+\)\+",  # Group with nested quantifier
+            r"\(.+\)\*",  # Group with nested quantifier
+            r"\([^)]+\+\)\+",  # Nested quantifiers like (a+)+
+            r"\([^)]+\*\)\*",  # Nested quantifiers like (a*)*
+        ]
+
+        # Check if pattern is potentially dangerous
+        is_dangerous = any(
+            re.search(dangerous, input_data.pattern) for dangerous in dangerous_patterns
+        )
+
+        # Use regex module with timeout for dangerous patterns
+        # For safe patterns, use standard re module for compatibility
+        try:
+            matches = []
+            match_count = 0
+
+            if is_dangerous:
+                # Use regex module with timeout (5 seconds) for dangerous patterns
+                # The regex module supports timeout parameter in finditer
+                try:
+                    for match in regex.finditer(
+                        input_data.pattern, txt, flags=flags, timeout=5.0
+                    ):
+                        if match_count >= MAX_MATCHES:
+                            break
+                        if input_data.group <= len(match.groups()):
+                            match_text = match.group(input_data.group)
+                            # Limit match length to prevent memory exhaustion
+                            if len(match_text) > MAX_MATCH_LENGTH:
+                                match_text = match_text[:MAX_MATCH_LENGTH]
+                            matches.append(match_text)
+                            match_count += 1
+                except regex.error as e:
+                    # Timeout occurred or regex error
+                    if "timeout" in str(e).lower():
+                        # Timeout - return empty results
+                        pass
+                    else:
+                        # Other regex error
+                        raise
+            else:
+                # Use standard re module for non-dangerous patterns
+                for match in re.finditer(input_data.pattern, txt, flags):
+                    if match_count >= MAX_MATCHES:
+                        break
+                    if input_data.group <= len(match.groups()):
+                        match_text = match.group(input_data.group)
+                        # Limit match length to prevent memory exhaustion
+                        if len(match_text) > MAX_MATCH_LENGTH:
+                            match_text = match_text[:MAX_MATCH_LENGTH]
+                        matches.append(match_text)
+                        match_count += 1
+
+            if not input_data.find_all:
+                matches = matches[:1]
+
+            for match in matches:
+                yield "positive", match
+            if not matches:
+                yield "negative", input_data.text
+
+            yield "matched_results", matches
+            yield "matched_count", len(matches)
+        except Exception:
+            # Return empty results on any regex error
+            yield "negative", input_data.text
+            yield "matched_results", []
+            yield "matched_count", 0
 
 
 class FillTextTemplateBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         values: dict[str, Any] = SchemaField(
             description="Values (dict) to be used in format. These values can be used by putting them in double curly braces in the format template. e.g. {{value_name}}.",
         )
         format: str = SchemaField(
             description="Template to format the text using `values`. Use Jinja2 syntax."
         )
+        escape_html: bool = SchemaField(
+            default=False,
+            advanced=True,
+            description="Whether to escape special characters in the inserted values to be HTML-safe. Enable for HTML output, disable for plain text.",
+        )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="Formatted text")
 
     def __init__(self):
@@ -205,17 +288,18 @@ class FillTextTemplateBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        formatter = text.TextFormatter(autoescape=input_data.escape_html)
         yield "output", formatter.format_string(input_data.format, input_data.values)
 
 
 class CombineTextsBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         input: list[str] = SchemaField(description="text input to combine")
         delimiter: str = SchemaField(
             description="Delimiter to combine texts", default=""
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="Combined text")
 
     def __init__(self):
@@ -241,14 +325,14 @@ class CombineTextsBlock(Block):
 
 
 class TextSplitBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(description="The text to split.")
         delimiter: str = SchemaField(description="The delimiter to split the text by.")
         strip: bool = SchemaField(
             description="Whether to strip the text.", default=True
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         texts: list[str] = SchemaField(
             description="The text split into a list of strings."
         )
@@ -281,12 +365,12 @@ class TextSplitBlock(Block):
 
 
 class TextReplaceBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         text: str = SchemaField(description="The text to replace.")
         old: str = SchemaField(description="The old text to replace.")
         new: str = SchemaField(description="The new text to replace with.")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         output: str = SchemaField(description="The text with the replaced text.")
 
     def __init__(self):
@@ -309,7 +393,7 @@ class TextReplaceBlock(Block):
 
 
 class FileReadBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         file_input: MediaFileType = SchemaField(
             description="The file to read from (URL, data URI, or local path)"
         )
@@ -339,7 +423,7 @@ class FileReadBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         content: str = SchemaField(
             description="File content, yielded as individual chunks when delimiter or size limits are applied"
         )

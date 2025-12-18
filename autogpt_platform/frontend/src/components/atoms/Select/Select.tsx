@@ -1,15 +1,15 @@
 "use client";
 
-import * as React from "react";
 import {
   Select as BaseSelect,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
-  SelectSeparator,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 import { cn } from "@/lib/utils";
+import * as React from "react";
 import { ReactNode } from "react";
 import { Text } from "../Text/Text";
 
@@ -36,6 +36,7 @@ export interface SelectFieldProps {
   options: SelectOption[];
   size?: "small" | "medium";
   renderItem?: (option: SelectOption) => React.ReactNode;
+  wrapperClassName?: string;
 }
 
 export function Select({
@@ -52,6 +53,7 @@ export function Select({
   options,
   size = "medium",
   renderItem,
+  wrapperClassName,
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
@@ -117,7 +119,7 @@ export function Select({
   );
 
   const selectWithError = (
-    <div className="relative mb-6">
+    <div className={cn("relative mb-6", wrapperClassName)}>
       {select}
       <Text
         variant="small-medium"
@@ -138,7 +140,7 @@ export function Select({
   ) : (
     <label htmlFor={id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="large-medium" as="span" className="text-black">
           {label}
         </Text>
         {hint}

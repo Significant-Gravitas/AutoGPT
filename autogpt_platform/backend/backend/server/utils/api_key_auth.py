@@ -3,14 +3,17 @@ API Key authentication utilities for FastAPI applications.
 """
 
 import inspect
+import logging
 import secrets
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from fastapi import HTTPException, Request
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from backend.util.exceptions import MissingConfigError
+
+logger = logging.getLogger(__name__)
 
 
 class APIKeyAuthenticator(APIKeyHeader):
@@ -51,7 +54,8 @@ class APIKeyAuthenticator(APIKeyHeader):
         header_name (str): The name of the header containing the API key
         expected_token (Optional[str]): The expected API key value for simple token matching
         validator (Optional[Callable]): Custom validation function that takes an API key
-            string and returns a boolean or object. Can be async.
+            string and returns a truthy value if and only if the passed string is a
+            valid API key. Can be async.
         status_if_missing (int): HTTP status code to use for validation errors
         message_if_invalid (str): Error message to return when validation fails
     """
@@ -60,7 +64,9 @@ class APIKeyAuthenticator(APIKeyHeader):
         self,
         header_name: str,
         expected_token: Optional[str] = None,
-        validator: Optional[Callable[[str], bool]] = None,
+        validator: Optional[
+            Callable[[str], Any] | Callable[[str], Awaitable[Any]]
+        ] = None,
         status_if_missing: int = HTTP_401_UNAUTHORIZED,
         message_if_invalid: str = "Invalid API key",
     ):
@@ -75,7 +81,7 @@ class APIKeyAuthenticator(APIKeyHeader):
         self.message_if_invalid = message_if_invalid
 
     async def __call__(self, request: Request) -> Any:
-        api_key = await super()(request)
+        api_key = await super().__call__(request)
         if api_key is None:
             raise HTTPException(
                 status_code=self.status_if_missing, detail="No API key in request"
@@ -106,4 +112,9 @@ class APIKeyAuthenticator(APIKeyHeader):
                 f"{self.__class__.__name__}.expected_token is not set; "
                 "either specify it or provide a custom validator"
             )
-        return secrets.compare_digest(api_key, self.expected_token)
+        try:
+            return secrets.compare_digest(api_key, self.expected_token)
+        except TypeError as e:
+            # If value is not an ASCII string, compare_digest raises a TypeError
+            logger.warning(f"{self.model.name} API key check failed: {e}")
+            return False

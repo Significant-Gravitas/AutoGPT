@@ -10,7 +10,13 @@ from backend.blocks.replicate._auth import (
     ReplicateCredentialsInput,
 )
 from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 
 logger = logging.getLogger(__name__)
@@ -27,7 +33,7 @@ class ReplicateModelBlock(Block):
     - Get structured outputs with prediction metadata
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: ReplicateCredentialsInput = CredentialsField(
             description="Enter your Replicate API key to access the model API. You can obtain an API key from https://replicate.com/account/api-tokens.",
         )
@@ -49,11 +55,10 @@ class ReplicateModelBlock(Block):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         result: str = SchemaField(description="The output from the Replicate model")
         status: str = SchemaField(description="Status of the prediction")
         model_name: str = SchemaField(description="Name of the model used")
-        error: str = SchemaField(description="Error message if any", default="")
 
     def __init__(self):
         super().__init__(

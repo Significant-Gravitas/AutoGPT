@@ -7,7 +7,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/__legacy__/ui/select";
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 

@@ -1,4 +1,3 @@
-import functools
 import inspect
 import logging
 import os
@@ -14,6 +13,7 @@ from typing import (
     Optional,
     Sequence,
     Type,
+    TypeAlias,
     TypeVar,
     cast,
     get_origin,
@@ -28,6 +28,14 @@ from pydantic import BaseModel
 from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.cache import cached
+from backend.util.exceptions import (
+    BlockError,
+    BlockExecutionError,
+    BlockInputError,
+    BlockOutputError,
+    BlockUnknownError,
+)
 from backend.util.settings import Config
 
 from .model import (
@@ -35,6 +43,7 @@ from .model import (
     Credentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    SchemaField,
     is_credentials_field_name,
 )
 
@@ -62,6 +71,7 @@ class BlockType(Enum):
     AGENT = "Agent"
     AI = "AI"
     AYRSHARE = "Ayrshare"
+    HUMAN_IN_THE_LOOP = "Human In The Loop"
 
 
 class BlockCategory(Enum):
@@ -257,13 +267,60 @@ class BlockSchema(BaseModel):
         }
 
     @classmethod
+    def get_auto_credentials_fields(cls) -> dict[str, dict[str, Any]]:
+        """
+        Get fields that have auto_credentials metadata (e.g., GoogleDriveFileInput).
+
+        Returns a dict mapping kwarg_name -> {field_name, auto_credentials_config}
+
+        Raises:
+            ValueError: If multiple fields have the same kwarg_name, as this would
+                cause silent overwriting and only the last field would be processed.
+        """
+        result: dict[str, dict[str, Any]] = {}
+        schema = cls.jsonschema()
+        properties = schema.get("properties", {})
+
+        for field_name, field_schema in properties.items():
+            auto_creds = field_schema.get("auto_credentials")
+            if auto_creds:
+                kwarg_name = auto_creds.get("kwarg_name", "credentials")
+                if kwarg_name in result:
+                    raise ValueError(
+                        f"Duplicate auto_credentials kwarg_name '{kwarg_name}' "
+                        f"in fields '{result[kwarg_name]['field_name']}' and "
+                        f"'{field_name}' on {cls.__qualname__}"
+                    )
+                result[kwarg_name] = {
+                    "field_name": field_name,
+                    "config": auto_creds,
+                }
+        return result
+
+    @classmethod
     def get_credentials_fields_info(cls) -> dict[str, CredentialsFieldInfo]:
-        return {
-            field_name: CredentialsFieldInfo.model_validate(
+        result = {}
+
+        # Regular credentials fields
+        for field_name in cls.get_credentials_fields().keys():
+            result[field_name] = CredentialsFieldInfo.model_validate(
                 cls.get_field_schema(field_name), by_alias=True
             )
-            for field_name in cls.get_credentials_fields().keys()
-        }
+
+        # Auto-generated credentials fields (from GoogleDriveFileInput etc.)
+        for kwarg_name, info in cls.get_auto_credentials_fields().items():
+            config = info["config"]
+            # Build a schema-like dict that CredentialsFieldInfo can parse
+            auto_schema = {
+                "credentials_provider": [config.get("provider", "google")],
+                "credentials_types": [config.get("type", "oauth2")],
+                "credentials_scopes": config.get("scopes"),
+            }
+            result[kwarg_name] = CredentialsFieldInfo.model_validate(
+                auto_schema, by_alias=True
+            )
+
+        return result
 
     @classmethod
     def get_input_defaults(cls, data: BlockInput) -> BlockInput:
@@ -279,12 +336,40 @@ class BlockSchema(BaseModel):
         return cls.get_required_fields() - set(data)
 
 
-BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
-BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
+class BlockSchemaInput(BlockSchema):
+    """
+    Base schema class for block inputs.
+    All block input schemas should extend this class for consistency.
+    """
 
-
-class EmptySchema(BlockSchema):
     pass
+
+
+class BlockSchemaOutput(BlockSchema):
+    """
+    Base schema class for block outputs that includes a standard error field.
+    All block output schemas should extend this class to ensure consistent error handling.
+    """
+
+    error: str = SchemaField(
+        description="Error message if the operation failed", default=""
+    )
+
+
+BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchemaInput)
+BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchemaOutput)
+
+
+class EmptyInputSchema(BlockSchemaInput):
+    pass
+
+
+class EmptyOutputSchema(BlockSchemaOutput):
+    pass
+
+
+# For backward compatibility - will be deprecated
+EmptySchema = EmptyOutputSchema
 
 
 # --8<-- [start:BlockWebhookConfig]
@@ -344,8 +429,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         description: str = "",
         contributors: list[ContributorDetails] = [],
         categories: set[BlockCategory] | None = None,
-        input_schema: Type[BlockSchemaInputType] = EmptySchema,
-        output_schema: Type[BlockSchemaOutputType] = EmptySchema,
+        input_schema: Type[BlockSchemaInputType] = EmptyInputSchema,
+        output_schema: Type[BlockSchemaOutputType] = EmptyOutputSchema,
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockTestOutput | list[BlockTestOutput] | None = None,
         test_mock: dict[str, Any] | None = None,
@@ -512,9 +597,29 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         )
 
     async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        try:
+            async for output_name, output_data in self._execute(input_data, **kwargs):
+                yield output_name, output_data
+        except Exception as ex:
+            if isinstance(ex, BlockError):
+                raise ex
+            else:
+                raise (
+                    BlockExecutionError
+                    if isinstance(ex, ValueError)
+                    else BlockUnknownError
+                )(
+                    message=str(ex),
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from ex
+
+    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
-            raise ValueError(
-                f"Unable to execute block with invalid input data: {error}"
+            raise BlockInputError(
+                message=f"Unable to execute block with invalid input data: {error}",
+                block_name=self.name,
+                block_id=self.id,
             )
 
         async for output_name, output_data in self.run(
@@ -522,11 +627,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             **kwargs,
         ):
             if output_name == "error":
-                raise RuntimeError(output_data)
+                raise BlockExecutionError(
+                    message=output_data, block_name=self.name, block_id=self.id
+                )
             if self.block_type == BlockType.STANDARD and (
                 error := self.output_schema.validate_field(output_name, output_data)
             ):
-                raise ValueError(f"Block produced an invalid output data: {error}")
+                raise BlockOutputError(
+                    message=f"Block produced an invalid output data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
             yield output_name, output_data
 
     def is_triggered_by_event_type(
@@ -546,6 +657,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         ]
 
 
+# Type alias for any block with standard input/output schemas
+AnyBlockSchema: TypeAlias = Block[BlockSchemaInput, BlockSchemaOutput]
+
+
 # ======================= Block Helper Functions ======================= #
 
 
@@ -556,7 +671,7 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 def is_block_auth_configured(
-    block_cls: type["Block[BlockSchema, BlockSchema]"],
+    block_cls: type[AnyBlockSchema],
 ) -> bool:
     """
     Check if a block has a valid authentication method configured at runtime.
@@ -592,11 +707,6 @@ def is_block_auth_configured(
         logger.debug(
             f"Block {block_cls.__name__} has only optional credential inputs"
             " - will work without credentials configured"
-        )
-    if len(credential_inputs) > 1:
-        logger.warning(
-            f"Block {block_cls.__name__} has multiple credential inputs: "
-            f"{', '.join(credential_inputs.keys())}"
         )
 
     # Check if the credential inputs for this block are correctly configured
@@ -717,12 +827,12 @@ async def initialize_blocks() -> None:
 
 
 # Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
-def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
+def get_block(block_id: str) -> AnyBlockSchema | None:
     cls = get_blocks().get(block_id)
     return cls() if cls else None
 
 
-@functools.cache
+@cached(ttl_seconds=3600)
 def get_webhook_block_ids() -> Sequence[str]:
     return [
         id
@@ -731,10 +841,19 @@ def get_webhook_block_ids() -> Sequence[str]:
     ]
 
 
-@functools.cache
+@cached(ttl_seconds=3600)
 def get_io_block_ids() -> Sequence[str]:
     return [
         id
         for id, B in get_blocks().items()
         if B().block_type in (BlockType.INPUT, BlockType.OUTPUT)
+    ]
+
+
+@cached(ttl_seconds=3600)
+def get_human_in_the_loop_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type == BlockType.HUMAN_IN_THE_LOOP
     ]
