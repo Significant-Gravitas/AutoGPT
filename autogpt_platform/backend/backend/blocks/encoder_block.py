@@ -7,6 +7,8 @@ from backend.data.block import (
 )
 from backend.data.model import SchemaField
 
+import uuid
+
 
 class TextEncoderBlock(Block):
     class Input(BlockSchemaInput):
@@ -22,7 +24,7 @@ class TextEncoderBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-e5f6-4789-a012-3456789abcde",
+            id=str(uuid.uuid4()),
             description="Encodes a string by adding escape sequences for special characters",
             categories={BlockCategory.TEXT},
             input_schema=TextEncoderBlock.Input,
