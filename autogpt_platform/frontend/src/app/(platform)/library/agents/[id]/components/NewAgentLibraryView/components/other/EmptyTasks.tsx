@@ -1,17 +1,58 @@
+"use client";
+
+import { getV1GetGraphVersion } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { exportAsJSONFile } from "@/lib/utils";
 import { formatDate } from "@/lib/utils/time";
+import Link from "next/link";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
 import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
 
 type Props = {
   agent: LibraryAgent;
+  onRun?: (run: GraphExecutionMeta) => void;
+  onTriggerSetup?: (preset: LibraryAgentPreset) => void;
+  onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
 };
 
-export function EmptyTasks({ agent }: Props) {
+export function EmptyTasks({
+  agent,
+  onRun,
+  onTriggerSetup,
+  onScheduleCreated,
+}: Props) {
+  const { toast } = useToast();
+
+  async function handleExport() {
+    try {
+      const res = await getV1GetGraphVersion(
+        agent.graph_id,
+        agent.graph_version,
+        { for_export: true },
+      );
+      if (res.status === 200) {
+        const filename = `${agent.name}_v${agent.graph_version}.json`;
+        exportAsJSONFile(res.data as any, filename);
+        toast({ title: "Agent exported" });
+      } else {
+        toast({ title: "Failed to export agent", variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({
+        title: "Failed to export agent",
+        description: e?.message,
+        variant: "destructive",
+      });
+    }
+  }
   const isPublished = Boolean(agent.marketplace_listing);
   const createdAt = formatDate(agent.created_at);
   const updatedAt = formatDate(agent.updated_at);
@@ -45,7 +86,9 @@ export function EmptyTasks({ agent }: Props) {
                 </Button>
               }
               agent={agent}
-              agentId={agent.id.toString()}
+              onRunCreated={onRun}
+              onTriggerSetup={onTriggerSetup}
+              onScheduleCreated={onScheduleCreated}
             />
           </div>
         </div>
@@ -93,10 +136,15 @@ export function EmptyTasks({ agent }: Props) {
             ) : null}
           </div>
           <div className="mt-4 flex items-center gap-2">
-            <Button variant="secondary" size="small">
-              Edit agent
+            <Button variant="secondary" size="small" asChild>
+              <Link
+                href={`/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`}
+                target="_blank"
+              >
+                Edit agent
+              </Link>
             </Button>
-            <Button variant="secondary" size="small">
+            <Button variant="secondary" size="small" onClick={handleExport}>
               Export agent to file
             </Button>
           </div>

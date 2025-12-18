@@ -26,7 +26,8 @@ export function ModalRunSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      {defaultRunType === "automatic-trigger" ? (
+      {defaultRunType === "automatic-trigger" ||
+      defaultRunType === "manual-trigger" ? (
         <ModalSection
           title="Task Trigger"
           subtitle="Set up a trigger for the agent to run this task automatically"
@@ -69,25 +70,18 @@ export function ModalRunSection() {
 
       {inputFields.length > 0 ? (
         <ModalSection
-          title="Task Setup"
-          subtitle="Enter the information needed for the agent to run this task"
+          title="Task Inputs"
+          subtitle="Enter the information you want to provide to the agent for this task"
         >
-          {/* Regular inputs */}
           {inputFields.map(([key, inputSubSchema]) => (
-            <div key={key} className="flex w-full flex-col gap-0 space-y-2">
-              <label className="flex items-center gap-1 text-sm font-medium">
-                {inputSubSchema.title || key}
-                <InformationTooltip description={inputSubSchema.description} />
-              </label>
-
-              <RunAgentInputs
-                schema={inputSubSchema}
-                value={inputValues[key] ?? inputSubSchema.default}
-                placeholder={inputSubSchema.description}
-                onChange={(value) => setInputValue(key, value)}
-                data-testid={`agent-input-${key}`}
-              />
-            </div>
+            <RunAgentInputs
+              key={key}
+              schema={inputSubSchema}
+              value={inputValues[key] ?? inputSubSchema.default}
+              placeholder={inputSubSchema.description}
+              onChange={(value) => setInputValue(key, value)}
+              data-testid={`agent-input-${key}`}
+            />
           ))}
         </ModalSection>
       ) : null}
