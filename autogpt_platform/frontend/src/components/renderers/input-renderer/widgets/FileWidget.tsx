@@ -1,33 +1,27 @@
 import { WidgetProps } from "@rjsf/utils";
-import { Input } from "@/components/__legacy__/ui/input";
+import { FileInput } from "@/components/atoms/FileInput/FileInput";
 
 export const FileWidget = (props: WidgetProps) => {
-  const { onChange, multiple = false, disabled, readonly, id } = props;
+  const { onChange, disabled, readonly, value, schema, formContext } = props;
 
-  // TODO: It's temporary solution for file input, will complete it follow up prs
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) {
-      onChange(undefined);
-      return;
-    }
+  const { size } = formContext || {};
 
-    const file = files[0];
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      onChange(e.target?.result);
-    };
-    reader.readAsDataURL(file);
+  const displayName = schema?.title || "File";
+
+  const handleChange = (fileUri: string) => {
+    onChange(fileUri);
   };
 
   return (
-    <Input
-      id={id}
-      type="file"
-      multiple={multiple}
-      disabled={disabled || readonly}
+    <FileInput
+      variant={size === "large" ? "default" : "compact"}
+      mode="base64"
+      value={value}
+      placeholder={displayName}
       onChange={handleChange}
-      className="rounded-full"
+      className={
+        disabled || readonly ? "pointer-events-none opacity-50" : undefined
+      }
     />
   );
 };

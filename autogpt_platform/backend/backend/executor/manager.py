@@ -133,9 +133,8 @@ def execute_graph(
     cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
-    return _tls.processor.on_graph_execution(
-        graph_exec_entry, cancel_event, cluster_lock
-    )
+    processor: ExecutionProcessor = _tls.processor
+    return processor.on_graph_execution(graph_exec_entry, cancel_event, cluster_lock)
 
 
 T = TypeVar("T")
@@ -143,8 +142,8 @@ T = TypeVar("T")
 
 async def execute_node(
     node: Node,
-    creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
+    execution_processor: "ExecutionProcessor",
     execution_stats: NodeExecutionStats | None = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> BlockOutput:
@@ -169,6 +168,7 @@ async def execute_node(
     node_id = data.node_id
     node_block = node.block
     execution_context = data.execution_context
+    creds_manager = execution_processor.creds_manager
 
     log_metadata = LogMetadata(
         logger=_logger,
@@ -212,20 +212,59 @@ async def execute_node(
         "node_exec_id": node_exec_id,
         "user_id": user_id,
         "execution_context": execution_context,
+        "execution_processor": execution_processor,
     }
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
-    creds_lock = None
+    creds_locks: list[AsyncRedisLock] = []
     input_model = cast(type[BlockSchema], node_block.input_schema)
+
+    # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         credentials_meta = input_type(**input_data[field_name])
-        credentials, creds_lock = await creds_manager.acquire(
-            user_id, credentials_meta.id
-        )
+        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
+        creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
+
+    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
+        field_name = info["field_name"]
+        field_data = input_data.get(field_name)
+        if field_data and isinstance(field_data, dict):
+            # Check if _credentials_id key exists in the field data
+            if "_credentials_id" in field_data:
+                cred_id = field_data["_credentials_id"]
+                if cred_id:
+                    # Credential ID provided - acquire credentials
+                    provider = info.get("config", {}).get(
+                        "provider", "external service"
+                    )
+                    file_name = field_data.get("name", "selected file")
+                    try:
+                        credentials, lock = await creds_manager.acquire(
+                            user_id, cred_id
+                        )
+                        creds_locks.append(lock)
+                        extra_exec_kwargs[kwarg_name] = credentials
+                    except ValueError:
+                        # Credential was deleted or doesn't exist
+                        raise ValueError(
+                            f"Authentication expired for '{file_name}' in field '{field_name}'. "
+                            f"The saved {provider.capitalize()} credentials no longer exist. "
+                            f"Please re-select the file to re-authenticate."
+                        )
+                # else: _credentials_id is explicitly None, skip credentials (for chained data)
+            else:
+                # _credentials_id key missing entirely - this is an error
+                provider = info.get("config", {}).get("provider", "external service")
+                file_name = field_data.get("name", "selected file")
+                raise ValueError(
+                    f"Authentication missing for '{file_name}' in field '{field_name}'. "
+                    f"Please re-select the file to authenticate with {provider.capitalize()}."
+                )
 
     output_size = 0
 
@@ -260,12 +299,17 @@ async def execute_node(
         # Re-raise to maintain normal error flow
         raise
     finally:
-        # Ensure credentials are released even if execution fails
-        if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
-            try:
-                await creds_lock.release()
-            except Exception as e:
-                log_metadata.error(f"Failed to release credentials lock: {e}")
+        # Ensure all credentials are released even if execution fails
+        for creds_lock in creds_locks:
+            if (
+                creds_lock
+                and (await creds_lock.locked())
+                and (await creds_lock.owned())
+            ):
+                try:
+                    await creds_lock.release()
+                except Exception as e:
+                    log_metadata.error(f"Failed to release credentials lock: {e}")
 
         # Update execution stats
         if execution_stats is not None:
@@ -565,8 +609,8 @@ class ExecutionProcessor:
 
             async for output_name, output_data in execute_node(
                 node=node,
-                creds_manager=self.creds_manager,
                 data=node_exec,
+                execution_processor=self,
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
             ):
@@ -817,11 +861,16 @@ class ExecutionProcessor:
         execution_stats_lock = threading.Lock()
 
         # State holders ----------------------------------------------------
-        running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
+        self.running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
             NodeExecutionProgress
         )
-        running_node_evaluation: dict[str, Future] = {}
+        self.running_node_evaluation: dict[str, Future] = {}
+        self.execution_stats = execution_stats
+        self.execution_stats_lock = execution_stats_lock
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
+
+        running_node_execution = self.running_node_execution
+        running_node_evaluation = self.running_node_evaluation
 
         try:
             if db_client.get_credits(graph_exec.user_id) <= 0:
