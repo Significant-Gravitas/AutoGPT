@@ -349,6 +349,13 @@ export type UpdateLlmModelRequest = {
 
 export type ToggleLlmModelRequest = {
   is_enabled: boolean;
+  migrate_to_slug?: string;
+};
+
+export type ToggleLlmModelResponse = {
+  model: LlmModel;
+  nodes_migrated: number;
+  migrated_to_slug?: string | null;
 };
 
 export type BlockIOOneOfSubSchema = {

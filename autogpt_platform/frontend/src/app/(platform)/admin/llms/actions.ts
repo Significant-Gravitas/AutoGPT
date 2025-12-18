@@ -134,11 +134,14 @@ export async function updateLlmModelAction(formData: FormData) {
   revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function toggleLlmModelAction(formData: FormData) {
+export async function toggleLlmModelAction(formData: FormData): Promise<void> {
   const modelId = String(formData.get("model_id"));
   const shouldEnable = formData.get("is_enabled") === "true";
+  const migrateToSlug = formData.get("migrate_to_slug");
+
   const payload: ToggleLlmModelRequest = {
     is_enabled: shouldEnable,
+    migrate_to_slug: migrateToSlug ? String(migrateToSlug) : undefined,
   };
   const api = new BackendApi();
   await api.toggleAdminLlmModel(modelId, payload);

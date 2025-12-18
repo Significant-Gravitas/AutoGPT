@@ -132,18 +132,37 @@ async def update_llm_model(
 @router.patch(
     "/models/{model_id}/toggle",
     summary="Toggle LLM model availability",
-    response_model=llm_model.LlmModel,
+    response_model=llm_model.ToggleLlmModelResponse,
 )
 async def toggle_llm_model(
     model_id: str,
     request: llm_model.ToggleLlmModelRequest,
 ):
+    """
+    Toggle a model's enabled status, optionally migrating workflows when disabling.
+
+    If disabling a model and `migrate_to_slug` is provided, all workflows using
+    this model will be migrated to the specified replacement model before disabling.
+    """
     try:
-        model = await llm_db.toggle_model(
-            model_id=model_id, is_enabled=request.is_enabled
+        result = await llm_db.toggle_model(
+            model_id=model_id,
+            is_enabled=request.is_enabled,
+            migrate_to_slug=request.migrate_to_slug,
         )
         await _refresh_runtime_state()
-        return model
+        if result.nodes_migrated > 0:
+            logger.info(
+                "Toggled model '%s' to %s and migrated %d nodes to '%s'",
+                result.model.slug,
+                "enabled" if request.is_enabled else "disabled",
+                result.nodes_migrated,
+                result.migrated_to_slug,
+            )
+        return result
+    except ValueError as exc:
+        logger.warning("Model toggle validation failed: %s", exc)
+        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Failed to toggle LLM model %s: %s", model_id, exc)
         raise fastapi.HTTPException(

@@ -56,6 +56,7 @@ import type {
   CreateLlmModelRequest,
   UpdateLlmModelRequest,
   ToggleLlmModelRequest,
+  ToggleLlmModelResponse,
   UpsertLlmProviderRequest,
   LlmModelsResponse,
   LlmProvider,
@@ -463,7 +464,7 @@ export default class BackendAPI {
   toggleAdminLlmModel(
     modelId: string,
     payload: ToggleLlmModelRequest,
-  ): Promise<LlmModel> {
+  ): Promise<ToggleLlmModelResponse> {
     return this._request(
       "PATCH",
       `/llm/admin/llm/models/${modelId}/toggle`,

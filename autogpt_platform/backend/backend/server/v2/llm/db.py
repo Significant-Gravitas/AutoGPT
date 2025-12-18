@@ -219,13 +219,91 @@ async def update_model(
     return _map_model(record)
 
 
-async def toggle_model(model_id: str, is_enabled: bool) -> llm_model.LlmModel:
-    record = await prisma.models.LlmModel.prisma().update(
-        where={"id": model_id},
-        data={"isEnabled": is_enabled},
-        include={"Costs": True},
+async def toggle_model(
+    model_id: str, is_enabled: bool, migrate_to_slug: str | None = None
+) -> llm_model.ToggleLlmModelResponse:
+    """
+    Toggle a model's enabled status, optionally migrating workflows when disabling.
+
+    Args:
+        model_id: UUID of the model to toggle
+        is_enabled: New enabled status
+        migrate_to_slug: If disabling and this is provided, migrate all workflows
+                         using this model to the specified replacement model
+
+    Returns:
+        ToggleLlmModelResponse with the updated model and optional migration stats
+    """
+    import prisma as prisma_module
+
+    # Get the model being toggled
+    model = await prisma.models.LlmModel.prisma().find_unique(
+        where={"id": model_id}, include={"Costs": True}
     )
-    return _map_model(record)
+    if not model:
+        raise ValueError(f"Model with id '{model_id}' not found")
+
+    nodes_migrated = 0
+
+    # If disabling with migration, perform migration first
+    if not is_enabled and migrate_to_slug:
+        # Validate replacement model exists and is enabled
+        replacement = await prisma.models.LlmModel.prisma().find_unique(
+            where={"slug": migrate_to_slug}
+        )
+        if not replacement:
+            raise ValueError(f"Replacement model '{migrate_to_slug}' not found")
+        if not replacement.isEnabled:
+            raise ValueError(
+                f"Replacement model '{migrate_to_slug}' is disabled. "
+                f"Please enable it before using it as a replacement."
+            )
+
+        # Count affected nodes
+        count_result = await prisma_module.get_client().query_raw(
+            """
+            SELECT COUNT(*) as count
+            FROM "AgentNode"
+            WHERE "constantInput"::jsonb->>'model' = $1
+            """,
+            model.slug,
+        )
+        nodes_migrated = int(count_result[0]["count"]) if count_result else 0
+
+        # Perform migration and toggle atomically
+        async with transaction() as tx:
+            if nodes_migrated > 0:
+                await tx.execute_raw(
+                    """
+                    UPDATE "AgentNode"
+                    SET "constantInput" = JSONB_SET(
+                        "constantInput"::jsonb,
+                        '{model}',
+                        to_jsonb($1::text)
+                    )
+                    WHERE "constantInput"::jsonb->>'model' = $2
+                    """,
+                    migrate_to_slug,
+                    model.slug,
+                )
+            record = await tx.llmmodel.update(
+                where={"id": model_id},
+                data={"isEnabled": is_enabled},
+                include={"Costs": True},
+            )
+    else:
+        # Simple toggle without migration
+        record = await prisma.models.LlmModel.prisma().update(
+            where={"id": model_id},
+            data={"isEnabled": is_enabled},
+            include={"Costs": True},
+        )
+
+    return llm_model.ToggleLlmModelResponse(
+        model=_map_model(record),
+        nodes_migrated=nodes_migrated,
+        migrated_to_slug=migrate_to_slug if nodes_migrated > 0 else None,
+    )
 
 
 async def get_model_usage(model_id: str) -> llm_model.LlmModelUsageResponse:

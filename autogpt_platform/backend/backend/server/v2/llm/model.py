@@ -106,6 +106,13 @@ class UpdateLlmModelRequest(pydantic.BaseModel):
 
 class ToggleLlmModelRequest(pydantic.BaseModel):
     is_enabled: bool
+    migrate_to_slug: Optional[str] = None
+
+
+class ToggleLlmModelResponse(pydantic.BaseModel):
+    model: LlmModel
+    nodes_migrated: int = 0
+    migrated_to_slug: Optional[str] = None
 
 
 class DeleteLlmModelResponse(pydantic.BaseModel):

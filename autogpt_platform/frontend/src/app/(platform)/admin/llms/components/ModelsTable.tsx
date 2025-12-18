@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { toggleLlmModelAction } from "../actions";
 import { DeleteModelModal } from "./DeleteModelModal";
+import { DisableModelModal } from "./DisableModelModal";
 import { EditModelModal } from "./EditModelModal";
 
 export function ModelsTable({
@@ -105,10 +106,14 @@ export function ModelsTable({
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-2">
-                    <ToggleModelButton
-                      modelId={model.id}
-                      isEnabled={model.is_enabled}
-                    />
+                    {model.is_enabled ? (
+                      <DisableModelModal
+                        model={model}
+                        availableModels={models}
+                      />
+                    ) : (
+                      <EnableModelButton modelId={model.id} />
+                    )}
                     <EditModelModal model={model} providers={providers} />
                     <DeleteModelModal
                       model={model}
@@ -125,24 +130,13 @@ export function ModelsTable({
   );
 }
 
-function ToggleModelButton({
-  modelId,
-  isEnabled,
-}: {
-  modelId: string;
-  isEnabled: boolean;
-}) {
+function EnableModelButton({ modelId }: { modelId: string }) {
   return (
     <form action={toggleLlmModelAction} className="inline">
       <input type="hidden" name="model_id" value={modelId} />
-      <input type="hidden" name="is_enabled" value={(!isEnabled).toString()} />
-      <Button
-        type="submit"
-        variant="outline"
-        size="small"
-        className="min-w-0"
-      >
-        {isEnabled ? "Disable" : "Enable"}
+      <input type="hidden" name="is_enabled" value="true" />
+      <Button type="submit" variant="outline" size="small" className="min-w-0">
+        Enable
       </Button>
     </form>
   );
