@@ -1,4 +1,7 @@
-import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
+import {
+  useGetV2GetSpecificAgent,
+  useGetV2ListMySubmissions,
+} from "@/app/api/__generated__/endpoints/store/store";
 import {
   usePatchV2UpdateLibraryAgent,
   getGetV2GetLibraryAgentQueryKey,
@@ -6,6 +9,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import * as React from "react";
 import { useState } from "react";
 
@@ -17,6 +21,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const user = useSupabaseStore((state) => state.user);
 
   // Get marketplace data if agent has marketplace listing
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
@@ -28,6 +33,16 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
           agent?.marketplace_listing?.creator.slug &&
           agent?.marketplace_listing?.slug
         ),
+      },
+    },
+  );
+
+  // Get user's submissions to check for pending submissions
+  const { data: submissionsData } = useGetV2ListMySubmissions(
+    { page: 1, page_size: 50 }, // Get enough to cover recent submissions
+    {
+      query: {
+        enabled: !!user?.id, // Only fetch if user is authenticated
       },
     },
   );
@@ -76,11 +91,32 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
         ? Math.max(...storeAgent.agentGraphVersions.map((v) => parseInt(v, 10)))
         : undefined;
 
-    // For now, we treat all users as non-creators for marketplace updates
-    // TODO: Implement proper creator detection if needed
-    const isUserCreator = false;
+    // Determine if the user is the creator of this agent
+    // Compare current user ID with the marketplace listing creator ID
+    const isUserCreator =
+      user?.id && agent.marketplace_listing?.creator.id === user.id;
+
+    // Check if there's a pending submission for this specific agent version
+    const hasPendingSubmissionForCurrentVersion =
+      isUserCreator &&
+      submissionsData?.status === 200 &&
+      submissionsData.data.submissions.some(
+        (submission) =>
+          submission.agent_id === agent.graph_id &&
+          submission.agent_version === agent.graph_version &&
+          submission.status === "PENDING",
+      );
+
+    // If user is creator and their version is newer than marketplace, show publish update banner
+    // BUT only if there's no pending submission for this version
+    const hasPublishUpdate =
+      isUserCreator &&
+      !hasPendingSubmissionForCurrentVersion &&
+      latestMarketplaceVersion !== undefined &&
+      agent.graph_version > latestMarketplaceVersion;
 
     // If marketplace version is newer than user's version, show update banner
+    // This applies to both creators and non-creators
     const hasMarketplaceUpdate =
       latestMarketplaceVersion !== undefined &&
       latestMarketplaceVersion > agent.graph_version;
@@ -89,9 +125,9 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       hasUpdate: hasMarketplaceUpdate,
       latestVersion: latestMarketplaceVersion,
       isUserCreator,
-      hasPublishUpdate: false, // TODO: Implement creator publish update detection
+      hasPublishUpdate,
     };
-  }, [agent, storeAgentData]);
+  }, [agent, storeAgentData, user, submissionsData]);
 
   const handlePublishUpdate = () => {
     setModalOpen(true);

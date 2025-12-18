@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
-import { PlusIcon, Clock } from "@phosphor-icons/react";
+import { PlusIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
@@ -203,14 +203,6 @@ export function NewAgentLibraryView() {
               initialInputValues={activeTemplate?.inputs}
               initialInputCredentials={activeTemplate?.credentials}
             />
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={() => setChangelogOpen(true)}
-              className="mt-3 w-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            >
-              <Clock size={16} /> Version History
-            </Button>
           </div>
 
           <SidebarRunsList
