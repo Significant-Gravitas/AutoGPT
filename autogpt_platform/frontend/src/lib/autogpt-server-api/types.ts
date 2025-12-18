@@ -141,6 +141,16 @@ export type GoogleDrivePickerConfig = {
   allowed_views?: AttachmentView[];
   allowed_mime_types?: string[];
   scopes?: string[];
+  /**
+   * Auto-credentials configuration for combined picker + credentials fields.
+   * When present, the picker will include _credentials_id in the output.
+   */
+  auto_credentials?: {
+    provider: string;
+    type: string;
+    scopes?: string[];
+    kwarg_name: string;
+  };
 };
 
 /**
@@ -751,28 +761,6 @@ export type StoreAgentsResponse = {
   pagination: Pagination;
 };
 
-export type StoreAgentDetails = {
-  store_listing_version_id: string;
-  slug: string;
-  updated_at: string;
-  agent_name: string;
-  agent_video: string;
-  agent_image: string[];
-  creator: string;
-  creator_avatar: string;
-  sub_heading: string;
-  description: string;
-  categories: string[];
-  runs: number;
-  rating: number;
-  versions: string[];
-
-  // Approval and status fields
-  active_version_id?: string;
-  has_approved_version?: boolean;
-  is_available?: boolean;
-};
-
 export type Creator = {
   name: string;
   username: string;
@@ -1018,8 +1006,8 @@ export interface UserOnboarding {
 
 export interface OnboardingNotificationPayload {
   type: "onboarding";
-  event: string;
-  step: OnboardingStep;
+  event: "step_completed" | "increment_runs";
+  step: OnboardingStep | null;
 }
 
 export type WebSocketNotification =

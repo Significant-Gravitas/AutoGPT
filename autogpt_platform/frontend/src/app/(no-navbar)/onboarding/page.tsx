@@ -1,24 +1,24 @@
 "use client";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { resolveResponse, shouldShowOnboarding } from "@/app/api/helpers";
+import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const api = useBackendAPI();
 
   useEffect(() => {
     async function redirectToStep() {
       try {
         // Check if onboarding is enabled
-        const isEnabled = await api.isOnboardingEnabled();
+        const isEnabled = await shouldShowOnboarding();
         if (!isEnabled) {
           router.replace("/");
           return;
         }
 
-        const onboarding = await api.getUserOnboarding();
+        const onboarding = await resolveResponse(getV1OnboardingState());
 
         // Handle completed onboarding
         if (onboarding.completedSteps.includes("GET_RESULTS")) {
@@ -66,7 +66,7 @@ export default function OnboardingPage() {
     }
 
     redirectToStep();
-  }, [api, router]);
+  }, [router]);
 
   return <LoadingSpinner size="large" cover />;
 }

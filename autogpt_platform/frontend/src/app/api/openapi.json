@@ -827,12 +827,16 @@
     "/api/onboarding": {
       "get": {
         "tags": ["v1", "onboarding"],
-        "summary": "Get onboarding status",
-        "operationId": "getV1Get onboarding status",
+        "summary": "Onboarding state",
+        "operationId": "getV1Onboarding state",
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserOnboarding" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -842,8 +846,8 @@
       },
       "patch": {
         "tags": ["v1", "onboarding"],
-        "summary": "Update onboarding progress",
-        "operationId": "patchV1Update onboarding progress",
+        "summary": "Update onboarding state",
+        "operationId": "patchV1Update onboarding state",
         "requestBody": {
           "content": {
             "application/json": {
@@ -855,7 +859,11 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserOnboarding" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -872,15 +880,70 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/agents": {
-      "get": {
+    "/api/onboarding/step": {
+      "post": {
         "tags": ["v1", "onboarding"],
-        "summary": "Get recommended agents",
-        "operationId": "getV1Get recommended agents",
+        "summary": "Complete onboarding step",
+        "operationId": "postV1Complete onboarding step",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "step",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "WELCOME",
+                "USAGE_REASON",
+                "INTEGRATIONS",
+                "AGENT_CHOICE",
+                "AGENT_NEW_RUN",
+                "AGENT_INPUT",
+                "CONGRATS",
+                "MARKETPLACE_VISIT",
+                "BUILDER_OPEN"
+              ],
+              "type": "string",
+              "title": "Step"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/onboarding/agents": {
+      "get": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Recommended onboarding agents",
+        "operationId": "getV1Recommended onboarding agents",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/StoreAgentDetails" },
+                  "type": "array",
+                  "title": "Response Getv1Recommended Onboarding Agents"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -892,12 +955,19 @@
     "/api/onboarding/enabled": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
-        "summary": "Check onboarding enabled",
-        "operationId": "getV1Check onboarding enabled",
+        "summary": "Is onboarding enabled",
+        "operationId": "getV1Is onboarding enabled",
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean",
+                  "title": "Response Getv1Is Onboarding Enabled"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -914,7 +984,11 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserOnboarding" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -3588,7 +3662,18 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "array", "items": { "type": "string" } },
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "blocks",
+                      "integrations",
+                      "marketplace_agents",
+                      "my_agents"
+                    ],
+                    "type": "string"
+                  }
+                },
                 { "type": "null" }
               ],
               "title": "Filter"
@@ -3998,16 +4083,84 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/executions/admin/execution_accuracy_trends": {
+      "get": {
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
+        "summary": "Get Execution Accuracy Trends and Alerts",
+        "description": "Get execution accuracy trends with moving averages and alert detection.\nSimple single-query approach.",
+        "operationId": "getV2Get execution accuracy trends and alerts",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "days_back",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 30, "title": "Days Back" }
+          },
+          {
+            "name": "drop_threshold",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 10.0,
+              "title": "Drop Threshold"
+            }
+          },
+          {
+            "name": "include_historical",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Historical"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccuracyTrendsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/review/pending": {
       "get": {
-        "tags": [
-          "v2",
-          "executions",
-          "review",
-          "executions",
-          "review",
-          "private"
-        ],
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews",
         "description": "Get all pending reviews for the current user.\n\nRetrieves all reviews with status \"WAITING\" that belong to the authenticated user.\nResults are ordered by creation time (newest first).\n\nArgs:\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects with status converted to typed literals\n\nRaises:\n    HTTPException: If authentication fails or database error occurs\n\nNote:\n    Reviews with invalid status values are logged as warnings but excluded\n    from results rather than failing the entire request.",
         "operationId": "getV2Get pending reviews",
@@ -4076,14 +4229,7 @@
     },
     "/api/review/execution/{graph_exec_id}": {
       "get": {
-        "tags": [
-          "v2",
-          "executions",
-          "review",
-          "executions",
-          "review",
-          "private"
-        ],
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews for Execution",
         "description": "Get all pending reviews for a specific graph execution.\n\nRetrieves all reviews with status \"WAITING\" for the specified graph execution\nthat belong to the authenticated user. Results are ordered by creation time\n(oldest first) to preserve review order within the execution.\n\nArgs:\n    graph_exec_id: ID of the graph execution to get reviews for\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects for the specified execution\n\nRaises:\n    HTTPException:\n        - 403: If user doesn't own the graph execution\n        - 500: If authentication fails or database error occurs\n\nNote:\n    Only returns reviews owned by the authenticated user for security.\n    Reviews with invalid status are excluded with warning logs.",
         "operationId": "getV2Get pending reviews for execution",
@@ -4133,14 +4279,7 @@
     },
     "/api/review/action": {
       "post": {
-        "tags": [
-          "v2",
-          "executions",
-          "review",
-          "executions",
-          "review",
-          "private"
-        ],
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Process Review Action",
         "description": "Process reviews with approve or reject actions.",
         "operationId": "postV2ProcessReviewAction",
@@ -5355,6 +5494,90 @@
         "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
         "title": "APIKeyStatus"
       },
+      "AccuracyAlertData": {
+        "properties": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "drop_percent": { "type": "number", "title": "Drop Percent" },
+          "three_day_avg": { "type": "number", "title": "Three Day Avg" },
+          "seven_day_avg": { "type": "number", "title": "Seven Day Avg" },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detected At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "graph_id",
+          "user_id",
+          "drop_percent",
+          "three_day_avg",
+          "seven_day_avg",
+          "detected_at"
+        ],
+        "title": "AccuracyAlertData",
+        "description": "Alert data when accuracy drops significantly."
+      },
+      "AccuracyLatestData": {
+        "properties": {
+          "date": { "type": "string", "format": "date-time", "title": "Date" },
+          "daily_score": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Daily Score"
+          },
+          "three_day_avg": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Three Day Avg"
+          },
+          "seven_day_avg": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Seven Day Avg"
+          },
+          "fourteen_day_avg": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Fourteen Day Avg"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "daily_score",
+          "three_day_avg",
+          "seven_day_avg",
+          "fourteen_day_avg"
+        ],
+        "title": "AccuracyLatestData",
+        "description": "Latest execution accuracy data point."
+      },
+      "AccuracyTrendsResponse": {
+        "properties": {
+          "latest_data": { "$ref": "#/components/schemas/AccuracyLatestData" },
+          "alert": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AccuracyAlertData" },
+              { "type": "null" }
+            ]
+          },
+          "historical_data": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/AccuracyLatestData" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Historical Data"
+          }
+        },
+        "type": "object",
+        "required": ["latest_data", "alert"],
+        "title": "AccuracyTrendsResponse",
+        "description": "Response model for accuracy trends and alerts."
+      },
       "AddUserCreditsResponse": {
         "properties": {
           "new_balance": { "type": "integer", "title": "New Balance" },
@@ -5665,6 +5888,16 @@
             },
             "type": "object",
             "title": "Credentials Inputs"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["builder", "library", "onboarding"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Source"
           }
         },
         "type": "object",
@@ -5712,6 +5945,12 @@
           "store_listing_version_id": {
             "type": "string",
             "title": "Store Listing Version Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["onboarding", "marketplace"],
+            "title": "Source",
+            "default": "marketplace"
           }
         },
         "type": "object",
@@ -5819,7 +6058,16 @@
         "title": "CreateAPIKeyResponse"
       },
       "CreateGraph": {
-        "properties": { "graph": { "$ref": "#/components/schemas/Graph" } },
+        "properties": {
+          "graph": { "$ref": "#/components/schemas/Graph" },
+          "source": {
+            "anyOf": [
+              { "type": "string", "enum": ["builder", "upload"] },
+              { "type": "null" }
+            ],
+            "title": "Source"
+          }
+        },
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
@@ -8375,6 +8623,45 @@
         "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
+      "SearchEntry": {
+        "properties": {
+          "search_query": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Query"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "blocks",
+                    "integrations",
+                    "marketplace_agents",
+                    "my_agents"
+                  ]
+                },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Filter"
+          },
+          "by_creator": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "By Creator"
+          },
+          "search_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Search Id"
+          }
+        },
+        "type": "object",
+        "title": "SearchEntry"
+      },
       "SearchResponse": {
         "properties": {
           "items": {
@@ -8388,6 +8675,7 @@
             "type": "array",
             "title": "Items"
           },
+          "search_id": { "type": "string", "title": "Search Id" },
           "total_items": {
             "additionalProperties": { "type": "integer" },
             "propertyNames": {
@@ -8401,11 +8689,10 @@
             "type": "object",
             "title": "Total Items"
           },
-          "page": { "type": "integer", "title": "Page" },
-          "more_pages": { "type": "boolean", "title": "More Pages" }
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
         },
         "type": "object",
-        "required": ["items", "total_items", "page", "more_pages"],
+        "required": ["items", "search_id", "total_items", "pagination"],
         "title": "SearchResponse"
       },
       "SessionDetailResponse": {
@@ -8586,6 +8873,10 @@
           "slug": { "type": "string", "title": "Slug" },
           "agent_name": { "type": "string", "title": "Agent Name" },
           "agent_video": { "type": "string", "title": "Agent Video" },
+          "agent_output_demo": {
+            "type": "string",
+            "title": "Agent Output Demo"
+          },
           "agent_image": {
             "items": { "type": "string" },
             "type": "array",
@@ -8636,6 +8927,7 @@
           "slug",
           "agent_name",
           "agent_video",
+          "agent_output_demo",
           "agent_image",
           "creator",
           "creator_avatar",
@@ -8803,6 +9095,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
           },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
+          },
           "categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -8833,6 +9129,10 @@
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
           },
           "image_urls": {
             "items": { "type": "string" },
@@ -8878,6 +9178,10 @@
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
           },
           "image_urls": {
             "items": { "type": "string" },
@@ -8945,7 +9249,7 @@
             "title": "Otto Suggestions"
           },
           "recent_searches": {
-            "items": { "type": "string" },
+            "items": { "$ref": "#/components/schemas/SearchEntry" },
             "type": "array",
             "title": "Recent Searches"
           },
@@ -10289,18 +10593,87 @@
         "title": "UserHistoryResponse",
         "description": "Response model for listings with version history"
       },
-      "UserOnboardingUpdate": {
+      "UserOnboarding": {
         "properties": {
+          "userId": { "type": "string", "title": "Userid" },
           "completedSteps": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/OnboardingStep" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
+            "items": { "$ref": "#/components/schemas/OnboardingStep" },
+            "type": "array",
             "title": "Completedsteps"
           },
+          "walletShown": { "type": "boolean", "title": "Walletshown" },
+          "notified": {
+            "items": { "$ref": "#/components/schemas/OnboardingStep" },
+            "type": "array",
+            "title": "Notified"
+          },
+          "rewardedFor": {
+            "items": { "$ref": "#/components/schemas/OnboardingStep" },
+            "type": "array",
+            "title": "Rewardedfor"
+          },
+          "usageReason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usagereason"
+          },
+          "integrations": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Integrations"
+          },
+          "otherIntegrations": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Otherintegrations"
+          },
+          "selectedStoreListingVersionId": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Selectedstorelistingversionid"
+          },
+          "agentInput": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Agentinput"
+          },
+          "onboardingAgentExecutionId": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Onboardingagentexecutionid"
+          },
+          "agentRuns": { "type": "integer", "title": "Agentruns" },
+          "lastRunAt": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Lastrunat"
+          },
+          "consecutiveRunDays": {
+            "type": "integer",
+            "title": "Consecutiverundays"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "completedSteps",
+          "walletShown",
+          "notified",
+          "rewardedFor",
+          "usageReason",
+          "integrations",
+          "otherIntegrations",
+          "selectedStoreListingVersionId",
+          "agentInput",
+          "onboardingAgentExecutionId",
+          "agentRuns",
+          "lastRunAt",
+          "consecutiveRunDays"
+        ],
+        "title": "UserOnboarding"
+      },
+      "UserOnboardingUpdate": {
+        "properties": {
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"
@@ -10344,21 +10717,6 @@
           "onboardingAgentExecutionId": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Onboardingagentexecutionid"
-          },
-          "agentRuns": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Agentruns"
-          },
-          "lastRunAt": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Lastrunat"
-          },
-          "consecutiveRunDays": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Consecutiverundays"
           }
         },
         "type": "object",

@@ -24,6 +24,9 @@ export function GoogleDrivePickerInput({
 }: GoogleDrivePickerInputProps) {
   const [pickerError, setPickerError] = React.useState<string | null>(null);
   const isMultiSelect = config.multiselect || false;
+  const hasAutoCredentials = !!config.auto_credentials;
+
+  // Strip _credentials_id from value for display purposes
   const currentFiles = isMultiSelect
     ? Array.isArray(value)
       ? value
@@ -33,25 +36,34 @@ export function GoogleDrivePickerInput({
       : [];
 
   const handlePicked = useCallback(
-    (files: any[]) => {
+    (files: any[], credentialId?: string) => {
       // Clear any previous picker errors
       setPickerError(null);
 
       // Convert to GoogleDriveFile format
-      const convertedFiles = files.map((f) => ({
-        id: f.id,
-        name: f.name,
-        mimeType: f.mimeType,
-        url: f.url,
-        iconUrl: f.iconUrl,
-        isFolder: f.mimeType === "application/vnd.google-apps.folder",
-      }));
+      const convertedFiles = files.map((f) => {
+        const file: any = {
+          id: f.id,
+          name: f.name,
+          mimeType: f.mimeType,
+          url: f.url,
+          iconUrl: f.iconUrl,
+          isFolder: f.mimeType === "application/vnd.google-apps.folder",
+        };
+
+        // Include _credentials_id when auto_credentials is configured
+        if (hasAutoCredentials && credentialId) {
+          file._credentials_id = credentialId;
+        }
+
+        return file;
+      });
 
       // Store based on multiselect mode
       const newValue = isMultiSelect ? convertedFiles : convertedFiles[0];
       onChange(newValue);
     },
-    [isMultiSelect, onChange],
+    [isMultiSelect, onChange, hasAutoCredentials],
   );
 
   const handleRemoveFile = useCallback(
@@ -79,6 +91,7 @@ export function GoogleDrivePickerInput({
         views={config.allowed_views || ["DOCS"]}
         scopes={config.scopes || ["https://www.googleapis.com/auth/drive.file"]}
         disabled={false}
+        requirePlatformCredentials={hasAutoCredentials}
         onPicked={handlePicked}
         onCanceled={() => {
           // User canceled - no action needed

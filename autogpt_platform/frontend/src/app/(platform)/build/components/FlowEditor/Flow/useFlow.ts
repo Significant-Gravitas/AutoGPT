@@ -42,11 +42,12 @@ export const useFlow = () => {
   const setBlockMenuOpen = useControlPanelStore(
     useShallow((state) => state.setBlockMenuOpen),
   );
-  const [{ flowID, flowVersion, flowExecutionID }] = useQueryStates({
-    flowID: parseAsString,
-    flowVersion: parseAsInteger,
-    flowExecutionID: parseAsString,
-  });
+  const [{ flowID, flowVersion, flowExecutionID }, setQueryStates] =
+    useQueryStates({
+      flowID: parseAsString,
+      flowVersion: parseAsInteger,
+      flowExecutionID: parseAsString,
+    });
 
   const { data: executionDetails } = useGetV1GetExecutionDetails(
     flowID || "",
@@ -81,7 +82,7 @@ export const useFlow = () => {
       {
         query: {
           select: (res) => res.data as BlockInfo[],
-          enabled: !!flowID && !!blockIds,
+          enabled: !!flowID && !!blockIds && blockIds.length > 0,
         },
       },
     );
@@ -102,6 +103,9 @@ export const useFlow = () => {
   // load graph schemas
   useEffect(() => {
     if (graph) {
+      setQueryStates({
+        flowVersion: graph.version ?? 1,
+      });
       setGraphSchemas(
         graph.input_schema as Record<string, any> | null,
         graph.credentials_input_schema as Record<string, any> | null,

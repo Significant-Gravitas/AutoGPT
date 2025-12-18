@@ -97,11 +97,31 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
             />
           </div>
           <AgentImages
-            images={
-              agent.agent_video
-                ? [agent.agent_video, ...agent.agent_image]
-                : agent.agent_image
-            }
+            images={(() => {
+              const orderedImages: string[] = [];
+
+              // 1. YouTube/Overview video (if it exists)
+              if (agent.agent_video) {
+                orderedImages.push(agent.agent_video);
+              }
+
+              // 2. First image (hero)
+              if (agent.agent_image.length > 0) {
+                orderedImages.push(agent.agent_image[0]);
+              }
+
+              // 3. Agent Output Demo (if it exists)
+              if ((agent as any).agent_output_demo) {
+                orderedImages.push((agent as any).agent_output_demo);
+              }
+
+              // 4. Additional images
+              if (agent.agent_image.length > 1) {
+                orderedImages.push(...agent.agent_image.slice(1));
+              }
+
+              return orderedImages;
+            })()}
           />
         </div>
         <Separator className="mb-[25px] mt-[60px]" />

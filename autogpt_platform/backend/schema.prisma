@@ -53,6 +53,7 @@ model User {
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
+  BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
@@ -111,6 +112,19 @@ model UserOnboarding {
   consecutiveRunDays            Int              @default(0)
 
   userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BuilderSearchHistory {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  searchQuery String
+  filter      String[]  @default([])
+  byCreator   String[]  @default([])
+
+  userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -701,10 +715,11 @@ view StoreAgent {
   storeListingVersionId String
   updated_at            DateTime
 
-  slug        String
-  agent_name  String
-  agent_video String?
-  agent_image String[]
+  slug                String
+  agent_name          String
+  agent_video         String?
+  agent_output_demo   String?
+  agent_image         String[]
 
   featured         Boolean                  @default(false)
   creator_username String?
@@ -833,13 +848,14 @@ model StoreListingVersion {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // Content fields
-  name         String
-  subHeading   String
-  videoUrl     String?
-  imageUrls    String[]
-  description  String
-  instructions String?
-  categories   String[]
+  name                String
+  subHeading          String
+  videoUrl            String?
+  agentOutputDemoUrl  String?
+  imageUrls           String[]
+  description         String
+  instructions        String?
+  categories          String[]
 
   isFeatured Boolean @default(false)
 

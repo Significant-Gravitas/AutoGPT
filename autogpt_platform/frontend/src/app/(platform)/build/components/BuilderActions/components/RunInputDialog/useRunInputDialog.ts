@@ -79,7 +79,11 @@ export const useRunInputDialog = ({
     await executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
-      data: { inputs: inputValues, credentials_inputs: credentialValues },
+      data: {
+        inputs: inputValues,
+        credentials_inputs: credentialValues,
+        source: "builder",
+      },
     });
     // Optimistically set running state immediately for responsive UI
     setIsGraphRunning(true);
