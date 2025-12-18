@@ -6,6 +6,8 @@ import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 import { useAgentInfo } from "./useAgentInfo";
+import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface AgentInfoProps {
   user: User | null;
@@ -21,6 +23,8 @@ interface AgentInfoProps {
   version: string;
   storeListingVersionId: string;
   isAgentAddedToLibrary: boolean;
+  creatorSlug?: string;
+  agentSlug?: string;
 }
 
 export const AgentInfo = ({
@@ -37,6 +41,8 @@ export const AgentInfo = ({
   version,
   storeListingVersionId,
   isAgentAddedToLibrary,
+  creatorSlug,
+  agentSlug,
 }: AgentInfoProps) => {
   const {
     handleDownload,
@@ -44,6 +50,65 @@ export const AgentInfo = ({
     handleLibraryAction,
     isAddingAgentToLibrary,
   } = useAgentInfo({ storeListingVersionId });
+
+  // Get store agent data for version history
+  const { data: storeAgentData } = useGetV2GetSpecificAgent(
+    creatorSlug || "",
+    agentSlug || "",
+    {
+      query: {
+        enabled: !!(creatorSlug && agentSlug),
+      },
+    },
+  );
+
+  // Process version data for display
+  const agentVersions =
+    storeAgentData?.status === 200 && storeAgentData.data.agentGraphVersions
+      ? storeAgentData.data.agentGraphVersions
+          .map((versionStr: string) => parseInt(versionStr, 10))
+          .sort((a: number, b: number) => b - a)
+          .map((versionNum: number) => ({
+            version: versionNum,
+            isCurrentVersion: versionNum.toString() === version,
+          }))
+      : [];
+
+  const renderVersionItem = (versionInfo: {
+    version: number;
+    isCurrentVersion: boolean;
+  }) => {
+    return (
+      <div
+        key={versionInfo.version}
+        className={`rounded-lg border p-3 ${
+          versionInfo.isCurrentVersion
+            ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950"
+            : "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-800"
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Text variant="body" className="font-semibold">
+              v{versionInfo.version}
+            </Text>
+            {versionInfo.isCurrentVersion && (
+              <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+                Current
+              </span>
+            )}
+          </div>
+        </div>
+
+        <Text
+          variant="small"
+          className="mt-1 text-neutral-600 dark:text-neutral-400"
+        >
+          Published marketplace version
+        </Text>
+      </div>
+    );
+  };
 
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
@@ -159,16 +224,24 @@ export const AgentInfo = ({
         </div>
 
         {/* Version History */}
-        <div className="flex w-full flex-col gap-0.5 sm:gap-1">
+        <div className="flex w-full flex-col gap-1.5 sm:gap-2">
           <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
             Version history
           </div>
           <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
             Last updated {lastUpdated}
           </div>
-          <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
-            Version {version}
-          </div>
+
+          {/* Version List */}
+          {agentVersions.length > 0 ? (
+            <div className="space-y-2">
+              {agentVersions.map(renderVersionItem)}
+            </div>
+          ) : (
+            <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
+              Version {version}
+            </div>
+          )}
         </div>
       </div>
     </div>

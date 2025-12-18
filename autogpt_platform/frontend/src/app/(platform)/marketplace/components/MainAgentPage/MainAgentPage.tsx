@@ -94,6 +94,8 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
               version={agent.versions[agent.versions.length - 1]}
               storeListingVersionId={agent.store_listing_version_id}
               isAgentAddedToLibrary={Boolean(libraryAgent)}
+              creatorSlug={params.creator}
+              agentSlug={params.slug}
             />
           </div>
           <AgentImages
