@@ -27,8 +27,9 @@ async def _get_cached_store_agents(
     category: str | None,
     page: int,
     page_size: int,
+    filter_mode: Literal["strict", "permissive", "combined"] = "permissive",
 ):
-    """Cached helper to get store agents."""
+    """Cached helper to get store agents with hybrid search support."""
     return await backend.server.v2.store.db.get_store_agents(
         featured=featured,
         creators=[creator] if creator else None,
@@ -37,6 +38,7 @@ async def _get_cached_store_agents(
         category=category,
         page=page,
         page_size=page_size,
+        filter_mode=filter_mode,
     )
 
 

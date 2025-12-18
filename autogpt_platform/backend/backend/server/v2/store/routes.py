@@ -99,18 +99,30 @@ async def get_agents(
     category: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    filter_mode: Literal["strict", "permissive", "combined"] = "permissive",
 ):
     """
     Get a paginated list of agents from the store with optional filtering and sorting.
+
+    When search_query is provided, uses hybrid search combining:
+    - BM25 full-text search (lexical matching)
+    - Vector semantic similarity (meaning-based matching)
+    - Popularity signal (run counts)
+
+    Results are ranked using Reciprocal Rank Fusion (RRF).
 
     Args:
         featured (bool, optional): Filter to only show featured agents. Defaults to False.
         creator (str | None, optional): Filter agents by creator username. Defaults to None.
         sorted_by (str | None, optional): Sort agents by "runs" or "rating". Defaults to None.
-        search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.
+        search_query (str | None, optional): Search agents by name, subheading and description.
         category (str | None, optional): Filter agents by category. Defaults to None.
         page (int, optional): Page number for pagination. Defaults to 1.
         page_size (int, optional): Number of agents per page. Defaults to 20.
+        filter_mode (str, optional): Controls result filtering when searching:
+            - "strict": Must match BOTH BM25 AND vector thresholds
+            - "permissive": Must match EITHER BM25 OR vector threshold
+            - "combined": No threshold filtering, rely on RRF score (default)
 
     Returns:
         StoreAgentsResponse: Paginated list of agents matching the filters
@@ -144,6 +156,7 @@ async def get_agents(
         category=category,
         page=page,
         page_size=page_size,
+        filter_mode=filter_mode,
     )
     return agents
 

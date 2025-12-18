@@ -407,12 +407,12 @@ async def test_get_store_agents_search_category_array_injection():
     assert isinstance(result.agents, list)
 
 
-# Vector search tests
+# Hybrid search tests (BM25 + vector + popularity with RRF ranking)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_agents_vector_search_mocked(mocker):
-    """Test vector search uses embedding service and executes query safely."""
+async def test_get_store_agents_hybrid_search_mocked(mocker):
+    """Test hybrid search uses embedding service and executes query safely."""
     from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
 
     # Mock embedding service
@@ -444,8 +444,8 @@ async def test_get_store_agents_vector_search_mocked(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_agents_vector_search_with_results(mocker):
-    """Test vector search returns properly formatted results."""
+async def test_get_store_agents_hybrid_search_with_results(mocker):
+    """Test hybrid search returns properly formatted results with RRF scoring."""
     from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
 
     # Mock embedding service
@@ -459,7 +459,7 @@ async def test_get_store_agents_vector_search_with_results(mocker):
         mocker.MagicMock(return_value=mock_embedding_service),
     )
 
-    # Mock query results
+    # Mock query results (hybrid search returns rrf_score instead of similarity)
     mock_agents = [
         {
             "slug": "test-agent",
@@ -475,7 +475,7 @@ async def test_get_store_agents_vector_search_with_results(mocker):
             "featured": False,
             "is_available": True,
             "updated_at": datetime.now(),
-            "similarity": 0.95,
+            "rrf_score": 0.048,  # RRF score from combined rankings
         }
     ]
     mock_count = [{"count": 1}]
@@ -496,8 +496,8 @@ async def test_get_store_agents_vector_search_with_results(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_store_agents_vector_search_with_filters(mocker):
-    """Test vector search works correctly with additional filters."""
+async def test_get_store_agents_hybrid_search_with_filters(mocker):
+    """Test hybrid search works correctly with additional filters."""
     from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
 
     # Mock embedding service
@@ -523,7 +523,6 @@ async def test_get_store_agents_vector_search_with_filters(mocker):
         featured=True,
         creators=["creator1", "creator2"],
         category="AI",
-        sorted_by="rating",
     )
 
     # Verify query was called with parameterized values
@@ -534,11 +533,122 @@ async def test_get_store_agents_vector_search_with_filters(mocker):
     first_call_args = mock_query.call_args_list[0]
     sql_query = first_call_args[0][0]
 
-    # Verify key elements of the query
-    assert "embedding <=> $1::vector" in sql_query
+    # Verify key elements of hybrid search query
+    assert "embedding <=> $1::vector" in sql_query  # Vector search
+    assert "ts_rank_cd" in sql_query  # BM25 search
+    assert "rrf_score" in sql_query  # RRF ranking
     assert "featured = true" in sql_query
     assert "creator_username = ANY($" in sql_query
     assert "= ANY(categories)" in sql_query
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_hybrid_search_strict_filter_mode(mocker):
+    """Test hybrid search with strict filter mode requires both BM25 and vector matches."""
+    from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
+
+    # Mock embedding service
+    mock_embedding = [0.1] * EMBEDDING_DIMENSIONS
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        return_value=mock_embedding
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.MagicMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query_raw_with_schema
+    mock_query = mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(side_effect=[[], [{"count": 0}]]),
+    )
+
+    # Call function with strict filter mode
+    await db.get_store_agents(search_query="test query", filter_mode="strict")
+
+    # Check that the SQL query includes strict filtering conditions
+    first_call_args = mock_query.call_args_list[0]
+    sql_query = first_call_args[0][0]
+
+    # Strict mode requires both embedding AND search to be present
+    assert "embedding IS NOT NULL" in sql_query
+    assert "search IS NOT NULL" in sql_query
+    # Strict score filter requires both thresholds to be met
+    assert "bm25_score >=" in sql_query
+    assert "AND vector_score >=" in sql_query
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_hybrid_search_permissive_filter_mode(mocker):
+    """Test hybrid search with permissive filter mode requires either BM25 or vector match."""
+    from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
+
+    # Mock embedding service
+    mock_embedding = [0.1] * EMBEDDING_DIMENSIONS
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        return_value=mock_embedding
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.MagicMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query_raw_with_schema
+    mock_query = mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(side_effect=[[], [{"count": 0}]]),
+    )
+
+    # Call function with permissive filter mode
+    await db.get_store_agents(search_query="test query", filter_mode="permissive")
+
+    # Check that the SQL query includes permissive filtering conditions
+    first_call_args = mock_query.call_args_list[0]
+    sql_query = first_call_args[0][0]
+
+    # Permissive mode requires at least one signal
+    assert "(embedding IS NOT NULL OR search IS NOT NULL)" in sql_query
+    # Permissive score filter requires either threshold to be met
+    assert "OR vector_score >=" in sql_query
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_hybrid_search_combined_filter_mode(mocker):
+    """Test hybrid search with combined filter mode (default) filters by RRF score."""
+    from backend.integrations.embeddings import EMBEDDING_DIMENSIONS
+
+    # Mock embedding service
+    mock_embedding = [0.1] * EMBEDDING_DIMENSIONS
+    mock_embedding_service = mocker.MagicMock()
+    mock_embedding_service.generate_embedding = mocker.AsyncMock(
+        return_value=mock_embedding
+    )
+    mocker.patch(
+        "backend.server.v2.store.db.get_embedding_service",
+        mocker.MagicMock(return_value=mock_embedding_service),
+    )
+
+    # Mock query_raw_with_schema
+    mock_query = mocker.patch(
+        "backend.server.v2.store.db.query_raw_with_schema",
+        mocker.AsyncMock(side_effect=[[], [{"count": 0}]]),
+    )
+
+    # Call function with combined filter mode (default)
+    await db.get_store_agents(search_query="test query", filter_mode="combined")
+
+    # Check that the SQL query includes combined filtering
+    first_call_args = mock_query.call_args_list[0]
+    sql_query = first_call_args[0][0]
+
+    # Combined mode requires at least one signal
+    assert "(embedding IS NOT NULL OR search IS NOT NULL)" in sql_query
+    # Combined mode uses "1=1" as pre-filter (no individual score filtering)
+    # But applies RRF score threshold to filter irrelevant results
+    assert "rrf_score" in sql_query
+    assert "rrf_score >=" in sql_query  # RRF threshold filter applied
 
 
 @pytest.mark.asyncio(loop_scope="session")
