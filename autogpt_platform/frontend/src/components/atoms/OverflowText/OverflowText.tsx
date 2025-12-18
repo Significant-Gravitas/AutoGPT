@@ -29,10 +29,6 @@ export function OverflowText(props: Props) {
     setIsTruncated(hasOverflow);
   }
 
-  function handleValueEffect() {
-    updateTruncation();
-  }
-
   function setupResizeListener() {
     function handleResize() {
       updateTruncation();
@@ -65,7 +61,10 @@ export function OverflowText(props: Props) {
     };
   }
 
-  useEffect(handleValueEffect, [props.value]);
+  useEffect(() => {
+    if (typeof props.value === "string") updateTruncation();
+  }, [props.value]);
+
   useEffect(setupResizeListener, []);
   useEffect(setupObserver, []);
 
