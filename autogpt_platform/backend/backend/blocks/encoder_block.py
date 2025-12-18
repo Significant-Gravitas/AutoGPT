@@ -8,7 +8,6 @@ from backend.data.block import (
 from backend.data.model import SchemaField
 
 
-
 class TextEncoderBlock(Block):
     class Input(BlockSchemaInput):
         text: str = SchemaField(
