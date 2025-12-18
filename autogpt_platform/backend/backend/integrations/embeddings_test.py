@@ -77,8 +77,8 @@ class TestEmbeddingServiceValidation:
     def service(self, mock_settings):
         """Create an EmbeddingService instance with mocked settings."""
         service = EmbeddingService()
-        # Inject a mock client directly to avoid lazy initialization errors
-        service._client = MagicMock()
+        # Inject a mock client by setting the cached_property directly
+        service.__dict__["client"] = MagicMock()
         return service
 
     def test_client_access_requires_api_key(self):
@@ -174,8 +174,8 @@ class TestEmbeddingServiceAPI:
             mock_settings.return_value = mock_instance
 
             service = EmbeddingService()
-            # Directly inject mock client to bypass lazy initialization
-            service._client = mock_openai_client
+            # Inject mock client by setting the cached_property directly
+            service.__dict__["client"] = mock_openai_client
             return service, mock_openai_client
 
     @pytest.mark.asyncio

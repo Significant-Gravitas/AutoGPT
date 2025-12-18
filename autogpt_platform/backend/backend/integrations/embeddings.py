@@ -6,7 +6,6 @@ Used for vector-based semantic search in the store.
 
 import functools
 import logging
-import threading
 from typing import Optional
 
 import openai
@@ -43,25 +42,16 @@ class EmbeddingService:
             or settings.secrets.openai_internal_api_key
             or settings.secrets.openai_api_key
         )
-        self._client: Optional[openai.AsyncOpenAI] = None
-        self._client_lock = threading.Lock()
 
-    @property
+    @functools.cached_property
     def client(self) -> openai.AsyncOpenAI:
-        """Lazily create the OpenAI client, raising if no API key is configured.
-
-        Uses double-checked locking for thread-safe lazy initialization.
-        """
-        if self._client is None:
-            with self._client_lock:
-                if self._client is None:
-                    if not self.api_key:
-                        raise ValueError(
-                            "OpenAI API key not configured. "
-                            "Set OPENAI_API_KEY or OPENAI_INTERNAL_API_KEY environment variable."
-                        )
-                    self._client = openai.AsyncOpenAI(api_key=self.api_key)
-        return self._client
+        """Lazily create the OpenAI client, raising if no API key is configured."""
+        if not self.api_key:
+            raise ValueError(
+                "OpenAI API key not configured. "
+                "Set OPENAI_API_KEY or OPENAI_INTERNAL_API_KEY environment variable."
+            )
+        return openai.AsyncOpenAI(api_key=self.api_key)
 
     async def generate_embedding(self, text: str) -> list[float]:
         """
@@ -90,6 +80,8 @@ class EmbeddingService:
             input=text,
             dimensions=EMBEDDING_DIMENSIONS,
         )
+        if not response.data:
+            raise ValueError("OpenAI API returned empty embedding data")
         return response.data[0].embedding
 
     async def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
@@ -145,6 +137,7 @@ def create_search_text(name: str, sub_heading: str, description: str) -> str:
         A single string combining all non-empty fields.
     """
     parts = [name or "", sub_heading or "", description or ""]
+    # filter(None, parts) removes empty strings since empty string is falsy
     return " ".join(filter(None, parts)).strip()
 
 
