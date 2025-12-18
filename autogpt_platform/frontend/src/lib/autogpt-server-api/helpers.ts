@@ -1,7 +1,10 @@
+import {
+  API_KEY_HEADER_NAME,
+  IMPERSONATION_HEADER_NAME,
+} from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { Key, storage } from "@/services/storage/local-storage";
 import { environment } from "@/services/environment";
-import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
+import { Key, storage } from "@/services/storage/local-storage";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -154,6 +157,12 @@ export function createRequestHeaders(
     if (impersonationHeader) {
       headers[IMPERSONATION_HEADER_NAME] = impersonationHeader;
     }
+
+    // Forward X-API-Key header if present
+    const apiKeyHeader = originalRequest.headers.get(API_KEY_HEADER_NAME);
+    if (apiKeyHeader) {
+      headers[API_KEY_HEADER_NAME] = apiKeyHeader;
+    }
   }
 
   return headers;
@@ -221,7 +230,7 @@ export async function parseApiResponse(response: Response): Promise<any> {
   }
 }
 
-function isAuthenticationError(
+export function isAuthenticationError(
   response: Response,
   errorDetail: string,
 ): boolean {
@@ -234,7 +243,7 @@ function isAuthenticationError(
   );
 }
 
-function isLogoutInProgress(): boolean {
+export function isLogoutInProgress(): boolean {
   if (environment.isServerSide()) return false;
 
   try {

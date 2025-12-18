@@ -185,6 +185,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
     )
 
+    # Execution Accuracy Monitoring
+    execution_accuracy_check_interval_hours: int = Field(
+        default=24,
+        description="Interval in hours between execution accuracy alert checks.",
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="allow",
@@ -439,6 +445,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         '"regex:" to match via regular expression.',
     )
 
+    external_oauth_callback_origins: List[str] = Field(
+        default=["http://localhost:3000"],
+        description="Allowed callback URL origins for external OAuth flows. "
+        "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
+    )
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
@@ -537,16 +549,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
-    # Cloudflare Turnstile credentials
-    turnstile_secret_key: str = Field(
-        default="",
-        description="Cloudflare Turnstile backend secret key",
-    )
-    turnstile_verify_url: str = Field(
-        default="https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        description="Cloudflare Turnstile verify URL",
-    )
-
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -581,6 +583,12 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     open_router_api_key: str = Field(default="", description="Open Router API Key")
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
+    webshare_proxy_username: str = Field(
+        default="", description="Webshare Proxy Username"
+    )
+    webshare_proxy_password: str = Field(
+        default="", description="Webshare Proxy Password"
+    )
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")

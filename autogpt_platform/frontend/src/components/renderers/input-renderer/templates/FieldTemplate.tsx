@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { BlockUIType } from "@/lib/autogpt-server-api";
 import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
+import { getFieldErrorKey } from "../utils/helpers";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
   id: fieldId,
@@ -36,21 +37,36 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
 }) => {
   const { isInputConnected } = useEdgeStore();
   const { nodeId, showHandles = true, size = "small" } = formContext;
+  const uiType = formContext.uiType;
 
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[nodeId] ?? false,
   );
 
+  const nodeErrors = useNodeStore((state) => {
+    const node = state.nodes.find((n) => n.id === nodeId);
+    return node?.data?.errors;
+  });
+
   const { isArrayItem, arrayFieldHandleId } = useContext(ArrayEditorContext);
 
-  const isAnyOf = Array.isArray((schema as any)?.anyOf);
+  const isAnyOf =
+    Array.isArray((schema as any)?.anyOf) && !(schema as any)?.enum;
   const isOneOf = Array.isArray((schema as any)?.oneOf);
   const isCredential = isCredentialFieldSchema(schema);
   const suppressHandle = isAnyOf || isOneOf;
 
   let handleId = null;
   if (!isArrayItem) {
-    handleId = generateHandleId(fieldId);
+    if (uiType === BlockUIType.AGENT) {
+      const parts = fieldId.split("_");
+      const filtered = parts.filter(
+        (p) => p !== "root" && p !== "properties" && p.length > 0,
+      );
+      handleId = filtered.join("_") || "";
+    } else {
+      handleId = generateHandleId(fieldId);
+    }
   } else {
     handleId = arrayFieldHandleId;
   }
@@ -79,9 +95,20 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   }
 
   // Size-based styling
-
-  const shouldShowHandle =
+  let shouldShowHandle =
     showHandles && !suppressHandle && !fromAnyOf && !isCredential;
+
+  // We do not want handle for output block's name field
+  if (uiType === BlockUIType.OUTPUT && fieldId === "root_name") {
+    shouldShowHandle = false;
+  }
+
+  const fieldErrorKey = getFieldErrorKey(fieldId);
+  const fieldError =
+    nodeErrors?.[fieldErrorKey] ||
+    nodeErrors?.[fieldErrorKey.replace(/_/g, ".")] ||
+    nodeErrors?.[fieldErrorKey.replace(/\./g, "_")] ||
+    null;
 
   return (
     <div
@@ -91,7 +118,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
         size === "small" ? "w-[350px]" : "w-full",
       )}
     >
-      {label && schema.type && (
+      {!isAnyOf && !fromAnyOf && label && (
         <label htmlFor={fieldId} className="flex items-center gap-1">
           {shouldShowHandle && (
             <NodeHandle
@@ -100,25 +127,27 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               side="left"
             />
           )}
-          {!fromAnyOf && (
-            <Text
-              variant="body"
-              className={cn(
-                "line-clamp-1",
-                isCredential && !shouldShowHandle && "ml-3",
-                size == "large" && "ml-0",
-              )}
-            >
-              {isCredential && credentialProvider
-                ? toDisplayName(credentialProvider) + " credentials"
-                : label}
-            </Text>
-          )}
-          {!fromAnyOf && (
-            <Text variant="small" className={colorClass}>
-              ({displayType})
-            </Text>
-          )}
+          <Text
+            variant={formContext.size === "small" ? "body" : "body-medium"}
+            className={cn(
+              "line-clamp-1",
+              isCredential && !shouldShowHandle && "ml-3",
+              size == "large" && "ml-0",
+              uiType === BlockUIType.OUTPUT &&
+                fieldId === "root_name" &&
+                "ml-3",
+              uiType === BlockUIType.INPUT && "ml-3",
+              uiType === BlockUIType.WEBHOOK && "ml-3",
+              uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
+            )}
+          >
+            {isCredential && credentialProvider
+              ? toDisplayName(credentialProvider) + " credentials"
+              : schema.title || label}
+          </Text>
+          <Text variant="small" className={colorClass}>
+            ({displayType})
+          </Text>
           {required && <span style={{ color: "red" }}>*</span>}
           {description?.props?.description && (
             <TooltipProvider>
@@ -139,8 +168,15 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
         </label>
       )}
       {(isAnyOf || !isConnected) && (
-        <div className={cn(size === "small" ? "pl-2" : "")}>{children}</div>
-      )}{" "}
+        <div className={cn(size === "small" ? "max-w-[340px] pl-2" : "")}>
+          {children}
+        </div>
+      )}
+      {fieldError && (
+        <Text variant="small" className="mt-1 pl-4 !text-red-600">
+          {fieldError}
+        </Text>
+      )}
     </div>
   );
 };

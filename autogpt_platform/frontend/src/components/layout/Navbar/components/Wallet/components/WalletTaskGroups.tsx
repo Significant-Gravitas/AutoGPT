@@ -16,7 +16,10 @@ export function TaskGroups({ groups }: Props) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
     groups.forEach((group) => {
-      initialState[group.name] = true;
+      const completed = group.tasks.every((task) =>
+        state?.completedSteps?.includes(task.id),
+      );
+      initialState[group.name] = !completed;
     });
     return initialState;
   });
@@ -62,13 +65,21 @@ export function TaskGroups({ groups }: Props) {
         {} as Record<string, boolean>,
       ),
     );
-  }, [state?.completedSteps, isGroupCompleted]);
+  }, [state?.completedSteps, isGroupCompleted, groups]);
 
   const setRef = (name: string) => (el: HTMLDivElement | null) => {
     if (el) {
       refs.current[name] = el;
     }
   };
+
+  const scrollIntoViewCentered = useCallback((el: HTMLDivElement) => {
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+  }, []);
 
   const delayConfetti = useCallback((el: HTMLDivElement, count: number) => {
     setTimeout(() => {
@@ -93,15 +104,17 @@ export function TaskGroups({ groups }: Props) {
   useEffect(() => {
     groups.forEach((group) => {
       const groupCompleted = isGroupCompleted(group);
-      // Check if the last task in the group is completed
-      const alreadyCelebrated = state?.notified.includes(
-        group.tasks[group.tasks.length - 1].id,
+      // Check if all tasks in the group were already celebrated
+      // last task completed triggers group completion
+      const alreadyCelebrated = group.tasks.every((task) =>
+        state?.notified.includes(task.id),
       );
 
       if (groupCompleted) {
         const el = refs.current[group.name];
         if (el && !alreadyCelebrated) {
-          delayConfetti(el, 50);
+          scrollIntoViewCentered(el);
+          delayConfetti(el, 600);
           // Update the state to include all group tasks as notified
           // This ensures that the confetti effect isn't perpetually triggered on Wallet
           const notifiedTasks = group.tasks.map((task) => task.id);
@@ -115,7 +128,8 @@ export function TaskGroups({ groups }: Props) {
       group.tasks.forEach((task) => {
         const el = refs.current[task.id];
         if (el && isTaskCompleted(task) && !state?.notified.includes(task.id)) {
-          delayConfetti(el, 40);
+          scrollIntoViewCentered(el);
+          delayConfetti(el, 400);
           // Update the state to include the task as notified
           updateState({ notified: [...(state?.notified || []), task.id] });
         }
@@ -129,6 +143,7 @@ export function TaskGroups({ groups }: Props) {
     state?.notified,
     isGroupCompleted,
     isTaskCompleted,
+    scrollIntoViewCentered,
   ]);
 
   return (

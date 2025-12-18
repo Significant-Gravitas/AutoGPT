@@ -33,7 +33,11 @@ from backend.data.model import (
     OAuth2Credentials,
     UserIntegrations,
 )
-from backend.data.onboarding import complete_webhook_trigger_step
+from backend.data.onboarding import (
+    OnboardingStep,
+    complete_onboarding_step,
+    increment_runs,
+)
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
@@ -376,7 +380,8 @@ async def webhook_ingress_generic(
     if not (webhook.triggered_nodes or webhook.triggered_presets):
         return
 
-    await complete_webhook_trigger_step(user_id)
+    await complete_onboarding_step(user_id, OnboardingStep.TRIGGER_WEBHOOK)
+    await increment_runs(user_id)
 
     # Execute all triggers concurrently for better performance
     tasks = []

@@ -34,7 +34,6 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
       disabled = false,
       className,
       nodeId,
-      fieldKey,
     },
     ref,
   ) => {
@@ -101,12 +100,12 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
         id={parentFieldId}
       >
         {Object.entries(value).map(([key, propertyValue], idx) => {
-          const isDynamicPropertyConnected = isInputConnected(nodeId, fieldKey);
           const handleId = generateHandleId(
             parentFieldId,
             [key],
             HandleIdType.KEY_VALUE,
           );
+          const isDynamicPropertyConnected = isInputConnected(nodeId, handleId);
 
           return (
             <div key={idx} className="flex flex-col gap-2">
@@ -125,7 +124,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                   (string)
                 </Text>
               </div>
-              {!isDynamicPropertyConnected && propertyValue !== null && (
+              {!isDynamicPropertyConnected && (
                 <div className="flex items-center gap-2">
                   <Input
                     hideLabel={true}
@@ -143,7 +142,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                     label=""
                     id={`value-${idx}`}
                     size="small"
-                    value={propertyValue as string}
+                    value={propertyValue ?? ""}
                     onChange={(e) => setProperty(key, e.target.value)}
                     placeholder={placeholder}
                     wrapperClassName="mb-0"

@@ -438,6 +438,7 @@ async def create_submission(
         slug=submission_request.slug,
         name=submission_request.name,
         video_url=submission_request.video_url,
+        agent_output_demo_url=submission_request.agent_output_demo_url,
         image_urls=submission_request.image_urls,
         description=submission_request.description,
         instructions=submission_request.instructions,
@@ -481,6 +482,7 @@ async def edit_submission(
         store_listing_version_id=store_listing_version_id,
         name=submission_request.name,
         video_url=submission_request.video_url,
+        agent_output_demo_url=submission_request.agent_output_demo_url,
         image_urls=submission_request.image_urls,
         description=submission_request.description,
         instructions=submission_request.instructions,
@@ -542,7 +544,9 @@ async def generate_image(
     Returns:
         JSONResponse: JSON containing the URL of the generated image
     """
-    agent = await backend.data.graph.get_graph(agent_id, user_id=user_id)
+    agent = await backend.data.graph.get_graph(
+        graph_id=agent_id, version=None, user_id=user_id
+    )
 
     if not agent:
         raise fastapi.HTTPException(

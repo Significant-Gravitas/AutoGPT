@@ -12,7 +12,7 @@ import prisma.types
 
 import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
-from backend.data.db import transaction
+from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphMeta,
     GraphModel,
@@ -120,7 +120,7 @@ async def get_store_agents(
                     is_available,
                     updated_at,
                     ts_rank_cd(search, query) AS rank
-                FROM "StoreAgent",
+                FROM {{schema_prefix}}"StoreAgent",
                     plainto_tsquery('english', $1) AS query
                 WHERE {sql_where_clause}
                     AND search @@ query
@@ -131,22 +131,18 @@ async def get_store_agents(
             # Count query for pagination - only uses search term parameter
             count_query = f"""
                 SELECT COUNT(*) as count
-                FROM "StoreAgent",
+                FROM {{schema_prefix}}"StoreAgent",
                     plainto_tsquery('english', $1) AS query
                 WHERE {sql_where_clause}
                     AND search @@ query
             """
 
             # Execute both queries with parameters
-            agents = await prisma.client.get_client().query_raw(
-                typing.cast(typing.LiteralString, sql_query), *params
-            )
+            agents = await query_raw_with_schema(sql_query, *params)
 
             # For count, use params without pagination (last 2 params)
             count_params = params[:-2]
-            count_result = await prisma.client.get_client().query_raw(
-                typing.cast(typing.LiteralString, count_query), *count_params
-            )
+            count_result = await query_raw_with_schema(count_query, *count_params)
 
             total = count_result[0]["count"] if count_result else 0
             total_pages = (total + page_size - 1) // page_size
@@ -331,6 +327,7 @@ async def get_store_agent_details(
             slug=agent.slug,
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
+            agent_output_demo=agent.agent_output_demo or "",
             agent_image=agent.agent_image,
             creator=agent.creator_username or "",
             creator_avatar=agent.creator_avatar or "",
@@ -401,6 +398,7 @@ async def get_store_agent_by_version_id(
             slug=agent.slug,
             agent_name=agent.agent_name,
             agent_video=agent.agent_video or "",
+            agent_output_demo=agent.agent_output_demo or "",
             agent_image=agent.agent_image,
             creator=agent.creator_username or "",
             creator_avatar=agent.creator_avatar or "",
@@ -687,6 +685,7 @@ async def create_store_submission(
     slug: str,
     name: str,
     video_url: str | None = None,
+    agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
     instructions: str | None = None,
@@ -781,6 +780,7 @@ async def create_store_submission(
                         agentGraphVersion=agent_version,
                         name=name,
                         videoUrl=video_url,
+                        agentOutputDemoUrl=agent_output_demo_url,
                         imageUrls=image_urls,
                         description=description,
                         instructions=instructions,
@@ -853,6 +853,7 @@ async def edit_store_submission(
     store_listing_version_id: str,
     name: str,
     video_url: str | None = None,
+    agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
     sub_heading: str = "",
@@ -934,6 +935,7 @@ async def edit_store_submission(
                 store_listing_id=current_version.storeListingId,
                 name=name,
                 video_url=video_url,
+                agent_output_demo_url=agent_output_demo_url,
                 image_urls=image_urls,
                 description=description,
                 sub_heading=sub_heading,
@@ -951,6 +953,7 @@ async def edit_store_submission(
                 data=prisma.types.StoreListingVersionUpdateInput(
                     name=name,
                     videoUrl=video_url,
+                    agentOutputDemoUrl=agent_output_demo_url,
                     imageUrls=image_urls,
                     description=description,
                     categories=categories,
@@ -1012,6 +1015,7 @@ async def create_store_version(
     store_listing_id: str,
     name: str,
     video_url: str | None = None,
+    agent_output_demo_url: str | None = None,
     image_urls: list[str] = [],
     description: str = "",
     instructions: str | None = None,
@@ -1081,6 +1085,7 @@ async def create_store_version(
                 agentGraphVersion=agent_version,
                 name=name,
                 videoUrl=video_url,
+                agentOutputDemoUrl=agent_output_demo_url,
                 imageUrls=image_urls,
                 description=description,
                 instructions=instructions,
@@ -1343,6 +1348,7 @@ async def get_agent(store_listing_version_id: str) -> GraphModel:
     graph = await get_graph(
         graph_id=store_listing_version.agentGraphId,
         version=store_listing_version.agentGraphVersion,
+        user_id=None,
         for_export=True,
     )
     if not graph:

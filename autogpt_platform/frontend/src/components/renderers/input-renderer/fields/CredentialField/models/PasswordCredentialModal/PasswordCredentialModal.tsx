@@ -88,7 +88,7 @@ export function PasswordCredentialsModal({ provider }: Props) {
       </Dialog>
       <Button
         type="button"
-        className="w-fit"
+        className="w-fit px-2"
         size="small"
         onClick={() => setOpen(true)}
       >

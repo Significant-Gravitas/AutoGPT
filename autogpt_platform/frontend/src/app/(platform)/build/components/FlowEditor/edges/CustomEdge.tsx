@@ -1,16 +1,30 @@
 import { Button } from "@/components/atoms/Button/Button";
 import {
   BaseEdge,
+  Edge as XYEdge,
   EdgeLabelRenderer,
   EdgeProps,
   getBezierPath,
 } from "@xyflow/react";
-
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { XIcon } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+import { NodeExecutionResult } from "@/lib/autogpt-server-api";
+import { JSBeads } from "./components/JSBeads";
+
+export type CustomEdgeData = {
+  isStatic?: boolean;
+  beadUp?: number;
+  beadDown?: number;
+  beadData?: Map<string, NodeExecutionResult["status"]>;
+};
+
+export type CustomEdge = XYEdge<CustomEdgeData, "custom">;
+import { memo } from "react";
 
 const CustomEdge = ({
   id,
+  data,
   sourceX,
   sourceY,
   targetX,
@@ -19,8 +33,8 @@ const CustomEdge = ({
   targetPosition,
   markerEnd,
   selected,
-}: EdgeProps) => {
-  const removeConnection = useEdgeStore((state) => state.removeConnection);
+}: EdgeProps<CustomEdge>) => {
+  const removeConnection = useEdgeStore((state) => state.removeEdge);
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -30,14 +44,27 @@ const CustomEdge = ({
     targetPosition,
   });
 
+  const isStatic = data?.isStatic ?? false;
+  const beadUp = data?.beadUp ?? 0;
+  const beadDown = data?.beadDown ?? 0;
+
   return (
     <>
       <BaseEdge
         path={edgePath}
         markerEnd={markerEnd}
-        className={
-          selected ? "[stroke:#555]" : "[stroke:#555]80 hover:[stroke:#555]"
-        }
+        className={cn(
+          isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
+          selected
+            ? "stroke-zinc-800"
+            : "stroke-zinc-500/50 hover:stroke-zinc-500",
+        )}
+      />
+      <JSBeads
+        beadUp={beadUp}
+        beadDown={beadDown}
+        edgePath={edgePath}
+        beadsKey={`beads-${id}-${sourceX}-${sourceY}-${targetX}-${targetY}`}
       />
       <EdgeLabelRenderer>
         <Button
@@ -56,4 +83,4 @@ const CustomEdge = ({
   );
 };
 
-export default CustomEdge;
+export default memo(CustomEdge);

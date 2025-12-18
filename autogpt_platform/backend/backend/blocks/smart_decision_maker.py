@@ -1,7 +1,10 @@
 import logging
 import re
 from collections import Counter
+from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel
 
 import backend.blocks.llm as llm
 from backend.blocks.agent import AgentExecutorBlock
@@ -18,15 +21,41 @@ from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
     is_dynamic_field,
+    is_tool_pin,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
+from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
+    from backend.executor.manager import ExecutionProcessor
 
 logger = logging.getLogger(__name__)
+
+
+class ToolInfo(BaseModel):
+    """Processed tool call information."""
+
+    tool_call: Any  # The original tool call object from LLM response
+    tool_name: str  # The function name
+    tool_def: dict[str, Any]  # The tool definition from tool_functions
+    input_data: dict[str, Any]  # Processed input data ready for tool execution
+    field_mapping: dict[str, str]  # Field name mapping for the tool
+
+
+class ExecutionParams(BaseModel):
+    """Tool execution parameters."""
+
+    user_id: str
+    graph_id: str
+    node_id: str
+    graph_version: int
+    graph_exec_id: str
+    node_exec_id: str
+    execution_context: "ExecutionContext"
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
@@ -104,6 +133,50 @@ def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
     return {"role": "tool", "tool_call_id": call_id, "content": content}
 
 
+def _combine_tool_responses(tool_outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Combine multiple Anthropic tool responses into a single user message.
+    For non-Anthropic formats, returns the original list unchanged.
+    """
+    if len(tool_outputs) <= 1:
+        return tool_outputs
+
+    # Anthropic responses have role="user", type="message", and content is a list with tool_result items
+    anthropic_responses = [
+        output
+        for output in tool_outputs
+        if (
+            output.get("role") == "user"
+            and output.get("type") == "message"
+            and isinstance(output.get("content"), list)
+            and any(
+                item.get("type") == "tool_result"
+                for item in output.get("content", [])
+                if isinstance(item, dict)
+            )
+        )
+    ]
+
+    if len(anthropic_responses) > 1:
+        combined_content = [
+            item for response in anthropic_responses for item in response["content"]
+        ]
+
+        combined_response = {
+            "role": "user",
+            "type": "message",
+            "content": combined_content,
+        }
+
+        non_anthropic_responses = [
+            output for output in tool_outputs if output not in anthropic_responses
+        ]
+
+        return [combined_response] + non_anthropic_responses
+
+    return tool_outputs
+
+
 def _convert_raw_response_to_dict(raw_response: Any) -> dict[str, Any]:
     """
     Safely convert raw_response to dictionary format for conversation history.
@@ -120,13 +193,16 @@ def _convert_raw_response_to_dict(raw_response: Any) -> dict[str, Any]:
         return json.to_dict(raw_response)
 
 
-def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
+def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, int]:
     """
     All the tool calls entry in the conversation history requires a response.
     This function returns the pending tool calls that has not generated an output yet.
 
     Return: dict[str, int] - A dictionary of pending tool call IDs with their count.
     """
+    if not conversation_history:
+        return {}
+
     pending_calls = Counter()
     for history in conversation_history:
         for call_id in _get_tool_requests(history):
@@ -172,7 +248,7 @@ class SmartDecisionMakerBlock(Block):
             "Function parameters that has no default value and not optional typed has to be provided. ",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[dict] = SchemaField(
+        conversation_history: list[dict] | None = SchemaField(
             default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
@@ -199,6 +275,17 @@ class SmartDecisionMakerBlock(Block):
             advanced=True,
             default="localhost:11434",
             description="Ollama host for local  models",
+        )
+        agent_mode_max_iterations: int = SchemaField(
+            title="Agent Mode Max Iterations",
+            description="Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit.",
+            advanced=True,
+            default=0,
+        )
+        conversation_compaction: bool = SchemaField(
+            default=True,
+            title="Context window auto-compaction",
+            description="Automatically compact the context window once it hits the limit",
         )
 
         @classmethod
@@ -367,8 +454,9 @@ class SmartDecisionMakerBlock(Block):
             "required": sorted(required_fields),
         }
 
-        # Store field mapping for later use in output processing
+        # Store field mapping and node info for later use in output processing
         tool_function["_field_mapping"] = field_mapping
+        tool_function["_sink_node_id"] = sink_node.id
 
         return {"type": "function", "function": tool_function}
 
@@ -431,10 +519,13 @@ class SmartDecisionMakerBlock(Block):
             "strict": True,
         }
 
+        # Store node info for later use in output processing
+        tool_function["_sink_node_id"] = sink_node.id
+
         return {"type": "function", "function": tool_function}
 
     @staticmethod
-    async def _create_function_signature(
+    async def _create_tool_node_signatures(
         node_id: str,
     ) -> list[dict[str, Any]]:
         """
@@ -450,7 +541,7 @@ class SmartDecisionMakerBlock(Block):
         tools = [
             (link, node)
             for link, node in await db_client.get_connected_output_nodes(node_id)
-            if link.source_name.startswith("tools_^_") and link.source_id == node_id
+            if is_tool_pin(link.source_name) and link.source_id == node_id
         ]
         if not tools:
             raise ValueError("There is no next node to execute.")
@@ -498,6 +589,7 @@ class SmartDecisionMakerBlock(Block):
         Returns the response if successful, raises ValueError if validation fails.
         """
         resp = await llm.llm_call(
+            compress_prompt_to_fit=input_data.conversation_compaction,
             credentials=credentials,
             llm_model=input_data.model,
             prompt=current_prompt,
@@ -538,8 +630,14 @@ class SmartDecisionMakerBlock(Block):
                 ),
                 None,
             )
-            if tool_def is None and len(tool_functions) == 1:
-                tool_def = tool_functions[0]
+            if tool_def is None:
+                if len(tool_functions) == 1:
+                    tool_def = tool_functions[0]
+                else:
+                    validation_errors_list.append(
+                        f"Tool call for '{tool_name}' does not match any known "
+                        "tool definition."
+                    )
 
             # Get parameters schema from tool definition
             if (
@@ -579,6 +677,291 @@ class SmartDecisionMakerBlock(Block):
 
         return resp
 
+    def _process_tool_calls(
+        self, response, tool_functions: list[dict[str, Any]]
+    ) -> list[ToolInfo]:
+        """Process tool calls and extract tool definitions, arguments, and input data.
+
+        Returns a list of tool info dicts with:
+        - tool_call: The original tool call object
+        - tool_name: The function name
+        - tool_def: The tool definition from tool_functions
+        - input_data: Processed input data dict (includes None values)
+        - field_mapping: Field name mapping for the tool
+        """
+        if not response.tool_calls:
+            return []
+
+        processed_tools = []
+        for tool_call in response.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
+
+            tool_def = next(
+                (
+                    tool
+                    for tool in tool_functions
+                    if tool["function"]["name"] == tool_name
+                ),
+                None,
+            )
+            if not tool_def:
+                if len(tool_functions) == 1:
+                    tool_def = tool_functions[0]
+                else:
+                    continue
+
+            # Build input data for the tool
+            input_data = {}
+            field_mapping = tool_def["function"].get("_field_mapping", {})
+            if "function" in tool_def and "parameters" in tool_def["function"]:
+                expected_args = tool_def["function"]["parameters"].get("properties", {})
+                for clean_arg_name in expected_args:
+                    original_field_name = field_mapping.get(
+                        clean_arg_name, clean_arg_name
+                    )
+                    arg_value = tool_args.get(clean_arg_name)
+                    # Include all expected parameters, even if None (for backward compatibility with tests)
+                    input_data[original_field_name] = arg_value
+
+            processed_tools.append(
+                ToolInfo(
+                    tool_call=tool_call,
+                    tool_name=tool_name,
+                    tool_def=tool_def,
+                    input_data=input_data,
+                    field_mapping=field_mapping,
+                )
+            )
+
+        return processed_tools
+
+    def _update_conversation(
+        self, prompt: list[dict], response, tool_outputs: list | None = None
+    ):
+        """Update conversation history with response and tool outputs."""
+        # Don't add separate reasoning message with tool calls (breaks Anthropic's tool_use->tool_result pairing)
+        assistant_message = _convert_raw_response_to_dict(response.raw_response)
+        has_tool_calls = isinstance(assistant_message.get("content"), list) and any(
+            item.get("type") == "tool_use"
+            for item in assistant_message.get("content", [])
+        )
+
+        if response.reasoning and not has_tool_calls:
+            prompt.append(
+                {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
+            )
+
+        prompt.append(assistant_message)
+
+        if tool_outputs:
+            prompt.extend(tool_outputs)
+
+    async def _execute_single_tool_with_manager(
+        self,
+        tool_info: ToolInfo,
+        execution_params: ExecutionParams,
+        execution_processor: "ExecutionProcessor",
+    ) -> dict:
+        """Execute a single tool using the execution manager for proper integration."""
+        # Lazy imports to avoid circular dependencies
+        from backend.data.execution import NodeExecutionEntry
+
+        tool_call = tool_info.tool_call
+        tool_def = tool_info.tool_def
+        raw_input_data = tool_info.input_data
+
+        # Get sink node and field mapping
+        sink_node_id = tool_def["function"]["_sink_node_id"]
+
+        # Use proper database operations for tool execution
+        db_client = get_database_manager_async_client()
+
+        # Get target node
+        target_node = await db_client.get_node(sink_node_id)
+        if not target_node:
+            raise ValueError(f"Target node {sink_node_id} not found")
+
+        # Create proper node execution using upsert_execution_input
+        node_exec_result = None
+        final_input_data = None
+
+        # Add all inputs to the execution
+        if not raw_input_data:
+            raise ValueError(f"Tool call has no input data: {tool_call}")
+
+        for input_name, input_value in raw_input_data.items():
+            node_exec_result, final_input_data = await db_client.upsert_execution_input(
+                node_id=sink_node_id,
+                graph_exec_id=execution_params.graph_exec_id,
+                input_name=input_name,
+                input_data=input_value,
+            )
+
+        assert node_exec_result is not None, "node_exec_result should not be None"
+
+        # Create NodeExecutionEntry for execution manager
+        node_exec_entry = NodeExecutionEntry(
+            user_id=execution_params.user_id,
+            graph_exec_id=execution_params.graph_exec_id,
+            graph_id=execution_params.graph_id,
+            graph_version=execution_params.graph_version,
+            node_exec_id=node_exec_result.node_exec_id,
+            node_id=sink_node_id,
+            block_id=target_node.block_id,
+            inputs=final_input_data or {},
+            execution_context=execution_params.execution_context,
+        )
+
+        # Use the execution manager to execute the tool node
+        try:
+            # Get NodeExecutionProgress from the execution manager's running nodes
+            node_exec_progress = execution_processor.running_node_execution[
+                sink_node_id
+            ]
+
+            # Use the execution manager's own graph stats
+            graph_stats_pair = (
+                execution_processor.execution_stats,
+                execution_processor.execution_stats_lock,
+            )
+
+            # Create a completed future for the task tracking system
+            node_exec_future = Future()
+            node_exec_progress.add_task(
+                node_exec_id=node_exec_result.node_exec_id,
+                task=node_exec_future,
+            )
+
+            # Execute the node directly since we're in the SmartDecisionMaker context
+            node_exec_future.set_result(
+                await execution_processor.on_node_execution(
+                    node_exec=node_exec_entry,
+                    node_exec_progress=node_exec_progress,
+                    nodes_input_masks=None,
+                    graph_stats_pair=graph_stats_pair,
+                )
+            )
+
+            # Get outputs from database after execution completes using database manager client
+            node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
+                node_exec_result.node_exec_id
+            )
+
+            # Create tool response
+            tool_response_content = (
+                json.dumps(node_outputs)
+                if node_outputs
+                else "Tool executed successfully"
+            )
+            return _create_tool_response(tool_call.id, tool_response_content)
+
+        except Exception as e:
+            logger.error(f"Tool execution with manager failed: {e}")
+            # Return error response
+            return _create_tool_response(
+                tool_call.id, f"Tool execution failed: {str(e)}"
+            )
+
+    async def _execute_tools_agent_mode(
+        self,
+        input_data,
+        credentials,
+        tool_functions: list[dict[str, Any]],
+        prompt: list[dict],
+        graph_exec_id: str,
+        node_id: str,
+        node_exec_id: str,
+        user_id: str,
+        graph_id: str,
+        graph_version: int,
+        execution_context: ExecutionContext,
+        execution_processor: "ExecutionProcessor",
+    ):
+        """Execute tools in agent mode with a loop until finished."""
+        max_iterations = input_data.agent_mode_max_iterations
+        iteration = 0
+
+        # Execution parameters for tool execution
+        execution_params = ExecutionParams(
+            user_id=user_id,
+            graph_id=graph_id,
+            node_id=node_id,
+            graph_version=graph_version,
+            graph_exec_id=graph_exec_id,
+            node_exec_id=node_exec_id,
+            execution_context=execution_context,
+        )
+
+        current_prompt = list(prompt)
+
+        while max_iterations < 0 or iteration < max_iterations:
+            iteration += 1
+            logger.debug(f"Agent mode iteration {iteration}")
+
+            # Prepare prompt for this iteration
+            iteration_prompt = list(current_prompt)
+
+            # On the last iteration, add a special system message to encourage completion
+            if max_iterations > 0 and iteration == max_iterations:
+                last_iteration_message = {
+                    "role": "system",
+                    "content": f"{MAIN_OBJECTIVE_PREFIX}This is your last iteration ({iteration}/{max_iterations}). "
+                    "Try to complete the task with the information you have. If you cannot fully complete it, "
+                    "provide a summary of what you've accomplished and what remains to be done. "
+                    "Prefer finishing with a clear response rather than making additional tool calls.",
+                }
+                iteration_prompt.append(last_iteration_message)
+
+            # Get LLM response
+            try:
+                response = await self._attempt_llm_call_with_validation(
+                    credentials, input_data, iteration_prompt, tool_functions
+                )
+            except Exception as e:
+                yield "error", f"LLM call failed in agent mode iteration {iteration}: {str(e)}"
+                return
+
+            # Process tool calls
+            processed_tools = self._process_tool_calls(response, tool_functions)
+
+            # If no tool calls, we're done
+            if not processed_tools:
+                yield "finished", response.response
+                self._update_conversation(current_prompt, response)
+                yield "conversations", current_prompt
+                return
+
+            # Execute tools and collect responses
+            tool_outputs = []
+            for tool_info in processed_tools:
+                try:
+                    tool_response = await self._execute_single_tool_with_manager(
+                        tool_info, execution_params, execution_processor
+                    )
+                    tool_outputs.append(tool_response)
+                except Exception as e:
+                    logger.error(f"Tool execution failed: {e}")
+                    # Create error response for the tool
+                    error_response = _create_tool_response(
+                        tool_info.tool_call.id, f"Error: {str(e)}"
+                    )
+                    tool_outputs.append(error_response)
+
+            tool_outputs = _combine_tool_responses(tool_outputs)
+
+            self._update_conversation(current_prompt, response, tool_outputs)
+
+            # Yield intermediate conversation state
+            yield "conversations", current_prompt
+
+        # If we reach max iterations, yield the current state
+        if max_iterations < 0:
+            yield "finished", f"Agent mode completed after {iteration} iterations"
+        else:
+            yield "finished", f"Agent mode completed after {max_iterations} iterations (limit reached)"
+        yield "conversations", current_prompt
+
     async def run(
         self,
         input_data: Input,
@@ -589,15 +972,19 @@ class SmartDecisionMakerBlock(Block):
         graph_exec_id: str,
         node_exec_id: str,
         user_id: str,
+        graph_version: int,
+        execution_context: ExecutionContext,
+        execution_processor: "ExecutionProcessor",
         **kwargs,
     ) -> BlockOutput:
-        tool_functions = await self._create_function_signature(node_id)
+
+        tool_functions = await self._create_tool_node_signatures(node_id)
         yield "tool_functions", json.dumps(tool_functions)
 
-        input_data.conversation_history = input_data.conversation_history or []
-        prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
+        conversation_history = input_data.conversation_history or []
+        prompt = [json.to_dict(p) for p in conversation_history if p]
 
-        pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
+        pending_tool_calls = get_pending_tool_calls(conversation_history)
         if pending_tool_calls and input_data.last_tool_output is None:
             raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
 
@@ -634,24 +1021,52 @@ class SmartDecisionMakerBlock(Block):
             input_data.prompt = llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = llm.fmt.format_string(input_data.sys_prompt, values)
 
-        prefix = "[Main Objective Prompt]: "
-
         if input_data.sys_prompt and not any(
-            p["role"] == "system" and p["content"].startswith(prefix) for p in prompt
+            p["role"] == "system" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            for p in prompt
         ):
-            prompt.append({"role": "system", "content": prefix + input_data.sys_prompt})
+            prompt.append(
+                {
+                    "role": "system",
+                    "content": MAIN_OBJECTIVE_PREFIX + input_data.sys_prompt,
+                }
+            )
 
         if input_data.prompt and not any(
-            p["role"] == "user" and p["content"].startswith(prefix) for p in prompt
+            p["role"] == "user" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            for p in prompt
         ):
-            prompt.append({"role": "user", "content": prefix + input_data.prompt})
+            prompt.append(
+                {"role": "user", "content": MAIN_OBJECTIVE_PREFIX + input_data.prompt}
+            )
 
+        # Execute tools based on the selected mode
+        if input_data.agent_mode_max_iterations != 0:
+            # In agent mode, execute tools directly in a loop until finished
+            async for result in self._execute_tools_agent_mode(
+                input_data=input_data,
+                credentials=credentials,
+                tool_functions=tool_functions,
+                prompt=prompt,
+                graph_exec_id=graph_exec_id,
+                node_id=node_id,
+                node_exec_id=node_exec_id,
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+                execution_context=execution_context,
+                execution_processor=execution_processor,
+            ):
+                yield result
+            return
+
+        # One-off mode: single LLM call and yield tool calls for external execution
         current_prompt = list(prompt)
         max_attempts = max(1, int(input_data.retry))
         response = None
 
         last_error = None
-        for attempt in range(max_attempts):
+        for _ in range(max_attempts):
             try:
                 response = await self._attempt_llm_call_with_validation(
                     credentials, input_data, current_prompt, tool_functions
@@ -661,9 +1076,9 @@ class SmartDecisionMakerBlock(Block):
             except ValueError as e:
                 last_error = e
                 error_feedback = (
-                    "Your tool call had parameter errors. Please fix the following issues and try again:\n"
+                    "Your tool call had errors. Please fix the following issues and try again:\n"
                     + f"- {str(e)}\n"
-                    + "\nPlease make sure to use the exact parameter names as specified in the function schema."
+                    + "\nPlease make sure to use the exact tool and parameter names as specified in the function schema."
                 )
                 current_prompt = list(current_prompt) + [
                     {"role": "user", "content": error_feedback}
@@ -690,21 +1105,23 @@ class SmartDecisionMakerBlock(Block):
                 ),
                 None,
             )
-            if (
-                tool_def
-                and "function" in tool_def
-                and "parameters" in tool_def["function"]
-            ):
+            if not tool_def:
+                # NOTE: This matches the logic in _attempt_llm_call_with_validation and
+                # relies on its validation for the assumption that this is valid to use.
+                if len(tool_functions) == 1:
+                    tool_def = tool_functions[0]
+                else:
+                    # This should not happen due to prior validation
+                    continue
+
+            if "function" in tool_def and "parameters" in tool_def["function"]:
                 expected_args = tool_def["function"]["parameters"].get("properties", {})
             else:
                 expected_args = {arg: {} for arg in tool_args.keys()}
 
-            # Get field mapping from tool definition
-            field_mapping = (
-                tool_def.get("function", {}).get("_field_mapping", {})
-                if tool_def
-                else {}
-            )
+            # Get the sink node ID and field mapping from tool definition
+            field_mapping = tool_def["function"].get("_field_mapping", {})
+            sink_node_id = tool_def["function"]["_sink_node_id"]
 
             for clean_arg_name in expected_args:
                 # arg_name is now always the cleaned field name (for Anthropic API compliance)
@@ -712,9 +1129,8 @@ class SmartDecisionMakerBlock(Block):
                 original_field_name = field_mapping.get(clean_arg_name, clean_arg_name)
                 arg_value = tool_args.get(clean_arg_name)
 
-                sanitized_tool_name = self.cleanup(tool_name)
                 sanitized_arg_name = self.cleanup(original_field_name)
-                emit_key = f"tools_^_{sanitized_tool_name}_~_{sanitized_arg_name}"
+                emit_key = f"tools_^_{sink_node_id}_~_{sanitized_arg_name}"
 
                 logger.debug(
                     "[SmartDecisionMakerBlock|geid:%s|neid:%s] emit %s",

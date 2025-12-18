@@ -19,10 +19,9 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Button } from "@/components/atoms/Button/Button";
 
 export const NewSaveControl = () => {
-  const { form, onSubmit, isLoading, graphVersion } = useNewSaveControl({
-    showToast: true,
-  });
+  const { form, isSaving, graphVersion, handleSave } = useNewSaveControl();
   const { saveControlOpen, setSaveControlOpen } = useControlPanelStore();
+
   return (
     <Popover onOpenChange={setSaveControlOpen}>
       <Tooltip delayDuration={100}>
@@ -49,7 +48,7 @@ export const NewSaveControl = () => {
       >
         <Card className="border-none dark:bg-slate-900">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
+            <form onSubmit={form.handleSubmit(handleSave)}>
               <CardContent className="p-0">
                 <div className="space-y-3">
                   <FormField
@@ -111,8 +110,8 @@ export const NewSaveControl = () => {
                   className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
                   data-id="save-control-save-agent"
                   data-testid="save-control-save-agent-button"
-                  disabled={isLoading}
-                  loading={isLoading}
+                  disabled={isSaving}
+                  loading={isSaving}
                 >
                   Save Agent
                 </Button>
