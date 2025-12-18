@@ -55,13 +55,13 @@ export default async function MarketplaceAgentPage({
     creator_lower,
     params.slug,
   ); // Already cached in above prefetch
-  if (status === 200) {
+  if (status === 200 && user && creator_agent.active_version_id) {
     await prefetchGetV2GetAgentByStoreIdQuery(
       queryClient,
-      creator_agent.active_version_id ?? "",
+      creator_agent.active_version_id,
       {
         query: {
-          enabled: !!user && !!creator_agent.active_version_id,
+          enabled: true,
         },
       },
     );

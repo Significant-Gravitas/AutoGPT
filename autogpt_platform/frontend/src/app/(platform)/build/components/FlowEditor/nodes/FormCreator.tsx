@@ -10,37 +10,58 @@ export const FormCreator = React.memo(
     jsonSchema,
     nodeId,
     uiType,
+    showHandles = true,
+    className,
   }: {
     jsonSchema: RJSFSchema;
     nodeId: string;
     uiType: BlockUIType;
+    showHandles?: boolean;
+    className?: string;
   }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
+
     const getHardCodedValues = useNodeStore(
       (state) => state.getHardCodedValues,
     );
+
     const handleChange = ({ formData }: any) => {
       if ("credentials" in formData && !formData.credentials?.id) {
         delete formData.credentials;
       }
-      updateNodeData(nodeId, { hardcodedValues: formData });
+
+      const updatedValues =
+        uiType === BlockUIType.AGENT
+          ? {
+              ...getHardCodedValues(nodeId),
+              inputs: formData,
+            }
+          : formData;
+
+      updateNodeData(nodeId, { hardcodedValues: updatedValues });
     };
 
-    const initialValues = getHardCodedValues(nodeId);
+    const hardcodedValues = getHardCodedValues(nodeId);
+    const initialValues =
+      uiType === BlockUIType.AGENT
+        ? (hardcodedValues.inputs ?? {})
+        : hardcodedValues;
 
     return (
-      <FormRenderer
-        jsonSchema={jsonSchema}
-        handleChange={handleChange}
-        uiSchema={uiSchema}
-        initialValues={initialValues}
-        formContext={{
-          nodeId: nodeId,
-          uiType: uiType,
-          showHandles: true,
-          size: "small",
-        }}
-      />
+      <div className={className}>
+        <FormRenderer
+          jsonSchema={jsonSchema}
+          handleChange={handleChange}
+          uiSchema={uiSchema}
+          initialValues={initialValues}
+          formContext={{
+            nodeId: nodeId,
+            uiType: uiType,
+            showHandles: showHandles,
+            size: "small",
+          }}
+        />
+      </div>
     );
   },
 );

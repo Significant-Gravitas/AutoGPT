@@ -3,8 +3,18 @@ import { withSentryConfig } from "@sentry/nextjs";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   productionBrowserSourceMaps: true,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "256mb",
+    },
+    // Increase body size limit for API routes (file uploads) - 256MB to match backend limit
+    proxyClientMaxBodySize: "256mb",
+    middlewareClientMaxBodySize: "256mb",
+  },
   images: {
     domains: [
+      // We dont need to maintain alphabetical order here
+      // as we are doing logical grouping of domains
       "images.unsplash.com",
       "ddz4ak4pa3d19.cloudfront.net",
       "upload.wikimedia.org",
@@ -12,6 +22,7 @@ const nextConfig = {
 
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
+      "example.com", // for local test data images
     ],
     remotePatterns: [
       {
@@ -31,7 +42,8 @@ const nextConfig = {
       },
     ],
   },
-  output: "standalone",
+  // Vercel has its own deployment mechanism and doesn't need standalone mode
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
 };
 
@@ -77,10 +89,10 @@ export default isDevelopmentBuild
 
       // This helps Sentry with sourcemaps... https://docs.sentry.io/platforms/javascript/guides/nextjs/sourcemaps/
       sourcemaps: {
-        disable: false, // Source maps are enabled by default
-        assets: ["**/*.js", "**/*.js.map"], // Specify which files to upload
-        ignore: ["**/node_modules/**"], // Files to exclude
-        deleteSourcemapsAfterUpload: true, // Security: delete after upload
+        disable: false,
+        assets: [".next/**/*.js", ".next/**/*.js.map"],
+        ignore: ["**/node_modules/**"],
+        deleteSourcemapsAfterUpload: false, // Source is public anyway :)
       },
 
       // Automatically tree-shake Sentry logger statements to reduce bundle size

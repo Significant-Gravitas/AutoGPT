@@ -39,11 +39,11 @@ export const ArrayEditorWidget = ({
               [element.index.toString()],
               HandleIdType.ARRAY,
             );
-            const isConnected = isInputConnected(nodeId, fieldId);
+            const isConnected = isInputConnected(nodeId, arrayFieldHandleId);
             return (
               <div
                 key={element.key}
-                className="-ml-2 flex max-w-[400px] items-center gap-2"
+                className="-ml-2 flex max-w-[350px] items-center gap-2"
               >
                 <ArrayEditorContext.Provider
                   value={{
@@ -62,11 +62,11 @@ export const ArrayEditorWidget = ({
                     <Button
                       type="button"
                       variant="secondary"
-                      className="relative top-2 min-w-0"
+                      className="relative top-1.5 min-w-0 p-2 px-3"
                       size="small"
                       onClick={element.onDropIndexClick(element.index)}
                     >
-                      <XIcon className="h-4 w-4" />
+                      <XIcon className="size-4" />
                     </Button>
                   )}
               </div>

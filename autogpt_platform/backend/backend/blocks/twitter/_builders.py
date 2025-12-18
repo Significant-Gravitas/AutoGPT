@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from backend.blocks.twitter._mappers import (
@@ -237,6 +237,12 @@ class TweetDurationBuilder:
 
     def add_start_time(self, start_time: datetime | None):
         if start_time:
+            # Twitter API requires start_time to be at least 10 seconds before now
+            max_start_time = datetime.now(timezone.utc) - timedelta(seconds=10)
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            if start_time > max_start_time:
+                start_time = max_start_time
             self.params["start_time"] = start_time
         return self
 

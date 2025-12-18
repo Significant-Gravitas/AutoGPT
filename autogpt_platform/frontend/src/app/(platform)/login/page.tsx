@@ -1,4 +1,5 @@
 "use client";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -6,23 +7,20 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import Turnstile from "@/components/auth/Turnstile";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { environment } from "@/services/environment";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { useLoginPage } from "./useLoginPage";
-import { environment } from "@/services/environment";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function LoginPage() {
   const {
     user,
     form,
     feedback,
-    turnstile,
-    captchaKey,
     isLoading,
+    isGoogleLoading,
     isCloudEnv,
     isUserLoading,
-    isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable,
     handleSubmit,
@@ -84,23 +82,10 @@ export default function LoginPage() {
               )}
             />
 
-            {/* Turnstile CAPTCHA Component */}
-            {turnstile.shouldRender ? (
-              <Turnstile
-                key={captchaKey}
-                siteKey={turnstile.siteKey}
-                onVerify={turnstile.handleVerify}
-                onExpire={turnstile.handleExpire}
-                onError={turnstile.handleError}
-                setWidgetId={turnstile.setWidgetId}
-                action="login"
-                shouldRender={turnstile.shouldRender}
-              />
-            ) : null}
-
             <Button
               variant="primary"
               loading={isLoading}
+              disabled={isGoogleLoading}
               type="submit"
               className="mt-6 w-full"
             >
@@ -126,6 +111,7 @@ export default function LoginPage() {
           link={{ text: "Sign up", href: "/signup" }}
         />
       </AuthCard>
+      <MobileWarningBanner />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}

@@ -7,7 +7,6 @@ import {
 } from "@/lib/autogpt-server-api";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
 import { isCredentialFieldSchema } from "@/components/renderers/input-renderer/fields/CredentialField/helpers";
 
@@ -19,6 +18,7 @@ export const useRunInputDialog = ({
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
   );
+  const setIsGraphRunning = useGraphStore((state) => state.setIsGraphRunning);
 
   const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -30,9 +30,6 @@ export const useRunInputDialog = ({
     flowID: parseAsString,
     flowVersion: parseAsInteger,
   });
-  const setIsGraphRunning = useGraphStore(
-    useShallow((state) => state.setIsGraphRunning),
-  );
   const { toast } = useToast();
 
   const { mutateAsync: executeGraph, isPending: isExecutingGraph } =
@@ -43,11 +40,10 @@ export const useRunInputDialog = ({
           setQueryStates({
             flowExecutionID: id,
           });
-          setIsGraphRunning(false);
         },
         onError: (error) => {
+          // Reset running state on error
           setIsGraphRunning(false);
-
           toast({
             title: (error.detail as string) ?? "An unexpected error occurred.",
             description: "An unexpected error occurred.",
@@ -79,14 +75,19 @@ export const useRunInputDialog = ({
     return dynamicUiSchema;
   }, [credentialsSchema]);
 
-  const handleManualRun = () => {
-    setIsOpen(false);
-    setIsGraphRunning(true);
-    executeGraph({
+  const handleManualRun = async () => {
+    await executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
-      data: { inputs: inputValues, credentials_inputs: credentialValues },
+      data: {
+        inputs: inputValues,
+        credentials_inputs: credentialValues,
+        source: "builder",
+      },
     });
+    // Optimistically set running state immediately for responsive UI
+    setIsGraphRunning(true);
+    setIsOpen(false);
   };
 
   const handleInputChange = (inputValues: Record<string, any>) => {

@@ -19,5 +19,5 @@ export const modalStyles = {
 // Drawer specific styles
 export const drawerStyles = {
   ...commonStyles,
-  content: `${commonStyles.content} max-h-[90vh] w-full bottom-0 rounded-br-none rounded-bl-none`,
+  content: `${commonStyles.content} max-h-[90vh] w-full bottom-0 rounded-br-none rounded-bl-none min-h-0`,
 };
