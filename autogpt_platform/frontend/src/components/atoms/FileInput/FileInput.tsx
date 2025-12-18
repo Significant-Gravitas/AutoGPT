@@ -266,6 +266,7 @@ export function FileInput(props: Props) {
                 size="small"
                 className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
                 onClick={handleClear}
+                type="button"
               >
                 <Cross2Icon className="h-3.5 w-3.5" />
               </Button>
@@ -278,6 +279,7 @@ export function FileInput(props: Props) {
                 onClick={() => inputRef.current?.click()}
                 className="flex-1 border-zinc-300 text-xs"
                 disabled={isUploading}
+                type="button"
               >
                 <UploadIcon className="mr-1.5 h-3.5 w-3.5" />
                 {`Upload ${displayName}`}
@@ -367,6 +369,7 @@ export function FileInput(props: Props) {
             <Button
               onClick={() => inputRef.current?.click()}
               className="min-w-40"
+              type="button"
             >
               Browse File
             </Button>

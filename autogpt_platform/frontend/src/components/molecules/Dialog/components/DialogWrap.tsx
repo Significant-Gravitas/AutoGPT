@@ -1,3 +1,5 @@
+import { Button } from "@/components/atoms/Button/Button";
+import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { X } from "@phosphor-icons/react";
 import * as RXDialog from "@radix-ui/react-dialog";
@@ -11,7 +13,6 @@ import {
 } from "react";
 import { DialogCtx } from "../useDialogCtx";
 import { modalStyles } from "./styles";
-import { scrollbarStyles } from "@/components/styles/scrollbars";
 
 type BaseProps = DialogCtx & PropsWithChildren;
 
@@ -111,13 +112,16 @@ export function DialogWrap({
           )}
 
           {isForceOpen && !handleClose ? null : (
-            <button
+            <Button
+              variant="icon"
+              size="icon"
               onClick={handleClose}
               aria-label="Close"
-              className="absolute right-4 top-4 z-50 hover:border-transparent hover:bg-transparent focus:border-none focus:outline-none"
+              className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
+              withTooltip={false}
             >
-              <X className={modalStyles.icon} />
-            </button>
+              <X width="1rem" />
+            </Button>
           )}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">

@@ -10,10 +10,13 @@ import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
+import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { SectionWrap } from "./components/other/SectionWrap";
 import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
+import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
+import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
@@ -21,11 +24,13 @@ import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
   const {
-    agent,
-    hasAnyItems,
-    ready,
-    error,
     agentId,
+    agent,
+    ready,
+    activeTemplate,
+    isTemplateLoading,
+    error,
+    hasAnyItems,
     activeItem,
     sidebarLoading,
     activeTab,
@@ -33,6 +38,9 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    onRunInitiated,
+    onTriggerSetup,
+    onScheduleCreated,
   } = useNewAgentLibraryView();
 
   if (error) {
@@ -62,14 +70,19 @@ export function NewAgentLibraryView() {
           />
         </div>
         <div className="flex min-h-0 flex-1">
-          <EmptyTasks agent={agent} />
+          <EmptyTasks
+            agent={agent}
+            onRun={onRunInitiated}
+            onTriggerSetup={onTriggerSetup}
+            onScheduleCreated={onScheduleCreated}
+          />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="ml-4 grid h-full grid-cols-1 gap-0 pt-3 md:gap-4 lg:grid-cols-[25%_70%]">
+    <div className="mx-4 grid h-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
       <SectionWrap className="mb-3 block">
         <div
           className={cn(
@@ -79,16 +92,21 @@ export function NewAgentLibraryView() {
         >
           <RunAgentModal
             triggerSlot={
-              <Button variant="primary" size="large" className="w-full">
+              <Button
+                variant="primary"
+                size="large"
+                className="w-full"
+                disabled={isTemplateLoading && activeTab === "templates"}
+              >
                 <PlusIcon size={20} /> New task
               </Button>
             }
             agent={agent}
-            agentId={agent.id.toString()}
-            onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
-            onScheduleCreated={(schedule) =>
-              handleSelectRun(schedule.id, "scheduled")
-            }
+            onRunCreated={onRunInitiated}
+            onScheduleCreated={onScheduleCreated}
+            onTriggerSetup={onTriggerSetup}
+            initialInputValues={activeTemplate?.inputs}
+            initialInputCredentials={activeTemplate?.credentials}
           />
         </div>
 
@@ -109,6 +127,21 @@ export function NewAgentLibraryView() {
             scheduleId={activeItem}
             onClearSelectedRun={handleClearSelectedRun}
           />
+        ) : activeTab === "templates" ? (
+          <SelectedTemplateView
+            agent={agent}
+            templateId={activeItem}
+            onClearSelectedRun={handleClearSelectedRun}
+            onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
+            onSwitchToRunsTab={() => setActiveTab("runs")}
+          />
+        ) : activeTab === "triggers" ? (
+          <SelectedTriggerView
+            agent={agent}
+            triggerId={activeItem}
+            onClearSelectedRun={handleClearSelectedRun}
+            onSwitchToRunsTab={() => setActiveTab("runs")}
+          />
         ) : (
           <SelectedRunView
             agent={agent}
@@ -127,9 +160,18 @@ export function NewAgentLibraryView() {
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
           <EmptyTemplates />
         </SelectedViewLayout>
+      ) : activeTab === "triggers" ? (
+        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <EmptyTriggers />
+        </SelectedViewLayout>
       ) : (
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
-          <EmptyTasks agent={agent} />
+          <EmptyTasks
+            agent={agent}
+            onRun={onRunInitiated}
+            onTriggerSetup={onTriggerSetup}
+            onScheduleCreated={onScheduleCreated}
+          />
         </SelectedViewLayout>
       )}
     </div>

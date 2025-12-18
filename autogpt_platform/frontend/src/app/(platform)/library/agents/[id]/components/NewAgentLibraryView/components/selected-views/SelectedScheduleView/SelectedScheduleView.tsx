@@ -6,8 +6,8 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
-import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
@@ -15,9 +15,6 @@ import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
 import { SelectedScheduleActions } from "./components/SelectedScheduleActions";
 import { useSelectedScheduleView } from "./useSelectedScheduleView";
-
-const anchorStyles =
-  "border-b-2 border-transparent pb-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:border-slate-900";
 
 interface Props {
   agent: LibraryAgent;
@@ -41,12 +38,8 @@ export function SelectedScheduleView({
     },
   });
 
-  function scrollToSection(id: string) {
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
+  const breakpoint = useBreakpoint();
+  const isLgScreenUp = isLargeScreen(breakpoint);
 
   if (error) {
     return (
@@ -83,38 +76,25 @@ export function SelectedScheduleView({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
           <div className="flex flex-col gap-4">
-            <div>
-              <div className="flex w-full items-center justify-between">
-                <div className="flex w-full flex-col gap-0">
-                  <RunDetailHeader
+            <div className="flex w-full flex-col gap-0">
+              <RunDetailHeader
+                agent={agent}
+                run={undefined}
+                scheduleRecurrence={
+                  schedule
+                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
+                    : undefined
+                }
+              />
+              {schedule && !isLgScreenUp ? (
+                <div className="mt-4">
+                  <SelectedScheduleActions
                     agent={agent}
-                    run={undefined}
-                    scheduleRecurrence={
-                      schedule
-                        ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
-                        : undefined
-                    }
+                    scheduleId={schedule.id}
+                    onDeleted={onClearSelectedRun}
                   />
                 </div>
-              </div>
-            </div>
-
-            {/* Navigation Links */}
-            <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
-              <nav className="flex gap-8 px-3 pb-1">
-                <button
-                  onClick={() => scrollToSection("schedule")}
-                  className={anchorStyles}
-                >
-                  Schedule
-                </button>
-                <button
-                  onClick={() => scrollToSection("input")}
-                  className={anchorStyles}
-                >
-                  Your input
-                </button>
-              </nav>
+              ) : null}
             </div>
 
             {/* Schedule Section */}
@@ -174,10 +154,6 @@ export function SelectedScheduleView({
             <div id="input" className="scroll-mt-4">
               <RunDetailCard title="Your input">
                 <div className="relative">
-                  {/*                 {// TODO: re-enable edit inputs modal once the API supports it */}
-                  {/* {schedule && Object.keys(schedule.input_data).length > 0 && (
-              <EditInputsModal agent={agent} schedule={schedule} />
-            )} */}
                   <AgentInputsReadOnly
                     agent={agent}
                     inputs={schedule?.input_data}
@@ -189,8 +165,8 @@ export function SelectedScheduleView({
           </div>
         </SelectedViewLayout>
       </div>
-      {schedule ? (
-        <div className="-mt-2 max-w-[3.75rem] flex-shrink-0">
+      {schedule && isLgScreenUp ? (
+        <div className="max-w-[3.75rem] flex-shrink-0">
           <SelectedScheduleActions
             agent={agent}
             scheduleId={schedule.id}

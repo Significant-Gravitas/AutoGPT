@@ -3,6 +3,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { EyeIcon } from "@phosphor-icons/react";
 import { AgentActionsDropdown } from "../../AgentActionsDropdown";
 import { useScheduleDetailHeader } from "../../RunDetailHeader/useScheduleDetailHeader";
+import { SelectedActionsWrap } from "../../SelectedActionsWrap";
 
 type Props = {
   agent: LibraryAgent;
@@ -19,20 +20,21 @@ export function SelectedScheduleActions({ agent, scheduleId }: Props) {
 
   return (
     <>
-      <div className="my-4 flex flex-col items-center gap-3">
+      <SelectedActionsWrap>
         {openInBuilderHref && (
           <Button
             variant="icon"
             size="icon"
-            aria-label="Open in builder"
             as="NextLink"
             href={openInBuilderHref}
+            target="_blank"
+            aria-label="View scheduled task details"
           >
             <EyeIcon weight="bold" size={18} className="text-zinc-700" />
           </Button>
         )}
         <AgentActionsDropdown agent={agent} scheduleId={scheduleId} />
-      </div>
+      </SelectedActionsWrap>
     </>
   );
 }

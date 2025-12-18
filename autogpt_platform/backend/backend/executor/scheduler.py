@@ -33,6 +33,7 @@ from backend.monitoring import (
     process_existing_batches,
     process_weekly_summary,
     report_block_error_rates,
+    report_execution_accuracy_alerts,
     report_late_executions,
 )
 from backend.util.clients import get_scheduler_client
@@ -241,6 +242,11 @@ def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
 
 
+def execution_accuracy_alerts():
+    """Check execution accuracy and send alerts if drops are detected."""
+    return report_execution_accuracy_alerts()
+
+
 # Monitoring functions are now imported from monitoring module
 
 
@@ -440,6 +446,17 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Execution Accuracy Monitoring - configurable interval
+            self.scheduler.add_job(
+                execution_accuracy_alerts,
+                id="report_execution_accuracy_alerts",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.execution_accuracy_check_interval_hours
+                * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
@@ -586,6 +603,11 @@ class Scheduler(AppService):
     def execute_cleanup_expired_files(self):
         """Manually trigger cleanup of expired cloud storage files."""
         return cleanup_expired_files()
+
+    @expose
+    def execute_report_execution_accuracy_alerts(self):
+        """Manually trigger execution accuracy alert checking."""
+        return execution_accuracy_alerts()
 
 
 class SchedulerClient(AppServiceClient):
