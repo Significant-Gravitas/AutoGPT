@@ -1,16 +1,11 @@
 "use client";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import type {
-  BlockIOSubSchema,
-  CredentialsMetaInput,
-} from "@/lib/autogpt-server-api/types";
+import { Text } from "@/components/atoms/Text/Text";
+import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import { CredentialsInput } from "../CredentialsInputs/CredentialsInputs";
-import {
-  getAgentCredentialsFields,
-  getAgentInputFields,
-  renderValue,
-} from "./helpers";
+import { RunAgentInputs } from "../RunAgentInputs/RunAgentInputs";
+import { getAgentCredentialsFields, getAgentInputFields } from "./helpers";
 
 type Props = {
   agent: LibraryAgent;
@@ -28,19 +23,23 @@ export function AgentInputsReadOnly({
     getAgentCredentialsFields(agent),
   );
 
-  // Take actual input entries as leading; augment with schema from input fields.
-  // TODO: ensure consistent ordering.
   const inputEntries =
     inputs &&
-    Object.entries(inputs).map<[string, [BlockIOSubSchema | undefined, any]]>(
-      ([k, v]) => [k, [inputFields[k], v]],
-    );
+    Object.entries(inputs).map(([key, value]) => ({
+      key,
+      schema: inputFields[key],
+      value,
+    }));
 
   const hasInputs = inputEntries && inputEntries.length > 0;
   const hasCredentials = credentialInputs && credentialFieldEntries.length > 0;
 
   if (!hasInputs && !hasCredentials) {
-    return <div className="text-neutral-600">No input for this run.</div>;
+    return (
+      <Text variant="body" className="text-zinc-700">
+        No input for this run.
+      </Text>
+    );
   }
 
   return (
@@ -48,16 +47,20 @@ export function AgentInputsReadOnly({
       {/* Regular inputs */}
       {hasInputs && (
         <div className="flex flex-col gap-4">
-          {inputEntries.map(([key, [schema, value]]) => (
-            <div key={key} className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">
-                {schema?.title || key}
-              </label>
-              <p className="whitespace-pre-wrap break-words text-sm text-neutral-700">
-                {renderValue(value)}
-              </p>
-            </div>
-          ))}
+          {inputEntries.map(({ key, schema, value }) => {
+            if (!schema) return null;
+
+            return (
+              <RunAgentInputs
+                key={key}
+                schema={schema}
+                value={value}
+                placeholder={schema.description}
+                onChange={() => {}}
+                readOnly={true}
+              />
+            );
+          })}
         </div>
       )}
 

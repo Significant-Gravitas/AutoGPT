@@ -6,6 +6,13 @@ from tiktoken import encoding_for_model
 from backend.util import json
 
 # ---------------------------------------------------------------------------#
+#  CONSTANTS                                                                 #
+# ---------------------------------------------------------------------------#
+
+# Message prefixes for important system messages that should be protected during compression
+MAIN_OBJECTIVE_PREFIX = "[Main Objective Prompt]: "
+
+# ---------------------------------------------------------------------------#
 #  INTERNAL UTILITIES                                                         #
 # ---------------------------------------------------------------------------#
 
@@ -61,6 +68,55 @@ def _msg_tokens(msg: dict, enc) -> int:
         content_tokens = 0
 
     return WRAPPER + content_tokens + tool_call_tokens
+
+
+def _is_tool_message(msg: dict) -> bool:
+    """Check if a message contains tool calls or results that should be protected."""
+    content = msg.get("content")
+
+    # Check for Anthropic-style tool messages
+    if isinstance(content, list) and any(
+        isinstance(item, dict) and item.get("type") in ("tool_use", "tool_result")
+        for item in content
+    ):
+        return True
+
+    # Check for OpenAI-style tool calls in the message
+    if "tool_calls" in msg or msg.get("role") == "tool":
+        return True
+
+    return False
+
+
+def _is_objective_message(msg: dict) -> bool:
+    """Check if a message contains objective/system prompts that should be absolutely protected."""
+    content = msg.get("content", "")
+    if isinstance(content, str):
+        # Protect any message with the main objective prefix
+        return content.startswith(MAIN_OBJECTIVE_PREFIX)
+    return False
+
+
+def _truncate_tool_message_content(msg: dict, enc, max_tokens: int) -> None:
+    """
+    Carefully truncate tool message content while preserving tool structure.
+    Only truncates tool_result content, leaves tool_use intact.
+    """
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return
+
+    for item in content:
+        # Only process tool_result items, leave tool_use blocks completely intact
+        if not (isinstance(item, dict) and item.get("type") == "tool_result"):
+            continue
+
+        result_content = item.get("content", "")
+        if (
+            isinstance(result_content, str)
+            and _tok_len(result_content, enc) > max_tokens
+        ):
+            item["content"] = _truncate_middle_tokens(result_content, enc, max_tokens)
 
 
 def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
@@ -140,13 +196,21 @@ def compress_prompt(
         return sum(_msg_tokens(m, enc) for m in msgs)
 
     original_token_count = total_tokens()
+
     if original_token_count + reserve <= target_tokens:
         return msgs
 
     # ---- STEP 0 : normalise content --------------------------------------
     # Convert non-string payloads to strings so token counting is coherent.
-    for m in msgs[1:-1]:  # keep the first & last intact
+    for i, m in enumerate(msgs):
         if not isinstance(m.get("content"), str) and m.get("content") is not None:
+            if _is_tool_message(m):
+                continue
+
+            # Keep first and last messages intact (unless they're tool messages)
+            if i == 0 or i == len(msgs) - 1:
+                continue
+
             # Reasonable 20k-char ceiling prevents pathological blobs
             content_str = json.dumps(m["content"], separators=(",", ":"))
             if len(content_str) > 20_000:
@@ -157,34 +221,45 @@ def compress_prompt(
     cap = start_cap
     while total_tokens() + reserve > target_tokens and cap >= floor_cap:
         for m in msgs[1:-1]:  # keep first & last intact
-            if _tok_len(m.get("content") or "", enc) > cap:
-                m["content"] = _truncate_middle_tokens(m["content"], enc, cap)
+            if _is_tool_message(m):
+                # For tool messages, only truncate tool result content, preserve structure
+                _truncate_tool_message_content(m, enc, cap)
+                continue
+
+            if _is_objective_message(m):
+                # Never truncate objective messages - they contain the core task
+                continue
+
+            content = m.get("content") or ""
+            if _tok_len(content, enc) > cap:
+                m["content"] = _truncate_middle_tokens(content, enc, cap)
         cap //= 2  # tighten the screw
 
     # ---- STEP 2 : middle-out deletion -----------------------------------
     while total_tokens() + reserve > target_tokens and len(msgs) > 2:
+        # Identify all deletable messages (not first/last, not tool messages, not objective messages)
+        deletable_indices = []
+        for i in range(1, len(msgs) - 1):  # Skip first and last
+            if not _is_tool_message(msgs[i]) and not _is_objective_message(msgs[i]):
+                deletable_indices.append(i)
+
+        if not deletable_indices:
+            break  # nothing more we can drop
+
+        # Delete from center outward - find the index closest to center
         centre = len(msgs) // 2
-        # Build a symmetrical centre-out index walk: centre, centre+1, centre-1, ...
-        order = [centre] + [
-            i
-            for pair in zip(range(centre + 1, len(msgs) - 1), range(centre - 1, 0, -1))
-            for i in pair
-        ]
-        removed = False
-        for i in order:
-            msg = msgs[i]
-            if "tool_calls" in msg or msg.get("role") == "tool":
-                continue  # protect tool shells
-            del msgs[i]
-            removed = True
-            break
-        if not removed:  # nothing more we can drop
-            break
+        to_delete = min(deletable_indices, key=lambda i: abs(i - centre))
+        del msgs[to_delete]
 
     # ---- STEP 3 : final safety-net trim on first & last ------------------
     cap = start_cap
     while total_tokens() + reserve > target_tokens and cap >= floor_cap:
         for idx in (0, -1):  # first and last
+            if _is_tool_message(msgs[idx]):
+                # For tool messages at first/last position, truncate tool result content only
+                _truncate_tool_message_content(msgs[idx], enc, cap)
+                continue
+
             text = msgs[idx].get("content") or ""
             if _tok_len(text, enc) > cap:
                 msgs[idx]["content"] = _truncate_middle_tokens(text, enc, cap)
