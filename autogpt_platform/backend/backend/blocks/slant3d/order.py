@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 
-from backend.data.block import BlockOutput, BlockSchema
+from backend.data.block import BlockOutput, BlockSchemaInput, BlockSchemaOutput
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util.settings import BehaveAs, Settings
 
@@ -21,7 +21,7 @@ settings = Settings()
 class Slant3DCreateOrderBlock(Slant3DBlockBase):
     """Block for creating new orders"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         order_number: str = SchemaField(
             description="Your custom order number (or leave blank for a random one)",
@@ -36,9 +36,8 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         order_id: str = SchemaField(description="Slant3D order ID")
-        error: str = SchemaField(description="Error message if order failed")
 
     def __init__(self):
         super().__init__(
@@ -97,7 +96,7 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
 class Slant3DEstimateOrderBlock(Slant3DBlockBase):
     """Block for getting order cost estimates"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         order_number: str = SchemaField(
             description="Your custom order number (or leave blank for a random one)",
@@ -112,11 +111,10 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         total_price: float = SchemaField(description="Total price in USD")
         shipping_cost: float = SchemaField(description="Shipping cost")
         printing_cost: float = SchemaField(description="Printing cost")
-        error: str = SchemaField(description="Error message if estimation failed")
 
     def __init__(self):
         super().__init__(
@@ -184,7 +182,7 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
 class Slant3DEstimateShippingBlock(Slant3DBlockBase):
     """Block for getting shipping cost estimates"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         order_number: str = SchemaField(
             description="Your custom order number (or leave blank for a random one)",
@@ -198,10 +196,9 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
             advanced=False,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         shipping_cost: float = SchemaField(description="Estimated shipping cost")
         currency_code: str = SchemaField(description="Currency code (e.g., 'usd')")
-        error: str = SchemaField(description="Error message if estimation failed")
 
     def __init__(self):
         super().__init__(
@@ -267,12 +264,11 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
 class Slant3DGetOrdersBlock(Slant3DBlockBase):
     """Block for retrieving all orders"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         orders: List[str] = SchemaField(description="List of orders with their details")
-        error: str = SchemaField(description="Error message if request failed")
 
     def __init__(self):
         super().__init__(
@@ -323,16 +319,15 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
 class Slant3DTrackingBlock(Slant3DBlockBase):
     """Block for tracking order status and shipping"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         order_id: str = SchemaField(description="Slant3D order ID to track")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Order status")
         tracking_numbers: List[str] = SchemaField(
             description="List of tracking numbers"
         )
-        error: str = SchemaField(description="Error message if tracking failed")
 
     def __init__(self):
         super().__init__(
@@ -373,13 +368,12 @@ class Slant3DTrackingBlock(Slant3DBlockBase):
 class Slant3DCancelOrderBlock(Slant3DBlockBase):
     """Block for canceling orders"""
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         order_id: str = SchemaField(description="Slant3D order ID to cancel")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         status: str = SchemaField(description="Cancellation status message")
-        error: str = SchemaField(description="Error message if cancellation failed")
 
     def __init__(self):
         super().__init__(

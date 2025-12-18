@@ -24,16 +24,18 @@ import backend.integrations.webhooks.utils
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
+import backend.server.v2.admin.execution_analytics_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.builder
 import backend.server.v2.builder.routes
+import backend.server.v2.chat.routes as chat_routes
+import backend.server.v2.executions.review.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
-import backend.server.v2.turnstile.routes
 import backend.util.service
 import backend.util.settings
 from backend.blocks.llm import LlmModel
@@ -42,9 +44,14 @@ from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.server.external.api import external_app
 from backend.server.middleware.security import SecurityHeadersMiddleware
+from backend.server.utils.cors import build_cors_params
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
-from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.exceptions import (
+    MissingConfigError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
 
@@ -187,6 +194,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 request.method,
                 request.url.path,
                 exc,
+                exc_info=exc,
             )
 
         hint = (
@@ -241,6 +249,7 @@ app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
+app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
@@ -262,21 +271,31 @@ app.include_router(
     prefix="/api/credits",
 )
 app.include_router(
+    backend.server.v2.admin.execution_analytics_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/executions",
+)
+app.include_router(
+    backend.server.v2.executions.review.routes.router,
+    tags=["v2", "executions", "review"],
+    prefix="/api/review",
+)
+app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
     backend.server.v2.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
-)
-app.include_router(
-    backend.server.v2.turnstile.routes.router,
-    tags=["v2", "turnstile"],
-    prefix="/api/turnstile",
 )
 
 app.include_router(
     backend.server.routers.postmark.postmark.router,
     tags=["v1", "email"],
     prefix="/api/email",
+)
+app.include_router(
+    chat_routes.router,
+    tags=["v2", "chat"],
+    prefix="/api/chat",
 )
 
 app.mount("/external-api", external_app)
@@ -291,39 +310,39 @@ async def health():
 
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
+        cors_params = build_cors_params(
+            settings.config.backend_cors_allow_origins,
+            settings.config.app_env,
+        )
+
         server_app = starlette.middleware.cors.CORSMiddleware(
             app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
+            **cors_params,
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
         )
-        config = backend.util.settings.Config()
-
-        # Configure uvicorn with performance optimizations from Kludex FastAPI tips
-        uvicorn_config = {
-            "app": server_app,
-            "host": config.agent_api_host,
-            "port": config.agent_api_port,
-            "log_config": None,
-            # Use httptools for HTTP parsing (if available)
-            "http": "httptools",
-            # Only use uvloop on Unix-like systems (not supported on Windows)
-            "loop": "uvloop" if platform.system() != "Windows" else "auto",
-        }
 
         # Only add debug in local environment (not supported in all uvicorn versions)
-        if config.app_env == backend.util.settings.AppEnvironment.LOCAL:
+        if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL:
             import os
 
             # Enable asyncio debug mode via environment variable
             os.environ["PYTHONASYNCIODEBUG"] = "1"
 
-        uvicorn.run(**uvicorn_config)
-
-    def cleanup(self):
-        super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Shutting down Agent Server...")
+        # Configure uvicorn with performance optimizations from Kludex FastAPI tips
+        uvicorn.run(
+            app=server_app,
+            host=settings.config.agent_api_host,
+            port=settings.config.agent_api_port,
+            log_config=None,
+            # Use httptools for HTTP parsing (if available)
+            http="httptools",
+            # Only use uvloop on Unix-like systems (not supported on Windows)
+            loop="uvloop" if platform.system() != "Windows" else "auto",
+            # Disable WebSockets since this service doesn't have any WebSocket endpoints
+            ws="none",
+        )
 
     @staticmethod
     async def test_execute_graph(

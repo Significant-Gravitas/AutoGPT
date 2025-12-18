@@ -23,9 +23,12 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, setup_test_user):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    # setup_test_user fixture already executed and user is created in database
+    # It returns the user_id which we don't need to await
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
@@ -194,8 +197,12 @@ def test_get_user_credits(
     snapshot: Snapshot,
 ) -> None:
     """Test get user credits endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
 
     response = client.get("/credits")
 
@@ -215,9 +222,13 @@ def test_request_top_up(
     snapshot: Snapshot,
 ) -> None:
     """Test request top up endpoint"""
-    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
+    mock_credit_model = Mock()
     mock_credit_model.top_up_intent = AsyncMock(
         return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
     )
 
     request_data = {"credit_amount": 500}
@@ -259,6 +270,74 @@ def test_get_auto_top_up(
         json.dumps(response_data, indent=2, sort_keys=True),
         "cred_topup_cfg",
     )
+
+
+def test_configure_auto_top_up(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
+    """Test configure auto top-up endpoint - this test would have caught the enum casting bug"""
+    # Mock the set_auto_top_up function to avoid database operations
+    mocker.patch(
+        "backend.server.routers.v1.set_auto_top_up",
+        return_value=None,
+    )
+
+    # Mock credit model to avoid Stripe API calls
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.get_credits.return_value = 50  # Current balance below threshold
+    mock_credit_model.top_up_credits.return_value = None
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    # Test data
+    request_data = {
+        "threshold": 100,
+        "amount": 500,
+    }
+
+    response = client.post("/credits/auto-top-up", json=request_data)
+
+    # This should succeed with our fix, but would have failed before with the enum casting error
+    assert response.status_code == 200
+    assert response.json() == "Auto top-up settings updated"
+
+
+def test_configure_auto_top_up_validation_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test configure auto top-up endpoint validation"""
+    # Mock set_auto_top_up to avoid database operations for successful case
+    mocker.patch("backend.server.routers.v1.set_auto_top_up")
+
+    # Mock credit model to avoid Stripe API calls for the successful case
+    mock_credit_model = mocker.AsyncMock()
+    mock_credit_model.get_credits.return_value = 50
+    mock_credit_model.top_up_credits.return_value = None
+
+    mocker.patch(
+        "backend.server.routers.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    # Test negative threshold
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": -1, "amount": 500}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount too small (but not 0)
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 100, "amount": 100}
+    )
+    assert response.status_code == 422  # Validation error
+
+    # Test amount = 0 (should be allowed)
+    response = client.post("/credits/auto-top-up", json={"threshold": 100, "amount": 0})
+    assert response.status_code == 200  # Should succeed
 
 
 # Graphs endpoints tests

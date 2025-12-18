@@ -1,10 +1,10 @@
+import scrollbar from "tailwind-scrollbar";
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
-import scrollbar from "tailwind-scrollbar";
 import { colors } from "./src/components/styles/colors";
 
 const config = {
-  darkMode: ["class"],
+  darkMode: ["class", ".dark-mode"], // ignore dark: prefix classes for now until we fully support dark mode
   content: ["./src/**/*.{ts,tsx}"],
   prefix: "",
   theme: {

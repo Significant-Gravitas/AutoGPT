@@ -62,6 +62,7 @@ export const useLibraryUploadAgentDialog = () => {
     await createGraph({
       data: {
         graph: payload,
+        source: "upload",
       },
     });
   };
@@ -82,7 +83,7 @@ export const useLibraryUploadAgentDialog = () => {
           )
         ) {
           throw new Error(
-            "Invalid agent object in file: " + JSON.stringify(obj, null, 2),
+            "Invalid agent file. Please upload a valid agent.json file that has been previously exported from the AutoGPT platform. The file must contain the required fields: name, description, nodes, and links.",
           );
         }
         const agent = obj as Graph;
@@ -96,6 +97,17 @@ export const useLibraryUploadAgentDialog = () => {
         }
       } catch (error) {
         console.error("Error loading agent file:", error);
+
+        toast({
+          title: "Invalid Agent File",
+          description:
+            "Please upload a valid agent.json file that has been previously exported from the AutoGPT platform. The file must contain the required fields: name, description, nodes, and links.",
+          duration: 5000,
+          variant: "destructive",
+        });
+
+        form.resetField("agentFile");
+        setAgentObject(null);
       }
     };
     reader.readAsText(file);

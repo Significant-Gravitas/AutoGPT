@@ -8,7 +8,13 @@ from typing import Literal
 import aiofiles
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -62,7 +68,7 @@ class HttpMethod(Enum):
 
 
 class SendWebRequestBlock(Block):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         url: str = SchemaField(
             description="The URL to send the request to",
             placeholder="https://api.example.com",
@@ -93,7 +99,7 @@ class SendWebRequestBlock(Block):
             default_factory=list,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         response: object = SchemaField(description="The response from the server")
         client_error: object = SchemaField(description="Errors on 4xx status codes")
         server_error: object = SchemaField(description="Errors on 5xx status codes")
@@ -178,7 +184,13 @@ class SendWebRequestBlock(Block):
             )
 
         # ─── Execute request ─────────────────────────────────────────
-        response = await Requests().request(
+        # Use raise_for_status=False so HTTP errors (4xx, 5xx) are returned
+        # as response objects instead of raising exceptions, allowing proper
+        # handling via client_error and server_error outputs
+        response = await Requests(
+            raise_for_status=False,
+            retry_max_attempts=1,  # allow callers to handle HTTP errors immediately
+        ).request(
             input_data.method.value,
             input_data.url,
             headers=input_data.headers,
