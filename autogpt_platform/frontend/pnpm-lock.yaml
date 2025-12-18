@@ -336,9 +336,6 @@ importers:
       eslint-plugin-storybook:
         specifier: 9.1.5
         version: 9.1.5(eslint@8.57.1)(storybook@9.1.5(@testing-library/dom@10.4.1)(msw@2.11.6(@types/node@24.10.0)(typescript@5.9.3))(prettier@3.6.2))(typescript@5.9.3)
-      import-in-the-middle:
-        specifier: 2.0.0
-        version: 2.0.0
       msw:
         specifier: 2.11.6
         version: 2.11.6(@types/node@24.10.0)(typescript@5.9.3)
