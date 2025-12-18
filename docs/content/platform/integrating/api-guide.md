@@ -73,7 +73,7 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 3. Use the obtained access token:
 
 ```bash
-curl -H "Authorization: Bearer agpt_access_..." \
+curl -H "Authorization: Bearer agpt_xt_..." \
   https://backend.agpt.co/external-api/v1/blocks
 ```
 

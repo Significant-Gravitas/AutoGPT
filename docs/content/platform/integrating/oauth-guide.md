@@ -114,9 +114,9 @@ Content-Type: application/json
 ```json
 {
   "token_type": "Bearer",
-  "access_token": "agpt_access_...",
+  "access_token": "agpt_xt_...",
   "access_token_expires_at": "2025-01-15T12:00:00Z",
-  "refresh_token": "agpt_refresh_...",
+  "refresh_token": "agpt_rt_...",
   "refresh_token_expires_at": "2025-02-14T12:00:00Z",
   "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"]
 }
@@ -128,14 +128,14 @@ Include the access token in API requests:
 
 ```http
 GET /external-api/v1/blocks
-Authorization: Bearer agpt_access_...
+Authorization: Bearer agpt_xt_...
 ```
 
 **For SSO:** If you requested the `IDENTITY` scope, fetch user info to identify the user:
 
 ```http
 GET /external-api/v1/me
-Authorization: Bearer agpt_access_...
+Authorization: Bearer agpt_xt_...
 ```
 
 **Response:**
@@ -161,7 +161,7 @@ Content-Type: application/json
 
 {
   "grant_type": "refresh_token",
-  "refresh_token": "agpt_refresh_...",
+  "refresh_token": "agpt_rt_...",
   "client_id": "{YOUR_CLIENT_ID}",
   "client_secret": "{YOUR_CLIENT_SECRET}"
 }
@@ -172,9 +172,9 @@ Content-Type: application/json
 ```json
 {
   "token_type": "Bearer",
-  "access_token": "agpt_access_...",
+  "access_token": "agpt_xt_...",
   "access_token_expires_at": "2025-01-15T13:00:00Z",
-  "refresh_token": "agpt_refresh_...",
+  "refresh_token": "agpt_rt_...",
   "refresh_token_expires_at": "2025-02-14T12:00:00Z",
   "scopes": ["EXECUTE_GRAPH", "READ_GRAPH"]
 }
@@ -363,7 +363,7 @@ POST /api/oauth/introspect
 Content-Type: application/json
 
 {
-  "token": "agpt_access_...",
+  "token": "agpt_xt_...",
   "token_type_hint": "access_token",
   "client_id": "{YOUR_CLIENT_ID}",
   "client_secret": "{YOUR_CLIENT_SECRET}"
@@ -392,7 +392,7 @@ POST /api/oauth/revoke
 Content-Type: application/json
 
 {
-  "token": "agpt_access_...",
+  "token": "agpt_xt_...",
   "token_type_hint": "access_token",
   "client_id": "{YOUR_CLIENT_ID}",
   "client_secret": "{YOUR_CLIENT_SECRET}"

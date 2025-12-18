@@ -44,6 +44,9 @@ AUTHORIZATION_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=30)
 
+ACCESS_TOKEN_PREFIX = "agpt_xt_"
+REFRESH_TOKEN_PREFIX = "agpt_rt_"
+
 
 # ============================================================================
 # Exception Classes
@@ -477,7 +480,7 @@ async def create_access_token(
     Create a new access token.
     Returns OAuthAccessToken (with plaintext token).
     """
-    plaintext_token = _generate_token()
+    plaintext_token = ACCESS_TOKEN_PREFIX + _generate_token()
     token_hash = _hash_token(plaintext_token)
     now = datetime.now(timezone.utc)
     expires_at = now + ACCESS_TOKEN_TTL
@@ -586,7 +589,7 @@ async def create_refresh_token(
     Create a new refresh token.
     Returns OAuthRefreshToken (with plaintext token).
     """
-    plaintext_token = _generate_token()
+    plaintext_token = REFRESH_TOKEN_PREFIX + _generate_token()
     token_hash = _hash_token(plaintext_token)
     now = datetime.now(timezone.utc)
     expires_at = now + REFRESH_TOKEN_TTL
