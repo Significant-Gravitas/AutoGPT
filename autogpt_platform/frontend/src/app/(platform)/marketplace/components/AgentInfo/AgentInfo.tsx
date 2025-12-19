@@ -13,7 +13,7 @@ import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/stor
 import { Text } from "@/components/atoms/Text/Text";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import * as React from "react";
-import { MarketplaceBanners } from "../../../components/MarketplaceBanners/MarketplaceBanners";
+import { MarketplaceBanners } from "@/components/contextual/MarketplaceBanners/MarketplaceBanners";
 import {
   getLatestMarketplaceVersion,
   isUserCreator as checkIsUserCreator,

@@ -8,7 +8,7 @@ import * as React from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
-import { MarketplaceBanners } from "../../../../../components/MarketplaceBanners/MarketplaceBanners";
+import { MarketplaceBanners } from "@/components/contextual/MarketplaceBanners/MarketplaceBanners";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
