@@ -1,7 +1,8 @@
 """
 OAuth 2.0 Provider Data Layer
 
-Handles management of OAuth applications, authorization codes, access tokens, and refresh tokens.
+Handles management of OAuth applications, authorization codes,
+access tokens, and refresh tokens.
 
 Hashing strategy:
 - Access tokens & Refresh tokens: SHA256 (deterministic, allows direct lookup by hash)
@@ -21,6 +22,7 @@ from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
+from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
 from .base import APIAuthorizationInfo
@@ -43,6 +45,9 @@ def _hash_token(token: str) -> str:
 AUTHORIZATION_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 REFRESH_TOKEN_TTL = timedelta(days=30)
+
+ACCESS_TOKEN_PREFIX = "agpt_xt_"
+REFRESH_TOKEN_PREFIX = "agpt_rt_"
 
 
 # ============================================================================
@@ -89,6 +94,7 @@ class OAuthApplicationInfo(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    logo_url: Optional[str] = None
     client_id: str
     redirect_uris: list[str]
     grant_types: list[str]
@@ -104,6 +110,7 @@ class OAuthApplicationInfo(BaseModel):
             id=app.id,
             name=app.name,
             description=app.description,
+            logo_url=app.logoUrl,
             client_id=app.clientId,
             redirect_uris=app.redirectUris,
             grant_types=app.grantTypes,
@@ -477,7 +484,7 @@ async def create_access_token(
     Create a new access token.
     Returns OAuthAccessToken (with plaintext token).
     """
-    plaintext_token = _generate_token()
+    plaintext_token = ACCESS_TOKEN_PREFIX + _generate_token()
     token_hash = _hash_token(plaintext_token)
     now = datetime.now(timezone.utc)
     expires_at = now + ACCESS_TOKEN_TTL
@@ -496,7 +503,9 @@ async def create_access_token(
     return OAuthAccessToken.from_db(saved_token, plaintext_token=plaintext_token)
 
 
-async def validate_access_token(token: str) -> OAuthAccessTokenInfo:
+async def validate_access_token(
+    token: str,
+) -> tuple[OAuthAccessTokenInfo, OAuthApplicationInfo]:
     """
     Validate an access token and return token info.
 
@@ -514,7 +523,10 @@ async def validate_access_token(token: str) -> OAuthAccessTokenInfo:
     if not access_token:
         raise InvalidTokenError("access token not found")
 
-    if access_token.Application and not access_token.Application.isActive:
+    if not access_token.Application:  # should be impossible
+        raise InvalidClientError("Client application not found")
+
+    if not access_token.Application.isActive:
         raise InvalidClientError("Client application is disabled")
 
     if access_token.revokedAt is not None:
@@ -525,7 +537,10 @@ async def validate_access_token(token: str) -> OAuthAccessTokenInfo:
     if access_token.expiresAt < now:
         raise InvalidTokenError("access token expired")
 
-    return OAuthAccessTokenInfo.from_db(access_token)
+    return (
+        OAuthAccessTokenInfo.from_db(access_token),
+        OAuthApplicationInfo.from_db(access_token.Application),
+    )
 
 
 async def revoke_access_token(
@@ -586,7 +601,7 @@ async def create_refresh_token(
     Create a new refresh token.
     Returns OAuthRefreshToken (with plaintext token).
     """
-    plaintext_token = _generate_token()
+    plaintext_token = REFRESH_TOKEN_PREFIX + _generate_token()
     token_hash = _hash_token(plaintext_token)
     now = datetime.now(timezone.utc)
     expires_at = now + REFRESH_TOKEN_TTL
@@ -723,8 +738,7 @@ async def introspect_token(
     # Try as access token first (or if hint says "access_token")
     if token_type_hint != "refresh_token":
         try:
-            token_info = await validate_access_token(token)
-            app = await get_oauth_application_by_id(token_info.application_id)
+            token_info, app = await validate_access_token(token)
             return TokenIntrospectionResult(
                 active=True,
                 scopes=list(s.value for s in token_info.scopes),
@@ -766,3 +780,93 @@ async def get_oauth_application_by_id(app_id: str) -> Optional[OAuthApplicationI
     if not app:
         return None
     return OAuthApplicationInfo.from_db(app)
+
+
+async def list_user_oauth_applications(user_id: str) -> list[OAuthApplicationInfo]:
+    """Get all OAuth applications owned by a user"""
+    apps = await PrismaOAuthApplication.prisma().find_many(
+        where={"ownerId": user_id},
+        order={"createdAt": "desc"},
+    )
+    return [OAuthApplicationInfo.from_db(app) for app in apps]
+
+
+async def update_oauth_application(
+    app_id: str,
+    *,
+    owner_id: str,
+    is_active: Optional[bool] = None,
+    logo_url: Optional[str] = None,
+) -> Optional[OAuthApplicationInfo]:
+    """
+    Update OAuth application active status.
+    Only the owner can update their app's status.
+
+    Returns the updated app info, or None if app not found or not owned by user.
+    """
+    # First verify ownership
+    app = await PrismaOAuthApplication.prisma().find_first(
+        where={"id": app_id, "ownerId": owner_id}
+    )
+    if not app:
+        return None
+
+    patch: OAuthApplicationUpdateInput = {}
+    if is_active is not None:
+        patch["isActive"] = is_active
+    if logo_url:
+        patch["logoUrl"] = logo_url
+    if not patch:
+        return OAuthApplicationInfo.from_db(app)  # return unchanged
+
+    updated_app = await PrismaOAuthApplication.prisma().update(
+        where={"id": app_id},
+        data=patch,
+    )
+    return OAuthApplicationInfo.from_db(updated_app) if updated_app else None
+
+
+# ============================================================================
+# Token Cleanup
+# ============================================================================
+
+
+async def cleanup_expired_oauth_tokens() -> dict[str, int]:
+    """
+    Delete expired OAuth tokens from the database.
+
+    This removes:
+    - Expired authorization codes (10 min TTL)
+    - Expired access tokens (1 hour TTL)
+    - Expired refresh tokens (30 day TTL)
+
+    Returns a dict with counts of deleted tokens by type.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Delete expired authorization codes
+    codes_result = await PrismaOAuthAuthorizationCode.prisma().delete_many(
+        where={"expiresAt": {"lt": now}}
+    )
+
+    # Delete expired access tokens
+    access_result = await PrismaOAuthAccessToken.prisma().delete_many(
+        where={"expiresAt": {"lt": now}}
+    )
+
+    # Delete expired refresh tokens
+    refresh_result = await PrismaOAuthRefreshToken.prisma().delete_many(
+        where={"expiresAt": {"lt": now}}
+    )
+
+    deleted = {
+        "authorization_codes": codes_result,
+        "access_tokens": access_result,
+        "refresh_tokens": refresh_result,
+    }
+
+    total = sum(deleted.values())
+    if total > 0:
+        logger.info(f"Cleaned up {total} expired OAuth tokens: {deleted}")
+
+    return deleted

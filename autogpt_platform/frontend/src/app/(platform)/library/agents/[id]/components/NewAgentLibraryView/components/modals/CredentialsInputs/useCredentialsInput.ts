@@ -5,16 +5,17 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { useQueryClient } from "@tanstack/react-query";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getActionButtonText,
   OAUTH_TIMEOUT_MS,
   OAuthPopupResultMessage,
 } from "./helpers";
 
-type Args = {
+export type CredentialsInputState = ReturnType<typeof useCredentialsInput>;
+
+type Params = {
   schema: BlockIOCredentialsSubSchema;
   selectedCredential?: CredentialsMetaInput;
   onSelectCredential: (newValue?: CredentialsMetaInput) => void;
@@ -23,14 +24,14 @@ type Args = {
   readOnly?: boolean;
 };
 
-export function useCredentialsInputs({
+export function useCredentialsInput({
   schema,
   selectedCredential,
   onSelectCredential,
   siblingInputs,
   onLoaded,
   readOnly = false,
-}: Args) {
+}: Params) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
   const [
@@ -51,7 +52,6 @@ export function useCredentialsInputs({
   const api = useBackendAPI();
   const queryClient = useQueryClient();
   const credentials = useCredentials(schema, siblingInputs);
-  const allProviders = useContext(CredentialsProvidersContext);
 
   const deleteCredentialsMutation = useDeleteV1DeleteCredentials({
     mutation: {

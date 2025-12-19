@@ -43,7 +43,7 @@ async def require_access_token(
         )
 
     try:
-        token_info = await validate_access_token(bearer.credentials)
+        token_info, _ = await validate_access_token(bearer.credentials)
     except (InvalidClientError, InvalidTokenError) as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
@@ -76,7 +76,7 @@ async def require_auth(
     # Try OAuth bearer token
     if bearer is not None:
         try:
-            token_info = await validate_access_token(bearer.credentials)
+            token_info, _ = await validate_access_token(bearer.credentials)
             return token_info
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))

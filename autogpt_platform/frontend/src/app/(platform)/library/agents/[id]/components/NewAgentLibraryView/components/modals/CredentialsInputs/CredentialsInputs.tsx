@@ -15,13 +15,14 @@ import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsMod
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
 import { getCredentialDisplayName } from "./helpers";
-import { useCredentialsInputs } from "./useCredentialsInputs";
-
-type UseCredentialsInputsReturn = ReturnType<typeof useCredentialsInputs>;
+import {
+  CredentialsInputState,
+  useCredentialsInput,
+} from "./useCredentialsInput";
 
 function isLoaded(
-  data: UseCredentialsInputsReturn,
-): data is Extract<UseCredentialsInputsReturn, { isLoading: false }> {
+  data: CredentialsInputState,
+): data is Extract<CredentialsInputState, { isLoading: false }> {
   return data.isLoading === false;
 }
 
@@ -33,6 +34,7 @@ type Props = {
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
+  showTitle?: boolean;
 };
 
 export function CredentialsInput({
@@ -43,8 +45,9 @@ export function CredentialsInput({
   siblingInputs,
   onLoaded,
   readOnly = false,
+  showTitle = true,
 }: Props) {
-  const hookData = useCredentialsInputs({
+  const hookData = useCredentialsInput({
     schema,
     selectedCredential,
     onSelectCredential,
@@ -89,12 +92,14 @@ export function CredentialsInput({
 
   return (
     <div className={cn("mb-6", className)}>
-      <div className="mb-2 flex items-center gap-2">
-        <Text variant="large-medium">{displayName} credentials</Text>
-        {schema.description && (
-          <InformationTooltip description={schema.description} />
-        )}
-      </div>
+      {showTitle && (
+        <div className="mb-2 flex items-center gap-2">
+          <Text variant="large-medium">{displayName} credentials</Text>
+          {schema.description && (
+            <InformationTooltip description={schema.description} />
+          )}
+        </div>
+      )}
 
       {hasCredentialsToShow ? (
         <>

@@ -998,6 +998,7 @@ model OAuthApplication {
   // Application metadata
   name               String
   description        String?
+  logoUrl            String? // URL to app logo stored in GCS
   clientId           String @unique
   clientSecret       String // Hashed with Scrypt (same as API keys)
   clientSecretSalt   String // Salt for Scrypt hashing

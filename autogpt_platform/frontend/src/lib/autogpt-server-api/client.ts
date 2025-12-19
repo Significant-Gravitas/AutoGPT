@@ -910,7 +910,37 @@ export default class BackendAPI {
             reject(new Error("Invalid JSON response"));
           }
         } else {
-          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+          // Handle file size errors with user-friendly message
+          if (xhr.status === 413) {
+            reject(new Error("File is too large — max size is 256MB"));
+            return;
+          }
+
+          // Try to parse error response for better messages
+          let errorMessage = `Upload failed (${xhr.status})`;
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            if (errorData.detail) {
+              if (
+                typeof errorData.detail === "string" &&
+                errorData.detail.includes("exceeds the maximum")
+              ) {
+                const match = errorData.detail.match(
+                  /maximum allowed size of (\d+)MB/,
+                );
+                const maxSize = match ? match[1] : "256";
+                errorMessage = `File is too large — max size is ${maxSize}MB`;
+              } else if (typeof errorData.detail === "string") {
+                errorMessage = errorData.detail;
+              }
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch {
+            // Keep default message if parsing fails
+          }
+
+          reject(new Error(errorMessage));
         }
       });
 

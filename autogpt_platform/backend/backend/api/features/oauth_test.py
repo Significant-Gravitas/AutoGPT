@@ -1298,7 +1298,7 @@ async def test_validate_access_token_fails_when_app_disabled(
     )
 
     # Token should be valid while app is active
-    token_info = await validate_access_token(token_plaintext)
+    token_info, _ = await validate_access_token(token_plaintext)
     assert token_info.user_id == test_user
 
     # Disable the app

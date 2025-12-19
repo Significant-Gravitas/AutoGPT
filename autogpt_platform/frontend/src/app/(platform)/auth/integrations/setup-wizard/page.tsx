@@ -1,11 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState, useMemo, useRef } from "react";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import type {
   BlockIOCredentialsSubSchema,
@@ -13,7 +15,6 @@ import type {
   CredentialsType,
 } from "@/lib/autogpt-server-api";
 import { CheckIcon, CircleIcon } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
 import { useGetOauthGetOauthAppInfo } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import { okData } from "@/app/api/helpers";
 import { OAuthApplicationPublicInfo } from "@/app/api/__generated__/models/oAuthApplicationPublicInfo";
@@ -182,9 +183,14 @@ export default function IntegrationSetupWizardPage() {
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
         <AuthCard title="Invalid Request">
-          <Text variant="body" className="text-center text-red-600">
-            Missing required parameters: {missingParams.join(", ")}
-          </Text>
+          <ErrorCard
+            context="request details"
+            responseError={{
+              message: `Missing required parameters: ${missingParams.join(", ")}`,
+            }}
+            hint="Please contact the administrator of the app that sent you here."
+            isOurProblem={false}
+          />
         </AuthCard>
       </div>
     );
@@ -194,9 +200,12 @@ export default function IntegrationSetupWizardPage() {
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
         <AuthCard title="Invalid Request">
-          <Text variant="body" className="text-center text-red-600">
-            No providers specified
-          </Text>
+          <ErrorCard
+            context="providers"
+            responseError={{ message: "No providers specified" }}
+            hint="Please contact the administrator of the app that sent you here."
+            isOurProblem={false}
+          />
           <Button
             variant="secondary"
             onClick={handleCancel}
@@ -217,7 +226,7 @@ export default function IntegrationSetupWizardPage() {
             {appInfo ? (
               <>
                 <strong>{appInfo.name}</strong> is requesting you to connect the
-                following integrations.
+                following integrations to your AutoGPT account.
               </>
             ) : (
               "Please connect the following integrations to continue."
@@ -233,12 +242,21 @@ export default function IntegrationSetupWizardPage() {
               return (
                 <div
                   key={config.provider}
-                  className={cn(
-                    "relative rounded-lg border border-slate-200 bg-white p-4",
-                    isSelected && "border-green-500 bg-green-50",
-                  )}
+                  className="relative rounded-xl border border-slate-200 bg-white p-4"
                 >
-                  <div className="mb-2 flex items-center gap-2">
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="relative size-8">
+                      <Image
+                        src={`/integrations/${config.provider}.png`}
+                        alt={`${config.provider} icon`}
+                        fill
+                        className="object-contain group-disabled:opacity-50"
+                      />
+                    </div>
+                    <Text className="mx-1" variant="large-medium">
+                      {toDisplayName(config.provider)}
+                    </Text>
+                    <div className="grow"></div>
                     {isSelected ? (
                       <CheckIcon
                         size={20}
@@ -252,9 +270,6 @@ export default function IntegrationSetupWizardPage() {
                         weight="bold"
                       />
                     )}
-                    <Text variant="body-medium">
-                      {toDisplayName(config.provider)}
-                    </Text>
                     {isSelected && (
                       <Text variant="small" className="text-green-600">
                         Connected
@@ -268,6 +283,8 @@ export default function IntegrationSetupWizardPage() {
                     onSelectCredentials={(credMeta) =>
                       handleCredentialSelect(config.provider, credMeta)
                     }
+                    showTitle={false}
+                    className="mb-0"
                   />
                 </div>
               );
@@ -280,7 +297,7 @@ export default function IntegrationSetupWizardPage() {
               variant="primary"
               onClick={handleComplete}
               disabled={!isAllComplete}
-              className="w-full"
+              className="w-full text-lg"
             >
               {isAllComplete
                 ? "Continue"
@@ -289,7 +306,7 @@ export default function IntegrationSetupWizardPage() {
             <Button
               variant="secondary"
               onClick={handleCancel}
-              className="w-full"
+              className="w-full text-lg"
             >
               Cancel
             </Button>
@@ -301,7 +318,7 @@ export default function IntegrationSetupWizardPage() {
             <Link
               href="/profile/integrations"
               target="_blank"
-              className="text-blue-600 underline hover:text-blue-800"
+              className="text-purple-600 underline hover:text-purple-800"
             >
               integration settings
             </Link>

@@ -5557,6 +5557,182 @@
         }
       }
     },
+    "/api/oauth/apps/mine": {
+      "get": {
+        "tags": ["oauth"],
+        "summary": "List My Oauth Apps",
+        "description": "List all OAuth applications owned by the current user.\n\nReturns a list of OAuth applications with their details including:\n- id, name, description, logo_url\n- client_id (public identifier)\n- redirect_uris, grant_types, scopes\n- is_active status\n- created_at, updated_at timestamps\n\nNote: client_secret is never returned for security reasons.",
+        "operationId": "getOauthListMyOauthApps",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OAuthApplicationInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Getoauthlistmyoauthapps"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/oauth/apps/{app_id}/status": {
+      "patch": {
+        "tags": ["oauth"],
+        "summary": "Update App Status",
+        "description": "Enable or disable an OAuth application.\n\nOnly the application owner can update the status.\nWhen disabled, the application cannot be used for new authorizations\nand existing access tokens will fail validation.\n\nReturns the updated application info.",
+        "operationId": "patchOauthUpdateAppStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "App Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_patchOauthUpdateAppStatus"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/oauth/apps/{app_id}/logo": {
+      "patch": {
+        "tags": ["oauth"],
+        "summary": "Update App Logo",
+        "description": "Update the logo URL for an OAuth application.\n\nOnly the application owner can update the logo.\nThe logo should be uploaded first using the media upload endpoint,\nthen this endpoint is called with the resulting URL.\n\nLogo requirements:\n- Must be square (1:1 aspect ratio)\n- Minimum 512x512 pixels\n- Maximum 2048x2048 pixels\n\nReturns the updated application info.",
+        "operationId": "patchOauthUpdateAppLogo",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "App Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateAppLogoRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/oauth/apps/{app_id}/logo/upload": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Upload App Logo",
+        "description": "Upload a logo image for an OAuth application.\n\nRequirements:\n- Image must be square (1:1 aspect ratio)\n- Minimum 512x512 pixels\n- Maximum 2048x2048 pixels\n- Allowed formats: JPEG, PNG, WebP\n- Maximum file size: 3MB\n\nThe image is uploaded to cloud storage and the app's logoUrl is updated.\nReturns the updated application info.",
+        "operationId": "postOauthUploadAppLogo",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "App Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postOauthUploadAppLogo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
@@ -6130,6 +6306,18 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
+      "Body_patchOauthUpdateAppStatus": {
+        "properties": {
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "Whether the app should be active"
+          }
+        },
+        "type": "object",
+        "required": ["is_active"],
+        "title": "Body_patchOauthUpdateAppStatus"
+      },
       "Body_postAnalyticsLogRawAnalytics": {
         "properties": {
           "type": { "type": "string", "title": "Type" },
@@ -6208,6 +6396,14 @@
         "type": "object",
         "required": ["token", "client_id", "client_secret"],
         "title": "Body_postOauthRevoke"
+      },
+      "Body_postOauthUploadAppLogo": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postOauthUploadAppLogo"
       },
       "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
@@ -8182,12 +8378,73 @@
         "required": ["provider", "access_token", "scopes"],
         "title": "OAuth2Credentials"
       },
+      "OAuthApplicationInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "redirect_uris": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Redirect Uris"
+          },
+          "grant_types": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Grant Types"
+          },
+          "scopes": {
+            "items": { "$ref": "#/components/schemas/APIKeyPermission" },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "owner_id": { "type": "string", "title": "Owner Id" },
+          "is_active": { "type": "boolean", "title": "Is Active" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "client_id",
+          "redirect_uris",
+          "grant_types",
+          "scopes",
+          "owner_id",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OAuthApplicationInfo",
+        "description": "OAuth application information (without client secret hash)"
+      },
       "OAuthApplicationPublicInfo": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
           },
           "scopes": {
             "items": { "type": "string" },
@@ -10410,6 +10667,18 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "UpdateAppLogoRequest": {
+        "properties": {
+          "logo_url": {
+            "type": "string",
+            "title": "Logo Url",
+            "description": "URL of the uploaded logo image"
+          }
+        },
+        "type": "object",
+        "required": ["logo_url"],
+        "title": "UpdateAppLogoRequest"
       },
       "UpdatePermissionsRequest": {
         "properties": {
