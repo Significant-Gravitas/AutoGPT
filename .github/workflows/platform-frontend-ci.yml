@@ -129,27 +129,12 @@ jobs:
           exitOnceUploaded: true
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: big-boi
     needs: setup
     strategy:
       fail-fast: false
 
     steps:
-      - name: Free disk space
-        working-directory: .
-        run: |
-          echo "=== Disk space before cleanup ==="
-          df -h /
-          echo ""
-          echo "=== Cleaning up Docker resources ==="
-          docker system prune -af --volumes || true
-          echo ""
-          echo "=== Removing old Docker image cache ==="
-          rm -rf ~/docker-cache || true
-          echo ""
-          echo "=== Disk space after cleanup ==="
-          df -h /
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -314,9 +299,3 @@ jobs:
       - name: Print Final Docker Compose logs
         if: always()
         run: docker compose -f ../docker-compose.yml logs
-
-      - name: Cleanup Docker resources
-        if: always()
-        run: |
-          docker compose -f ../docker-compose.yml down -v --remove-orphans || true
-          docker system prune -af --volumes || true
