@@ -13,7 +13,6 @@ import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/stor
 import { Text } from "@/components/atoms/Text/Text";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import * as React from "react";
-import { MarketplaceBanners } from "@/components/contextual/MarketplaceBanners/MarketplaceBanners";
 import {
   getLatestMarketplaceVersion,
   isUserCreator as checkIsUserCreator,
@@ -182,17 +181,6 @@ export const AgentInfo = ({
     );
   };
 
-  const renderMarketplaceBanners = () => {
-    return (
-      <MarketplaceBanners
-        hasUpdate={updateInfo.hasUpdate}
-        latestVersion={updateInfo.latestVersion}
-        hasUnpublishedChanges={updateInfo.hasUnpublishedChanges}
-        currentVersion={parseInt(version, 10)}
-      />
-    );
-  };
-
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
       {/* Title */}
@@ -305,9 +293,6 @@ export const AgentInfo = ({
             ))}
           </div>
         </div>
-
-        {/* Update/Unpublished Changes Banners */}
-        {renderMarketplaceBanners()}
 
         {/* Changelog */}
         <div className="flex w-full flex-col gap-1.5 sm:gap-2">
