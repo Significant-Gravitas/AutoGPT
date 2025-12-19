@@ -197,8 +197,12 @@ async def main(dry_run: bool = False):
             # Preview mode - show what would be migrated
             logger.info("\n--- Preview (would be migrated) ---")
             preview = await preview_migration(db)
-            logger.info(f"  Password hashes to migrate: {preview['passwords_to_migrate']}")
-            logger.info(f"  Google OAuth IDs to migrate: {preview['google_oauth_to_migrate']}")
+            logger.info(
+                f"  Password hashes to migrate: {preview['passwords_to_migrate']}"
+            )
+            logger.info(
+                f"  Google OAuth IDs to migrate: {preview['google_oauth_to_migrate']}"
+            )
             logger.info("\n" + "=" * 60)
             logger.info("Dry run complete. Run without --dry-run to perform migration.")
             logger.info("=" * 60)
