@@ -103,7 +103,7 @@ export function RunAgentInputs({
           value={value}
           onChange={onChange}
           className="w-full"
-          showRemoveButton={false}
+          showRemoveButton={!readOnly}
         />
       );
       break;
