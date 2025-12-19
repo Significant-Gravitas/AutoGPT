@@ -125,10 +125,9 @@ jobs:
           DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
           DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
 
-      - name: Start REST server in background
+      - name: Generate OpenAPI schema
         run: |
-          poetry run rest &
-          echo $! > /tmp/rest_server.pid
+          poetry run export-api-schema --output ../frontend/src/app/api/openapi.json --pretty
         working-directory: autogpt_platform/backend
         env:
           DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
@@ -138,13 +137,6 @@ jobs:
           REDIS_PORT: "6379"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
           RUN_ENV: local
-          PORT: 8006
-
-      - name: Wait for REST server to be ready
-        run: |
-          echo "Waiting for REST server to be ready..."
-          timeout 120 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done'
-          echo "REST server is ready!"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -169,7 +161,7 @@ jobs:
         run: cp .env.default .env
 
       - name: Generate API queries
-        run: pnpm generate:api:force
+        run: pnpm generate:api
 
       - name: Check for API schema changes
         run: |
