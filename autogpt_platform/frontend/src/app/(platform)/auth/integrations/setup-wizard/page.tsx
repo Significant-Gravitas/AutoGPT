@@ -217,7 +217,7 @@ export default function IntegrationSetupWizardPage() {
             {appInfo ? (
               <>
                 <strong>{appInfo.name}</strong> is requesting you to connect the
-                following integrations.
+                following integrations to your AutoGPT account.
               </>
             ) : (
               "Please connect the following integrations to continue."
