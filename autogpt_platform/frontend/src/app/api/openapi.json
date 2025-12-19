@@ -2919,7 +2919,11 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GoogleLoginResponse" }
+              }
+            }
           }
         }
       }
@@ -2928,7 +2932,7 @@
       "get": {
         "tags": ["auth", "auth"],
         "summary": "Google Callback",
-        "description": "Handle Google OAuth callback.\n\nExchanges the authorization code for user info and creates/updates the user.\nReturns tokens or redirects to frontend with tokens.",
+        "description": "Handle Google OAuth callback.\n\nExchanges the authorization code for user info and creates/updates the user.\nReturns access and refresh tokens.",
         "operationId": "getAuthGoogleCallback",
         "parameters": [
           {
@@ -2950,7 +2954,13 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__server__auth__routes__TokenResponse"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -7301,6 +7311,13 @@
           "status"
         ],
         "title": "ExecutionAnalyticsResult"
+      },
+      "GoogleLoginResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "GoogleLoginResponse",
+        "description": "Response model for Google OAuth login initiation."
       },
       "Graph": {
         "properties": {
