@@ -3,7 +3,6 @@ from datetime import datetime
 import prisma.enums
 import prisma.errors
 import prisma.models
-import prisma.types
 import pytest
 from prisma import Prisma
 
