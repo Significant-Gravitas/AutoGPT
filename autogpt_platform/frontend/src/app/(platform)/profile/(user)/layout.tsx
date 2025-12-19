@@ -9,7 +9,7 @@ import {
   IconSliders,
   IconCoin,
 } from "@/components/__legacy__/ui/icons";
-import { KeyIcon } from "lucide-react";
+import { KeyIcon, AppWindowIcon } from "@phosphor-icons/react";
 import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -41,6 +41,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           text: "API Keys",
           href: "/profile/api_keys",
           icon: <KeyIcon className="h-6 w-6" />,
+        },
+        {
+          text: "OAuth Apps",
+          href: "/profile/oauth-apps",
+          icon: <AppWindowIcon className="h-6 w-6" />,
         },
         {
           text: "Profile",

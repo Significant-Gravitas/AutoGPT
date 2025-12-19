@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
+import { ImageIcon } from "@phosphor-icons/react";
 import {
   postOauthAuthorize,
   useGetOauthGetOauthAppInfo,
@@ -190,7 +191,20 @@ export default function AuthorizePage() {
       <AuthCard title="Authorize Application">
         <div className="flex w-full flex-col gap-6">
           {/* App info */}
-          <div className="text-center">
+          <div className="flex flex-col items-center text-center">
+            {/* App logo */}
+            <div className="mb-4 flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-muted">
+              {appInfo.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={appInfo.logo_url}
+                  alt={`${appInfo.name} logo`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <ImageIcon className="h-8 w-8 text-muted-foreground" />
+              )}
+            </div>
             <Text variant="h4" className="mb-2">
               {appInfo.name}
             </Text>
