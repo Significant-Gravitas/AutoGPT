@@ -106,22 +106,39 @@ async def get_store_agents(
         if search_query:
             offset = (page - 1) * page_size
 
-            # Generate embedding for vector search
-            embedding_service = get_embedding_service()
-            query_embedding = await embedding_service.generate_embedding(search_query)
-            # Convert embedding to PostgreSQL array format
-            embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+            # Try to generate embedding for vector search
+            # Falls back to BM25-only if embedding service is not available
+            query_embedding: list[float] | None = None
+            try:
+                embedding_service = get_embedding_service()
+                query_embedding = await embedding_service.generate_embedding(
+                    search_query
+                )
+            except (ValueError, Exception) as e:
+                # Embedding service not configured or failed - use BM25 only
+                logger.warning(f"Embedding generation failed, using BM25 only: {e}")
+
+            # Convert embedding to PostgreSQL array format (or None for BM25-only)
+            embedding_str = (
+                "[" + ",".join(map(str, query_embedding)) + "]"
+                if query_embedding
+                else None
+            )
 
             # Build WHERE conditions and parameters list
+            # When embedding is not available (no OpenAI key), $1 will be NULL
             where_parts: list[str] = []
-            params: list[typing.Any] = [embedding_str]  # $1 - query embedding
+            params: list[typing.Any] = [embedding_str]  # $1 - query embedding (or NULL)
             param_index = 2  # Start at $2 for next parameter
 
             # Always filter for available agents
             where_parts.append("is_available = true")
 
-            # Require at least one search signal to be present
-            if filter_mode == "strict":
+            # Require search signals to be present
+            if embedding_str is None:
+                # No embedding available - require BM25 search only
+                where_parts.append("search IS NOT NULL")
+            elif filter_mode == "strict":
                 # Strict mode: require both embedding AND search to be available
                 where_parts.append("embedding IS NOT NULL")
                 where_parts.append("search IS NOT NULL")
@@ -152,7 +169,10 @@ async def get_store_agents(
 
             # Build score filter based on filter_mode
             # This filter is applied BEFORE RRF ranking in the filtered_agents CTE
-            if filter_mode == "strict":
+            if embedding_str is None:
+                # No embedding - filter only on BM25 score
+                score_filter = f"bm25_score >= {BM25_RELEVANCE_THRESHOLD}"
+            elif filter_mode == "strict":
                 score_filter = f"""
                     bm25_score >= {BM25_RELEVANCE_THRESHOLD}
                     AND vector_score >= {VECTOR_SEARCH_SIMILARITY_THRESHOLD}
@@ -214,8 +234,9 @@ async def get_store_agents(
                             0
                         ) AS bm25_score,
                         -- Vector similarity score (cosine: 1 - distance)
+                        -- Returns 0 when query embedding ($1) is NULL (no OpenAI key)
                         CASE
-                            WHEN embedding IS NOT NULL
+                            WHEN $1 IS NOT NULL AND embedding IS NOT NULL
                             THEN 1 - (embedding <=> $1::vector)
                             ELSE 0
                         END AS vector_score,
@@ -301,7 +322,7 @@ async def get_store_agents(
                             0
                         ) AS bm25_score,
                         CASE
-                            WHEN embedding IS NOT NULL
+                            WHEN $1 IS NOT NULL AND embedding IS NOT NULL
                             THEN 1 - (embedding <=> $1::vector)
                             ELSE 0
                         END AS vector_score,
