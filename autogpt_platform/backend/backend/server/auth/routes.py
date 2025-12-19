@@ -10,10 +10,14 @@ Provides endpoints for:
 """
 
 import logging
+import secrets
+import time
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
+
+from backend.util.settings import Settings
 
 from .email import get_auth_email_sender
 from .service import AuthService
@@ -24,6 +28,42 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Singleton auth service instance
 _auth_service: Optional[AuthService] = None
+
+# In-memory state storage for OAuth CSRF protection
+# Format: {state_token: {"created_at": timestamp, "redirect_uri": optional_uri}}
+# In production, use Redis for distributed state management
+_oauth_states: dict[str, dict] = {}
+_STATE_TTL_SECONDS = 600  # 10 minutes
+
+
+def _cleanup_expired_states() -> None:
+    """Remove expired OAuth states."""
+    now = time.time()
+    expired = [
+        k
+        for k, v in _oauth_states.items()
+        if now - v["created_at"] > _STATE_TTL_SECONDS
+    ]
+    for k in expired:
+        del _oauth_states[k]
+
+
+def _generate_state() -> str:
+    """Generate a cryptographically secure state token."""
+    _cleanup_expired_states()
+    state = secrets.token_urlsafe(32)
+    _oauth_states[state] = {"created_at": time.time()}
+    return state
+
+
+def _validate_state(state: str) -> bool:
+    """Validate and consume a state token."""
+    if state not in _oauth_states:
+        return False
+    state_data = _oauth_states.pop(state)
+    if time.time() - state_data["created_at"] > _STATE_TTL_SECONDS:
+        return False
+    return True
 
 
 def get_auth_service() -> AuthService:
@@ -123,14 +163,20 @@ async def register(request: RegisterRequest, background_tasks: BackgroundTasks):
         )
 
         # Create verification token and send email in background
-        verification_token = await auth_service.create_email_verification_token(user.id)
-        email_sender = get_auth_email_sender()
-        background_tasks.add_task(
-            email_sender.send_email_verification,
-            to_email=user.email,
-            verification_token=verification_token,
-            user_name=user.name,
-        )
+        # This is non-critical - don't fail registration if email fails
+        try:
+            verification_token = await auth_service.create_email_verification_token(
+                user.id
+            )
+            email_sender = get_auth_email_sender()
+            background_tasks.add_task(
+                email_sender.send_email_verification,
+                to_email=user.email,
+                verification_token=verification_token,
+                user_name=user.name,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to queue verification email for {user.email}: {e}")
 
         tokens = await auth_service.create_tokens(user)
         return TokenResponse(**tokens)
@@ -298,25 +344,162 @@ async def resend_verification_email(
 
 # ============= Google OAuth Endpoints =============
 
+# Google userinfo endpoint for fetching user profile
+GOOGLE_USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-@router.get("/google/login")
+
+class GoogleLoginResponse(BaseModel):
+    """Response model for Google OAuth login initiation."""
+
+    url: str
+
+
+def _get_google_oauth_handler():
+    """Get a configured GoogleOAuthHandler instance."""
+    # Lazy import to avoid circular imports
+    from backend.integrations.oauth.google import GoogleOAuthHandler
+
+    settings = Settings()
+
+    client_id = settings.secrets.google_client_id
+    client_secret = settings.secrets.google_client_secret
+
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
+        )
+
+    # Construct the redirect URI - this should point to the frontend's callback
+    # which will then call our /auth/google/callback endpoint
+    frontend_base_url = settings.config.frontend_base_url or "http://localhost:3000"
+    redirect_uri = f"{frontend_base_url}/auth/callback"
+
+    return GoogleOAuthHandler(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+    )
+
+
+@router.get("/google/login", response_model=GoogleLoginResponse)
 async def google_login(request: Request):
     """
     Initiate Google OAuth flow.
 
     Returns the Google OAuth authorization URL to redirect the user to.
     """
-    # TODO: Implement Google OAuth using authlib
-    raise HTTPException(status_code=501, detail="Google OAuth not yet implemented")
+    try:
+        handler = _get_google_oauth_handler()
+        state = _generate_state()
+
+        # Get the authorization URL with default scopes (email, profile, openid)
+        auth_url = handler.get_login_url(
+            scopes=[],  # Will use DEFAULT_SCOPES from handler
+            state=state,
+            code_challenge=None,  # Not using PKCE for server-side flow
+        )
+
+        logger.info(f"Generated Google OAuth URL for state: {state[:8]}...")
+        return GoogleLoginResponse(url=auth_url)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to initiate Google OAuth: {e}")
+        raise HTTPException(status_code=500, detail="Failed to initiate Google OAuth")
 
 
-@router.get("/google/callback")
+@router.get("/google/callback", response_model=TokenResponse)
 async def google_callback(request: Request, code: str, state: Optional[str] = None):
     """
     Handle Google OAuth callback.
 
     Exchanges the authorization code for user info and creates/updates the user.
-    Returns tokens or redirects to frontend with tokens.
+    Returns access and refresh tokens.
     """
-    # TODO: Implement Google OAuth callback
-    raise HTTPException(status_code=501, detail="Google OAuth not yet implemented")
+    # Validate state to prevent CSRF attacks
+    if not state or not _validate_state(state):
+        logger.warning(
+            f"Invalid or missing OAuth state: {state[:8] if state else 'None'}..."
+        )
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
+    try:
+        handler = _get_google_oauth_handler()
+
+        # Exchange the authorization code for Google credentials
+        logger.info("Exchanging authorization code for tokens...")
+        google_creds = await handler.exchange_code_for_tokens(
+            code=code,
+            scopes=[],  # Will use the scopes from the initial request
+            code_verifier=None,
+        )
+
+        # The handler returns OAuth2Credentials with email in username field
+        email = google_creds.username
+        if not email:
+            raise HTTPException(
+                status_code=400, detail="Failed to retrieve email from Google"
+            )
+
+        # Fetch full user info to get Google user ID and name
+        # Lazy import to avoid circular imports
+        from google.auth.transport.requests import AuthorizedSession
+        from google.oauth2.credentials import Credentials
+
+        # We need to create Google Credentials object to use with AuthorizedSession
+        creds = Credentials(
+            token=google_creds.access_token.get_secret_value(),
+            refresh_token=(
+                google_creds.refresh_token.get_secret_value()
+                if google_creds.refresh_token
+                else None
+            ),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=handler.client_id,
+            client_secret=handler.client_secret,
+        )
+
+        session = AuthorizedSession(creds)
+        userinfo_response = session.get(GOOGLE_USERINFO_ENDPOINT)
+
+        if not userinfo_response.ok:
+            logger.error(
+                f"Failed to fetch Google userinfo: {userinfo_response.status_code}"
+            )
+            raise HTTPException(
+                status_code=400, detail="Failed to fetch user info from Google"
+            )
+
+        userinfo = userinfo_response.json()
+        google_id = userinfo.get("id")
+        name = userinfo.get("name")
+        email_verified = userinfo.get("verified_email", False)
+
+        if not google_id:
+            raise HTTPException(
+                status_code=400, detail="Failed to retrieve Google user ID"
+            )
+
+        logger.info(f"Google OAuth successful for user: {email}")
+
+        # Create or update the user in our database
+        auth_service = get_auth_service()
+        user = await auth_service.create_or_update_google_user(
+            google_id=google_id,
+            email=email,
+            name=name,
+            email_verified=email_verified,
+        )
+
+        # Generate our JWT tokens
+        tokens = await auth_service.create_tokens(user)
+
+        return TokenResponse(**tokens)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Google OAuth callback failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to complete Google OAuth")

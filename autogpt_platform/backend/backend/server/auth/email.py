@@ -36,10 +36,14 @@ class AuthEmailSender:
             self.postmark = None
 
         # Set up Jinja2 environment for templates
-        self.jinja_env = Environment(
-            loader=FileSystemLoader(str(TEMPLATE_DIR)),
-            autoescape=True,
-        )
+        self.jinja_env: Optional[Environment] = None
+        if TEMPLATE_DIR.exists():
+            self.jinja_env = Environment(
+                loader=FileSystemLoader(str(TEMPLATE_DIR)),
+                autoescape=True,
+            )
+        else:
+            logger.warning(f"Auth email templates directory not found: {TEMPLATE_DIR}")
 
     def _get_frontend_url(self) -> str:
         """Get the frontend base URL for email links."""
@@ -53,6 +57,9 @@ class AuthEmailSender:
         self, template_name: str, subject: str, **context
     ) -> tuple[str, str]:
         """Render an email template with the base template wrapper."""
+        if not self.jinja_env:
+            raise RuntimeError("Email templates not available")
+
         # Render the content template
         content_template = self.jinja_env.get_template(template_name)
         content = content_template.render(**context)
@@ -100,18 +107,22 @@ class AuthEmailSender:
         Returns:
             True if email was sent successfully, False otherwise
         """
-        frontend_url = self._get_frontend_url()
-        reset_link = f"{frontend_url}/reset-password?token={reset_token}"
+        try:
+            frontend_url = self._get_frontend_url()
+            reset_link = f"{frontend_url}/reset-password?token={reset_token}"
 
-        subject, html_body = self._render_template(
-            "password_reset.html.jinja2",
-            subject="Reset Your AutoGPT Password",
-            reset_link=reset_link,
-            user_name=user_name,
-            frontend_url=frontend_url,
-        )
+            subject, html_body = self._render_template(
+                "password_reset.html.jinja2",
+                subject="Reset Your AutoGPT Password",
+                reset_link=reset_link,
+                user_name=user_name,
+                frontend_url=frontend_url,
+            )
 
-        return self._send_email(to_email, subject, html_body)
+            return self._send_email(to_email, subject, html_body)
+        except Exception as e:
+            logger.error(f"Failed to send password reset email to {to_email}: {e}")
+            return False
 
     def send_email_verification(
         self, to_email: str, verification_token: str, user_name: Optional[str] = None
@@ -127,18 +138,24 @@ class AuthEmailSender:
         Returns:
             True if email was sent successfully, False otherwise
         """
-        frontend_url = self._get_frontend_url()
-        verification_link = f"{frontend_url}/verify-email?token={verification_token}"
+        try:
+            frontend_url = self._get_frontend_url()
+            verification_link = (
+                f"{frontend_url}/verify-email?token={verification_token}"
+            )
 
-        subject, html_body = self._render_template(
-            "email_verification.html.jinja2",
-            subject="Verify Your AutoGPT Email",
-            verification_link=verification_link,
-            user_name=user_name,
-            frontend_url=frontend_url,
-        )
+            subject, html_body = self._render_template(
+                "email_verification.html.jinja2",
+                subject="Verify Your AutoGPT Email",
+                verification_link=verification_link,
+                user_name=user_name,
+                frontend_url=frontend_url,
+            )
 
-        return self._send_email(to_email, subject, html_body)
+            return self._send_email(to_email, subject, html_body)
+        except Exception as e:
+            logger.error(f"Failed to send verification email to {to_email}: {e}")
+            return False
 
 
 # Singleton instance

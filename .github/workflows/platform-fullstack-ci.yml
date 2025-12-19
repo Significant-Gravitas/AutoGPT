@@ -1,4 +1,4 @@
-name: AutoGPT Platform - Frontend CI
+name: AutoGPT Platform - Fullstack CI
 
 on:
   push:
@@ -59,14 +59,92 @@ jobs:
   types:
     runs-on: ubuntu-latest
     needs: setup
-    strategy:
-      fail-fast: false
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+      rabbitmq:
+        image: rabbitmq:3.12-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        env:
+          RABBITMQ_DEFAULT_USER: rabbitmq_user_default
+          RABBITMQ_DEFAULT_PASS: k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+        working-directory: autogpt_platform/backend
+
+      - name: Install Python dependencies
+        run: poetry install
+        working-directory: autogpt_platform/backend
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+        working-directory: autogpt_platform/backend
+
+      - name: Run Database Migrations
+        run: poetry run prisma migrate deploy
+        working-directory: autogpt_platform/backend
+        env:
+          DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+
+      - name: Start REST server in background
+        run: |
+          poetry run serve &
+          echo $! > /tmp/rest_server.pid
+        working-directory: autogpt_platform/backend
+        env:
+          DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+          JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
+          REDIS_HOST: localhost
+          REDIS_PORT: "6379"
+          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
+          RUN_ENV: local
+          PORT: 8006
+
+      - name: Wait for REST server to be ready
+        run: |
+          echo "Waiting for REST server to be ready..."
+          timeout 120 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done'
+          echo "REST server is ready!"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -75,18 +153,6 @@ jobs:
 
       - name: Enable corepack
         run: corepack enable
-
-      - name: Copy default platform .env
-        run: |
-          cp ../.env.default ../.env
-
-      - name: Copy backend .env
-        run: |
-          cp ../backend/.env.default ../backend/.env
-
-      - name: Run docker compose
-        run: |
-          docker compose -f ../docker-compose.yml --profile local --profile deps_backend up -d
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
@@ -102,13 +168,6 @@ jobs:
       - name: Setup .env
         run: cp .env.default .env
 
-      - name: Wait for services to be ready
-        run: |
-          echo "Waiting for rest_server to be ready..."
-          timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
-          echo "Waiting for database to be ready..."
-          timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
-
       - name: Generate API queries
         run: pnpm generate:api:force
 
@@ -122,11 +181,10 @@ jobs:
             echo "The API schema is now out of sync with the Front-end queries."
             echo ""
             echo "To fix this:"
-            echo "1. Pull the backend 'docker compose pull && docker compose up -d --build --force-recreate'"
-            echo "2. Run 'pnpm generate:api' locally"
-            echo "3. Run 'pnpm types' locally"
-            echo "4. Fix any TypeScript errors that may have been introduced"
-            echo "5. Commit and push your changes"
+            echo "1. Run 'pnpm generate:api' locally with the backend running"
+            echo "2. Run 'pnpm types' locally"
+            echo "3. Fix any TypeScript errors that may have been introduced"
+            echo "4. Commit and push your changes"
             echo ""
             exit 1
           else
@@ -135,3 +193,7 @@ jobs:
 
       - name: Run Typescript checks
         run: pnpm types
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
