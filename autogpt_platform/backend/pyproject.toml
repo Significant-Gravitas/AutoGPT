@@ -135,6 +135,9 @@ filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
     "ignore:invalid escape sequence:DeprecationWarning:tweepy.api",
 ]
+# Exclude security tests that require ClamAV - these run in platform-backend-security-ci.yml
+testpaths = ["backend"]
+addopts = "--ignore=backend/util/virus_scanner_test.py --ignore=backend/util/file_test.py --ignore=backend/server/v2/store/media_test.py"
 
 [tool.ruff]
 target-version = "py310"

@@ -31,8 +31,26 @@ from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
-config = backend.server.v2.chat.config.ChatConfig()
-client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+# Lazy initialization to avoid import-time errors when API keys are not set
+_config: backend.server.v2.chat.config.ChatConfig | None = None
+_client: AsyncOpenAI | None = None
+
+
+def get_config() -> backend.server.v2.chat.config.ChatConfig:
+    """Get the chat config, creating it on first access."""
+    global _config
+    if _config is None:
+        _config = backend.server.v2.chat.config.ChatConfig()
+    return _config
+
+
+def get_client() -> AsyncOpenAI:
+    """Get the OpenAI client, creating it on first access."""
+    global _client
+    if _client is None:
+        config = get_config()
+        _client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+    return _client
 
 
 async def create_chat_session(
@@ -130,6 +148,7 @@ async def stream_chat_completion(
             f"new message_count={len(session.messages)}"
         )
 
+    config = get_config()
     if len(session.messages) > config.max_context_messages:
         raise ValueError(f"Max messages exceeded: {config.max_context_messages}")
 
@@ -345,6 +364,8 @@ async def _stream_chat_chunks(
         SSE formatted JSON response objects
 
     """
+    config = get_config()
+    client = get_client()
     model = config.model
 
     logger.info("Starting pure chat stream")
