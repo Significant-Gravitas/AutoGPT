@@ -134,26 +134,17 @@ export function AgentSelectStep({
               <div className="p-2">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {agents.map((agent) => (
-                    <div
+                    <button
                       key={agent.id}
                       data-testid="agent-card"
-                      className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-sm transition-all ${
+                      onClick={() =>
+                        handleAgentClick(agent.name, agent.id, agent.version)
+                      }
+                      className={`w-full select-none overflow-hidden rounded-2xl border border-neutral-200 text-left shadow-sm transition-all ${
                         selectedAgentId === agent.id
                           ? "border-transparent shadow-none ring-4 ring-violet-600"
                           : "hover:shadow-md"
                       }`}
-                      onClick={() =>
-                        handleAgentClick(agent.name, agent.id, agent.version)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleAgentClick(agent.name, agent.id, agent.version);
-                        }
-                      }}
-                      tabIndex={0}
-                      role="button"
-                      aria-pressed={selectedAgentId === agent.id}
                     >
                       <div className="relative h-32 bg-zinc-400 sm:h-40">
                         <Image
@@ -202,7 +193,7 @@ export function AgentSelectStep({
                           )}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>

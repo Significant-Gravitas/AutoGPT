@@ -7,6 +7,12 @@ import pydantic
 from backend.util.models import Pagination
 
 
+class ChangelogEntry(pydantic.BaseModel):
+    version: str
+    changes_summary: str
+    date: datetime.datetime
+
+
 class MyAgent(pydantic.BaseModel):
     agent_id: str
     agent_version: int
@@ -62,6 +68,9 @@ class StoreAgentDetails(pydantic.BaseModel):
 
     active_version_id: str | None = None
     has_approved_version: bool = False
+
+    # Optional changelog data when include_changelog=True
+    changelog: list[ChangelogEntry] | None = None
 
 
 class Creator(pydantic.BaseModel):

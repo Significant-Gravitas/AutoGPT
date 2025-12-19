@@ -27,6 +27,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
     agent?.marketplace_listing?.creator.slug || "",
     agent?.marketplace_listing?.slug || "",
+    {},
     {
       query: {
         enabled: !!(

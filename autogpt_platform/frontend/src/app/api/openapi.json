@@ -2796,6 +2796,16 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Agent Name" }
+          },
+          {
+            "name": "include_changelog",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Changelog"
+            }
           }
         ],
         "responses": {
@@ -5983,6 +5993,16 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
+      "ChangelogEntry": {
+        "properties": {
+          "version": { "type": "string", "title": "Version" },
+          "changes_summary": { "type": "string", "title": "Changes Summary" },
+          "date": { "type": "string", "format": "date-time", "title": "Date" }
+        },
+        "type": "object",
+        "required": ["version", "changes_summary", "date"],
+        "title": "ChangelogEntry"
+      },
       "ChatRequest": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -8930,6 +8950,16 @@
             "type": "boolean",
             "title": "Has Approved Version",
             "default": false
+          },
+          "changelog": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/ChangelogEntry" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Changelog"
           }
         },
         "type": "object",

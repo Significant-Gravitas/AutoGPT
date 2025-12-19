@@ -27,6 +27,7 @@ export function AgentVersionChangelog({
   const { data: storeAgentData, isLoading } = useGetV2GetSpecificAgent(
     agent?.marketplace_listing?.creator.slug || "",
     agent?.marketplace_listing?.slug || "",
+    {},
     {
       query: {
         enabled: !!(

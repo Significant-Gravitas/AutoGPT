@@ -5,12 +5,20 @@ import { Separator } from "@/components/__legacy__/ui/separator";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
+import { okData } from "@/app/api/helpers";
+import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
+import type { ChangelogEntry } from "@/app/api/__generated__/models/changelogEntry";
 import { useAgentInfo } from "./useAgentInfo";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { Text } from "@/components/atoms/Text/Text";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import * as React from "react";
 import { MarketplaceBanners } from "../../../components/MarketplaceBanners/MarketplaceBanners";
+import {
+  getLatestMarketplaceVersion,
+  isUserCreator as checkIsUserCreator,
+  calculateUpdateStatus,
+} from "@/components/contextual/marketplaceHelpers";
 
 interface AgentInfoProps {
   user: User | null;
@@ -64,6 +72,7 @@ export const AgentInfo = ({
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
     creatorSlug || "",
     agentSlug || "",
+    { include_changelog: true },
     {
       query: {
         enabled: !!(creatorSlug && agentSlug),
@@ -71,121 +80,39 @@ export const AgentInfo = ({
     },
   );
 
-  // Check if user has this agent in library and if there's an update available
-  const updateInfo = React.useMemo(() => {
-    if (!currentUser || storeAgentData?.status !== 200) {
-      return {
-        hasUpdate: false,
-        hasUnpublishedChanges: false,
-        latestVersion: undefined,
-      };
-    }
+  // Calculate update information using simple helper functions
+  const storeData = okData<StoreAgentDetails>(storeAgentData);
+  const latestMarketplaceVersion = getLatestMarketplaceVersion(
+    storeData?.agentGraphVersions,
+  );
+  const currentVersion = parseInt(version, 10);
+  const isCreator = checkIsUserCreator(creator, currentUser);
+  const updateStatus = calculateUpdateStatus({
+    latestMarketplaceVersion,
+    currentVersion,
+    isUserCreator: isCreator,
+    isAgentAddedToLibrary,
+  });
 
-    const latestMarketplaceVersion =
-      storeAgentData.data.agentGraphVersions?.length > 0
-        ? Math.max(
-            ...storeAgentData.data.agentGraphVersions.map((v) =>
-              parseInt(v, 10),
-            ),
-          )
-        : undefined;
-
-    const currentVersion = parseInt(version, 10);
-
-    // Determine if user is creator by checking if they match the creator info
-    const isUserCreator = creator
-      .toLowerCase()
-      .includes(currentUser.email?.split("@")[0]?.toLowerCase() || "");
-
-    // If user has newer version than marketplace (creator with unpublished changes)
-    const hasUnpublishedChanges =
-      isUserCreator &&
-      isAgentAddedToLibrary &&
-      latestMarketplaceVersion !== undefined &&
-      currentVersion > latestMarketplaceVersion;
-
-    // If marketplace has newer version than user's library version
-    const hasUpdate =
-      isAgentAddedToLibrary &&
-      !isUserCreator &&
-      latestMarketplaceVersion !== undefined &&
-      latestMarketplaceVersion > currentVersion;
-
-    return {
-      hasUpdate,
-      hasUnpublishedChanges,
-      latestVersion: latestMarketplaceVersion,
-      isUserCreator,
-    };
-  }, [currentUser, storeAgentData, isAgentAddedToLibrary, version, creator]);
-
-  // Process version data for display
-  const { agentVersions, hasMoreVersions } = React.useMemo(() => {
-    if (
-      storeAgentData?.status !== 200 ||
-      !storeAgentData.data.agentGraphVersions
-    ) {
-      return {
-        agentVersions: [],
-        hasMoreVersions: false,
-      };
-    }
-
-    const allVersions = storeAgentData.data.agentGraphVersions
-      .map((versionStr: string) => parseInt(versionStr, 10))
-      .sort((a: number, b: number) => b - a)
-      .map((versionNum: number) => ({
-        version: versionNum,
-        isCurrentVersion: versionNum.toString() === version,
-      }));
-
-    const visibleVersions = allVersions.slice(0, visibleVersionCount);
-    const hasMoreVersions = allVersions.length > visibleVersionCount;
-
-    return {
-      agentVersions: visibleVersions,
-      hasMoreVersions,
-    };
-  }, [storeAgentData, version, visibleVersionCount]);
-
-  // Generate sample changelog data for versions
-  const getVersionChangelog = (version: number) => {
-    const changelogData = [
-      {
-        summary: "Bug fixes and improvements:",
-        changes: [
-          "Some images could be zoomed in",
-          "Minimum window width could be set",
-          "Bug fixes",
-        ],
-      },
-      {
-        summary: "New features and enhancements:",
-        changes: [
-          "Added dark mode support",
-          "Improved performance by 40%",
-          "Enhanced user interface",
-        ],
-      },
-      {
-        summary: "Security and stability updates:",
-        changes: [
-          "Fixed security vulnerabilities",
-          "Improved error handling",
-          "Better memory management",
-        ],
-      },
-      {
-        summary: "Performance improvements:",
-        changes: [
-          "Faster loading times",
-          "Reduced memory usage",
-          "Optimized API calls",
-        ],
-      },
-    ];
-    return changelogData[version % changelogData.length];
+  const updateInfo = {
+    ...updateStatus,
+    latestVersion: latestMarketplaceVersion,
+    isUserCreator: isCreator,
   };
+
+  // Process version data for display - use store listing versions (not agentGraphVersions)
+  const allVersions = storeData?.versions
+    ? storeData.versions
+        .map((versionStr: string) => parseInt(versionStr, 10))
+        .sort((a: number, b: number) => b - a)
+        .map((versionNum: number) => ({
+          version: versionNum,
+          isCurrentVersion: false, // We'll update this logic if needed
+        }))
+    : [];
+
+  const agentVersions = allVersions.slice(0, visibleVersionCount);
+  const hasMoreVersions = allVersions.length > visibleVersionCount;
 
   const formatDate = (version: number) => {
     // Generate sample dates based on version
@@ -202,7 +129,12 @@ export const AgentInfo = ({
     version: number;
     isCurrentVersion: boolean;
   }) => {
-    const changelog = getVersionChangelog(versionInfo.version);
+    // Find real changelog data for this version
+    const storeData = okData<StoreAgentDetails>(storeAgentData);
+    const changelogEntry = storeData?.changelog?.find(
+      (entry: ChangelogEntry) =>
+        entry.version === versionInfo.version.toString(),
+    );
 
     return (
       <div key={versionInfo.version} className="mb-6 last:mb-0">
@@ -225,29 +157,27 @@ export const AgentInfo = ({
             variant="small"
             className="text-neutral-500 dark:text-neutral-400"
           >
-            {formatDate(versionInfo.version)}
+            {changelogEntry
+              ? new Date(changelogEntry.date).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              : formatDate(versionInfo.version)}
           </Text>
         </div>
 
-        {/* Changelog Content */}
-        <div className="space-y-2">
-          <Text
-            variant="body"
-            className="text-neutral-700 dark:text-neutral-300"
-          >
-            {changelog.summary}
-          </Text>
-          <ul className="ml-4 space-y-1">
-            {changelog.changes.map((change, index) => (
-              <li
-                key={index}
-                className="text-sm text-neutral-600 dark:text-neutral-400"
-              >
-                • {change}
-              </li>
-            ))}
-          </ul>
-        </div>
+        {/* Real Changelog Content */}
+        {changelogEntry && (
+          <div className="space-y-2">
+            <Text
+              variant="body"
+              className="text-neutral-700 dark:text-neutral-300"
+            >
+              {changelogEntry.changes_summary}
+            </Text>
+          </div>
+        )}
       </div>
     );
   };

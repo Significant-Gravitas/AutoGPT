@@ -42,10 +42,12 @@ async def _get_cached_store_agents(
 
 # Cache individual agent details for 15 minutes
 @cached(maxsize=200, ttl_seconds=300, shared_cache=True)
-async def _get_cached_agent_details(username: str, agent_name: str):
+async def _get_cached_agent_details(
+    username: str, agent_name: str, include_changelog: bool = False
+):
     """Cached helper to get agent details."""
     return await backend.server.v2.store.db.get_store_agent_details(
-        username=username, agent_name=agent_name
+        username=username, agent_name=agent_name, include_changelog=include_changelog
     )
 
 
