@@ -170,7 +170,9 @@ export default function OnboardingProvider({
           (error as { status: number }).status === 401;
 
         if (isAuthError) {
-          console.debug("Onboarding initialization skipped - auth not ready yet");
+          console.debug(
+            "Onboarding initialization skipped - auth not ready yet",
+          );
           hasInitialized.current = false; // Allow retry on next render
           return;
         }
@@ -274,7 +276,9 @@ export default function OnboardingProvider({
             (error as { status: number }).status === 401;
 
           if (isAuthError) {
-            console.debug("Onboarding step completion skipped - auth not ready yet");
+            console.debug(
+              "Onboarding step completion skipped - auth not ready yet",
+            );
             return;
           }
 
