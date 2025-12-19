@@ -127,7 +127,7 @@ jobs:
 
       - name: Start REST server in background
         run: |
-          poetry run serve &
+          poetry run rest &
           echo $! > /tmp/rest_server.pid
         working-directory: autogpt_platform/backend
         env:
