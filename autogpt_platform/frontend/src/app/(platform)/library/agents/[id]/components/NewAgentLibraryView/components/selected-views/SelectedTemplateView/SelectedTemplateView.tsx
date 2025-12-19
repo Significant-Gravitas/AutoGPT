@@ -24,6 +24,7 @@ interface Props {
   onClearSelectedRun?: () => void;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onSwitchToRunsTab?: () => void;
+  banner?: React.ReactNode;
 }
 
 export function SelectedTemplateView({
@@ -32,6 +33,7 @@ export function SelectedTemplateView({
   onClearSelectedRun,
   onRunCreated,
   onSwitchToRunsTab,
+  banner,
 }: Props) {
   const {
     template,
@@ -100,7 +102,11 @@ export function SelectedTemplateView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout
+          agentName={agent.name}
+          agentId={agent.id}
+          banner={banner}
+        >
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={undefined} />
 

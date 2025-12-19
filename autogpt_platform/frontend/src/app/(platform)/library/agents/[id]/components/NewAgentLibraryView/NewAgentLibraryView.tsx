@@ -1,8 +1,6 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
-import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
@@ -10,6 +8,7 @@ import * as React from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
+import { MarketplaceBanners } from "../../../../../components/MarketplaceBanners/MarketplaceBanners";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
@@ -29,7 +28,6 @@ import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
   const {
-    agentId,
     agent,
     ready,
     activeTemplate,
@@ -62,94 +60,18 @@ export function NewAgentLibraryView() {
   const [changelogOpen, setChangelogOpen] = React.useState(false);
 
   function renderMarketplaceUpdateBanner() {
-    // Show publish update banner (user is creator with newer version)
-    if (hasAgentMarketplaceUpdate) {
-      return (
-        <div className="mx-6 mt-4 flex items-center justify-between">
-          <Text
-            variant="body"
-            size="small"
-            className="text-neutral-700 dark:text-neutral-300"
-          >
-            Your version of this agent is newer than the published one, do you
-            want to publish an update?
-          </Text>
-          <div className="flex items-center gap-2">
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={() => setChangelogOpen(true)}
-              className="text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            >
-              View Changes
-            </Button>
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={handlePublishUpdate}
-              className="text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            >
-              Publish Update
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    // Show marketplace update banner (marketplace has newer version)
-    if (hasMarketplaceUpdate && latestMarketplaceVersion) {
-      return (
-        <div className="mx-6 mt-4 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
-              <Text
-                variant="small"
-                className="font-semibold text-blue-600 dark:text-blue-400"
-              >
-                ↑
-              </Text>
-            </div>
-            <div>
-              <Text
-                variant="body"
-                size="small"
-                className="font-medium text-blue-900 dark:text-blue-100"
-              >
-                A newer version of this agent is available
-              </Text>
-              <Text
-                variant="small"
-                size="small"
-                className="text-blue-700 dark:text-blue-300"
-              >
-                Update from v{agent?.graph_version} to v
-                {latestMarketplaceVersion}
-              </Text>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="small"
-              variant="ghost"
-              onClick={() => setChangelogOpen(true)}
-              className="text-blue-600 hover:bg-blue-100 hover:text-blue-900 dark:text-blue-400 dark:hover:bg-blue-900 dark:hover:text-blue-100"
-            >
-              View Changes
-            </Button>
-            <Button
-              size="small"
-              onClick={handleUpdateToLatest}
-              disabled={isUpdating}
-              className="bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700"
-            >
-              {isUpdating ? "Updating..." : "Update to latest version"}
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
+    return (
+      <MarketplaceBanners
+        hasUpdate={!!hasMarketplaceUpdate}
+        latestVersion={latestMarketplaceVersion}
+        hasUnpublishedChanges={!!hasAgentMarketplaceUpdate}
+        currentVersion={agent?.graph_version}
+        isUpdating={isUpdating}
+        onUpdate={handleUpdateToLatest}
+        onPublish={handlePublishUpdate}
+        onViewChanges={() => setChangelogOpen(true)}
+      />
+    );
   }
 
   function renderPublishAgentModal() {
@@ -221,6 +143,7 @@ export function NewAgentLibraryView() {
               agent={agent}
               scheduleId={activeItem}
               onClearSelectedRun={handleClearSelectedRun}
+              banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "templates" ? (
             <SelectedTemplateView
@@ -231,6 +154,7 @@ export function NewAgentLibraryView() {
                 handleSelectRun(execution.id, "runs")
               }
               onSwitchToRunsTab={() => setActiveTab("runs")}
+              banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "triggers" ? (
             <SelectedTriggerView
@@ -238,6 +162,7 @@ export function NewAgentLibraryView() {
               triggerId={activeItem}
               onClearSelectedRun={handleClearSelectedRun}
               onSwitchToRunsTab={() => setActiveTab("runs")}
+              banner={renderMarketplaceUpdateBanner()}
             />
           ) : (
             <SelectedRunView
@@ -245,24 +170,41 @@ export function NewAgentLibraryView() {
               runId={activeItem}
               onSelectRun={handleSelectRun}
               onClearSelectedRun={handleClearSelectedRun}
+              banner={renderMarketplaceUpdateBanner()}
             />
           )
         ) : sidebarLoading ? (
           <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />
         ) : activeTab === "scheduled" ? (
-          <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <SelectedViewLayout
+            agentName={agent.name}
+            agentId={agent.id}
+            banner={renderMarketplaceUpdateBanner()}
+          >
             <EmptySchedules />
           </SelectedViewLayout>
         ) : activeTab === "templates" ? (
-          <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <SelectedViewLayout
+            agentName={agent.name}
+            agentId={agent.id}
+            banner={renderMarketplaceUpdateBanner()}
+          >
             <EmptyTemplates />
           </SelectedViewLayout>
         ) : activeTab === "triggers" ? (
-          <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <SelectedViewLayout
+            agentName={agent.name}
+            agentId={agent.id}
+            banner={renderMarketplaceUpdateBanner()}
+          >
             <EmptyTriggers />
           </SelectedViewLayout>
         ) : (
-          <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+          <SelectedViewLayout
+            agentName={agent.name}
+            agentId={agent.id}
+            banner={renderMarketplaceUpdateBanner()}
+          >
             <EmptyTasks
               agent={agent}
               onRun={onRunInitiated}
@@ -305,23 +247,18 @@ export function NewAgentLibraryView() {
   if (!sidebarLoading && !hasAnyItems) {
     return (
       <>
-        <div className="mx-6 pt-4">
-          <Breadcrumbs
-            items={[
-              { name: "My Library", link: "/library" },
-              { name: agent.name, link: `/library/agents/${agentId}` },
-            ]}
-          />
-        </div>
-        {renderMarketplaceUpdateBanner()}
-        <div className="flex min-h-0 flex-1">
+        <SelectedViewLayout
+          agentName={agent.name}
+          agentId={agent.id}
+          banner={renderMarketplaceUpdateBanner()}
+        >
           <EmptyTasks
             agent={agent}
             onRun={onRunInitiated}
             onTriggerSetup={onTriggerSetup}
             onScheduleCreated={onScheduleCreated}
           />
-        </div>
+        </SelectedViewLayout>
         {renderPublishAgentModal()}
         {renderVersionChangelog()}
       </>
@@ -330,15 +267,6 @@ export function NewAgentLibraryView() {
 
   return (
     <>
-      <div className="mx-6 pt-4">
-        <Breadcrumbs
-          items={[
-            { name: "My Library", link: "/library" },
-            { name: agent.name, link: `/library/agents/${agentId}` },
-          ]}
-        />
-      </div>
-      {renderMarketplaceUpdateBanner()}
       {renderAgentLibraryView()}
       {renderPublishAgentModal()}
       {renderVersionChangelog()}

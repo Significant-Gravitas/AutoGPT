@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils";
 import { useAgentInfo } from "./useAgentInfo";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { Text } from "@/components/atoms/Text/Text";
+import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
+import * as React from "react";
+import { MarketplaceBanners } from "../../../components/MarketplaceBanners/MarketplaceBanners";
 
 interface AgentInfoProps {
   user: User | null;
@@ -51,6 +54,9 @@ export const AgentInfo = ({
     isAddingAgentToLibrary,
   } = useAgentInfo({ storeListingVersionId });
 
+  // Get current user for update detection
+  const currentUser = useSupabaseStore((state) => state.user);
+
   // Get store agent data for version history
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
     creatorSlug || "",
@@ -62,58 +68,179 @@ export const AgentInfo = ({
     },
   );
 
-  // Process version data for display - limit to latest 4 versions
+  // Check if user has this agent in library and if there's an update available
+  const updateInfo = React.useMemo(() => {
+    if (!currentUser || storeAgentData?.status !== 200) {
+      return {
+        hasUpdate: false,
+        hasUnpublishedChanges: false,
+        latestVersion: undefined,
+      };
+    }
+
+    const latestMarketplaceVersion =
+      storeAgentData.data.agentGraphVersions?.length > 0
+        ? Math.max(
+            ...storeAgentData.data.agentGraphVersions.map((v) =>
+              parseInt(v, 10),
+            ),
+          )
+        : undefined;
+
+    const currentVersion = parseInt(version, 10);
+
+    // Determine if user is creator by checking if they match the creator info
+    const isUserCreator = creator
+      .toLowerCase()
+      .includes(currentUser.email?.split("@")[0]?.toLowerCase() || "");
+
+    // If user has newer version than marketplace (creator with unpublished changes)
+    const hasUnpublishedChanges =
+      isUserCreator &&
+      isAgentAddedToLibrary &&
+      latestMarketplaceVersion !== undefined &&
+      currentVersion > latestMarketplaceVersion;
+
+    // If marketplace has newer version than user's library version
+    const hasUpdate =
+      isAgentAddedToLibrary &&
+      !isUserCreator &&
+      latestMarketplaceVersion !== undefined &&
+      latestMarketplaceVersion > currentVersion;
+
+    return {
+      hasUpdate,
+      hasUnpublishedChanges,
+      latestVersion: latestMarketplaceVersion,
+      isUserCreator,
+    };
+  }, [currentUser, storeAgentData, isAgentAddedToLibrary, version, creator]);
+
+  // Process version data for display - limit to latest 3 versions for changelog format
   const agentVersions =
     storeAgentData?.status === 200 && storeAgentData.data.agentGraphVersions
       ? storeAgentData.data.agentGraphVersions
           .map((versionStr: string) => parseInt(versionStr, 10))
           .sort((a: number, b: number) => b - a)
-          .slice(0, 4) // Only show latest 4 versions
+          .slice(0, 3) // Only show latest 3 versions for detailed changelog
           .map((versionNum: number) => ({
             version: versionNum,
             isCurrentVersion: versionNum.toString() === version,
           }))
       : [];
 
-  // Generate sample change descriptions for versions
-  const getVersionDescription = (version: number): string => {
-    const descriptions = [
-      "Performance improvements and bug fixes",
-      "Enhanced error handling and stability",
-      "New features and UI improvements",
-      "Security updates and optimizations",
-      "Code refactoring and minor fixes",
-      "Updated dependencies and compatibility",
+  // Generate sample changelog data for versions
+  const getVersionChangelog = (version: number) => {
+    const changelogData = [
+      {
+        summary: "Bug fixes and improvements:",
+        changes: [
+          "Some images could be zoomed in",
+          "Minimum window width could be set",
+          "Bug fixes",
+        ],
+      },
+      {
+        summary: "New features and enhancements:",
+        changes: [
+          "Added dark mode support",
+          "Improved performance by 40%",
+          "Enhanced user interface",
+        ],
+      },
+      {
+        summary: "Security and stability updates:",
+        changes: [
+          "Fixed security vulnerabilities",
+          "Improved error handling",
+          "Better memory management",
+        ],
+      },
+      {
+        summary: "Performance improvements:",
+        changes: [
+          "Faster loading times",
+          "Reduced memory usage",
+          "Optimized API calls",
+        ],
+      },
     ];
-    return descriptions[version % descriptions.length];
+    return changelogData[version % changelogData.length];
+  };
+
+  const formatDate = (version: number) => {
+    // Generate sample dates based on version
+    const baseDate = new Date("2025-12-18");
+    baseDate.setDate(baseDate.getDate() - (19 - version) * 7);
+    return baseDate.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   };
 
   const renderVersionItem = (versionInfo: {
     version: number;
     isCurrentVersion: boolean;
   }) => {
+    const changelog = getVersionChangelog(versionInfo.version);
+
     return (
-      <div key={versionInfo.version} className="py-1">
-        <div className="flex items-center gap-2">
+      <div key={versionInfo.version} className="mb-6 last:mb-0">
+        {/* Version Header */}
+        <div className="mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Text
+              variant="body"
+              className="font-semibold text-neutral-900 dark:text-neutral-100"
+            >
+              Version {versionInfo.version}.0
+            </Text>
+            {versionInfo.isCurrentVersion && (
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+                Current
+              </span>
+            )}
+          </div>
           <Text
             variant="small"
-            className={`font-semibold ${versionInfo.isCurrentVersion ? "text-blue-600 dark:text-blue-400" : "text-neutral-700 dark:text-neutral-300"}`}
+            className="text-neutral-500 dark:text-neutral-400"
           >
-            v{versionInfo.version}
-          </Text>
-          {versionInfo.isCurrentVersion && (
-            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-100">
-              Current
-            </span>
-          )}
-          <Text
-            variant="small"
-            className="text-neutral-600 dark:text-neutral-400"
-          >
-            - {getVersionDescription(versionInfo.version)}
+            {formatDate(versionInfo.version)}
           </Text>
         </div>
+
+        {/* Changelog Content */}
+        <div className="space-y-2">
+          <Text
+            variant="body"
+            className="text-neutral-700 dark:text-neutral-300"
+          >
+            {changelog.summary}
+          </Text>
+          <ul className="ml-4 space-y-1">
+            {changelog.changes.map((change, index) => (
+              <li
+                key={index}
+                className="text-sm text-neutral-600 dark:text-neutral-400"
+              >
+                • {change}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
+    );
+  };
+
+  const renderMarketplaceBanners = () => {
+    return (
+      <MarketplaceBanners
+        hasUpdate={updateInfo.hasUpdate}
+        latestVersion={updateInfo.latestVersion}
+        hasUnpublishedChanges={updateInfo.hasUnpublishedChanges}
+        currentVersion={parseInt(version, 10)}
+      />
     );
   };
 
@@ -230,10 +357,13 @@ export const AgentInfo = ({
           </div>
         </div>
 
-        {/* Version History */}
+        {/* Update/Unpublished Changes Banners */}
+        {renderMarketplaceBanners()}
+
+        {/* Changelog */}
         <div className="flex w-full flex-col gap-1.5 sm:gap-2">
           <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
-            Version history
+            Changelog
           </div>
           <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
             Last updated {lastUpdated}
@@ -241,13 +371,13 @@ export const AgentInfo = ({
 
           {/* Version List */}
           {agentVersions.length > 0 ? (
-            <div className="mt-2">
+            <div className="mt-4">
               {agentVersions.map(renderVersionItem)}
               {storeAgentData?.status === 200 &&
                 storeAgentData.data.agentGraphVersions &&
-                storeAgentData.data.agentGraphVersions.length > 4 && (
+                storeAgentData.data.agentGraphVersions.length > 3 && (
                   <div className="py-1 text-xs text-neutral-500 dark:text-neutral-400">
-                    ... and {storeAgentData.data.agentGraphVersions.length - 4}{" "}
+                    ... and {storeAgentData.data.agentGraphVersions.length - 3}{" "}
                     more versions
                   </div>
                 )}
