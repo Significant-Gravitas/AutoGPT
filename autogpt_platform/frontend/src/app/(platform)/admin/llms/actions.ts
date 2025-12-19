@@ -3,6 +3,7 @@
 import BackendApi from "@/lib/autogpt-server-api";
 import type {
   CreateLlmModelRequest,
+  LlmMigrationsResponse,
   LlmModelsResponse,
   LlmProvidersResponse,
   ToggleLlmModelRequest,
@@ -138,10 +139,14 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
   const modelId = String(formData.get("model_id"));
   const shouldEnable = formData.get("is_enabled") === "true";
   const migrateToSlug = formData.get("migrate_to_slug");
+  const migrationReason = formData.get("migration_reason");
+  const customCreditCost = formData.get("custom_credit_cost");
 
   const payload: ToggleLlmModelRequest = {
     is_enabled: shouldEnable,
     migrate_to_slug: migrateToSlug ? String(migrateToSlug) : undefined,
+    migration_reason: migrationReason ? String(migrationReason) : undefined,
+    custom_credit_cost: customCreditCost ? Number(customCreditCost) : undefined,
   };
   const api = new BackendApi();
   await api.toggleAdminLlmModel(modelId, payload);
@@ -164,6 +169,30 @@ export async function deleteLlmModelAction(formData: FormData) {
   } catch (error) {
     console.error("Delete model error:", error);
     throw error instanceof Error ? error : new Error("Failed to delete model");
+  }
+}
+
+// Migration management actions
+export async function fetchLlmMigrations(
+  includeReverted: boolean = false
+): Promise<LlmMigrationsResponse> {
+  const api = new BackendApi();
+  return await api.listAdminLlmMigrations(includeReverted);
+}
+
+export async function revertLlmMigrationAction(
+  formData: FormData
+): Promise<void> {
+  try {
+    const migrationId = String(formData.get("migration_id"));
+    const api = new BackendApi();
+    await api.revertAdminLlmMigration(migrationId);
+    revalidatePath(ADMIN_LLM_PATH);
+  } catch (error) {
+    console.error("Revert migration error:", error);
+    throw error instanceof Error
+      ? error
+      : new Error("Failed to revert migration");
   }
 }
 

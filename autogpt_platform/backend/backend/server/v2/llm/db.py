@@ -220,7 +220,11 @@ async def update_model(
 
 
 async def toggle_model(
-    model_id: str, is_enabled: bool, migrate_to_slug: str | None = None
+    model_id: str,
+    is_enabled: bool,
+    migrate_to_slug: str | None = None,
+    migration_reason: str | None = None,
+    custom_credit_cost: int | None = None,
 ) -> llm_model.ToggleLlmModelResponse:
     """
     Toggle a model's enabled status, optionally migrating workflows when disabling.
@@ -230,10 +234,14 @@ async def toggle_model(
         is_enabled: New enabled status
         migrate_to_slug: If disabling and this is provided, migrate all workflows
                          using this model to the specified replacement model
+        migration_reason: Optional reason for the migration (e.g., "Provider outage")
+        custom_credit_cost: Optional custom pricing during the migration period
 
     Returns:
         ToggleLlmModelResponse with the updated model and optional migration stats
     """
+    import json
+
     import prisma as prisma_module
 
     # Get the model being toggled
@@ -244,6 +252,7 @@ async def toggle_model(
         raise ValueError(f"Model with id '{model_id}' not found")
 
     nodes_migrated = 0
+    migration_id: str | None = None
 
     # If disabling with migration, perform migration first
     if not is_enabled and migrate_to_slug:
@@ -259,16 +268,17 @@ async def toggle_model(
                 f"Please enable it before using it as a replacement."
             )
 
-        # Count affected nodes
-        count_result = await prisma_module.get_client().query_raw(
+        # Get the IDs of nodes that will be migrated (for revert capability)
+        node_ids_result = await prisma_module.get_client().query_raw(
             """
-            SELECT COUNT(*) as count
+            SELECT id
             FROM "AgentNode"
             WHERE "constantInput"::jsonb->>'model' = $1
             """,
             model.slug,
         )
-        nodes_migrated = int(count_result[0]["count"]) if count_result else 0
+        migrated_node_ids = [row["id"] for row in node_ids_result] if node_ids_result else []
+        nodes_migrated = len(migrated_node_ids)
 
         # Perform migration and toggle atomically
         async with transaction() as tx:
@@ -286,11 +296,26 @@ async def toggle_model(
                     migrate_to_slug,
                     model.slug,
                 )
+
             record = await tx.llmmodel.update(
                 where={"id": model_id},
                 data={"isEnabled": is_enabled},
                 include={"Costs": True},
             )
+
+            # Create migration record for revert capability
+            if nodes_migrated > 0:
+                migration_record = await tx.llmmodelmigration.create(
+                    data={
+                        "sourceModelSlug": model.slug,
+                        "targetModelSlug": migrate_to_slug,
+                        "reason": migration_reason,
+                        "migratedNodeIds": json.dumps(migrated_node_ids),
+                        "nodeCount": nodes_migrated,
+                        "customCreditCost": custom_credit_cost,
+                    }
+                )
+                migration_id = migration_record.id
     else:
         # Simple toggle without migration
         record = await prisma.models.LlmModel.prisma().update(
@@ -303,6 +328,7 @@ async def toggle_model(
         model=_map_model(record),
         nodes_migrated=nodes_migrated,
         migrated_to_slug=migrate_to_slug if nodes_migrated > 0 else None,
+        migration_id=migration_id,
     )
 
 
@@ -415,4 +441,162 @@ async def delete_model(
             f"Successfully deleted model '{deleted_display_name}' ({deleted_slug}) "
             f"and migrated {nodes_affected} workflow node(s) to '{replacement_model_slug}'."
         ),
+    )
+
+
+def _map_migration(record: prisma.models.LlmModelMigration) -> llm_model.LlmModelMigration:
+    return llm_model.LlmModelMigration(
+        id=record.id,
+        source_model_slug=record.sourceModelSlug,
+        target_model_slug=record.targetModelSlug,
+        reason=record.reason,
+        node_count=record.nodeCount,
+        custom_credit_cost=record.customCreditCost,
+        is_reverted=record.isReverted,
+        created_at=record.createdAt.isoformat(),
+        reverted_at=record.revertedAt.isoformat() if record.revertedAt else None,
+    )
+
+
+async def list_migrations(
+    include_reverted: bool = False,
+) -> list[llm_model.LlmModelMigration]:
+    """
+    List model migrations, optionally including reverted ones.
+
+    Args:
+        include_reverted: If True, include reverted migrations. Default is False.
+
+    Returns:
+        List of LlmModelMigration records
+    """
+    where = None if include_reverted else {"isReverted": False}
+    records = await prisma.models.LlmModelMigration.prisma().find_many(
+        where=where,
+        order={"createdAt": "desc"},
+    )
+    return [_map_migration(record) for record in records]
+
+
+async def get_migration(migration_id: str) -> llm_model.LlmModelMigration | None:
+    """Get a specific migration by ID."""
+    record = await prisma.models.LlmModelMigration.prisma().find_unique(
+        where={"id": migration_id}
+    )
+    return _map_migration(record) if record else None
+
+
+async def revert_migration(migration_id: str) -> llm_model.RevertMigrationResponse:
+    """
+    Revert a model migration, restoring affected nodes to their original model.
+
+    This only reverts the specific nodes that were migrated, not all nodes
+    currently using the target model.
+
+    Args:
+        migration_id: UUID of the migration to revert
+
+    Returns:
+        RevertMigrationResponse with revert stats
+
+    Raises:
+        ValueError: If migration not found, already reverted, or source model not available
+    """
+    import json
+    from datetime import datetime, timezone
+
+    # Get the migration record
+    migration = await prisma.models.LlmModelMigration.prisma().find_unique(
+        where={"id": migration_id}
+    )
+    if not migration:
+        raise ValueError(f"Migration with id '{migration_id}' not found")
+
+    if migration.isReverted:
+        raise ValueError(
+            f"Migration '{migration_id}' has already been reverted "
+            f"on {migration.revertedAt.isoformat() if migration.revertedAt else 'unknown date'}"
+        )
+
+    # Check if source model exists
+    source_model = await prisma.models.LlmModel.prisma().find_unique(
+        where={"slug": migration.sourceModelSlug}
+    )
+    if not source_model:
+        raise ValueError(
+            f"Source model '{migration.sourceModelSlug}' no longer exists. "
+            f"Cannot revert migration."
+        )
+
+    # Get the migrated node IDs (Prisma auto-parses JSONB to list)
+    migrated_node_ids: list[str] = (
+        migration.migratedNodeIds
+        if isinstance(migration.migratedNodeIds, list)
+        else json.loads(migration.migratedNodeIds)  # type: ignore
+    )
+    if not migrated_node_ids:
+        raise ValueError("No nodes to revert in this migration")
+
+    # Track if we need to re-enable the source model
+    source_model_was_disabled = not source_model.isEnabled
+
+    # Perform revert atomically
+    async with transaction() as tx:
+        # Re-enable the source model if it was disabled
+        if source_model_was_disabled:
+            await tx.llmmodel.update(
+                where={"id": source_model.id},
+                data={"isEnabled": True},
+            )
+
+        # Update only the specific nodes that were migrated
+        # We need to check that they still have the target model (haven't been changed since)
+        # Use a single batch update for efficiency
+        # Format node IDs as PostgreSQL text array literal for comparison
+        node_ids_pg_array = "{" + ",".join(migrated_node_ids) + "}"
+        result = await tx.execute_raw(
+            """
+            UPDATE "AgentNode"
+            SET "constantInput" = JSONB_SET(
+                "constantInput"::jsonb,
+                '{model}',
+                to_jsonb($1::text)
+            )
+            WHERE id::text = ANY($2::text[])
+            AND "constantInput"::jsonb->>'model' = $3
+            """,
+            migration.sourceModelSlug,
+            node_ids_pg_array,
+            migration.targetModelSlug,
+        )
+        nodes_reverted = result if result else 0
+
+        # Mark migration as reverted
+        await tx.llmmodelmigration.update(
+            where={"id": migration_id},
+            data={
+                "isReverted": True,
+                "revertedAt": datetime.now(timezone.utc),
+            },
+        )
+
+    # Build appropriate message
+    if source_model_was_disabled:
+        message = (
+            f"Successfully reverted migration: {nodes_reverted} node(s) restored "
+            f"from '{migration.targetModelSlug}' to '{migration.sourceModelSlug}'. "
+            f"Model '{migration.sourceModelSlug}' has been re-enabled."
+        )
+    else:
+        message = (
+            f"Successfully reverted migration: {nodes_reverted} node(s) restored "
+            f"from '{migration.targetModelSlug}' to '{migration.sourceModelSlug}'."
+        )
+
+    return llm_model.RevertMigrationResponse(
+        migration_id=migration_id,
+        source_model_slug=migration.sourceModelSlug,
+        target_model_slug=migration.targetModelSlug,
+        nodes_reverted=nodes_reverted,
+        message=message,
     )

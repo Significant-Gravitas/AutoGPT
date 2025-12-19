@@ -350,12 +350,40 @@ export type UpdateLlmModelRequest = {
 export type ToggleLlmModelRequest = {
   is_enabled: boolean;
   migrate_to_slug?: string;
+  migration_reason?: string;
+  custom_credit_cost?: number;
 };
 
 export type ToggleLlmModelResponse = {
   model: LlmModel;
   nodes_migrated: number;
   migrated_to_slug?: string | null;
+  migration_id?: string | null;
+};
+
+// Migration tracking types
+export type LlmModelMigration = {
+  id: string;
+  source_model_slug: string;
+  target_model_slug: string;
+  reason?: string | null;
+  node_count: number;
+  custom_credit_cost?: number | null;
+  is_reverted: boolean;
+  created_at: string;
+  reverted_at?: string | null;
+};
+
+export type LlmMigrationsResponse = {
+  migrations: LlmModelMigration[];
+};
+
+export type RevertMigrationResponse = {
+  migration_id: string;
+  source_model_slug: string;
+  target_model_slug: string;
+  nodes_reverted: number;
+  message: string;
 };
 
 export type BlockIOOneOfSubSchema = {

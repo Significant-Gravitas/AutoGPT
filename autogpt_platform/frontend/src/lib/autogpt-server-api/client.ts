@@ -57,6 +57,9 @@ import type {
   UpdateLlmModelRequest,
   ToggleLlmModelRequest,
   ToggleLlmModelResponse,
+  LlmModelMigration,
+  LlmMigrationsResponse,
+  RevertMigrationResponse,
   UpsertLlmProviderRequest,
   LlmModelsResponse,
   LlmProvider,
@@ -493,6 +496,23 @@ export default class BackendAPI {
       `/llm/admin/llm/models/${modelId}`,
       { replacement_model_slug: replacementModelSlug },
     );
+  }
+
+  // Migration management
+  listAdminLlmMigrations(
+    includeReverted: boolean = false,
+  ): Promise<LlmMigrationsResponse> {
+    return this._get(
+      `/llm/admin/llm/migrations?include_reverted=${includeReverted}`,
+    );
+  }
+
+  getAdminLlmMigration(migrationId: string): Promise<LlmModelMigration> {
+    return this._get(`/llm/admin/llm/migrations/${migrationId}`);
+  }
+
+  revertAdminLlmMigration(migrationId: string): Promise<RevertMigrationResponse> {
+    return this._request("POST", `/llm/admin/llm/migrations/${migrationId}/revert`);
   }
 
   // API Key related requests

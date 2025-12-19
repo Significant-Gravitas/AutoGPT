@@ -107,12 +107,15 @@ class UpdateLlmModelRequest(pydantic.BaseModel):
 class ToggleLlmModelRequest(pydantic.BaseModel):
     is_enabled: bool
     migrate_to_slug: Optional[str] = None
+    migration_reason: Optional[str] = None  # e.g., "Provider outage"
+    custom_credit_cost: Optional[int] = None  # Custom pricing during migration
 
 
 class ToggleLlmModelResponse(pydantic.BaseModel):
     model: LlmModel
     nodes_migrated: int = 0
     migrated_to_slug: Optional[str] = None
+    migration_id: Optional[str] = None  # ID of the migration record for revert
 
 
 class DeleteLlmModelResponse(pydantic.BaseModel):
@@ -126,3 +129,28 @@ class DeleteLlmModelResponse(pydantic.BaseModel):
 class LlmModelUsageResponse(pydantic.BaseModel):
     model_slug: str
     node_count: int
+
+
+# Migration tracking models
+class LlmModelMigration(pydantic.BaseModel):
+    id: str
+    source_model_slug: str
+    target_model_slug: str
+    reason: Optional[str] = None
+    node_count: int
+    custom_credit_cost: Optional[int] = None
+    is_reverted: bool = False
+    created_at: str  # ISO datetime string
+    reverted_at: Optional[str] = None
+
+
+class LlmMigrationsResponse(pydantic.BaseModel):
+    migrations: list[LlmModelMigration]
+
+
+class RevertMigrationResponse(pydantic.BaseModel):
+    migration_id: str
+    source_model_slug: str
+    target_model_slug: str
+    nodes_reverted: int
+    message: str

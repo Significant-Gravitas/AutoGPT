@@ -143,21 +143,29 @@ async def toggle_llm_model(
 
     If disabling a model and `migrate_to_slug` is provided, all workflows using
     this model will be migrated to the specified replacement model before disabling.
+    A migration record is created which can be reverted later using the revert endpoint.
+
+    Optional fields:
+    - `migration_reason`: Reason for the migration (e.g., "Provider outage")
+    - `custom_credit_cost`: Custom pricing during the migration period
     """
     try:
         result = await llm_db.toggle_model(
             model_id=model_id,
             is_enabled=request.is_enabled,
             migrate_to_slug=request.migrate_to_slug,
+            migration_reason=request.migration_reason,
+            custom_credit_cost=request.custom_credit_cost,
         )
         await _refresh_runtime_state()
         if result.nodes_migrated > 0:
             logger.info(
-                "Toggled model '%s' to %s and migrated %d nodes to '%s'",
+                "Toggled model '%s' to %s and migrated %d nodes to '%s' (migration_id=%s)",
                 result.model.slug,
                 "enabled" if request.is_enabled else "disabled",
                 result.nodes_migrated,
                 result.migrated_to_slug,
+                result.migration_id,
             )
         return result
     except ValueError as exc:
@@ -234,4 +242,98 @@ async def delete_llm_model(
         raise fastapi.HTTPException(
             status_code=500,
             detail="Failed to delete model and migrate workflows",
+        ) from exc
+
+
+# ============================================================================
+# Migration Management Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/migrations",
+    summary="List model migrations",
+    response_model=llm_model.LlmMigrationsResponse,
+)
+async def list_llm_migrations(
+    include_reverted: bool = fastapi.Query(
+        default=False, description="Include reverted migrations in the list"
+    ),
+):
+    """
+    List all model migrations.
+
+    Migrations are created when disabling a model with the migrate_to_slug option.
+    They can be reverted to restore the original model configuration.
+    """
+    try:
+        migrations = await llm_db.list_migrations(include_reverted=include_reverted)
+        return llm_model.LlmMigrationsResponse(migrations=migrations)
+    except Exception as exc:
+        logger.exception("Failed to list migrations: %s", exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to list migrations",
+        ) from exc
+
+
+@router.get(
+    "/migrations/{migration_id}",
+    summary="Get migration details",
+    response_model=llm_model.LlmModelMigration,
+)
+async def get_llm_migration(migration_id: str):
+    """Get details of a specific migration."""
+    try:
+        migration = await llm_db.get_migration(migration_id)
+        if not migration:
+            raise fastapi.HTTPException(
+                status_code=404, detail=f"Migration '{migration_id}' not found"
+            )
+        return migration
+    except fastapi.HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to get migration %s: %s", migration_id, exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to get migration",
+        ) from exc
+
+
+@router.post(
+    "/migrations/{migration_id}/revert",
+    summary="Revert a model migration",
+    response_model=llm_model.RevertMigrationResponse,
+)
+async def revert_llm_migration(migration_id: str):
+    """
+    Revert a model migration, restoring affected workflows to their original model.
+
+    This only reverts the specific nodes that were part of the migration.
+    The source model must exist and be enabled for the revert to succeed.
+
+    Requirements:
+    - Migration must not already be reverted
+    - Source model must exist and be enabled
+    """
+    try:
+        result = await llm_db.revert_migration(migration_id)
+        await _refresh_runtime_state()
+        logger.info(
+            "Reverted migration '%s': %d nodes restored from '%s' to '%s'",
+            migration_id,
+            result.nodes_reverted,
+            result.target_model_slug,
+            result.source_model_slug,
+        )
+        return result
+    except ValueError as exc:
+        logger.warning("Migration revert validation failed: %s", exc)
+        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to revert migration %s: %s", migration_id, exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to revert migration",
         ) from exc

@@ -1,17 +1,23 @@
 "use client";
 
-import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
+import type {
+  LlmModel,
+  LlmModelMigration,
+  LlmProvider,
+} from "@/lib/autogpt-server-api/types";
 import { AddProviderModal } from "./AddProviderModal";
 import { AddModelModal } from "./AddModelModal";
 import { ProviderList } from "./ProviderList";
 import { ModelsTable } from "./ModelsTable";
+import { MigrationsTable } from "./MigrationsTable";
 
 interface Props {
   providers: LlmProvider[];
   models: LlmModel[];
+  migrations: LlmModelMigration[];
 }
 
-export function LlmRegistryDashboard({ providers, models }: Props) {
+export function LlmRegistryDashboard({ providers, models, migrations }: Props) {
   return (
     <div className="mx-auto p-6">
       <div className="flex flex-col gap-6">
@@ -29,11 +35,25 @@ export function LlmRegistryDashboard({ providers, models }: Props) {
           </div>
         </div>
 
+        {/* Active Migrations Section - Only show if there are migrations */}
+        {migrations.length > 0 && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-6 shadow-sm dark:border-blue-900 dark:bg-blue-950">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold">Active Migrations</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                These migrations can be reverted to restore workflows to their
+                original model
+              </p>
+            </div>
+            <MigrationsTable migrations={migrations} />
+          </div>
+        )}
+
         {/* Providers Section */}
-        <div className="rounded-lg border bg-white p-6 shadow-sm">
+        <div className="rounded-lg border bg-white p-6 shadow-sm dark:bg-background">
           <div className="mb-4">
             <h2 className="text-xl font-semibold">Providers</h2>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
               Default credentials and feature flags for upstream vendors
             </p>
           </div>
@@ -41,10 +61,10 @@ export function LlmRegistryDashboard({ providers, models }: Props) {
         </div>
 
         {/* Models Section */}
-        <div className="rounded-lg border bg-white p-6 shadow-sm">
+        <div className="rounded-lg border bg-white p-6 shadow-sm dark:bg-background">
           <div className="mb-4">
             <h2 className="text-xl font-semibold">Models</h2>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
               Toggle availability, adjust context windows, and update credit
               pricing
             </p>

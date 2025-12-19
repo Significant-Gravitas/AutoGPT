@@ -1035,3 +1035,34 @@ model LlmModelCost {
   @@index([llmModelId])
   @@index([credentialProvider])
 }
+
+// Tracks model migrations for revert capability
+// When a model is disabled with migration, we record which nodes were affected
+// so they can be reverted when the original model is back online
+model LlmModelMigration {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceModelSlug String // The original model that was disabled
+  targetModelSlug String // The model workflows were migrated to
+  reason          String? // Why the migration happened (e.g., "Provider outage")
+
+  // Track affected nodes as JSON array of node IDs
+  // Format: ["node-uuid-1", "node-uuid-2", ...]
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int // Number of nodes migrated
+
+  // Optional custom pricing during the migration period
+  // If set, this cost should be applied instead of the target model's cost
+  // Note: Requires billing system integration to fully work
+  customCreditCost Int?
+
+  // Revert tracking
+  isReverted Boolean   @default(false)
+  revertedAt DateTime?
+
+  @@index([sourceModelSlug])
+  @@index([targetModelSlug])
+  @@index([isReverted])
+}

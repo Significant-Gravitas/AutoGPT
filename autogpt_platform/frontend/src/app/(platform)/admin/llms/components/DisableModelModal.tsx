@@ -19,6 +19,8 @@ export function DisableModelModal({
   const [usageCount, setUsageCount] = useState<number | null>(null);
   const [selectedMigration, setSelectedMigration] = useState<string>("");
   const [wantsMigration, setWantsMigration] = useState(false);
+  const [migrationReason, setMigrationReason] = useState("");
+  const [customCreditCost, setCustomCreditCost] = useState<string>("");
 
   // Filter out the current model and disabled models from replacement options
   const migrationOptions = availableModels.filter(
@@ -53,6 +55,8 @@ export function DisableModelModal({
     setError(null);
     setSelectedMigration("");
     setWantsMigration(false);
+    setMigrationReason("");
+    setCustomCreditCost("");
   }
 
   const hasUsage = usageCount !== null && usageCount > 0;
@@ -71,7 +75,7 @@ export function DisableModelModal({
           }
         },
       }}
-      styling={{ maxWidth: "550px" }}
+      styling={{ maxWidth: "600px" }}
     >
       <Dialog.Trigger>
         <Button type="button" variant="outline" size="small" className="min-w-0">
@@ -114,7 +118,7 @@ export function DisableModelModal({
           </div>
 
           {hasUsage && (
-            <div className="rounded-lg border border-border bg-muted/50 p-4">
+            <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-4">
               <label className="flex items-start gap-3">
                 <input
                   type="checkbox"
@@ -132,18 +136,18 @@ export function DisableModelModal({
                     Migrate existing workflows to another model
                   </span>
                   <p className="mt-1 text-muted-foreground">
-                    If unchecked, existing workflows will use automatic fallback
-                    to an enabled model from the same provider.
+                    Creates a revertible migration record. If unchecked, existing
+                    workflows will use automatic fallback to an enabled model from
+                    the same provider.
                   </p>
                 </div>
               </label>
 
               {wantsMigration && (
-                <div className="mt-4">
-                  <label className="text-sm font-medium">
+                <div className="space-y-4 border-t border-border pt-4">
+                  <label className="text-sm font-medium block">
                     <span className="mb-2 block">
-                      Select Replacement Model{" "}
-                      <span className="text-red-500">*</span>
+                      Replacement Model <span className="text-red-500">*</span>
                     </span>
                     <select
                       required
@@ -164,6 +168,46 @@ export function DisableModelModal({
                       </p>
                     )}
                   </label>
+
+                  <label className="text-sm font-medium block">
+                    <span className="mb-2 block">
+                      Migration Reason{" "}
+                      <span className="text-muted-foreground font-normal">
+                        (optional)
+                      </span>
+                    </span>
+                    <input
+                      type="text"
+                      value={migrationReason}
+                      onChange={(e) => setMigrationReason(e.target.value)}
+                      placeholder="e.g., Provider outage, Cost reduction"
+                      className="w-full rounded border border-input bg-background p-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Helps track why the migration was made
+                    </p>
+                  </label>
+
+                  <label className="text-sm font-medium block">
+                    <span className="mb-2 block">
+                      Custom Credit Cost{" "}
+                      <span className="text-muted-foreground font-normal">
+                        (optional)
+                      </span>
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={customCreditCost}
+                      onChange={(e) => setCustomCreditCost(e.target.value)}
+                      placeholder="Leave blank to use target model's cost"
+                      className="w-full rounded border border-input bg-background p-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Override pricing during this migration (for billing
+                      adjustments)
+                    </p>
+                  </label>
                 </div>
               )}
             </div>
@@ -173,11 +217,27 @@ export function DisableModelModal({
             <input type="hidden" name="model_id" value={model.id} />
             <input type="hidden" name="is_enabled" value="false" />
             {wantsMigration && selectedMigration && (
-              <input
-                type="hidden"
-                name="migrate_to_slug"
-                value={selectedMigration}
-              />
+              <>
+                <input
+                  type="hidden"
+                  name="migrate_to_slug"
+                  value={selectedMigration}
+                />
+                {migrationReason && (
+                  <input
+                    type="hidden"
+                    name="migration_reason"
+                    value={migrationReason}
+                  />
+                )}
+                {customCreditCost && (
+                  <input
+                    type="hidden"
+                    name="custom_credit_cost"
+                    value={customCreditCost}
+                  />
+                )}
+              </>
             )}
 
             {error && (
