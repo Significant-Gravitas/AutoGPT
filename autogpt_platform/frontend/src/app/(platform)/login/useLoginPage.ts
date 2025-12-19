@@ -1,5 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth, broadcastLogin } from "@/lib/auth";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,7 +10,7 @@ import z from "zod";
 import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
-  const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
+  const { user, isUserLoading, isLoggedIn, validateSession } = useAuth();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const { toast } = useToast();
@@ -83,6 +83,10 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
+      // Broadcast login to other tabs and validate session to update client state
+      broadcastLogin();
+      await validateSession();
+
       if (result.onboarding) {
         router.replace("/onboarding");
       } else {
@@ -110,7 +114,7 @@ export function useLoginPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable: !!supabase,
+    isAuthAvailable: true, // Always available with native auth
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),

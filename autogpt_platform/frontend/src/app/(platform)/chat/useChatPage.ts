@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useChatSession } from "@/app/(platform)/chat/useChatSession";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { useChatStream } from "@/app/(platform)/chat/useChatStream";
 
 export function useChatPage() {
@@ -14,7 +14,7 @@ export function useChatPage() {
     searchParams.get("session_id") || searchParams.get("session");
   const hasCreatedSessionRef = useRef(false);
   const hasClaimedSessionRef = useRef(false);
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const { sendMessage: sendStreamMessage } = useChatStream();
 
   const {

@@ -4,10 +4,10 @@
 
 The AutoGPT platform implements OAuth 2.0 in two distinct contexts:
 
-1. **User Authentication (SSO)**: Handled by Supabase for platform login
+1. **User Authentication (SSO)**: Handled by native FastAPI auth service for platform login
 2. **API Integration Credentials**: Custom OAuth implementation for third-party service access
 
-This document focuses on the **API Integration OAuth flow** used for connecting to external services. For the list of supported providers, see `/backend/backend/integrations/providers.py`. For user authentication documentation, see the Supabase auth implementation.
+This document focuses on the **API Integration OAuth flow** used for connecting to external services. For the list of supported providers, see `/backend/backend/integrations/providers.py`. For user authentication documentation, see the auth service implementation in `/backend/backend/server/auth/`.
 
 ## Trust Boundaries
 
@@ -150,24 +150,24 @@ graph TB
     subgraph "OAuth Use Cases"
         subgraph "User SSO Login"
             LP[Login Page]
-            SB[Supabase Auth]
+            AS[Auth Service]
             GO[Google OAuth SSO]
             SC[Session Cookies]
         end
-        
+
         subgraph "API Integration OAuth"
             UI[CredentialsInput Component]
             CB[OAuth Callback Route]
             PW[Popup Window]
         end
     end
-    
+
     subgraph "Backend API (Trusted)"
         subgraph "Auth Management"
-            SA[Supabase Client]
+            AUTH[Auth Service]
             UM[User Management]
         end
-        
+
         subgraph "Integration Management"
             IR[Integration Router]
             OH[OAuth Handlers]
@@ -175,27 +175,26 @@ graph TB
             CM[Credentials Manager]
         end
     end
-    
+
     subgraph "Storage"
         RD[(Redis)]
         PG[(PostgreSQL)]
-        SDB[(Supabase DB)]
     end
-    
+
     subgraph "External Providers"
         GH[GitHub OAuth]
         GL[Google APIs OAuth]
         NT[Notion OAuth]
         OT[...Other Providers]
     end
-    
+
     %% User Login Flow
-    LP -->|Login with Google| SB
-    SB -->|OAuth Request| GO
-    GO -->|User Auth| SB
-    SB -->|Session| SC
-    SB -->|User Data| SDB
-    
+    LP -->|Login with Google| AS
+    AS -->|OAuth Request| GO
+    GO -->|User Auth| AS
+    AS -->|Session| SC
+    AS -->|User Data| PG
+
     %% API Integration Flow
     UI -->|1. Initiate OAuth| IR
     IR -->|2. Generate State| RD
@@ -209,7 +208,7 @@ graph TB
     OH -->|10. Get Tokens| GH
     OH -->|11. Store Creds| CS
     CS -->|12. Save| PG
-    
+
     OH -.->|Token Refresh| GL
     OH -.->|Token Refresh| NT
     OH -.->|Token Refresh| OT
@@ -322,13 +321,13 @@ stateDiagram-v2
 
 ## OAuth Types Comparison
 
-### User Authentication (SSO) via Supabase
+### User Authentication (SSO) via Native Auth
 
 - **Purpose**: Authenticate users to access the AutoGPT platform
-- **Provider**: Supabase Auth (currently supports Google SSO)
-- **Flow Path**: `/login` → Supabase OAuth → `/auth/callback`
-- **Session Storage**: Supabase-managed cookies
-- **Token Management**: Automatic by Supabase
+- **Provider**: Native FastAPI Auth Service (supports email/password and Google SSO)
+- **Flow Path**: `/login` → Auth Service → `/auth/callback`
+- **Session Storage**: JWT tokens in httpOnly cookies
+- **Token Management**: Access tokens (15 min) + Refresh tokens (7 days)
 - **User Experience**: Single sign-on to the platform
 
 ### API Integration Credentials

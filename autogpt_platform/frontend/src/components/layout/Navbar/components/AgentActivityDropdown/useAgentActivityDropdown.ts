@@ -2,6 +2,7 @@ import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/gra
 
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
+import { useAuth } from "@/lib/auth";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -12,6 +13,7 @@ import {
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const { isLoggedIn } = useAuth();
   const { agentInfoMap } = useLibraryAgents();
 
   const [notifications, setNotifications] = useState<NotificationState>({
@@ -26,7 +28,10 @@ export function useAgentActivityDropdown() {
     isSuccess: executionsSuccess,
     error: executionsError,
   } = useGetV1ListAllExecutions({
-    query: { select: (res) => (res.status === 200 ? res.data : null) },
+    query: {
+      select: (res) => (res.status === 200 ? res.data : null),
+      enabled: isLoggedIn === true, // Only fetch when user is logged in
+    },
   });
 
   // Get all graph IDs from agentInfoMap

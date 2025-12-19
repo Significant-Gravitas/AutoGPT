@@ -1,23 +1,19 @@
-import { prefetchGetV2GetUserProfileQuery } from "@/app/api/__generated__/endpoints/store/store";
-import { getQueryClient } from "@/lib/react-query/queryClient";
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import { getServerUser } from "@/lib/auth/server/getServerAuth";
 
+/**
+ * Get navbar account data for server-side rendering.
+ *
+ * Note: We intentionally do NOT prefetch the profile here because:
+ * 1. Server-to-server fetch calls don't forward browser cookies automatically
+ * 2. The proxy route would receive the request without auth cookies
+ * 3. This would cause 401 errors
+ *
+ * Instead, we just check if user is logged in and let the client-side
+ * React Query handle the profile fetch with proper authentication.
+ */
 export async function getNavbarAccountData() {
-  const { user } = await getServerUser();
+  const user = await getServerUser();
   const isLoggedIn = Boolean(user);
-  const queryClient = getQueryClient();
-
-  if (!isLoggedIn) {
-    return {
-      profile: null,
-      isLoggedIn,
-    };
-  }
-  try {
-    await prefetchGetV2GetUserProfileQuery(queryClient);
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-  }
 
   return {
     isLoggedIn,

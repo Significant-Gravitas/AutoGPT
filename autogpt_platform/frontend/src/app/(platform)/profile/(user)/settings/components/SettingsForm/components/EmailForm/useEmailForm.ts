@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { User } from "@supabase/supabase-js";
+import { AuthUser } from "@/lib/auth";
 import { usePostV1UpdateUserEmail } from "@/app/api/__generated__/endpoints/auth/auth";
 
 const emailFormSchema = z.object({
@@ -37,7 +37,7 @@ async function updateUserEmailAPI(email: string) {
   return response.json();
 }
 
-export function useEmailForm({ user }: { user: User }) {
+export function useEmailForm({ user }: { user: AuthUser }) {
   const { toast } = useToast();
   const defaultValues = createEmailDefaultValues(user);
   const currentEmail = user.email;

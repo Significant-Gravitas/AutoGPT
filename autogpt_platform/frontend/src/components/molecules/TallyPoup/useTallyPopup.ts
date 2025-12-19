@@ -1,7 +1,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
-import { getCurrentUser } from "@/lib/supabase/actions";
+import { getCurrentUser } from "@/lib/auth/actions";
 
 export function useTallyPopup() {
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -42,7 +42,7 @@ export function useTallyPopup() {
 
   useEffect(() => {
     // Check authentication status using server action (works with httpOnly cookies)
-    getCurrentUser().then(({ user }) => {
+    getCurrentUser().then((user) => {
       setIsAuthenticated(user != null);
       setUserEmail(user?.email || "");
     });

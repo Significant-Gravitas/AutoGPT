@@ -16,16 +16,36 @@ ALGO_RECOMMENDATION = (
     "We highly recommend using an asymmetric algorithm such as ES256, "
     "because when leaked, a shared secret would allow anyone to "
     "forge valid tokens and impersonate users. "
-    "More info: https://supabase.com/docs/guides/auth/signing-keys#choosing-the-right-signing-algorithm"  # noqa
+    "More info: https://pyjwt.readthedocs.io/en/stable/algorithms.html"
 )
 
 
 class Settings:
     def __init__(self):
+        # JWT verification key (public key for asymmetric, shared secret for symmetric)
         self.JWT_VERIFY_KEY: str = os.getenv(
             "JWT_VERIFY_KEY", os.getenv("SUPABASE_JWT_SECRET", "")
         ).strip()
+
+        # JWT signing key (private key for asymmetric, shared secret for symmetric)
+        # Falls back to JWT_VERIFY_KEY for symmetric algorithms like HS256
+        self.JWT_SIGN_KEY: str = os.getenv("JWT_SIGN_KEY", self.JWT_VERIFY_KEY).strip()
+
         self.JWT_ALGORITHM: str = os.getenv("JWT_SIGN_ALGORITHM", "HS256").strip()
+
+        # Token expiration settings
+        self.ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
+            os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15")
+        )
+        self.REFRESH_TOKEN_EXPIRE_DAYS: int = int(
+            os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7")
+        )
+
+        # JWT issuer claim
+        self.JWT_ISSUER: str = os.getenv("JWT_ISSUER", "autogpt-platform").strip()
+
+        # JWT audience claim
+        self.JWT_AUDIENCE: str = os.getenv("JWT_AUDIENCE", "authenticated").strip()
 
         self.validate()
 

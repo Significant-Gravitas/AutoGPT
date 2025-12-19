@@ -83,7 +83,7 @@ def shutdown_launchdarkly() -> None:
 @cached(maxsize=1000, ttl_seconds=86400)  # 1000 entries, 24 hours TTL
 async def _fetch_user_context_data(user_id: str) -> Context:
     """
-    Fetch user context for LaunchDarkly from Supabase.
+    Fetch user context for LaunchDarkly from the database.
 
     Args:
         user_id: The user ID to fetch data for
@@ -94,12 +94,11 @@ async def _fetch_user_context_data(user_id: str) -> Context:
     builder = Context.builder(user_id).kind("user").anonymous(True)
 
     try:
-        from backend.util.clients import get_supabase
+        from backend.data.db import prisma
 
         # If we have user data, update context
-        response = get_supabase().auth.admin.get_user_by_id(user_id)
-        if response and response.user:
-            user = response.user
+        user = await prisma.user.find_unique(where={"id": user_id})
+        if user:
             builder.anonymous(False)
             if user.role:
                 builder.set("role", user.role)

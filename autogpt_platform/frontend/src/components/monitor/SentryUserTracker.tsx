@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 
 /**
  * SentryUserTracker component sets user context in Sentry for error tracking.
@@ -15,7 +15,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
  * - Updates context when user data changes
  */
 export function SentryUserTracker() {
-  const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
 
   useEffect(() => {
     if (user) {

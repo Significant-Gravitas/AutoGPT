@@ -8,12 +8,12 @@ import {
 } from "@/app/api/__generated__/endpoints/auth/auth";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { useEffect } from "react";
 import SettingsLoading from "./loading";
 
 export default function SettingsPage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
 
   const {
     data: preferences,

@@ -1,5 +1,5 @@
 import { environment } from "@/services/environment";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import { getServerAuthToken } from "@/lib/autogpt-server-api/server-auth";
 import { NextRequest } from "next/server";
 
 /**

@@ -523,11 +523,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     """Secrets for the server."""
 
-    supabase_url: str = Field(default="", description="Supabase URL")
-    supabase_service_role_key: str = Field(
-        default="", description="Supabase service role key"
-    )
-
     encryption_key: str = Field(default="", description="Encryption key")
 
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")

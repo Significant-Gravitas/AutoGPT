@@ -1,8 +1,8 @@
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
-  ApiError,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
-} from "@/lib/autogpt-server-api/helpers";
+} from "@/lib/autogpt-server-api/server-auth";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -122,8 +122,9 @@ function createErrorResponse(
     "status" in error &&
     [401, 403].includes(error.status as number)
   ) {
-    // Log this since it indicates a potential frontend bug
-    console.warn(
+    // Log as debug - these are often expected (e.g., prefetches with expired tokens,
+    // or API calls immediately after login/signup before cookies propagate)
+    console.debug(
       `Authentication error in API proxy for ${method} ${path}:`,
       "message" in error ? error.message : error,
     );

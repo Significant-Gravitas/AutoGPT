@@ -1,12 +1,8 @@
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { ImpersonationState } from "@/lib/impersonation";
-import { getWebSocketToken } from "@/lib/supabase/actions";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 import * as Sentry from "@sentry/nextjs";
-import { createBrowserClient } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -95,25 +91,10 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
-  private async getSupabaseClient(): Promise<SupabaseClient | null> {
-    return isClient
-      ? createBrowserClient(
-          environment.getSupabaseUrl(),
-          environment.getSupabaseAnonKey(),
-          {
-            isSingleton: true,
-          },
-        )
-      : await getServerSupabase();
-  }
-
   async isAuthenticated(): Promise<boolean> {
-    const supabaseClient = await this.getSupabaseClient();
-    if (!supabaseClient) return false;
-    const {
-      data: { session },
-    } = await supabaseClient.auth.getSession();
-    return session != null;
+    // Check if we have an auth token available
+    const token = await this.getAuthToken();
+    return token !== "no-token-found";
   }
 
   createUser(): Promise<User> {
@@ -797,27 +778,22 @@ export default class BackendAPI {
   }
 
   private async getAuthToken(): Promise<string> {
-    // Only try client-side session (for WebSocket connections)
-    // This will return "no-token-found" with httpOnly cookies, which is expected
-    const supabaseClient = await this.getSupabaseClient();
-    const {
-      data: { session },
-    } = (await supabaseClient?.auth.getSession()) || {
-      data: { session: null },
-    };
-
-    return session?.access_token || "no-token-found";
+    // Get token from server action (works with httpOnly cookies)
+    // Dynamic import to avoid bundling server-only code with client
+    try {
+      const { getWebSocketToken } = await import("@/lib/auth/actions");
+      const token = await getWebSocketToken();
+      return token || "no-token-found";
+    } catch {
+      return "no-token-found";
+    }
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
     const formData = new FormData();
     formData.append("file", file);
-
-    if (isClient) {
-      return this._makeClientFileUpload(path, formData);
-    } else {
-      return this._makeServerFileUpload(path, formData);
-    }
+    // Always use client method (through proxy) - works on both client and server
+    return this._makeClientFileUpload(path, formData);
   }
 
   private async _uploadFileWithProgress(
@@ -828,17 +804,13 @@ export default class BackendAPI {
   ): Promise<string> {
     const formData = new FormData();
     formData.append("file", file);
-
-    if (isClient) {
-      return this._makeClientFileUploadWithProgress(
-        path,
-        formData,
-        params,
-        onProgress,
-      );
-    } else {
-      return this._makeServerFileUploadWithProgress(path, formData, params);
-    }
+    // Always use client method (through proxy) - works on both client and server
+    return this._makeClientFileUploadWithProgress(
+      path,
+      formData,
+      params,
+      onProgress,
+    );
   }
 
   private async _makeClientFileUpload(
@@ -863,17 +835,6 @@ export default class BackendAPI {
     }
 
     return await response.json();
-  }
-
-  private async _makeServerFileUpload(
-    path: string,
-    formData: FormData,
-  ): Promise<string> {
-    const { makeAuthenticatedFileUpload, buildServerUrl } = await import(
-      "./helpers"
-    );
-    const url = buildServerUrl(path);
-    return await makeAuthenticatedFileUpload(url, formData);
   }
 
   private async _makeClientFileUploadWithProgress(
@@ -954,22 +915,6 @@ export default class BackendAPI {
     });
   }
 
-  private async _makeServerFileUploadWithProgress(
-    path: string,
-    formData: FormData,
-    params?: Record<string, any>,
-  ): Promise<string> {
-    const { makeAuthenticatedFileUpload, buildServerUrl, buildUrlWithQuery } =
-      await import("./helpers");
-
-    let url = buildServerUrl(path);
-    if (params) {
-      url = buildUrlWithQuery(url, params);
-    }
-
-    return await makeAuthenticatedFileUpload(url, formData);
-  }
-
   private async _request(
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
@@ -978,12 +923,8 @@ export default class BackendAPI {
     if (method !== "GET") {
       console.debug(`${method} ${path} payload:`, payload);
     }
-
-    if (isClient) {
-      return this._makeClientRequest(method, path, payload);
-    } else {
-      return this._makeServerRequest(method, path, payload);
-    }
+    // Always use client method (through proxy) - works on both client and server
+    return this._makeClientRequest(method, path, payload);
   }
 
   private async _makeClientRequest(
@@ -1042,33 +983,6 @@ export default class BackendAPI {
     }
 
     return await response.json();
-  }
-
-  private async _makeServerRequest(
-    method: string,
-    path: string,
-    payload?: Record<string, any>,
-  ) {
-    const { makeAuthenticatedRequest, buildServerUrl } = await import(
-      "./helpers"
-    );
-    const url = buildServerUrl(path);
-
-    // For server-side requests, try to read impersonation from cookies
-    const impersonationUserId = await ImpersonationState.getServerSide();
-    const fakeRequest = impersonationUserId
-      ? new Request(url, {
-          headers: { "X-Act-As-User-Id": impersonationUserId },
-        })
-      : undefined;
-
-    return await makeAuthenticatedRequest(
-      method,
-      url,
-      payload,
-      "application/json",
-      fakeRequest,
-    );
   }
 
   ////////////////////////////////////////
@@ -1164,11 +1078,11 @@ export default class BackendAPI {
       try {
         let token = "";
         try {
-          const { token: serverToken, error } = await getWebSocketToken();
-          if (serverToken && !error) {
+          // Dynamic import to avoid bundling server-only code with client
+          const { getWebSocketToken } = await import("@/lib/auth/actions");
+          const serverToken = await getWebSocketToken();
+          if (serverToken) {
             token = serverToken;
-          } else if (error) {
-            console.warn("Failed to get WebSocket token from server:", error);
           }
         } catch (error) {
           console.warn("Failed to get token for WebSocket connection:", error);

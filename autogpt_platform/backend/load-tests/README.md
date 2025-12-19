@@ -5,14 +5,14 @@ Clean, streamlined load testing infrastructure for the AutoGPT Platform using k6
 ## 🚀 Quick Start
 
 ```bash
-# 1. Set up Supabase service key (required for token generation)
-export SUPABASE_SERVICE_KEY="your-supabase-service-key"
+# 1. Set up API base URL (optional, defaults to local)
+export API_BASE_URL="http://localhost:8006"
 
-# 2. Generate pre-authenticated tokens (first time setup - creates 160+ tokens with 24-hour expiry)  
+# 2. Generate pre-authenticated tokens (first time setup - creates 160+ tokens with 24-hour expiry)
 node generate-tokens.js --count=160
 
 # 3. Set up k6 cloud credentials (for cloud testing - see Credential Setup section below)
-export K6_CLOUD_TOKEN="your-k6-cloud-token"  
+export K6_CLOUD_TOKEN="your-k6-cloud-token"
 export K6_CLOUD_PROJECT_ID="4254406"
 
 # 4. Run orchestrated load tests locally
@@ -85,11 +85,11 @@ npm run cloud
 ### Pre-Authenticated Tokens
 
 - **Generation**: Run `node generate-tokens.js --count=160` to create tokens
-- **File**: `configs/pre-authenticated-tokens.js` (gitignored for security)  
+- **File**: `configs/pre-authenticated-tokens.js` (gitignored for security)
 - **Capacity**: 160+ tokens supporting high-concurrency testing
-- **Expiry**: 24 hours (86400 seconds) - extended for long-duration testing
-- **Benefit**: Eliminates Supabase auth rate limiting at scale
-- **Regeneration**: Run `node generate-tokens.js --count=160` when tokens expire after 24 hours
+- **Expiry**: Based on JWT token expiry settings (default: 15 min access, 7 day refresh)
+- **Benefit**: Eliminates auth rate limiting at scale
+- **Regeneration**: Run `node generate-tokens.js --count=160` when tokens expire
 
 ### Environment Configuration
 
@@ -182,29 +182,29 @@ npm run cloud
 
 ### Required Setup
 
-**1. Supabase Service Key (Required for all testing):**
+**1. API Base URL (Optional):**
 
 ```bash
-# Option 1: From your local environment (if available)
-export SUPABASE_SERVICE_KEY="your-supabase-service-key"
+# For local testing (default)
+export API_BASE_URL="http://localhost:8006"
 
-# Option 2: From Kubernetes secret (for platform developers)
-kubectl get secret supabase-service-key -o jsonpath='{.data.service-key}' | base64 -d
+# For dev environment
+export API_BASE_URL="https://dev-server.agpt.co"
 
-# Option 3: From Supabase dashboard
-# Go to Project Settings > API > service_role key (never commit this!)
+# For production (coordinate with team!)
+export API_BASE_URL="https://api.agpt.co"
 ```
 
 **2. Generate Pre-Authenticated Tokens (Required):**
 
 ```bash
-# Creates 160 tokens with 24-hour expiry - prevents auth rate limiting
+# Creates 160 tokens - prevents auth rate limiting
 node generate-tokens.js --count=160
 
 # Generate fewer tokens for smaller tests (minimum 10)
 node generate-tokens.js --count=50
 
-# Regenerate when tokens expire (every 24 hours)
+# Regenerate when tokens expire
 node generate-tokens.js --count=160
 ```
 

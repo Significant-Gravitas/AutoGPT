@@ -160,11 +160,7 @@ jobs:
             "rabbitmq:management"
             "clamav/clamav-debian:latest"
             "busybox:latest"
-            "kong:2.8.1"
-            "supabase/gotrue:v2.170.0"
-            "supabase/postgres:15.8.1.049"
-            "supabase/postgres-meta:v0.86.1"
-            "supabase/studio:20250224-d10db0f"
+            "pgvector/pgvector:pg18"
           )
           
           # Check if any cached tar files exist (more reliable than cache-hit)

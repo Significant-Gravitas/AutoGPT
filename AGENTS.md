@@ -49,5 +49,5 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 - Keep out-of-scope changes under 20% of the PR.
 - Ensure PR descriptions are complete.
 - For changes touching `data/*.py`, validate user ID checks or explain why not needed.
-- If adding protected frontend routes, update `frontend/lib/supabase/middleware.ts`.
+- If adding protected frontend routes, update `frontend/lib/auth/helpers.ts`.
 - Use the linear ticket branch structure if given codex/open-1668-resume-dropped-runs

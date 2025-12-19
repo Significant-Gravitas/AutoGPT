@@ -5,7 +5,6 @@ networks:
     name: shared-network
 
 volumes:
-  supabase-config:
   clamav-data:
 
 x-agpt-services:
@@ -13,13 +12,6 @@ x-agpt-services:
   networks:
     - app-network
     - shared-network
-
-x-supabase-services:
-  &supabase-services
-  networks:
-    - app-network
-    - shared-network
-
 
 services:
   # AGPT services
@@ -103,62 +95,23 @@ services:
       file: ./docker-compose.platform.yml
       service: frontend
 
-  # Supabase services (minimal: auth + db + kong)
-  kong:
-    <<: *supabase-services
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: kong
-
-  auth:
-    <<: *supabase-services
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: auth
-    environment:
-      GOTRUE_MAILER_AUTOCONFIRM: true
-
+  # PostgreSQL database (no Supabase auth - using native auth)
   db:
-    <<: *supabase-services
+    <<: *agpt-services
     extends:
       file: ./db/docker/docker-compose.yml
       service: db
     ports:
-      - 5432:5432 # We don't use Supavisor locally, so we expose the db directly.
-
-  # Studio and its dependencies for local development only
-  meta:
-    <<: *supabase-services
-    profiles:
-      - local
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: meta
-
-  studio:
-    <<: *supabase-services
-    profiles:
-      - local
-    extends:
-      file: ./db/docker/docker-compose.yml
-      service: studio
-    depends_on:
-      meta:
-        condition: service_healthy
-    # environment:
-    #   NEXT_PUBLIC_ENABLE_LOGS: false  # Disable analytics/logging features
+      - 5432:5432
 
   deps:
-    <<: *supabase-services
+    <<: *agpt-services
     profiles:
       - local
     image: busybox
     command: /bin/true
     depends_on:
-      - kong
-      - auth
       - db
-      - studio
       - redis
       - rabbitmq
       - clamav

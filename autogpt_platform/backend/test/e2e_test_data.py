@@ -29,11 +29,10 @@ from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
 
 # Import API functions from the backend
-from backend.data.user import get_or_create_user
+from backend.server.auth.service import AuthService
 from backend.server.v2.library.db import create_library_agent, create_preset
 from backend.server.v2.library.model import LibraryAgentPresetCreatable
 from backend.server.v2.store.db import create_store_submission, review_store_submission
-from backend.util.clients import get_supabase
 
 faker = Faker()
 
@@ -107,10 +106,10 @@ class TestDataCreator:
         self.profiles: List[Dict[str, Any]] = []
 
     async def create_test_users(self) -> List[Dict[str, Any]]:
-        """Create test users using Supabase client."""
+        """Create test users using native auth service."""
         print(f"Creating {NUM_USERS} test users...")
 
-        supabase = get_supabase()
+        auth_service = AuthService()
         users = []
 
         for i in range(NUM_USERS):
@@ -122,30 +121,35 @@ class TestDataCreator:
                 else:
                     email = faker.unique.email()
                 password = "testpassword123"  # Standard test password
-                user_id = f"test-user-{i}-{faker.uuid4()}"
 
-                # Create user in Supabase Auth (if needed)
+                # Try to create user with password using AuthService
                 try:
-                    auth_response = supabase.auth.admin.create_user(
-                        {"email": email, "password": password, "email_confirm": True}
+                    user = await auth_service.register_user(
+                        email=email,
+                        password=password,
+                        name=faker.name(),
                     )
-                    if auth_response.user:
-                        user_id = auth_response.user.id
-                except Exception as supabase_error:
-                    print(
-                        f"Supabase user creation failed for {email}, using fallback: {supabase_error}"
+                    users.append(
+                        {
+                            "id": user.id,
+                            "email": user.email,
+                            "name": user.name,
+                            "role": user.role,
+                        }
                     )
-                    # Fall back to direct database creation
-
-                # Create mock user data similar to what auth middleware would provide
-                user_data = {
-                    "sub": user_id,
-                    "email": email,
-                }
-
-                # Use the API function to create user in local database
-                user = await get_or_create_user(user_data)
-                users.append(user.model_dump())
+                except ValueError as e:
+                    # User already exists, get them instead
+                    print(f"User {email} already exists, fetching: {e}")
+                    existing_user = await auth_service.get_user_by_email(email)
+                    if existing_user:
+                        users.append(
+                            {
+                                "id": existing_user.id,
+                                "email": existing_user.email,
+                                "name": existing_user.name,
+                                "role": existing_user.role,
+                            }
+                        )
 
             except Exception as e:
                 print(f"Error creating user {i}: {e}")

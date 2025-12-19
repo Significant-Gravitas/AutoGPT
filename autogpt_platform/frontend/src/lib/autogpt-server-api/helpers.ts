@@ -2,7 +2,6 @@ import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
 } from "@/lib/constants";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { environment } from "@/services/environment";
 import { Key, storage } from "@/services/storage/local-storage";
 
@@ -107,30 +106,6 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
     response.status,
     responseData,
   );
-}
-
-export async function getServerAuthToken(): Promise<string> {
-  const supabase = await getServerSupabase();
-
-  if (!supabase) {
-    throw new Error("Supabase client not available");
-  }
-
-  try {
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession();
-
-    if (error || !session || !session.access_token) {
-      return "no-token-found";
-    }
-
-    return session.access_token;
-  } catch (error) {
-    console.error("Failed to get auth token:", error);
-    return "no-token-found";
-  }
 }
 
 export function createRequestHeaders(
@@ -280,115 +255,6 @@ export function isLogoutInProgress(): boolean {
   }
 }
 
-export async function makeAuthenticatedRequest(
-  method: string,
-  url: string,
-  payload?: Record<string, any>,
-  contentType: string = "application/json",
-  originalRequest?: Request,
-): Promise<any> {
-  const token = await getServerAuthToken();
-  const payloadAsQuery = ["GET", "DELETE"].includes(method);
-  const hasRequestBody = !payloadAsQuery && payload !== undefined;
-
-  // Add query parameters for GET/DELETE requests
-  let requestUrl = url;
-  if (payloadAsQuery && payload) {
-    requestUrl = buildUrlWithQuery(url, payload);
-  }
-
-  const response = await fetch(requestUrl, {
-    method,
-    headers: createRequestHeaders(
-      token,
-      hasRequestBody,
-      contentType,
-      originalRequest,
-    ),
-    body: hasRequestBody
-      ? serializeRequestBody(payload, contentType)
-      : undefined,
-  });
-
-  if (!response.ok) {
-    const errorDetail = await parseApiError(response);
-
-    // Try to parse the full response body for better error context
-    let responseData = null;
-    try {
-      responseData = await response.clone().json();
-    } catch {
-      // Ignore parsing errors
-    }
-
-    // Handle authentication errors gracefully during logout
-    if (isAuthenticationError(response, errorDetail)) {
-      if (isLogoutInProgress()) {
-        // Silently return null during logout to prevent error noise
-        console.debug(
-          "Authentication request failed during logout, ignoring:",
-          errorDetail,
-        );
-      }
-    }
-
-    // For other errors, throw ApiError with proper status code
-    throw new ApiError(errorDetail, response.status, responseData);
-  }
-
-  return parseApiResponse(response);
-}
-
-export async function makeAuthenticatedFileUpload(
-  url: string,
-  formData: FormData,
-  originalRequest?: Request,
-): Promise<string> {
-  const token = await getServerAuthToken();
-
-  // Reuse existing header creation logic but exclude Content-Type for FormData
-  const headers = createRequestHeaders(
-    token,
-    false,
-    "application/json",
-    originalRequest,
-  );
-
-  // Don't set Content-Type for FormData - let the browser set it with boundary
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-
-  if (!response.ok) {
-    // Handle authentication errors gracefully for file uploads too
-    const errorMessage = `Error uploading file: ${response.statusText}`;
-
-    // Try to parse error response
-    let responseData = null;
-    try {
-      const responseText = await response.clone().text();
-      if (responseText) {
-        responseData = JSON.parse(responseText);
-      }
-    } catch {
-      // Ignore parsing errors
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      if (isLogoutInProgress()) {
-        console.debug(
-          "File upload authentication failed during logout, ignoring",
-        );
-        return "";
-      }
-      console.warn("File upload authentication failed:", errorMessage);
-      return "";
-    }
-
-    throw new ApiError(errorMessage, response.status, responseData);
-  }
-
-  return await response.json();
-}
+// NOTE: makeAuthenticatedRequest and makeAuthenticatedFileUpload have been
+// moved to server-auth.ts to avoid bundling server-only code with client code.
+// Import them from "@/lib/autogpt-server-api/server-auth" when needed.

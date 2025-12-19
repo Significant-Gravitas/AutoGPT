@@ -1,28 +1,42 @@
 "use server";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import * as Sentry from "@sentry/nextjs";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006";
 
 export async function sendResetEmail(email: string) {
   return await Sentry.withServerActionInstrumentation(
     "sendResetEmail",
     {},
     async () => {
-      const supabase = await getServerSupabase();
       const origin =
         process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 
-      if (!supabase) {
-        redirect("/error");
-      }
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/auth/password-reset/request`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email,
+              redirect_url: `${origin}/api/auth/callback/reset-password`,
+            }),
+          },
+        );
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${origin}/api/auth/callback/reset-password`,
-      });
-
-      if (error) {
+        if (!response.ok) {
+          const data = await response.json();
+          console.error("Error sending reset email", data);
+          return data.detail || "Failed to send reset email";
+        }
+      } catch (error) {
         console.error("Error sending reset email", error);
-        return error.message;
+        return "Failed to send reset email";
       }
     },
   );
@@ -33,20 +47,41 @@ export async function changePassword(password: string) {
     "changePassword",
     {},
     async () => {
-      const supabase = await getServerSupabase();
+      const cookieStore = await cookies();
+      const resetToken = cookieStore.get("password_reset_token")?.value;
 
-      if (!supabase) {
-        redirect("/error");
+      if (!resetToken) {
+        return "Invalid or expired reset link. Please request a new password reset.";
       }
 
-      const { error } = await supabase.auth.updateUser({ password });
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/auth/password-reset/confirm`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              token: resetToken,
+              new_password: password,
+            }),
+          },
+        );
 
-      if (error) {
+        if (!response.ok) {
+          const data = await response.json();
+          console.error("Error changing password", data);
+          return data.detail || "Failed to change password";
+        }
+
+        // Clear the reset token cookie
+        cookieStore.delete("password_reset_token");
+      } catch (error) {
         console.error("Error changing password", error);
-        return error.message;
+        return "Failed to change password";
       }
 
-      await supabase.auth.signOut({ scope: "global" });
       redirect("/login");
     },
   );

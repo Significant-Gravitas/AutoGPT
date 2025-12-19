@@ -75,7 +75,7 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Copy default supabase .env
+      - name: Copy default platform .env
         run: |
           cp ../.env.default ../.env
 

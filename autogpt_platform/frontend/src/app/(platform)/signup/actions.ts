@@ -1,10 +1,14 @@
 "use server";
 
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { serverRegister } from "@/lib/auth/actions";
+import { isWaitlistError } from "@/lib/auth";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
-import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
 import { shouldShowOnboarding } from "../../api/helpers";
+
+function logWaitlistError(context: string, message: string) {
+  console.log(`[${context}] Waitlist error: ${message}`);
+}
 
 export async function signup(
   email: string,
@@ -27,37 +31,41 @@ export async function signup(
       };
     }
 
-    const supabase = await getServerSupabase();
-    if (!supabase) {
-      return {
-        success: false,
-        error: "Authentication service unavailable",
-      };
-    }
+    const result = await serverRegister({
+      email: parsed.data.email,
+      password: parsed.data.password,
+    });
 
-    const { data, error } = await supabase.auth.signUp(parsed.data);
+    if (result.error || !result.data) {
+      const error = result.error;
 
-    if (error) {
-      if (isWaitlistError(error?.code, error?.message)) {
+      if (error && isWaitlistError(error)) {
         logWaitlistError("Signup", error.message);
         return { success: false, error: "not_allowed" };
       }
 
-      if ((error as any).code === "user_already_exists") {
+      if (error?.message?.includes("already registered")) {
         return { success: false, error: "user_already_exists" };
       }
 
       return {
         success: false,
-        error: error.message,
+        error: error?.message || "Registration failed",
       };
     }
 
-    if (data.session) {
-      await supabase.auth.setSession(data.session);
+    // Note: shouldShowOnboarding may fail here because the auth cookies we just set
+    // aren't available yet for the proxy route (it's a new HTTP request).
+    // Default to showing onboarding for new users, which is the safer path.
+    let isOnboardingEnabled = true;
+    try {
+      isOnboardingEnabled = await shouldShowOnboarding();
+    } catch (error) {
+      console.debug(
+        "Could not check onboarding status after signup, defaulting to onboarding:",
+        error,
+      );
     }
-
-    const isOnboardingEnabled = await shouldShowOnboarding();
     const next = isOnboardingEnabled ? "/onboarding" : "/";
 
     return { success: true, next };

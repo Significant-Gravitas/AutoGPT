@@ -44,18 +44,6 @@ function getAGPTWsServerUrl() {
   return process.env.NEXT_PUBLIC_AGPT_WS_SERVER_URL || "ws://localhost:8001/ws";
 }
 
-function getSupabaseUrl() {
-  if (environment.isServerSide() && process.env.SUPABASE_URL) {
-    return process.env.SUPABASE_URL;
-  }
-
-  return process.env.NEXT_PUBLIC_SUPABASE_URL || "http://localhost:8000";
-}
-
-function getSupabaseAnonKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-}
-
 function getEnvironmentStr() {
   return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
 }
@@ -125,8 +113,6 @@ export const environment = {
   getAGPTServerApiUrl,
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
-  getSupabaseUrl,
-  getSupabaseAnonKey,
   getPreviewStealingDev,
   // Assertions
   isServerSide,

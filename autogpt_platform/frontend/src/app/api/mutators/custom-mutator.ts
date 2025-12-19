@@ -1,8 +1,4 @@
-import {
-  ApiError,
-  createRequestHeaders,
-  getServerAuthToken,
-} from "@/lib/autogpt-server-api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 import { transformDates } from "./date-transformer";
 import { environment } from "@/services/environment";
@@ -15,12 +11,10 @@ const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
+// Always use the proxy route - it handles authentication server-side
+// This works for both client-side and server-side rendering
 const getBaseUrl = (): string => {
-  if (!environment.isServerSide()) {
-    return API_PROXY_BASE_URL;
-  } else {
-    return environment.getAGPTServerBaseUrl();
-  }
+  return API_PROXY_BASE_URL;
 };
 
 const getBody = <T>(c: Response | Request): Promise<T> => {
@@ -53,7 +47,7 @@ export const customMutator = async <
     | "DELETE"
     | "PATCH";
   const data = requestOptions.body;
-  let headers: Record<string, string> = {
+  const headers: Record<string, string> = {
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
 
@@ -74,7 +68,6 @@ export const customMutator = async <
   }
 
   const isFormData = data instanceof FormData;
-  const contentType = isFormData ? "multipart/form-data" : "application/json";
 
   // Currently, only two content types are handled here: application/json and multipart/form-data
   // For POST/PUT/PATCH requests, always set Content-Type to application/json if not FormData
@@ -96,21 +89,12 @@ export const customMutator = async <
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   const fullUrl = `${baseUrl}${url}${queryString}`;
 
-  if (environment.isServerSide()) {
-    try {
-      const token = await getServerAuthToken();
-      const authHeaders = createRequestHeaders(token, !!data, contentType);
-      headers = { ...headers, ...authHeaders };
-    } catch (error) {
-      console.warn("Failed to get server auth token:", error);
-    }
-  }
-
   const response = await fetch(fullUrl, {
     ...requestOptions,
     method,
     headers,
     body: data,
+    credentials: "include", // Ensure cookies are sent with requests
   });
 
   if (!response.ok) {

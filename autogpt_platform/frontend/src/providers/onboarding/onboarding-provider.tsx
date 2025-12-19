@@ -15,7 +15,7 @@ import {
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -101,7 +101,7 @@ export default function OnboardingProvider({
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
 
   useOnboardingTimezoneDetection();
 

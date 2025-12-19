@@ -1,13 +1,6 @@
 "use client";
 
 import { Checkbox } from "@/components/__legacy__/ui/checkbox";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/__legacy__/ui/form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -16,11 +9,12 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 import { environment } from "@/services/environment";
-import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
+import { WarningOctagon } from "@phosphor-icons/react";
+import { Controller, FormProvider } from "react-hook-form";
 import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
-import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
 
 export default function SignupPage() {
   const {
@@ -32,7 +26,7 @@ export default function SignupPage() {
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
-    isSupabaseAvailable,
+    isAuthAvailable,
     handleSubmit,
     handleProviderSignup,
     handleCloseNotAllowedModal,
@@ -42,12 +36,8 @@ export default function SignupPage() {
     return <LoadingSignup />;
   }
 
-  if (!isSupabaseAvailable) {
-    return (
-      <div>
-        User accounts are disabled because Supabase client is unavailable
-      </div>
-    );
+  if (!isAuthAvailable) {
+    return <div>User accounts are disabled because auth is unavailable</div>;
   }
 
   const confirmPasswordError = form.formState.errors.confirmPassword?.message;
@@ -56,9 +46,9 @@ export default function SignupPage() {
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
       <AuthCard title="Create a new account">
-        <Form {...form}>
+        <FormProvider {...form}>
           <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
-            <FormField
+            <Controller
               control={form.control}
               name="email"
               render={({ field }) => (
@@ -73,7 +63,7 @@ export default function SignupPage() {
                 />
               )}
             />
-            <FormField
+            <Controller
               control={form.control}
               name="password"
               render={({ field }) => {
@@ -90,7 +80,7 @@ export default function SignupPage() {
                 );
               }}
             />
-            <FormField
+            <Controller
               control={form.control}
               name="confirmPassword"
               render={({ field }) => (
@@ -105,51 +95,51 @@ export default function SignupPage() {
                 />
               )}
             />
-            <FormField
+            <Controller
               control={form.control}
               name="agreeToTerms"
               render={({ field }) => (
                 <>
-                  <FormItem className="mt-6 flex w-full flex-row items-center -space-y-1 space-x-2">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        className="relative bottom-px"
-                      />
-                    </FormControl>
-                    <div>
-                      <FormLabel className="flex flex-wrap items-center gap-1">
-                        <Text
-                          variant="body-medium"
-                          className="inline-block text-slate-950"
-                        >
-                          I agree to the
-                        </Text>
-                        <Link
-                          href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
-                          variant="secondary"
-                        >
-                          Terms of Use
-                        </Link>
-                        <Text
-                          variant="body-medium"
-                          className="inline-block text-slate-950"
-                        >
-                          and
-                        </Text>
-                        <Link
-                          href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
-                          variant="secondary"
-                        >
-                          Privacy Policy
-                        </Link>
-                      </FormLabel>
-                    </div>
-                  </FormItem>
+                  <div className="mt-6 flex w-full flex-row items-center space-x-2">
+                    <Checkbox
+                      id="agreeToTerms"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      className="relative bottom-px"
+                    />
+                    <label
+                      htmlFor="agreeToTerms"
+                      className="flex flex-wrap items-center gap-1"
+                    >
+                      <Text
+                        variant="body-medium"
+                        className="inline-block text-slate-950"
+                      >
+                        I agree to the
+                      </Text>
+                      <Link
+                        href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                        variant="secondary"
+                      >
+                        Terms of Use
+                      </Link>
+                      <Text
+                        variant="body-medium"
+                        className="inline-block text-slate-950"
+                      >
+                        and
+                      </Text>
+                      <Link
+                        href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
+                        variant="secondary"
+                      >
+                        Privacy Policy
+                      </Link>
+                    </label>
+                  </div>
                   {termsError ? (
                     <div className="flex items-center gap-2">
-                      <WarningOctagonIcon className="h-4 w-4 text-red-500" />
+                      <WarningOctagon className="h-4 w-4 text-red-500" />
                       <Text variant="small-medium" className="!text-red-500">
                         {termsError}
                       </Text>
@@ -169,7 +159,7 @@ export default function SignupPage() {
               {isLoading ? "Signing up..." : "Sign up"}
             </Button>
           </form>
-        </Form>
+        </FormProvider>
         {isCloudEnv ? (
           <GoogleOAuthButton
             onClick={() => handleProviderSignup("google")}

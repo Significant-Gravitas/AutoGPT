@@ -142,7 +142,7 @@ pnpm storybook                      # Start component development server
 ### Security & Middleware
 
 **Cache Protection**: Backend includes middleware preventing sensitive data caching in browsers/proxies
-**Authentication**: JWT-based with Supabase integration
+**Authentication**: JWT-based with native authentication
 **User ID Validation**: All data access requires user ID checks - verify this for any `data/*.py` changes
 
 ### Development Workflow
@@ -168,9 +168,9 @@ pnpm storybook                      # Start component development server
 
 - `frontend/src/app/layout.tsx` - Root application layout
 - `frontend/src/app/page.tsx` - Home page
-- `frontend/src/lib/supabase/` - Authentication and database client
+- `frontend/src/lib/auth/` - Authentication client
 
-**Protected Routes**: Update `frontend/lib/supabase/middleware.ts` when adding protected routes
+**Protected Routes**: Update `frontend/middleware.ts` when adding protected routes
 
 ### Agent Block System
 
@@ -194,7 +194,7 @@ Agents are built using a visual block-based system where each block performs a s
 
 1. **Backend**: `/backend/.env.default` → `/backend/.env` (user overrides)
 2. **Frontend**: `/frontend/.env.default` → `/frontend/.env` (user overrides)
-3. **Platform**: `/.env.default` (Supabase/shared) → `/.env` (user overrides)
+3. **Platform**: `/.env.default` (shared) → `/.env` (user overrides)
 4. Docker Compose `environment:` sections override file-based config
 5. Shell environment variables have highest precedence
 

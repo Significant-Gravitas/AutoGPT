@@ -45,7 +45,7 @@ This is useful when running on docker so you can copy the secrets into the conta
 
 ### PostgreSQL
 
-We use a Supabase PostgreSQL as the database. You will swap the commands you use to generate and run prisma to the following
+We use PostgreSQL as the database. You will swap the commands you use to generate and run prisma to the following
 
 ```bash
 poetry run prisma generate --schema postgres/schema.prisma

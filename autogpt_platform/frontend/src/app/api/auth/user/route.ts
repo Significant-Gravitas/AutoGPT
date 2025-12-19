@@ -1,34 +1,54 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import {
+  getServerAuthToken,
+  getServerUser,
+} from "@/lib/auth/server/getServerAuth";
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  const supabase = await getServerSupabase();
-  const { data, error } = await supabase.auth.getUser();
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006";
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+export async function GET() {
+  const user = await getServerUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json({ user });
 }
 
 export async function PUT(request: Request) {
   try {
-    const supabase = await getServerSupabase();
+    const token = await getServerAuthToken();
+
+    if (!token) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
     const { email } = await request.json();
 
     if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    const { data, error } = await supabase.auth.updateUser({
-      email,
+    const response = await fetch(`${API_BASE_URL}/api/auth/update-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ email }),
     });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (!response.ok) {
+      const data = await response.json();
+      return NextResponse.json(
+        { error: data.detail || "Failed to update email" },
+        { status: response.status },
+      );
     }
 
+    const data = await response.json();
     return NextResponse.json(data);
   } catch {
     return NextResponse.json(
