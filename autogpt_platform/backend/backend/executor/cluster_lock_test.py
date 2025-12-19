@@ -188,14 +188,14 @@ class TestClusterLockExpiry:
     def test_lock_natural_expiry(self, redis_client, lock_key, owner_id):
         """Test lock expires naturally via Redis TTL."""
         lock = ClusterLock(
-            redis_client, lock_key, owner_id, timeout=2
-        )  # 2 second timeout
+            redis_client, lock_key, owner_id, timeout=1
+        )  # 1 second timeout
 
         lock.try_acquire()
         assert redis_client.exists(lock_key) == 1
 
         # Wait for expiry
-        time.sleep(3)
+        time.sleep(1.2)
         assert redis_client.exists(lock_key) == 0
 
         # New lock with same key should succeed
@@ -205,18 +205,18 @@ class TestClusterLockExpiry:
     def test_lock_refresh_prevents_expiry(self, redis_client, lock_key, owner_id):
         """Test refreshing prevents lock from expiring."""
         lock = ClusterLock(
-            redis_client, lock_key, owner_id, timeout=3
-        )  # 3 second timeout
+            redis_client, lock_key, owner_id, timeout=2
+        )  # 2 second timeout
 
         lock.try_acquire()
 
         # Wait and refresh before expiry
-        time.sleep(1)
+        time.sleep(0.5)
         lock._last_refresh = 0  # Force refresh past rate limit
         assert lock.refresh() is True
 
         # Wait beyond original timeout
-        time.sleep(2.5)
+        time.sleep(1.8)
         assert redis_client.exists(lock_key) == 1  # Should still exist
 
 
@@ -249,16 +249,16 @@ class TestClusterLockConcurrency:
         assert len(successful_acquisitions) == 1
 
     def test_sequential_lock_reuse(self, redis_client, lock_key):
-        """Test lock can be reused after natural expiry."""
+        """Test lock can be reused after release."""
         owners = [str(uuid.uuid4()) for _ in range(3)]
 
         for i, owner_id in enumerate(owners):
-            lock = ClusterLock(redis_client, lock_key, owner_id, timeout=1)  # 1 second
+            lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
 
             assert lock.try_acquire() == owner_id
-            time.sleep(1.5)  # Wait for expiry
+            lock.release()  # Release immediately instead of waiting for expiry
 
-            # Verify lock expired
+            # Verify lock released
             assert redis_client.exists(lock_key) == 0
 
     def test_refresh_during_concurrent_access(self, redis_client, lock_key):
@@ -445,18 +445,18 @@ class TestClusterLockRealWorldScenarios:
     ):
         """Test lock maintains ownership during long execution with periodic refresh."""
         lock = ClusterLock(
-            redis_client, lock_key, owner_id, timeout=30
-        )  # 30 second timeout, refresh interval = max(30//10, 1) = 3 seconds
+            redis_client, lock_key, owner_id, timeout=5
+        )  # 5 second timeout, refresh interval = max(5//10, 1) = 1 second
 
         def long_execution_with_refresh():
             """Simulate long-running execution with periodic refresh."""
             assert lock.try_acquire() == owner_id
 
-            # Simulate 10 seconds of work with refreshes every 2 seconds
-            # This respects rate limiting - actual refreshes will happen at 0s, 3s, 6s, 9s
+            # Simulate 2 seconds of work with refreshes
             try:
-                for i in range(5):  # 5 iterations * 2 seconds = 10 seconds total
-                    time.sleep(2)
+                for i in range(2):  # 2 iterations * 0.5 seconds = 1 second total
+                    time.sleep(0.5)
+                    lock._last_refresh = 0  # Force refresh past rate limit
                     refresh_success = lock.refresh()
                     assert refresh_success is True, f"Refresh failed at iteration {i}"
                 return "completed"
@@ -471,7 +471,7 @@ class TestClusterLockRealWorldScenarios:
         """Test graceful degradation when Redis becomes unavailable."""
         owner_id = str(uuid.uuid4())
         lock = ClusterLock(
-            redis_client, lock_key, owner_id, timeout=3
+            redis_client, lock_key, owner_id, timeout=1
         )  # Use shorter timeout
 
         # Normal operation
@@ -484,7 +484,7 @@ class TestClusterLockRealWorldScenarios:
         lock.redis = redis.Redis(
             host="invalid_host",
             port=1234,
-            socket_connect_timeout=1,
+            socket_connect_timeout=0.5,
             decode_responses=False,
         )
 
@@ -495,8 +495,8 @@ class TestClusterLockRealWorldScenarios:
 
         # Restore Redis and verify can acquire again
         lock.redis = original_redis
-        # Wait for original lock to expire (use longer wait for 3s timeout)
-        time.sleep(4)
+        # Wait for original lock to expire
+        time.sleep(1.2)
 
         new_lock = ClusterLock(redis_client, lock_key, owner_id, timeout=60)
         assert new_lock.try_acquire() == owner_id

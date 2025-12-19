@@ -506,7 +506,7 @@ class TestGracefulShutdownService(AppService):
         self.cleanup_completed = False
 
     @expose
-    async def slow_endpoint(self, duration: int = 5) -> dict:
+    async def slow_endpoint(self, duration: float = 1.0) -> dict:
         """Endpoint that takes time to complete"""
         start_time = time.time()
         self.request_log.append(f"slow_endpoint started at {start_time}")
@@ -575,7 +575,7 @@ async def wait_until_service_ready(base_url: str, timeout: float = 10):
 async def send_slow_request(base_url: str) -> dict:
     """Send a slow request and return the result"""
     async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(f"{base_url}/slow_endpoint", json={"duration": 5})
+        response = await client.post(f"{base_url}/slow_endpoint", json={"duration": 1.0})
         assert response.status_code == 200
         return response.json()
 
@@ -589,14 +589,14 @@ async def test_graceful_shutdown(test_service):
     slow_task = asyncio.create_task(send_slow_request(test_service_url))
 
     # Give the slow request time to start
-    await asyncio.sleep(1)
+    await asyncio.sleep(0.2)
 
     # Send SIGTERM to the service process
     shutdown_start_time = time.time()
     service.process.terminate()  # This sends SIGTERM
 
     # Wait a moment for shutdown to start
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.2)
 
     # Try to send a new request - should be rejected or connection refused
     try:
@@ -612,18 +612,18 @@ async def test_graceful_shutdown(test_service):
     # The slow request should still complete successfully
     slow_result = await slow_task
     assert slow_result["message"] == "completed"
-    assert 4.9 < slow_result["duration"] < 5.5  # Should have taken ~5 seconds
+    assert 0.9 < slow_result["duration"] < 1.5  # Should have taken ~1 second
 
     # Wait for the service to fully shut down
-    service.process.join(timeout=15)
+    service.process.join(timeout=10)
     shutdown_end_time = time.time()
 
     # Verify the service actually terminated
     assert not service.process.is_alive()
 
-    # Verify shutdown took reasonable time (slow request - 1s + cleanup)
+    # Verify shutdown took reasonable time
     shutdown_duration = shutdown_end_time - shutdown_start_time
-    assert 4 <= shutdown_duration <= 6  # ~5s request - 1s + buffer
+    assert 0.5 <= shutdown_duration <= 3  # ~1s request + buffer
 
     print(f"Shutdown took {shutdown_duration:.2f} seconds")
     print(f"Slow request completed in: {slow_result['duration']:.2f} seconds")

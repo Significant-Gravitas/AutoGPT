@@ -432,7 +432,7 @@ class TestCache:
         """Test TTL functionality with sync function."""
         call_count = 0
 
-        @cached(maxsize=10, ttl_seconds=1)  # Short TTL
+        @cached(maxsize=10, ttl_seconds=0.3)  # Short TTL
         def ttl_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -449,7 +449,7 @@ class TestCache:
         assert call_count == 1
 
         # Wait for TTL to expire
-        time.sleep(1.1)
+        time.sleep(0.35)
 
         # Third call after expiration - should call function again
         result3 = ttl_function(3)
@@ -461,7 +461,7 @@ class TestCache:
         """Test TTL functionality with async function."""
         call_count = 0
 
-        @cached(maxsize=10, ttl_seconds=1)  # Short TTL
+        @cached(maxsize=10, ttl_seconds=0.3)  # Short TTL
         async def async_ttl_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -479,7 +479,7 @@ class TestCache:
         assert call_count == 1
 
         # Wait for TTL to expire
-        await asyncio.sleep(1.1)
+        await asyncio.sleep(0.35)
 
         # Third call after expiration - should call function again
         result3 = await async_ttl_function(3)
@@ -761,16 +761,16 @@ class TestSharedCache:
         assert result1 == 30
         assert call_count == 1
 
-        # Wait 1 second
-        time.sleep(1)
+        # Wait 0.5 second
+        time.sleep(0.5)
 
         # Second call - should refresh TTL and use cache
         result2 = ttl_refresh_function(3)
         assert result2 == 30
         assert call_count == 1
 
-        # Wait another 1.5 seconds (total 2.5s from first call, 1.5s from second)
-        time.sleep(1.5)
+        # Wait another 1.0 second (total 1.5s from first call, 1.0s from second)
+        time.sleep(1.0)
 
         # Third call - TTL should have been refreshed, so still cached
         result3 = ttl_refresh_function(3)
@@ -792,7 +792,7 @@ class TestSharedCache:
         """Test that TTL doesn't refresh when refresh_ttl_on_get=False."""
         call_count = 0
 
-        @cached(ttl_seconds=2, shared_cache=True, refresh_ttl_on_get=False)
+        @cached(ttl_seconds=1, shared_cache=True, refresh_ttl_on_get=False)
         def no_ttl_refresh_function(x: int) -> int:
             nonlocal call_count
             call_count += 1
@@ -806,16 +806,16 @@ class TestSharedCache:
         assert result1 == 40
         assert call_count == 1
 
-        # Wait 1 second
-        time.sleep(1)
+        # Wait 0.4 seconds
+        time.sleep(0.4)
 
         # Second call - should use cache but NOT refresh TTL
         result2 = no_ttl_refresh_function(4)
         assert result2 == 40
         assert call_count == 1
 
-        # Wait another 1.1 seconds (total 2.1s from first call)
-        time.sleep(1.1)
+        # Wait another 0.7 seconds (total 1.1s from first call)
+        time.sleep(0.7)
 
         # Third call - should have expired
         result3 = no_ttl_refresh_function(4)
