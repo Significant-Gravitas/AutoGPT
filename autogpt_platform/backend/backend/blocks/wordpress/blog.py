@@ -11,7 +11,6 @@ from backend.sdk import (
 
 from ._api import (
     CreatePostRequest,
-    PostListItem,
     PostResponse,
     PostsResponse,
     PostStatus,
@@ -113,7 +112,7 @@ class WordPressGetAllPostsBlock(Block):
     Supports filtering by status and pagination.
     """
 
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = wordpress.credentials_field()
         site: str = SchemaField(
             description="Site ID or domain (e.g., 'myblog.wordpress.com' or '123456789')"
@@ -129,7 +128,7 @@ class WordPressGetAllPostsBlock(Block):
             description="Number of posts to skip (for pagination)", default=0
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         found: int = SchemaField(description="Total number of posts found")
         posts: list[dict] = SchemaField(
             description="List of post objects with their details"
