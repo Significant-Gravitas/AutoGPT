@@ -503,7 +503,9 @@ async def create_access_token(
     return OAuthAccessToken.from_db(saved_token, plaintext_token=plaintext_token)
 
 
-async def validate_access_token(token: str) -> OAuthAccessTokenInfo:
+async def validate_access_token(
+    token: str,
+) -> tuple[OAuthAccessTokenInfo, OAuthApplicationInfo]:
     """
     Validate an access token and return token info.
 
@@ -521,7 +523,10 @@ async def validate_access_token(token: str) -> OAuthAccessTokenInfo:
     if not access_token:
         raise InvalidTokenError("access token not found")
 
-    if access_token.Application and not access_token.Application.isActive:
+    if not access_token.Application:  # should be impossible
+        raise InvalidClientError("Client application not found")
+
+    if not access_token.Application.isActive:
         raise InvalidClientError("Client application is disabled")
 
     if access_token.revokedAt is not None:
@@ -532,7 +537,10 @@ async def validate_access_token(token: str) -> OAuthAccessTokenInfo:
     if access_token.expiresAt < now:
         raise InvalidTokenError("access token expired")
 
-    return OAuthAccessTokenInfo.from_db(access_token)
+    return (
+        OAuthAccessTokenInfo.from_db(access_token),
+        OAuthApplicationInfo.from_db(access_token.Application),
+    )
 
 
 async def revoke_access_token(
@@ -730,8 +738,7 @@ async def introspect_token(
     # Try as access token first (or if hint says "access_token")
     if token_type_hint != "refresh_token":
         try:
-            token_info = await validate_access_token(token)
-            app = await get_oauth_application_by_id(token_info.application_id)
+            token_info, app = await validate_access_token(token)
             return TokenIntrospectionResult(
                 active=True,
                 scopes=list(s.value for s in token_info.scopes),
