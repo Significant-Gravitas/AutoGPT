@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006";
+  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
 
 /**
  * Make an authenticated API request.
@@ -21,7 +21,7 @@ async function authFetch<T>(
   options: RequestInit = {},
 ): Promise<AuthResult<T>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth${endpoint}`, {
+    const response = await fetch(`${API_BASE_URL}/auth${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",

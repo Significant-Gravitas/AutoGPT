@@ -4,7 +4,7 @@ import { shouldShowOnboarding } from "@/app/api/helpers";
 import { setAuthCookies } from "@/lib/auth/cookies";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006";
+  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
 
 // Handle the OAuth callback from the backend
 export async function GET(request: Request) {
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   if (code) {
     try {
       // Exchange the code with the backend's Google OAuth callback
-      const callbackUrl = new URL(`${API_BASE_URL}/api/auth/google/callback`);
+      const callbackUrl = new URL(`${API_BASE_URL}/auth/google/callback`);
       callbackUrl.searchParams.set("code", code);
       if (state) {
         callbackUrl.searchParams.set("state", state);
@@ -40,10 +40,18 @@ export async function GET(request: Request) {
         );
 
         // Check if onboarding is needed
-        if (await shouldShowOnboarding()) {
-          next = "/onboarding";
-          revalidatePath("/onboarding", "layout");
-        } else {
+        // Note: This may fail for OAuth logins since the cookies were just set
+        // on the response and aren't available for the backend request yet.
+        // In that case, just go to marketplace and let client-side handle onboarding.
+        try {
+          if (await shouldShowOnboarding()) {
+            next = "/onboarding";
+            revalidatePath("/onboarding", "layout");
+          } else {
+            revalidatePath("/", "layout");
+          }
+        } catch {
+          // If onboarding check fails, just go to marketplace
           revalidatePath("/", "layout");
         }
 
