@@ -87,7 +87,6 @@ export const TimeInput: React.FC<TimeInputProps> = ({
           "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
           error ? "opacity-100" : "opacity-0",
         )}
-        unmask={false}
       >
         {error || " "}{" "}
         {/* Always render with space to maintain consistent height calculation */}

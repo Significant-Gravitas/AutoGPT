@@ -41,11 +41,7 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
       )}
       style={{ transform: `rotate(${angle}deg)` }}
     >
-      <Text
-        variant="h3"
-        className="tracking-tight text-slate-800"
-        unmask={false}
-      >
+      <Text variant="h3" className="tracking-tight text-slate-800">
         Notes #{nodeId.split("-")[0]}
       </Text>
       <FormCreator

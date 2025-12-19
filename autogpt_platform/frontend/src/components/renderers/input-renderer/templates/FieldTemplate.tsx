@@ -140,13 +140,12 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               uiType === BlockUIType.WEBHOOK && "ml-3",
               uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
             )}
-            unmask={false}
           >
             {isCredential && credentialProvider
               ? toDisplayName(credentialProvider) + " credentials"
               : schema.title || label}
           </Text>
-          <Text variant="small" className={colorClass} unmask={false}>
+          <Text variant="small" className={colorClass}>
             ({displayType})
           </Text>
           {required && <span style={{ color: "red" }}>*</span>}

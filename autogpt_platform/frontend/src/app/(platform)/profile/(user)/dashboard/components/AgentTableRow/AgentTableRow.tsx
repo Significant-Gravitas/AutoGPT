@@ -115,14 +115,12 @@ export const AgentTableRow = ({
               variant="h3"
               className="line-clamp-1 text-ellipsis text-neutral-800 dark:text-neutral-200"
               size="large-medium"
-              unmask={false}
             >
               {agentName}
             </Text>
             <Text
               variant="body"
               className="line-clamp-1 text-ellipsis text-neutral-600 dark:text-neutral-400"
-              unmask={false}
             >
               {description}
             </Text>

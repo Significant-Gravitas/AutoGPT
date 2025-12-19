@@ -1,6 +1,5 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
 import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import Link from "next/link";
@@ -58,12 +57,9 @@ export const AgentInfo = ({
 
       {/* Creator */}
       <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <Text
-          variant="body"
-          className="text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl"
-        >
+        <div className="text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           by
-        </Text>
+        </div>
         <Link
           data-testid={"agent-creator"}
           href={`/marketplace/creator/${encodeURIComponent(creator)}`}
@@ -86,12 +82,9 @@ export const AgentInfo = ({
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <Text
-          variant="body-medium"
-          className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg"
-        >
+        <div className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
           {runs.toLocaleString()} runs
-        </Text>
+        </div>
       </div>
 
       {/* Buttons */}
@@ -110,13 +103,9 @@ export const AgentInfo = ({
               })
             }
           >
-            <Text
-              variant="body"
-              as="span"
-              className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground"
-            >
+            <span className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
               {isAgentAddedToLibrary ? "See runs" : "Add to library"}
-            </Text>
+            </span>
           </button>
         </div>
       )}
@@ -141,12 +130,9 @@ export const AgentInfo = ({
       <div className="flex w-full flex-col gap-4 lg:gap-6">
         {/* Description Section */}
         <div className="w-full">
-          <Text
-            variant="body-medium"
-            className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2"
-          >
+          <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
             Description
-          </Text>
+          </div>
           <div
             data-testid={"agent-description"}
             className="whitespace-pre-line text-base font-normal leading-6 text-neutral-600 dark:text-neutral-400"
@@ -157,12 +143,9 @@ export const AgentInfo = ({
 
         {/* Categories */}
         <div className="flex w-full flex-col gap-1.5 sm:gap-2">
-          <Text
-            variant="body-medium"
-            className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2"
-          >
+          <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
             Categories
-          </Text>
+          </div>
           <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {categories.map((category, index) => (
               <div
@@ -177,26 +160,15 @@ export const AgentInfo = ({
 
         {/* Version History */}
         <div className="flex w-full flex-col gap-0.5 sm:gap-1">
-          <Text
-            variant="body-medium"
-            className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2"
-          >
+          <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
             Version history
-          </Text>
-          <Text
-            variant="body"
-            className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400"
-            unmask={false}
-          >
+          </div>
+          <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
             Last updated {lastUpdated}
-          </Text>
-          <Text
-            variant="small"
-            className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm"
-            unmask={false}
-          >
+          </div>
+          <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
             Version {version}
-          </Text>
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
 import { CreatorCard } from "../CreatorCard/CreatorCard";
 import { useFeaturedCreators } from "./useFeaturedCreators";
 import { Creator } from "@/app/api/__generated__/models/creator";
@@ -20,13 +19,9 @@ export const FeaturedCreators = ({
   return (
     <div className="flex w-full flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        <Text
-          variant="h4"
-          as="h2"
-          className="mb-9 font-poppins text-lg font-semibold text-neutral-800 dark:text-neutral-200"
-        >
+        <h2 className="mb-9 font-poppins text-lg font-semibold text-neutral-800 dark:text-neutral-200">
           {title}
-        </Text>
+        </h2>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           {displayedCreators.map((creator, index) => (

@@ -1,6 +1,5 @@
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
-import { Text } from "@/components/atoms/Text/Text";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
@@ -81,13 +80,9 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             {agentName}
           </h3>
           {!hideAvatar && creatorName && (
-            <Text
-              variant="body"
-              as="p"
-              className="mt-3 truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400"
-            >
+            <p className="mt-3 truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
               by {creatorName}
-            </Text>
+            </p>
           )}
         </div>
 
@@ -104,12 +99,9 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         {/* Fourth Section: Stats Row - aligned to bottom */}
         <div className="mt-5 w-full">
           <div className="flex items-center justify-between">
-            <Text
-              variant="body-medium"
-              className="text-lg font-semibold text-neutral-800 dark:text-neutral-200"
-            >
+            <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {runs.toLocaleString()} runs
-            </Text>
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
                 {rating.toFixed(1)}

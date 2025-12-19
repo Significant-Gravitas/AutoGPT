@@ -1,4 +1,3 @@
-import { Text } from "@/components/atoms/Text/Text";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
@@ -60,12 +59,9 @@ export const CreatorInfoCard = ({
         <div className="flex w-full flex-col items-start justify-start gap-3">
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex flex-col items-start justify-start gap-2.5">
-            <Text
-              variant="body-medium"
-              className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200"
-            >
+            <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
               Top categories
-            </Text>
+            </div>
             <div
               className="flex flex-wrap items-center gap-2.5"
               role="list"
@@ -90,12 +86,9 @@ export const CreatorInfoCard = ({
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex w-full flex-col items-start justify-between gap-4 sm:flex-row sm:gap-0">
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <Text
-                variant="body-medium"
-                className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200"
-              >
+              <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Average rating
-              </Text>
+              </div>
               <div className="inline-flex items-center gap-2">
                 <div className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                   {averageRating.toFixed(1)}
@@ -110,18 +103,12 @@ export const CreatorInfoCard = ({
               </div>
             </div>
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <Text
-                variant="body-medium"
-                className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200"
-              >
+              <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Number of runs
-              </Text>
-              <Text
-                variant="body-medium"
-                className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200"
-              >
+              </div>
+              <div className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                 {new Intl.NumberFormat().format(totalRuns)} runs
-              </Text>
+              </div>
             </div>
           </div>
         </div>

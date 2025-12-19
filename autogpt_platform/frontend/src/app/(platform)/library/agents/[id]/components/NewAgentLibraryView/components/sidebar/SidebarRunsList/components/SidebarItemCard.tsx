@@ -35,15 +35,10 @@ export function SidebarItemCard({
           <Text
             variant="body-medium"
             className="block w-full truncate text-ellipsis"
-            unmask={false}
           >
             {title}
           </Text>
-          <Text
-            variant="body"
-            className="leading-tight !text-zinc-500"
-            unmask={false}
-          >
+          <Text variant="body" className="leading-tight !text-zinc-500">
             {description}
           </Text>
         </div>

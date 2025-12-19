@@ -74,15 +74,10 @@ export const OutputHandler = ({
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                <Text variant="body" className="text-slate-700" unmask={false}>
+                <Text variant="body" className="text-slate-700">
                   {property?.title || key}{" "}
                 </Text>
-                <Text
-                  variant="small"
-                  as="span"
-                  className={colorClass}
-                  unmask={false}
-                >
+                <Text variant="small" as="span" className={colorClass}>
                   ({displayType})
                 </Text>
 

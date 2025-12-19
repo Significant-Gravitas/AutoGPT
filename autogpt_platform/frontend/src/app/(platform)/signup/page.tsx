@@ -150,11 +150,7 @@ export default function SignupPage() {
                   {termsError ? (
                     <div className="flex items-center gap-2">
                       <WarningOctagonIcon className="h-4 w-4 text-red-500" />
-                      <Text
-                        variant="small-medium"
-                        className="!text-red-500"
-                        unmask={false}
-                      >
+                      <Text variant="small-medium" className="!text-red-500">
                         {termsError}
                       </Text>
                     </div>

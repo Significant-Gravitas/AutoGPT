@@ -9,7 +9,6 @@ import {
   CarouselIndicator,
 } from "@/components/__legacy__/ui/carousel";
 import Link from "next/link";
-import { Text } from "@/components/atoms/Text/Text";
 import { useFeaturedSection } from "./useFeaturedSection";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { getBackgroundColor } from "./helper";
@@ -26,13 +25,9 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
 
   return (
     <section className="w-full">
-      <Text
-        variant="h3"
-        as="h2"
-        className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200"
-      >
+      <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
         Featured agents
-      </Text>
+      </h2>
 
       <Carousel
         opts={{

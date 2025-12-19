@@ -47,14 +47,12 @@ export function AgentReviewStep({
               variant="lead"
               className="line-clamp-1 text-ellipsis text-center font-semibold"
               data-testid="view-agent-name"
-              unmask={false}
             >
               {agentName}
             </Text>
             <Text
               variant="large"
               className="line-clamp-1 text-ellipsis text-center !text-neutral-500"
-              unmask={false}
             >
               {subheader}
             </Text>
@@ -83,7 +81,6 @@ export function AgentReviewStep({
             <Text
               variant="large"
               className="line-clamp-1 text-ellipsis pt-2 text-center !text-neutral-500"
-              unmask={false}
             >
               {description}
             </Text>

@@ -104,7 +104,6 @@ export function ActivityItem({ execution }: Props) {
         <Text
           variant="body-medium"
           className="max-w-[16rem] truncate text-gray-900"
-          unmask={false}
         >
           {execution.agent_name}
         </Text>
@@ -113,7 +112,7 @@ export function ActivityItem({ execution }: Props) {
       {/* Agent Message - Indented */}
       <div className="ml-7 pt-1">
         {/* Time - Indented */}
-        <Text variant="small" className="!text-zinc-500" unmask={false}>
+        <Text variant="small" className="!text-zinc-500">
           {getTimeDisplay()}
         </Text>
       </div>

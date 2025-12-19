@@ -32,7 +32,7 @@ export function ShowMoreText({
 
   if (!shouldTruncate) {
     return (
-      <Text variant={variant} className={cn(className)} unmask={false}>
+      <Text variant={variant} className={cn(className)}>
         {children}
       </Text>
     );
@@ -47,7 +47,6 @@ export function ShowMoreText({
           : "flex-start flex flex-wrap items-center",
         className,
       )}
-      unmask={false}
     >
       {displayText}
       {!isExpanded && "..."}
