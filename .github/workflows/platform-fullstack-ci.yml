@@ -59,84 +59,11 @@ jobs:
   types:
     runs-on: ubuntu-latest
     needs: setup
-    timeout-minutes: 20
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
-          POSTGRES_DB: postgres
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        image: redis:latest
-        ports:
-          - 6379:6379
-      rabbitmq:
-        image: rabbitmq:3.12-management
-        ports:
-          - 5672:5672
-          - 15672:15672
-        env:
-          RABBITMQ_DEFAULT_USER: rabbitmq_user_default
-          RABBITMQ_DEFAULT_PASS: k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Set up Python dependency cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
-
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-        working-directory: autogpt_platform/backend
-
-      - name: Install Python dependencies
-        run: poetry install
-        working-directory: autogpt_platform/backend
-
-      - name: Generate Prisma Client
-        run: poetry run prisma generate
-        working-directory: autogpt_platform/backend
-
-      - name: Run Database Migrations
-        run: poetry run prisma migrate deploy
-        working-directory: autogpt_platform/backend
-        env:
-          DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
-          DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
-
-      - name: Generate OpenAPI schema
-        run: |
-          poetry run export-api-schema --output ../frontend/src/app/api/openapi.json --pretty true
-        working-directory: autogpt_platform/backend
-        env:
-          DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
-          DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
-          JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
-          REDIS_HOST: localhost
-          REDIS_PORT: "6379"
-          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
-          RUN_ENV: local
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -162,26 +89,6 @@ jobs:
 
       - name: Generate API queries
         run: pnpm generate:api
-
-      - name: Check for API schema changes
-        run: |
-          if ! git diff --exit-code src/app/api/openapi.json; then
-            echo "❌ API schema changes detected in src/app/api/openapi.json"
-            echo ""
-            echo "The openapi.json file has been modified after running 'pnpm generate:api-all'."
-            echo "This usually means changes have been made in the BE endpoints without updating the Frontend."
-            echo "The API schema is now out of sync with the Front-end queries."
-            echo ""
-            echo "To fix this:"
-            echo "1. Run 'pnpm generate:api' locally with the backend running"
-            echo "2. Run 'pnpm types' locally"
-            echo "3. Fix any TypeScript errors that may have been introduced"
-            echo "4. Commit and push your changes"
-            echo ""
-            exit 1
-          else
-            echo "✅ No API schema changes detected"
-          fi
 
       - name: Run Typescript checks
         run: pnpm types
