@@ -1,11 +1,12 @@
 import { useState, useCallback } from "react";
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 export type PublishStep = "select" | "info" | "review";
 
 export type PublishState = {
   isOpen: boolean;
   step: PublishStep;
-  submissionData: any | null;
+  submissionData: StoreSubmission | null;
 };
 
 const defaultPublishState: PublishState = {

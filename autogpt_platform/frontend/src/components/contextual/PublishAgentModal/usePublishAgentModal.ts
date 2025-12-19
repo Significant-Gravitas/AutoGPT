@@ -8,6 +8,7 @@ import {
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
+import type { MyAgent } from "@/app/api/__generated__/models/myAgent";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -102,17 +103,20 @@ export function usePublishAgentModal({
 
     // Find the agent data
     const agent = agentsData.agents?.find(
-      (a: any) => a.agent_id === preSelectedAgentId,
+      (a: MyAgent) => a.agent_id === preSelectedAgentId,
     );
     if (!agent) return;
 
     // Find published submission data for this agent (for updates)
     const publishedSubmissionData = submissionsData.submissions
       ?.filter(
-        (s: any) =>
+        (s: StoreSubmission) =>
           s.status === "APPROVED" && s.agent_id === preSelectedAgentId,
       )
-      .sort((a: any, b: any) => b.agent_version - a.agent_version)[0];
+      .sort(
+        (a: StoreSubmission, b: StoreSubmission) =>
+          b.agent_version - a.agent_version,
+      )[0];
 
     // Populate initial data (same logic as handleNextFromSelect)
     const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
@@ -189,7 +193,7 @@ export function usePublishAgentModal({
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
-    publishedSubmissionData?: any,
+    publishedSubmissionData?: StoreSubmission | null,
   ) {
     // Pre-populate with published data if this is an update, otherwise use agent data
     const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData

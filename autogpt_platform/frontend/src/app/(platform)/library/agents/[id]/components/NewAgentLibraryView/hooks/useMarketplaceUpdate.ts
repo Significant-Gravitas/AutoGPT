@@ -11,6 +11,7 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import { okData } from "@/app/api/helpers";
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import * as React from "react";
 import { useState } from "react";
 
@@ -90,7 +91,9 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     const latestMarketplaceVersion =
       storeAgent.agentGraphVersions?.length > 0
         ? Math.max(
-            ...storeAgent.agentGraphVersions.map((v: any) => parseInt(v, 10)),
+            ...storeAgent.agentGraphVersions.map((v: string) =>
+              parseInt(v, 10),
+            ),
           )
         : undefined;
 
@@ -104,7 +107,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     const hasPendingSubmissionForCurrentVersion =
       isUserCreator &&
       submissionsResponse?.submissions?.some(
-        (submission: any) =>
+        (submission: StoreSubmission) =>
           submission.agent_id === agent.graph_id &&
           submission.agent_version === agent.graph_version &&
           submission.status === "PENDING",

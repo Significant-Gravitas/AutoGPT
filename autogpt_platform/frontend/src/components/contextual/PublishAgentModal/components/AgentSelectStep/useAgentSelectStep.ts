@@ -4,6 +4,8 @@ import {
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
+import type { MyAgent } from "@/app/api/__generated__/models/myAgent";
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 export interface Agent {
   name: string;
@@ -27,7 +29,7 @@ interface UseAgentSelectStepProps {
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
-    publishedSubmissionData?: any, // For pre-filling updates
+    publishedSubmissionData?: StoreSubmission | null, // For pre-filling updates
   ) => void;
 }
 
@@ -66,15 +68,15 @@ export function useAgentSelectStep({
     }
 
     return agentsData
-      .map((agent: any): Agent | null => {
+      .map((agent: MyAgent): Agent | null => {
         // Find the highest published agent_version for this agent from approved submissions
         const publishedVersion = submissionsData
           .filter(
-            (s: any) =>
+            (s: StoreSubmission) =>
               s.status === "APPROVED" && s.agent_id === agent.agent_id,
           )
           .reduce(
-            (max: number | undefined, s: any) =>
+            (max: number | undefined, s: StoreSubmission) =>
               max === undefined || s.agent_version > max
                 ? s.agent_version
                 : max,
@@ -101,9 +103,9 @@ export function useAgentSelectStep({
           isMarketplaceUpdate,
         };
       })
-      .filter((agent: any): agent is Agent => agent !== null)
+      .filter((agent: Agent | null): agent is Agent => agent !== null)
       .sort(
-        (a: any, b: any) =>
+        (a: Agent, b: Agent) =>
           new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime(),
       );
   }, [myAgents, mySubmissions]);
@@ -114,10 +116,13 @@ export function useAgentSelectStep({
 
     const approvedSubmissions = submissionsData
       .filter(
-        (submission: any) =>
+        (submission: StoreSubmission) =>
           submission.agent_id === agentId && submission.status === "APPROVED",
       )
-      .sort((a: any, b: any) => b.agent_version - a.agent_version);
+      .sort(
+        (a: StoreSubmission, b: StoreSubmission) =>
+          b.agent_version - a.agent_version,
+      );
 
     return approvedSubmissions[0] || null;
   };
@@ -163,9 +168,12 @@ export function useAgentSelectStep({
     const submissionsData = (okData(mySubmissions) as any)?.submissions || [];
 
     return submissionsData
-      .filter((s: any) => s.status === "APPROVED" && s.agent_id === agentId)
+      .filter(
+        (s: StoreSubmission) =>
+          s.status === "APPROVED" && s.agent_id === agentId,
+      )
       .reduce(
-        (max: number | undefined, s: any) =>
+        (max: number | undefined, s: StoreSubmission) =>
           max === undefined || s.agent_version > max ? s.agent_version : max,
         undefined,
       );

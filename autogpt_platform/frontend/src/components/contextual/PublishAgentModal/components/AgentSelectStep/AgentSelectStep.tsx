@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
+import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -22,7 +23,7 @@ interface Props {
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
-    publishedSubmissionData?: any,
+    publishedSubmissionData?: StoreSubmission | null,
   ) => void;
   onOpenBuilder: () => void;
 }
@@ -173,7 +174,7 @@ export function AgentSelectStep({
                                   publishedVersion && (
                                     <Text
                                       variant="small"
-                                      className="block text-xs !text-neutral-500"
+                                      className="block !text-neutral-500"
                                     >
                                       v{publishedVersion} → v{agent.version}
                                     </Text>
