@@ -27,17 +27,25 @@ export function MarketplaceBanners({
       return (
         <div className="mb-6 rounded-lg bg-gray-50 p-4 dark:bg-gray-900">
           <div className="flex flex-col gap-3">
-            <Text variant="body" className="text-gray-700 dark:text-gray-300">
-              You should update your agent in order to get the latest / best
-              results
-            </Text>
+            <div>
+              <Text
+                variant="large-medium"
+                className="mb-2 text-neutral-900 dark:text-neutral-100"
+              >
+                Update available
+              </Text>
+              <Text variant="body" className="text-gray-700 dark:text-gray-300">
+                You should update your agent in order to get the latest / best
+                results
+              </Text>
+            </div>
             {onUpdate && (
               <div className="flex justify-start">
                 <Button
                   size="small"
                   onClick={onUpdate}
                   disabled={isUpdating}
-                  className="bg-gray-700 text-white hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700"
+                  className="bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-700 dark:hover:bg-neutral-800"
                 >
                   {isUpdating ? "Updating..." : "Update agent"}
                 </Button>
@@ -55,16 +63,24 @@ export function MarketplaceBanners({
       return (
         <div className="mb-6 rounded-lg bg-gray-50 p-4 dark:bg-gray-900">
           <div className="flex flex-col gap-3">
-            <Text variant="body" className="text-gray-700 dark:text-gray-300">
-              You&apos;ve made changes to this agent that aren&apos;t published
-              yet. Would you like to publish the latest version?
-            </Text>
+            <div>
+              <Text
+                variant="large-medium"
+                className="mb-2 text-neutral-900 dark:text-neutral-100"
+              >
+                Unpublished changes
+              </Text>
+              <Text variant="body" className="text-gray-700 dark:text-gray-300">
+                You&apos;ve made changes to this agent that aren&apos;t
+                published yet. Would you like to publish the latest version?
+              </Text>
+            </div>
             {onPublish && (
               <div className="flex justify-start">
                 <Button
                   size="small"
                   onClick={onPublish}
-                  className="bg-gray-700 text-white hover:bg-gray-800 dark:bg-gray-600 dark:hover:bg-gray-700"
+                  className="bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-700 dark:hover:bg-neutral-800"
                 >
                   Publish changes
                 </Button>

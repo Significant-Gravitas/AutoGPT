@@ -23,7 +23,38 @@ export function useThumbnailImages({
 
   const [isGenerating, setIsGenerating] = useState(false);
   const thumbnailsContainerRef = useRef<HTMLDivElement | null>(null);
+  const prevInitialImagesRef = useRef<string[]>([]);
+  const prevInitialSelectedRef = useRef<string | null>(null);
   const { toast } = useToast();
+
+  // Update images when initialImages prop changes
+  useEffect(() => {
+    const hasInitialImagesChanged =
+      initialImages.length !== prevInitialImagesRef.current.length ||
+      initialImages.some(
+        (img, index) => img !== prevInitialImagesRef.current[index],
+      );
+
+    const hasInitialSelectedChanged =
+      initialSelectedImage !== prevInitialSelectedRef.current;
+
+    if (
+      initialImages.length > 0 &&
+      (hasInitialImagesChanged || hasInitialSelectedChanged)
+    ) {
+      setImages(initialImages);
+      // Set selectedImage if initialSelectedImage is provided
+      if (initialSelectedImage) {
+        setSelectedImage(initialSelectedImage);
+      } else {
+        setSelectedImage(initialImages[0]);
+      }
+
+      // Update refs
+      prevInitialImagesRef.current = initialImages;
+      prevInitialSelectedRef.current = initialSelectedImage;
+    }
+  }, [initialImages, initialSelectedImage]);
 
   // Notify parent when images change
   useEffect(() => {
