@@ -14,7 +14,7 @@ import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission as APIPermission
@@ -22,7 +22,12 @@ from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
-from prisma.types import OAuthApplicationUpdateInput
+from prisma.types import (
+    OAuthAccessTokenCreateInput,
+    OAuthApplicationUpdateInput,
+    OAuthAuthorizationCodeCreateInput,
+    OAuthRefreshTokenCreateInput,
+)
 from pydantic import BaseModel, Field, SecretStr
 
 from .base import APIAuthorizationInfo
@@ -359,17 +364,20 @@ async def create_authorization_code(
     expires_at = now + AUTHORIZATION_CODE_TTL
 
     saved_code = await PrismaOAuthAuthorizationCode.prisma().create(
-        data={
-            "id": str(uuid.uuid4()),
-            "code": code,
-            "expiresAt": expires_at,
-            "applicationId": application_id,
-            "userId": user_id,
-            "scopes": [s for s in scopes],
-            "redirectUri": redirect_uri,
-            "codeChallenge": code_challenge,
-            "codeChallengeMethod": code_challenge_method,
-        }
+        data=cast(
+            OAuthAuthorizationCodeCreateInput,
+            {
+                "id": str(uuid.uuid4()),
+                "code": code,
+                "expiresAt": expires_at,
+                "applicationId": application_id,
+                "userId": user_id,
+                "scopes": [s for s in scopes],
+                "redirectUri": redirect_uri,
+                "codeChallenge": code_challenge,
+                "codeChallengeMethod": code_challenge_method,
+            },
+        )
     )
 
     return OAuthAuthorizationCodeInfo.from_db(saved_code)
@@ -490,14 +498,17 @@ async def create_access_token(
     expires_at = now + ACCESS_TOKEN_TTL
 
     saved_token = await PrismaOAuthAccessToken.prisma().create(
-        data={
-            "id": str(uuid.uuid4()),
-            "token": token_hash,  # SHA256 hash for direct lookup
-            "expiresAt": expires_at,
-            "applicationId": application_id,
-            "userId": user_id,
-            "scopes": [s for s in scopes],
-        }
+        data=cast(
+            OAuthAccessTokenCreateInput,
+            {
+                "id": str(uuid.uuid4()),
+                "token": token_hash,  # SHA256 hash for direct lookup
+                "expiresAt": expires_at,
+                "applicationId": application_id,
+                "userId": user_id,
+                "scopes": [s for s in scopes],
+            },
+        )
     )
 
     return OAuthAccessToken.from_db(saved_token, plaintext_token=plaintext_token)
@@ -607,14 +618,17 @@ async def create_refresh_token(
     expires_at = now + REFRESH_TOKEN_TTL
 
     saved_token = await PrismaOAuthRefreshToken.prisma().create(
-        data={
-            "id": str(uuid.uuid4()),
-            "token": token_hash,  # SHA256 hash for direct lookup
-            "expiresAt": expires_at,
-            "applicationId": application_id,
-            "userId": user_id,
-            "scopes": [s for s in scopes],
-        }
+        data=cast(
+            OAuthRefreshTokenCreateInput,
+            {
+                "id": str(uuid.uuid4()),
+                "token": token_hash,  # SHA256 hash for direct lookup
+                "expiresAt": expires_at,
+                "applicationId": application_id,
+                "userId": user_id,
+                "scopes": [s for s in scopes],
+            },
+        )
     )
 
     return OAuthRefreshToken.from_db(saved_token, plaintext_token=plaintext_token)

@@ -19,6 +19,7 @@ images: {
 import asyncio
 import random
 from datetime import datetime
+from typing import cast
 
 import prisma.enums
 import pytest
@@ -30,13 +31,19 @@ from prisma.types import (
     AgentGraphCreateInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
+    AgentPresetCreateInput,
     AnalyticsDetailsCreateInput,
     AnalyticsMetricsCreateInput,
+    APIKeyCreateInput,
     CreditTransactionCreateInput,
     IntegrationWebhookCreateInput,
+    LibraryAgentCreateInput,
     ProfileCreateInput,
+    StoreListingCreateInput,
     StoreListingReviewCreateInput,
+    StoreListingVersionCreateInput,
     UserCreateInput,
+    UserOnboardingCreateInput,
 )
 
 faker = Faker()
@@ -172,14 +179,17 @@ async def main():
         for _ in range(num_presets):  # Create 1 AgentPreset per user
             graph = random.choice(agent_graphs)
             preset = await db.agentpreset.create(
-                data={
-                    "name": faker.sentence(nb_words=3),
-                    "description": faker.text(max_nb_chars=200),
-                    "userId": user.id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "isActive": True,
-                }
+                data=cast(
+                    AgentPresetCreateInput,
+                    {
+                        "name": faker.sentence(nb_words=3),
+                        "description": faker.text(max_nb_chars=200),
+                        "userId": user.id,
+                        "agentGraphId": graph.id,
+                        "agentGraphVersion": graph.version,
+                        "isActive": True,
+                    },
+                )
             )
             agent_presets.append(preset)
 
@@ -220,18 +230,21 @@ async def main():
             )
 
             library_agent = await db.libraryagent.create(
-                data={
-                    "userId": user.id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "creatorId": creator_profile.id if creator_profile else None,
-                    "imageUrl": get_image() if random.random() < 0.5 else None,
-                    "useGraphIsActiveVersion": random.choice([True, False]),
-                    "isFavorite": random.choice([True, False]),
-                    "isCreatedByUser": random.choice([True, False]),
-                    "isArchived": random.choice([True, False]),
-                    "isDeleted": random.choice([True, False]),
-                }
+                data=cast(
+                    LibraryAgentCreateInput,
+                    {
+                        "userId": user.id,
+                        "agentGraphId": graph.id,
+                        "agentGraphVersion": graph.version,
+                        "creatorId": creator_profile.id if creator_profile else None,
+                        "imageUrl": get_image() if random.random() < 0.5 else None,
+                        "useGraphIsActiveVersion": random.choice([True, False]),
+                        "isFavorite": random.choice([True, False]),
+                        "isCreatedByUser": random.choice([True, False]),
+                        "isArchived": random.choice([True, False]),
+                        "isDeleted": random.choice([True, False]),
+                    },
+                )
             )
             library_agents.append(library_agent)
 
@@ -392,13 +405,16 @@ async def main():
         user = random.choice(users)
         slug = faker.slug()
         listing = await db.storelisting.create(
-            data={
-                "agentGraphId": graph.id,
-                "agentGraphVersion": graph.version,
-                "owningUserId": user.id,
-                "hasApprovedVersion": random.choice([True, False]),
-                "slug": slug,
-            }
+            data=cast(
+                StoreListingCreateInput,
+                {
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "owningUserId": user.id,
+                    "hasApprovedVersion": random.choice([True, False]),
+                    "slug": slug,
+                },
+            )
         )
         store_listings.append(listing)
 
@@ -408,26 +424,29 @@ async def main():
     for listing in store_listings:
         graph = [g for g in agent_graphs if g.id == listing.agentGraphId][0]
         version = await db.storelistingversion.create(
-            data={
-                "agentGraphId": graph.id,
-                "agentGraphVersion": graph.version,
-                "name": graph.name or faker.sentence(nb_words=3),
-                "subHeading": faker.sentence(),
-                "videoUrl": get_video_url() if random.random() < 0.3 else None,
-                "imageUrls": [get_image() for _ in range(3)],
-                "description": faker.text(),
-                "categories": [faker.word() for _ in range(3)],
-                "isFeatured": random.choice([True, False]),
-                "isAvailable": True,
-                "storeListingId": listing.id,
-                "submissionStatus": random.choice(
-                    [
-                        prisma.enums.SubmissionStatus.PENDING,
-                        prisma.enums.SubmissionStatus.APPROVED,
-                        prisma.enums.SubmissionStatus.REJECTED,
-                    ]
-                ),
-            }
+            data=cast(
+                StoreListingVersionCreateInput,
+                {
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "name": graph.name or faker.sentence(nb_words=3),
+                    "subHeading": faker.sentence(),
+                    "videoUrl": get_video_url() if random.random() < 0.3 else None,
+                    "imageUrls": [get_image() for _ in range(3)],
+                    "description": faker.text(),
+                    "categories": [faker.word() for _ in range(3)],
+                    "isFeatured": random.choice([True, False]),
+                    "isAvailable": True,
+                    "storeListingId": listing.id,
+                    "submissionStatus": random.choice(
+                        [
+                            prisma.enums.SubmissionStatus.PENDING,
+                            prisma.enums.SubmissionStatus.APPROVED,
+                            prisma.enums.SubmissionStatus.REJECTED,
+                        ]
+                    ),
+                },
+            )
         )
         store_listing_versions.append(version)
 
@@ -469,51 +488,64 @@ async def main():
 
         try:
             await db.useronboarding.create(
-                data={
-                    "userId": user.id,
-                    "completedSteps": completed_steps,
-                    "walletShown": random.choice([True, False]),
-                    "notified": (
-                        random.sample(completed_steps, k=min(3, len(completed_steps)))
-                        if completed_steps
-                        else []
-                    ),
-                    "rewardedFor": (
-                        random.sample(completed_steps, k=min(2, len(completed_steps)))
-                        if completed_steps
-                        else []
-                    ),
-                    "usageReason": (
-                        random.choice(["personal", "business", "research", "learning"])
-                        if random.random() < 0.7
-                        else None
-                    ),
-                    "integrations": random.sample(
-                        ["github", "google", "discord", "slack"], k=random.randint(0, 2)
-                    ),
-                    "otherIntegrations": (
-                        faker.word() if random.random() < 0.2 else None
-                    ),
-                    "selectedStoreListingVersionId": (
-                        random.choice(store_listing_versions).id
-                        if store_listing_versions and random.random() < 0.5
-                        else None
-                    ),
-                    "onboardingAgentExecutionId": (
-                        random.choice(agent_graph_executions).id
-                        if agent_graph_executions and random.random() < 0.3
-                        else None
-                    ),
-                    "agentRuns": random.randint(0, 10),
-                }
+                data=cast(
+                    UserOnboardingCreateInput,
+                    {
+                        "userId": user.id,
+                        "completedSteps": completed_steps,
+                        "walletShown": random.choice([True, False]),
+                        "notified": (
+                            random.sample(
+                                completed_steps, k=min(3, len(completed_steps))
+                            )
+                            if completed_steps
+                            else []
+                        ),
+                        "rewardedFor": (
+                            random.sample(
+                                completed_steps, k=min(2, len(completed_steps))
+                            )
+                            if completed_steps
+                            else []
+                        ),
+                        "usageReason": (
+                            random.choice(
+                                ["personal", "business", "research", "learning"]
+                            )
+                            if random.random() < 0.7
+                            else None
+                        ),
+                        "integrations": random.sample(
+                            ["github", "google", "discord", "slack"],
+                            k=random.randint(0, 2),
+                        ),
+                        "otherIntegrations": (
+                            faker.word() if random.random() < 0.2 else None
+                        ),
+                        "selectedStoreListingVersionId": (
+                            random.choice(store_listing_versions).id
+                            if store_listing_versions and random.random() < 0.5
+                            else None
+                        ),
+                        "onboardingAgentExecutionId": (
+                            random.choice(agent_graph_executions).id
+                            if agent_graph_executions and random.random() < 0.3
+                            else None
+                        ),
+                        "agentRuns": random.randint(0, 10),
+                    },
+                )
             )
         except Exception as e:
             print(f"Error creating onboarding for user {user.id}: {e}")
             # Try simpler version
             await db.useronboarding.create(
-                data={
-                    "userId": user.id,
-                }
+                data=cast(
+                    UserOnboardingCreateInput,
+                    {
+                        "userId": user.id,
+                    },
+                )
             )
 
     # Insert IntegrationWebhooks for some users
@@ -544,20 +576,23 @@ async def main():
     for user in users:
         api_key = APIKeySmith().generate_key()
         await db.apikey.create(
-            data={
-                "name": faker.word(),
-                "head": api_key.head,
-                "tail": api_key.tail,
-                "hash": api_key.hash,
-                "salt": api_key.salt,
-                "status": prisma.enums.APIKeyStatus.ACTIVE,
-                "permissions": [
-                    prisma.enums.APIKeyPermission.EXECUTE_GRAPH,
-                    prisma.enums.APIKeyPermission.READ_GRAPH,
-                ],
-                "description": faker.text(),
-                "userId": user.id,
-            }
+            data=cast(
+                APIKeyCreateInput,
+                {
+                    "name": faker.word(),
+                    "head": api_key.head,
+                    "tail": api_key.tail,
+                    "hash": api_key.hash,
+                    "salt": api_key.salt,
+                    "status": prisma.enums.APIKeyStatus.ACTIVE,
+                    "permissions": [
+                        prisma.enums.APIKeyPermission.EXECUTE_GRAPH,
+                        prisma.enums.APIKeyPermission.READ_GRAPH,
+                    ],
+                    "description": faker.text(),
+                    "userId": user.id,
+                },
+            )
         )
 
     # Refresh materialized views

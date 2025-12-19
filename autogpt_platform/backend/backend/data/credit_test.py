@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 import pytest
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, UserBalance
+from prisma.types import CreditTransactionCreateInput, UserBalanceUpsertInput
 
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.block import get_block
@@ -23,10 +25,13 @@ async def disable_test_user_transactions():
     old_date = datetime.now(timezone.utc) - timedelta(days=35)  # More than a month ago
     await UserBalance.prisma().upsert(
         where={"userId": DEFAULT_USER_ID},
-        data={
-            "create": {"userId": DEFAULT_USER_ID, "balance": 0},
-            "update": {"balance": 0, "updatedAt": old_date},
-        },
+        data=cast(
+            UserBalanceUpsertInput,
+            {
+                "create": {"userId": DEFAULT_USER_ID, "balance": 0},
+                "update": {"balance": 0, "updatedAt": old_date},
+            },
+        ),
     )
 
 
@@ -140,23 +145,29 @@ async def test_block_credit_reset(server: SpinTestServer):
 
         # Manually create a transaction with month 1 timestamp to establish history
         await CreditTransaction.prisma().create(
-            data={
-                "userId": DEFAULT_USER_ID,
-                "amount": 100,
-                "type": CreditTransactionType.TOP_UP,
-                "runningBalance": 1100,
-                "isActive": True,
-                "createdAt": month1,  # Set specific timestamp
-            }
+            data=cast(
+                CreditTransactionCreateInput,
+                {
+                    "userId": DEFAULT_USER_ID,
+                    "amount": 100,
+                    "type": CreditTransactionType.TOP_UP,
+                    "runningBalance": 1100,
+                    "isActive": True,
+                    "createdAt": month1,  # Set specific timestamp
+                },
+            )
         )
 
         # Update user balance to match
         await UserBalance.prisma().upsert(
             where={"userId": DEFAULT_USER_ID},
-            data={
-                "create": {"userId": DEFAULT_USER_ID, "balance": 1100},
-                "update": {"balance": 1100},
-            },
+            data=cast(
+                UserBalanceUpsertInput,
+                {
+                    "create": {"userId": DEFAULT_USER_ID, "balance": 1100},
+                    "update": {"balance": 1100},
+                },
+            ),
         )
 
         # Now test month 2 behavior
@@ -175,14 +186,17 @@ async def test_block_credit_reset(server: SpinTestServer):
 
         # Create a month 2 transaction to update the last transaction time
         await CreditTransaction.prisma().create(
-            data={
-                "userId": DEFAULT_USER_ID,
-                "amount": -700,  # Spent 700 to get to 400
-                "type": CreditTransactionType.USAGE,
-                "runningBalance": 400,
-                "isActive": True,
-                "createdAt": month2,
-            }
+            data=cast(
+                CreditTransactionCreateInput,
+                {
+                    "userId": DEFAULT_USER_ID,
+                    "amount": -700,  # Spent 700 to get to 400
+                    "type": CreditTransactionType.USAGE,
+                    "runningBalance": 400,
+                    "isActive": True,
+                    "createdAt": month2,
+                },
+            )
         )
 
         # Move to month 3

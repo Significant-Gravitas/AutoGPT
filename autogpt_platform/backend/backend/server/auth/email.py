@@ -74,7 +74,7 @@ class AuthEmailSender:
             return False
 
         try:
-            self.postmark.emails.send(
+            self.postmark.emails.send(  # type: ignore[attr-defined]
                 From=settings.config.postmark_sender_email,
                 To=to_email,
                 Subject=subject,

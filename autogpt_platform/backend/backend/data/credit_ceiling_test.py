@@ -5,12 +5,14 @@ This test was added to cover a previously untested code path that could lead to
 incorrect balance capping behavior.
 """
 
+from typing import cast
 from uuid import uuid4
 
 import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
+from prisma.types import UserBalanceUpsertInput, UserCreateInput
 
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
@@ -21,11 +23,14 @@ async def create_test_user(user_id: str) -> None:
     """Create a test user for ceiling tests."""
     try:
         await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"test-{user_id}@example.com",
-                "name": f"Test User {user_id[:8]}",
-            }
+            data=cast(
+                UserCreateInput,
+                {
+                    "id": user_id,
+                    "email": f"test-{user_id}@example.com",
+                    "name": f"Test User {user_id[:8]}",
+                },
+            )
         )
     except UniqueViolationError:
         # User already exists, continue
@@ -33,7 +38,10 @@ async def create_test_user(user_id: str) -> None:
 
     await UserBalance.prisma().upsert(
         where={"userId": user_id},
-        data={"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        data=cast(
+            UserBalanceUpsertInput,
+            {"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        ),
     )
 
 

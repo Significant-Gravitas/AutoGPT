@@ -5,7 +5,7 @@ Core authentication service for password verification and token management.
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 
 import bcrypt
 from autogpt_libs.auth.config import get_settings
@@ -15,6 +15,13 @@ from autogpt_libs.auth.jwt_utils import (
     hash_token,
 )
 from prisma.models import User as PrismaUser
+from prisma.types import (
+    EmailVerificationTokenCreateInput,
+    PasswordResetTokenCreateInput,
+    ProfileCreateInput,
+    RefreshTokenCreateInput,
+    UserCreateInput,
+)
 
 from backend.data.db import prisma
 
@@ -78,25 +85,31 @@ class AuthService:
             counter += 1
 
         user = await prisma.user.create(
-            data={
-                "email": email,
-                "passwordHash": password_hash,
-                "name": name,
-                "emailVerified": False,
-                "role": "authenticated",
-            }
+            data=cast(
+                UserCreateInput,
+                {
+                    "email": email,
+                    "passwordHash": password_hash,
+                    "name": name,
+                    "emailVerified": False,
+                    "role": "authenticated",
+                },
+            )
         )
 
         # Create profile for the user
         display_name = name or base_username
         await prisma.profile.create(
-            data={
-                "userId": user.id,
-                "name": display_name,
-                "username": username,
-                "description": "",
-                "links": [],
-            }
+            data=cast(
+                ProfileCreateInput,
+                {
+                    "userId": user.id,
+                    "name": display_name,
+                    "username": username,
+                    "description": "",
+                    "links": [],
+                },
+            )
         )
 
         logger.info(f"Registered new user: {user.id} with profile username: {username}")
@@ -154,11 +167,14 @@ class AuthService:
         )
 
         await prisma.refreshtoken.create(
-            data={
-                "token": hashed_refresh_token,
-                "userId": user.id,
-                "expiresAt": expires_at,
-            }
+            data=cast(
+                RefreshTokenCreateInput,
+                {
+                    "token": hashed_refresh_token,
+                    "userId": user.id,
+                    "expiresAt": expires_at,
+                },
+            )
         )
 
         logger.debug(f"Created tokens for user {user.id}")
@@ -305,25 +321,31 @@ class AuthService:
             counter += 1
 
         user = await prisma.user.create(
-            data={
-                "email": email,
-                "googleId": google_id,
-                "name": name,
-                "emailVerified": email_verified,
-                "role": "authenticated",
-            }
+            data=cast(
+                UserCreateInput,
+                {
+                    "email": email,
+                    "googleId": google_id,
+                    "name": name,
+                    "emailVerified": email_verified,
+                    "role": "authenticated",
+                },
+            )
         )
 
         # Create profile for the user
         display_name = name or base_username
         await prisma.profile.create(
-            data={
-                "userId": user.id,
-                "name": display_name,
-                "username": username,
-                "description": "",
-                "links": [],
-            }
+            data=cast(
+                ProfileCreateInput,
+                {
+                    "userId": user.id,
+                    "name": display_name,
+                    "username": username,
+                    "description": "",
+                    "links": [],
+                },
+            )
         )
 
         logger.info(
@@ -342,11 +364,14 @@ class AuthService:
         expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
 
         await prisma.passwordresettoken.create(
-            data={
-                "token": hashed_token,
-                "userId": user_id,
-                "expiresAt": expires_at,
-            }
+            data=cast(
+                PasswordResetTokenCreateInput,
+                {
+                    "token": hashed_token,
+                    "userId": user_id,
+                    "expiresAt": expires_at,
+                },
+            )
         )
 
         return raw_token
@@ -362,11 +387,14 @@ class AuthService:
         expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
         await prisma.emailverificationtoken.create(
-            data={
-                "token": hashed_token,
-                "userId": user_id,
-                "expiresAt": expires_at,
-            }
+            data=cast(
+                EmailVerificationTokenCreateInput,
+                {
+                    "token": hashed_token,
+                    "userId": user_id,
+                    "expiresAt": expires_at,
+                },
+            )
         )
 
         return raw_token

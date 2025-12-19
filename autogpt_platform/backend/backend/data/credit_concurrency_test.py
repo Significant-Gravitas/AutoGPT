@@ -7,6 +7,7 @@ without race conditions, deadlocks, or inconsistent state.
 
 import asyncio
 import random
+from typing import cast
 from uuid import uuid4
 
 import prisma.enums
@@ -14,6 +15,7 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
+from prisma.types import UserBalanceUpsertInput, UserCreateInput
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
 from backend.util.exceptions import InsufficientBalanceError
@@ -28,11 +30,14 @@ async def create_test_user(user_id: str) -> None:
     """Create a test user with initial balance."""
     try:
         await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"test-{user_id}@example.com",
-                "name": f"Test User {user_id[:8]}",
-            }
+            data=cast(
+                UserCreateInput,
+                {
+                    "id": user_id,
+                    "email": f"test-{user_id}@example.com",
+                    "name": f"Test User {user_id[:8]}",
+                },
+            )
         )
     except UniqueViolationError:
         # User already exists, continue
@@ -41,7 +46,10 @@ async def create_test_user(user_id: str) -> None:
     # Ensure UserBalance record exists
     await UserBalance.prisma().upsert(
         where={"userId": user_id},
-        data={"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        data=cast(
+            UserBalanceUpsertInput,
+            {"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        ),
     )
 
 
@@ -342,10 +350,13 @@ async def test_integer_overflow_protection(server: SpinTestServer):
         # First, set balance near max
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": max_int - 100},
-                "update": {"balance": max_int - 100},
-            },
+            data=cast(
+                UserBalanceUpsertInput,
+                {
+                    "create": {"userId": user_id, "balance": max_int - 100},
+                    "update": {"balance": max_int - 100},
+                },
+            ),
         )
 
         # Try to add more than possible - should clamp to POSTGRES_INT_MAX

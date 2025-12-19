@@ -19,15 +19,15 @@ images: {
 
 import asyncio
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 from faker import Faker
+from prisma.types import AgentBlockCreateInput
 
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
-from backend.data.user import get_or_create_user
 
 # Import API functions from the backend
 from backend.server.auth.service import AuthService
@@ -182,12 +182,15 @@ class TestDataCreator:
             for block in blocks_to_create:
                 try:
                     await prisma.agentblock.create(
-                        data={
-                            "id": block.id,
-                            "name": block.name,
-                            "inputSchema": "{}",
-                            "outputSchema": "{}",
-                        }
+                        data=cast(
+                            AgentBlockCreateInput,
+                            {
+                                "id": block.id,
+                                "name": block.name,
+                                "inputSchema": "{}",
+                                "outputSchema": "{}",
+                            },
+                        )
                     )
                 except Exception as e:
                     print(f"Error creating block {block.name}: {e}")
