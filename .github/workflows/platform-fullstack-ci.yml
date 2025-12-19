@@ -127,7 +127,7 @@ jobs:
 
       - name: Generate OpenAPI schema
         run: |
-          poetry run export-api-schema --output ../frontend/src/app/api/openapi.json --pretty
+          poetry run export-api-schema --output ../frontend/src/app/api/openapi.json --pretty true
         working-directory: autogpt_platform/backend
         env:
           DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
