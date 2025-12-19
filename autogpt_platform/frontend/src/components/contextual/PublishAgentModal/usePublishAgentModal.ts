@@ -151,10 +151,10 @@ export function usePublishAgentModal({
 
     // Update the state with the submission data if this is an update
     if (publishedSubmissionData) {
-      updateState({
-        ...currentState,
+      setCurrentState((prevState) => ({
+        ...prevState,
         submissionData: publishedSubmissionData,
-      });
+      }));
     }
   }, [
     targetState,
