@@ -11,13 +11,7 @@ import type { ChangelogEntry } from "@/app/api/__generated__/models/changelogEnt
 import { useAgentInfo } from "./useAgentInfo";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { Text } from "@/components/atoms/Text/Text";
-import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import * as React from "react";
-import {
-  getLatestMarketplaceVersion,
-  isUserCreator as checkIsUserCreator,
-  calculateUpdateStatus,
-} from "@/components/contextual/marketplaceHelpers";
 
 interface AgentInfoProps {
   user: User | null;
@@ -61,9 +55,6 @@ export const AgentInfo = ({
     isAddingAgentToLibrary,
   } = useAgentInfo({ storeListingVersionId });
 
-  // Get current user for update detection
-  const currentUser = useSupabaseStore((state) => state.user);
-
   // State for expanding version list - start with 3, then show 3 more each time
   const [visibleVersionCount, setVisibleVersionCount] = React.useState(3);
 
@@ -81,23 +72,6 @@ export const AgentInfo = ({
 
   // Calculate update information using simple helper functions
   const storeData = okData<StoreAgentDetails>(storeAgentData);
-  const latestMarketplaceVersion = getLatestMarketplaceVersion(
-    storeData?.agentGraphVersions,
-  );
-  const currentVersion = parseInt(version, 10);
-  const isCreator = checkIsUserCreator(creator, currentUser);
-  const updateStatus = calculateUpdateStatus({
-    latestMarketplaceVersion,
-    currentVersion,
-    isUserCreator: isCreator,
-    isAgentAddedToLibrary,
-  });
-
-  const updateInfo = {
-    ...updateStatus,
-    latestVersion: latestMarketplaceVersion,
-    isUserCreator: isCreator,
-  };
 
   // Process version data for display - use store listing versions (not agentGraphVersions)
   const allVersions = storeData?.versions
