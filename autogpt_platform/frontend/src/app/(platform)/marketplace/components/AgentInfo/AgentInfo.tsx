@@ -57,6 +57,9 @@ export const AgentInfo = ({
   // Get current user for update detection
   const currentUser = useSupabaseStore((state) => state.user);
 
+  // State for expanding version list - start with 3, then show 3 more each time
+  const [visibleVersionCount, setVisibleVersionCount] = React.useState(3);
+
   // Get store agent data for version history
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
     creatorSlug || "",
@@ -116,18 +119,34 @@ export const AgentInfo = ({
     };
   }, [currentUser, storeAgentData, isAgentAddedToLibrary, version, creator]);
 
-  // Process version data for display - limit to latest 3 versions for changelog format
-  const agentVersions =
-    storeAgentData?.status === 200 && storeAgentData.data.agentGraphVersions
-      ? storeAgentData.data.agentGraphVersions
-          .map((versionStr: string) => parseInt(versionStr, 10))
-          .sort((a: number, b: number) => b - a)
-          .slice(0, 3) // Only show latest 3 versions for detailed changelog
-          .map((versionNum: number) => ({
-            version: versionNum,
-            isCurrentVersion: versionNum.toString() === version,
-          }))
-      : [];
+  // Process version data for display
+  const { agentVersions, hasMoreVersions } = React.useMemo(() => {
+    if (
+      storeAgentData?.status !== 200 ||
+      !storeAgentData.data.agentGraphVersions
+    ) {
+      return {
+        agentVersions: [],
+        hasMoreVersions: false,
+      };
+    }
+
+    const allVersions = storeAgentData.data.agentGraphVersions
+      .map((versionStr: string) => parseInt(versionStr, 10))
+      .sort((a: number, b: number) => b - a)
+      .map((versionNum: number) => ({
+        version: versionNum,
+        isCurrentVersion: versionNum.toString() === version,
+      }));
+
+    const visibleVersions = allVersions.slice(0, visibleVersionCount);
+    const hasMoreVersions = allVersions.length > visibleVersionCount;
+
+    return {
+      agentVersions: visibleVersions,
+      hasMoreVersions,
+    };
+  }, [storeAgentData, version, visibleVersionCount]);
 
   // Generate sample changelog data for versions
   const getVersionChangelog = (version: number) => {
@@ -373,14 +392,29 @@ export const AgentInfo = ({
           {agentVersions.length > 0 ? (
             <div className="mt-4">
               {agentVersions.map(renderVersionItem)}
-              {storeAgentData?.status === 200 &&
-                storeAgentData.data.agentGraphVersions &&
-                storeAgentData.data.agentGraphVersions.length > 3 && (
-                  <div className="py-1 text-xs text-neutral-500 dark:text-neutral-400">
-                    ... and {storeAgentData.data.agentGraphVersions.length - 3}{" "}
-                    more versions
-                  </div>
-                )}
+              {hasMoreVersions && (
+                <button
+                  onClick={() => setVisibleVersionCount((prev) => prev + 3)}
+                  className="mt-2 flex items-center gap-1 text-sm font-medium text-neutral-900 hover:text-neutral-700 dark:text-neutral-100 dark:hover:text-neutral-300"
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                  >
+                    <path
+                      d="M4 6l4 4 4-4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span>Read more</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
