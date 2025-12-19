@@ -135,7 +135,7 @@ export function usePublishAgentModal({
           thumbnailSrc: agent.agent_image || "https://picsum.photos/300/200",
           slug: publishedSubmissionData.slug,
           recommendedScheduleCron: agent.recommended_schedule_cron || "",
-          changesSummary: "", // Empty for user to fill in what changed
+          changesSummary: publishedSubmissionData.changes_summary || "",
         }
       : {
           ...emptyModalState,
@@ -212,7 +212,7 @@ export function usePublishAgentModal({
           thumbnailSrc: agentData.imageSrc, // Use current agent image
           slug: publishedSubmissionData.slug,
           recommendedScheduleCron: agentData.recommendedScheduleCron || "",
-          changesSummary: "", // Empty for user to fill in what changed
+          changesSummary: publishedSubmissionData.changes_summary || "", // Pre-populate with existing changes summary
         }
       : {
           ...emptyModalState,
