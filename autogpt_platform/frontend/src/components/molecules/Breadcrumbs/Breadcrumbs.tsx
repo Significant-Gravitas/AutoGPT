@@ -5,6 +5,7 @@ import * as React from "react";
 interface BreadcrumbItem {
   name: string;
   link: string;
+  testId?: string;
 }
 
 interface Props {
@@ -19,6 +20,7 @@ export function Breadcrumbs({ items }: Props) {
           <Link
             href={item.link}
             className="text-[0.75rem] font-[400] text-zinc-600 transition-colors hover:text-zinc-900 hover:no-underline"
+            data-testid={item.testId}
           >
             {item.name}
           </Link>

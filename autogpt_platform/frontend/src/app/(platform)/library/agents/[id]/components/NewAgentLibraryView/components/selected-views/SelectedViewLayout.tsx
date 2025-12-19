@@ -19,7 +19,11 @@ export function SelectedViewLayout(props: Props) {
         <Breadcrumbs
           items={[
             { name: "My Library", link: "/library" },
-            { name: props.agentName, link: `/library/agents/${props.agentId}` },
+            {
+              name: props.agentName,
+              link: `/library/agents/${props.agentId}`,
+              testId: "agent-title"
+            },
           ]}
         />
       </div>
