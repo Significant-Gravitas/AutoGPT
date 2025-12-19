@@ -42,9 +42,11 @@ export function OAuthAppsSection() {
   if (oauthApps.length === 0) {
     return (
       <div className="py-8 text-center text-muted-foreground">
-        <p>You don&apos;t have any OAuth applications yet.</p>
+        <p>You don&apos;t have any OAuth applications.</p>
         <p className="mt-2 text-sm">
-          OAuth applications can be created via the API.
+          OAuth applications can currently <strong>not</strong> be registered
+          via the API. Contact the system administrator to request an OAuth app
+          registration.
         </p>
       </div>
     );
