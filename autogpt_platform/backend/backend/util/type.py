@@ -5,6 +5,13 @@ from typing import Any, Type, TypeVar, Union, cast, get_args, get_origin, overlo
 from prisma import Json as PrismaJson
 
 
+def _is_type_or_subclass(origin: Any, target_type: type) -> bool:
+    """Check if origin is exactly the target type or a subclass of it."""
+    return origin is target_type or (
+        isinstance(origin, type) and issubclass(origin, target_type)
+    )
+
+
 class ConversionError(ValueError):
     pass
 
@@ -138,7 +145,11 @@ def _try_convert(value: Any, target_type: Any, raise_on_mismatch: bool) -> Any:
 
     if origin is None:
         origin = target_type
-    if origin not in [list, dict, tuple, str, set, int, float, bool]:
+    # Early return for unsupported types (skip subclasses of supported types)
+    supported_types = [list, dict, tuple, str, set, int, float, bool]
+    if origin not in supported_types and not (
+        isinstance(origin, type) and any(issubclass(origin, t) for t in supported_types)
+    ):
         return value
 
     # Handle the case when value is already of the target type
@@ -168,44 +179,47 @@ def _try_convert(value: Any, target_type: Any, raise_on_mismatch: bool) -> Any:
         raise TypeError(f"Value {value} is not of expected type {target_type}")
     else:
         # Need to convert value to the origin type
-        if origin is list:
-            value = __convert_list(value)
+        if _is_type_or_subclass(origin, list):
+            converted_list = __convert_list(value)
             if args:
-                return [convert(v, args[0]) for v in value]
-            else:
-                return value
-        elif origin is dict:
-            value = __convert_dict(value)
+                converted_list = [convert(v, args[0]) for v in converted_list]
+            return origin(converted_list) if origin is not list else converted_list
+        elif _is_type_or_subclass(origin, dict):
+            converted_dict = __convert_dict(value)
             if args:
                 key_type, val_type = args
-                return {
-                    convert(k, key_type): convert(v, val_type) for k, v in value.items()
+                converted_dict = {
+                    convert(k, key_type): convert(v, val_type)
+                    for k, v in converted_dict.items()
                 }
-            else:
-                return value
-        elif origin is tuple:
-            value = __convert_tuple(value)
+            return origin(converted_dict) if origin is not dict else converted_dict
+        elif _is_type_or_subclass(origin, tuple):
+            converted_tuple = __convert_tuple(value)
             if args:
                 if len(args) == 1:
-                    return tuple(convert(v, args[0]) for v in value)
+                    converted_tuple = tuple(
+                        convert(v, args[0]) for v in converted_tuple
+                    )
                 else:
-                    return tuple(convert(v, t) for v, t in zip(value, args))
-            else:
-                return value
-        elif origin is str:
-            return __convert_str(value)
-        elif origin is set:
+                    converted_tuple = tuple(
+                        convert(v, t) for v, t in zip(converted_tuple, args)
+                    )
+            return origin(converted_tuple) if origin is not tuple else converted_tuple
+        elif _is_type_or_subclass(origin, str):
+            converted_str = __convert_str(value)
+            return origin(converted_str) if origin is not str else converted_str
+        elif _is_type_or_subclass(origin, set):
             value = __convert_set(value)
             if args:
                 return {convert(v, args[0]) for v in value}
             else:
                 return value
-        elif origin is int:
-            return __convert_num(value, int)
-        elif origin is float:
-            return __convert_num(value, float)
-        elif origin is bool:
+        elif _is_type_or_subclass(origin, bool):
             return __convert_bool(value)
+        elif _is_type_or_subclass(origin, int):
+            return __convert_num(value, int)
+        elif _is_type_or_subclass(origin, float):
+            return __convert_num(value, float)
         else:
             return value
 
