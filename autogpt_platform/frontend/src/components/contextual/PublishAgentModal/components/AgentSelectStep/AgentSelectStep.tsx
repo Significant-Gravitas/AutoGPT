@@ -162,7 +162,7 @@ export function AgentSelectStep({
                         </Text>
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex-1">
-                            <Text variant="small" className="!text-neutral-500">
+                            <Text variant="small" className="text-neutral-500">
                               Edited {agent.lastEdited}
                             </Text>
                             {agent.isMarketplaceUpdate &&
@@ -174,7 +174,7 @@ export function AgentSelectStep({
                                   publishedVersion && (
                                     <Text
                                       variant="small"
-                                      className="block !text-neutral-500"
+                                      className="block text-neutral-500"
                                     >
                                       v{publishedVersion} → v{agent.version}
                                     </Text>
