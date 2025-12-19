@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import { ImageIcon } from "@phosphor-icons/react";
+import { ImageIcon, SealCheckIcon } from "@phosphor-icons/react";
 import {
   postOauthAuthorize,
   useGetOauthGetOauthAppInfo,
@@ -14,7 +14,7 @@ import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPerm
 
 // Human-readable scope descriptions
 const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
-  IDENTITY: "Your user ID, name, e-mail, and timezone",
+  IDENTITY: "Read user ID, name, e-mail, and timezone",
   EXECUTE_GRAPH: "Run your agents",
   READ_GRAPH: "View your agents and their configurations",
   EXECUTE_BLOCK: "Execute individual blocks",
@@ -222,8 +222,8 @@ export default function AuthorizePage() {
             </Text>
             <ul className="space-y-2">
               {requestedScopes.map((scopeKey) => (
-                <li key={scopeKey} className="flex items-start gap-2">
-                  <span className="mt-1 text-green-600">✓</span>
+                <li key={scopeKey} className="flex items-start gap-3">
+                  <SealCheckIcon className="mt-0.5 text-green-600" />
                   <Text variant="body">
                     {SCOPE_DESCRIPTIONS[scopeKey as APIKeyPermission] ||
                       scopeKey}
@@ -246,7 +246,7 @@ export default function AuthorizePage() {
               variant="primary"
               onClick={handleApprove}
               disabled={isAuthorizing}
-              className="w-full"
+              className="w-full text-lg"
             >
               {isAuthorizing ? "Authorizing..." : "Authorize"}
             </Button>
@@ -254,7 +254,7 @@ export default function AuthorizePage() {
               variant="secondary"
               onClick={handleDeny}
               disabled={isAuthorizing}
-              className="w-full"
+              className="w-full text-lg"
             >
               Deny
             </Button>
