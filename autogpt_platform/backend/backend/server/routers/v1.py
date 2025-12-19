@@ -5,7 +5,7 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Annotated, Any, Sequence
+from typing import Annotated, Any, Sequence, get_args
 
 import pydantic
 import stripe
@@ -44,13 +44,18 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
-from backend.data.execution import UserContext
-from backend.data.model import CredentialsMetaInput
+from backend.data.graph import GraphSettings
+from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
+    FrontendOnboardingStep,
+    OnboardingStep,
     UserOnboardingUpdate,
+    complete_onboarding_step,
+    complete_re_run_agent,
     get_recommended_agents,
     get_user_onboarding,
+    increment_runs,
     onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
@@ -78,6 +83,7 @@ from backend.server.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
     CreateGraph,
+    GraphExecutionSource,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
@@ -85,10 +91,12 @@ from backend.server.model import (
     UpdateTimezoneRequest,
     UploadFileResponse,
 )
+from backend.server.v2.store.model import StoreAgentDetails
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import dumps
 from backend.util.settings import Settings
 from backend.util.timezone_utils import (
@@ -108,6 +116,61 @@ def _create_file_size_error(size_bytes: int, max_size_mb: int) -> HTTPException:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+
+async def hide_activity_summaries_if_disabled(
+    executions: list[execution_db.GraphExecutionMeta], user_id: str
+) -> list[execution_db.GraphExecutionMeta]:
+    """Hide activity summaries and scores if AI_ACTIVITY_STATUS feature is disabled."""
+    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return executions  # Return as-is if feature is enabled
+
+    # Filter out activity features if disabled
+    filtered_executions = []
+    for execution in executions:
+        if execution.stats:
+            filtered_stats = execution.stats.without_activity_features()
+            execution = execution.model_copy(update={"stats": filtered_stats})
+        filtered_executions.append(execution)
+    return filtered_executions
+
+
+async def hide_activity_summary_if_disabled(
+    execution: execution_db.GraphExecution | execution_db.GraphExecutionWithNodes,
+    user_id: str,
+) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
+    """Hide activity summary and score for a single execution if AI_ACTIVITY_STATUS feature is disabled."""
+    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
+        return execution  # Return as-is if feature is enabled
+
+    # Filter out activity features if disabled
+    if execution.stats:
+        filtered_stats = execution.stats.without_activity_features()
+        return execution.model_copy(update={"stats": filtered_stats})
+    return execution
+
+
+async def _update_library_agent_version_and_settings(
+    user_id: str, agent_graph: graph_db.GraphModel
+) -> library_db.library_model.LibraryAgent:
+    # Keep the library agent up to date with the new active version
+    library = await library_db.update_agent_version_in_library(
+        user_id, agent_graph.id, agent_graph.version
+    )
+    # If the graph has HITL node, initialize the setting if it's not already set.
+    if (
+        agent_graph.has_human_in_the_loop
+        and library.settings.human_in_the_loop_safe_mode is None
+    ):
+        await library_db.update_library_agent_settings(
+            user_id=user_id,
+            agent_id=library.id,
+            settings=library.settings.model_copy(
+                update={"human_in_the_loop_safe_mode": True}
+            ),
+        )
+    return library
+
 
 # Define the API routes
 v1_router = APIRouter()
@@ -218,9 +281,10 @@ async def update_preferences(
 
 @v1_router.get(
     "/onboarding",
-    summary="Get onboarding status",
+    summary="Onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
 async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await get_user_onboarding(user_id)
@@ -228,9 +292,10 @@ async def get_onboarding(user_id: Annotated[str, Security(get_user_id)]):
 
 @v1_router.patch(
     "/onboarding",
-    summary="Update onboarding progress",
+    summary="Update onboarding state",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
 async def update_onboarding(
     user_id: Annotated[str, Security(get_user_id)], data: UserOnboardingUpdate
@@ -238,25 +303,39 @@ async def update_onboarding(
     return await update_user_onboarding(user_id, data)
 
 
+@v1_router.post(
+    "/onboarding/step",
+    summary="Complete onboarding step",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def onboarding_complete_step(
+    user_id: Annotated[str, Security(get_user_id)], step: FrontendOnboardingStep
+):
+    if step not in get_args(FrontendOnboardingStep):
+        raise HTTPException(status_code=400, detail="Invalid onboarding step")
+    return await complete_onboarding_step(user_id, step)
+
+
 @v1_router.get(
     "/onboarding/agents",
-    summary="Get recommended agents",
+    summary="Recommended onboarding agents",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
 )
 async def get_onboarding_agents(
     user_id: Annotated[str, Security(get_user_id)],
-):
+) -> list[StoreAgentDetails]:
     return await get_recommended_agents(user_id)
 
 
 @v1_router.get(
     "/onboarding/enabled",
-    summary="Check onboarding enabled",
+    summary="Is onboarding enabled",
     tags=["onboarding", "public"],
     dependencies=[Security(requires_user)],
 )
-async def is_onboarding_enabled():
+async def is_onboarding_enabled() -> bool:
     return await onboarding_enabled()
 
 
@@ -265,6 +344,7 @@ async def is_onboarding_enabled():
     summary="Reset onboarding progress",
     tags=["onboarding"],
     dependencies=[Security(requires_user)],
+    response_model=UserOnboarding,
 )
 async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await reset_user_onboarding(user_id)
@@ -353,19 +433,15 @@ async def execute_graph_block(
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
-    # Get user context for block execution
     user = await get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-
-    user_context = UserContext(timezone=user.timezone)
 
     start_time = time.time()
     try:
         output = defaultdict(list)
         async for name, data in obj.execute(
             data,
-            user_context=user_context,
             user_id=user_id,
             # Note: graph_exec_id and graph_id are not available for direct block execution
         ):
@@ -757,7 +833,12 @@ async def create_new_graph(
     # as the graph already valid and no sub-graphs are returned back.
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id=user_id)
-    return await on_graph_activate(graph, user_id=user_id)
+    activated_graph = await on_graph_activate(graph, user_id=user_id)
+
+    if create_graph.source == "builder":
+        await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
+
+    return activated_graph
 
 
 @v1_router.delete(
@@ -769,7 +850,9 @@ async def create_new_graph(
 async def delete_graph(
     graph_id: str, user_id: Annotated[str, Security(get_user_id)]
 ) -> DeleteGraphResponse:
-    if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
+    if active_version := await graph_db.get_graph(
+        graph_id=graph_id, version=None, user_id=user_id
+    ):
         await on_graph_deactivate(active_version, user_id=user_id)
 
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
@@ -806,9 +889,7 @@ async def update_graph(
 
     if new_graph_version.is_active:
         # Keep the library agent up to date with the new active version
-        await library_db.update_agent_version_in_library(
-            user_id, graph.id, graph.version
-        )
+        await _update_library_agent_version_and_settings(user_id, new_graph_version)
 
         # Handle activation of the new graph first to ensure continuity
         new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
@@ -849,7 +930,11 @@ async def set_graph_active_version(
     if not new_active_graph:
         raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
 
-    current_active_graph = await graph_db.get_graph(graph_id, user_id=user_id)
+    current_active_graph = await graph_db.get_graph(
+        graph_id=graph_id,
+        version=None,
+        user_id=user_id,
+    )
 
     # Handle activation of the new graph first to ensure continuity
     await on_graph_activate(new_active_graph, user_id=user_id)
@@ -861,13 +946,41 @@ async def set_graph_active_version(
     )
 
     # Keep the library agent up to date with the new active version
-    await library_db.update_agent_version_in_library(
-        user_id, new_active_graph.id, new_active_graph.version
-    )
+    await _update_library_agent_version_and_settings(user_id, new_active_graph)
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
+
+
+@v1_router.patch(
+    path="/graphs/{graph_id}/settings",
+    summary="Update graph settings",
+    tags=["graphs"],
+    dependencies=[Security(requires_user)],
+)
+async def update_graph_settings(
+    graph_id: str,
+    settings: GraphSettings,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> GraphSettings:
+    """Update graph settings for the user's library agent."""
+    # Get the library agent for this graph
+    library_agent = await library_db.get_library_agent_by_graph_id(
+        graph_id=graph_id, user_id=user_id
+    )
+    if not library_agent:
+        raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
+
+    # Update the library agent settings
+    updated_agent = await library_db.update_library_agent_settings(
+        user_id=user_id,
+        agent_id=library_agent.id,
+        settings=settings,
+    )
+
+    # Return the updated settings
+    return GraphSettings.model_validate(updated_agent.settings)
 
 
 @v1_router.post(
@@ -883,6 +996,7 @@ async def execute_graph(
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
     ],
+    source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> execution_db.GraphExecutionMeta:
@@ -906,6 +1020,14 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
+        await increment_runs(user_id)
+        await complete_re_run_agent(user_id, graph_id)
+        if source == "library":
+            await complete_onboarding_step(
+                user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
+            )
+        elif source == "builder":
+            await complete_onboarding_step(user_id, OnboardingStep.BUILDER_RUN_AGENT)
         return result
     except GraphValidationError as e:
         # Record failed graph execution
@@ -986,7 +1108,12 @@ async def list_graphs_executions(
         page=1,
         page_size=250,
     )
-    return paginated_result.executions
+
+    # Apply feature flags to filter out disabled features
+    filtered_executions = await hide_activity_summaries_if_disabled(
+        paginated_result.executions, user_id
+    )
+    return filtered_executions
 
 
 @v1_router.get(
@@ -1003,11 +1130,28 @@ async def list_graph_executions(
         25, ge=1, le=100, description="Number of executions per page"
     ),
 ) -> execution_db.GraphExecutionsPaginated:
-    return await execution_db.get_graph_executions_paginated(
+    paginated_result = await execution_db.get_graph_executions_paginated(
         graph_id=graph_id,
         user_id=user_id,
         page=page,
         page_size=page_size,
+    )
+
+    # Apply feature flags to filter out disabled features
+    filtered_executions = await hide_activity_summaries_if_disabled(
+        paginated_result.executions, user_id
+    )
+    onboarding = await get_user_onboarding(user_id)
+    if (
+        onboarding.onboardingAgentExecutionId
+        and onboarding.onboardingAgentExecutionId
+        in [exec.id for exec in filtered_executions]
+        and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
+    ):
+        await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
+
+    return execution_db.GraphExecutionsPaginated(
+        executions=filtered_executions, pagination=paginated_result.pagination
     )
 
 
@@ -1022,21 +1166,33 @@ async def get_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
-    graph = await graph_db.get_graph(graph_id=graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
-        )
-
     result = await execution_db.get_graph_execution(
         user_id=user_id,
         execution_id=graph_exec_id,
-        include_node_executions=graph.user_id == user_id,
+        include_node_executions=True,
     )
     if not result or result.graph_id != graph_id:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
+
+    if not await graph_db.get_graph(
+        graph_id=result.graph_id,
+        version=result.graph_version,
+        user_id=user_id,
+    ):
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
+        )
+
+    # Apply feature flags to filter out disabled features
+    result = await hide_activity_summary_if_disabled(result, user_id)
+    onboarding = await get_user_onboarding(user_id)
+    if (
+        onboarding.onboardingAgentExecutionId == graph_exec_id
+        and OnboardingStep.GET_RESULTS not in onboarding.completedSteps
+    ):
+        await complete_onboarding_step(user_id, OnboardingStep.GET_RESULTS)
 
     return result
 
@@ -1212,6 +1368,8 @@ async def create_graph_execution_schedule(
         result.next_run_time = convert_utc_time_to_user_timezone(
             result.next_run_time, user_timezone
         )
+
+    await complete_onboarding_step(user_id, OnboardingStep.SCHEDULE_AGENT)
 
     return result
 

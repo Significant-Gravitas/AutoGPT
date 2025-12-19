@@ -17,6 +17,7 @@ import backend.server.v2.store.media as store_media
 from backend.data.block import BlockInput
 from backend.data.db import transaction
 from backend.data.execution import get_graph_execution
+from backend.data.graph import GraphSettings
 from backend.data.includes import AGENT_PRESET_INCLUDE, library_agent_include
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -262,6 +263,30 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         if not library_agent:
             raise NotFoundError(f"Library agent #{id} not found")
 
+        # Fetch marketplace listing if the agent has been published
+        store_listing = None
+        profile = None
+        if library_agent.AgentGraph:
+            store_listing = await prisma.models.StoreListing.prisma().find_first(
+                where={
+                    "agentGraphId": library_agent.AgentGraph.id,
+                    "isDeleted": False,
+                    "hasApprovedVersion": True,
+                },
+                include={
+                    "ActiveVersion": True,
+                },
+            )
+            if (
+                store_listing
+                and store_listing.ActiveVersion
+                and store_listing.owningUserId
+            ):
+                # Fetch Profile separately since User doesn't have a direct Profile relation
+                profile = await prisma.models.Profile.prisma().find_first(
+                    where={"userId": store_listing.owningUserId}
+                )
+
         return library_model.LibraryAgent.from_db(
             library_agent,
             sub_graphs=(
@@ -269,6 +294,8 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                 if library_agent.AgentGraph
                 else None
             ),
+            store_listing=store_listing,
+            profile=profile,
         )
 
     except prisma.errors.PrismaError as e:
@@ -374,6 +401,24 @@ async def add_generated_agent_image(
     )
 
 
+def _initialize_graph_settings(graph: graph_db.GraphModel) -> GraphSettings:
+    """
+    Initialize GraphSettings based on graph content.
+
+    Args:
+        graph: The graph to analyze
+
+    Returns:
+        GraphSettings with appropriate human_in_the_loop_safe_mode value
+    """
+    if graph.has_human_in_the_loop:
+        # Graph has HITL blocks - set safe mode to True by default
+        return GraphSettings(human_in_the_loop_safe_mode=True)
+    else:
+        # Graph has no HITL blocks - keep None
+        return GraphSettings(human_in_the_loop_safe_mode=None)
+
+
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
@@ -396,8 +441,7 @@ async def create_library_agent(
         DatabaseError: If there's an error during creation or if image generation fails.
     """
     logger.info(
-        f"Creating library agent for graph #{graph.id} v{graph.version}; "
-        f"user #{user_id}"
+        f"Creating library agent for graph #{graph.id} v{graph.version}; user:<redacted>"
     )
     graph_entries = (
         [graph, *graph.sub_graphs] if create_library_agents_for_sub_graphs else [graph]
@@ -420,6 +464,9 @@ async def create_library_agent(
                                 }
                             }
                         },
+                        settings=SafeJson(
+                            _initialize_graph_settings(graph_entry).model_dump()
+                        ),
                     ),
                     include=library_agent_include(
                         user_id, include_nodes=False, include_executions=False
@@ -440,7 +487,7 @@ async def update_agent_version_in_library(
     user_id: str,
     agent_graph_id: str,
     agent_graph_version: int,
-) -> None:
+) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library if useGraphIsActiveVersion is True.
 
@@ -464,7 +511,7 @@ async def update_agent_version_in_library(
                 "useGraphIsActiveVersion": True,
             },
         )
-        await prisma.models.LibraryAgent.prisma().update(
+        lib = await prisma.models.LibraryAgent.prisma().update(
             where={"id": library_agent.id},
             data={
                 "AgentGraph": {
@@ -476,7 +523,12 @@ async def update_agent_version_in_library(
                     },
                 },
             },
+            include={"AgentGraph": True},
         )
+        if lib is None:
+            raise NotFoundError(f"Library agent {library_agent.id} not found")
+
+        return library_model.LibraryAgent.from_db(lib)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating agent version in library: {e}")
         raise DatabaseError("Failed to update agent version in library") from e
@@ -489,6 +541,7 @@ async def update_library_agent(
     is_favorite: Optional[bool] = None,
     is_archived: Optional[bool] = None,
     is_deleted: Optional[Literal[False]] = None,
+    settings: Optional[GraphSettings] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -499,6 +552,7 @@ async def update_library_agent(
         auto_update_version: Whether the agent should auto-update to active version.
         is_favorite: Whether this agent is marked as a favorite.
         is_archived: Whether this agent is archived.
+        settings: User-specific settings for this library agent.
 
     Returns:
         The updated LibraryAgent.
@@ -510,7 +564,7 @@ async def update_library_agent(
     logger.debug(
         f"Updating library agent {library_agent_id} for user {user_id} with "
         f"auto_update_version={auto_update_version}, is_favorite={is_favorite}, "
-        f"is_archived={is_archived}"
+        f"is_archived={is_archived}, settings={settings}"
     )
     update_fields: prisma.types.LibraryAgentUpdateManyMutationInput = {}
     if auto_update_version is not None:
@@ -525,6 +579,8 @@ async def update_library_agent(
                 "Use delete_library_agent() to (soft-)delete library agents"
             )
         update_fields["isDeleted"] = is_deleted
+    if settings is not None:
+        update_fields["settings"] = SafeJson(settings.model_dump())
     if not update_fields:
         raise ValueError("No values were passed to update")
 
@@ -543,6 +599,33 @@ async def update_library_agent(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
         raise DatabaseError("Failed to update library agent") from e
+
+
+async def update_library_agent_settings(
+    user_id: str,
+    agent_id: str,
+    settings: GraphSettings,
+) -> library_model.LibraryAgent:
+    """
+    Updates the settings for a specific LibraryAgent.
+
+    Args:
+        user_id: The owner of the LibraryAgent.
+        agent_id: The ID of the LibraryAgent to update.
+        settings: New GraphSettings to apply.
+
+    Returns:
+        The updated LibraryAgent.
+
+    Raises:
+        NotFoundError: If the specified LibraryAgent does not exist.
+        DatabaseError: If there's an error in the update operation.
+    """
+    return await update_library_agent(
+        library_agent_id=agent_id,
+        user_id=user_id,
+        settings=settings,
+    )
 
 
 async def delete_library_agent(
@@ -681,6 +764,18 @@ async def add_store_agent_to_library(
 
         graph = store_listing_version.AgentGraph
 
+        # Convert to GraphModel to check for HITL blocks
+        graph_model = await graph_db.get_graph(
+            graph_id=graph.id,
+            version=graph.version,
+            user_id=user_id,
+            include_subgraphs=False,
+        )
+        if not graph_model:
+            raise store_exceptions.AgentNotFoundError(
+                f"Graph #{graph.id} v{graph.version} not found or accessible"
+            )
+
         # Check if user already has this agent
         existing_library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
             where={
@@ -715,6 +810,9 @@ async def add_store_agent_to_library(
                     }
                 },
                 "isCreatedByUser": False,
+                "settings": SafeJson(
+                    _initialize_graph_settings(graph_model).model_dump()
+                ),
             },
             include=library_agent_include(
                 user_id, include_nodes=False, include_executions=False

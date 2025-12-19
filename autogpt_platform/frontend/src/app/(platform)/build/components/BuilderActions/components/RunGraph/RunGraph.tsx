@@ -1,19 +1,25 @@
-import { Button } from "@/components/atoms/Button/Button";
-import { PlayIcon } from "lucide-react";
 import { useRunGraph } from "./useRunGraph";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
-import { StopIcon } from "@phosphor-icons/react";
+import { PlayIcon, StopIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { BuilderActionButton } from "../BuilderActionButton";
 
-export const RunGraph = () => {
+export const RunGraph = ({ flowID }: { flowID: string | null }) => {
   const {
     handleRunGraph,
     handleStopGraph,
-    isSaving,
     openRunInputDialog,
     setOpenRunInputDialog,
+    isExecutingGraph,
+    isTerminatingGraph,
+    isSaving,
   } = useRunGraph();
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
@@ -21,24 +27,32 @@ export const RunGraph = () => {
 
   return (
     <>
-      <Button
-        variant="primary"
-        size="large"
-        className={cn(
-          "relative min-w-44 border-none bg-gradient-to-r from-purple-500 to-pink-500 text-lg",
-        )}
-        onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
-      >
-        {!isGraphRunning && !isSaving ? (
-          <PlayIcon className="mr-1 size-5" />
-        ) : (
-          <StopIcon className="mr-1 size-5" />
-        )}
-        {isGraphRunning || isSaving ? "Stop Agent" : "Run Agent"}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <BuilderActionButton
+            className={cn(
+              isGraphRunning &&
+                "border-red-500 bg-gradient-to-br from-red-400 to-red-500 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.5),0_2px_4px_0_rgba(0,0,0,0.2)]",
+            )}
+            onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
+            disabled={!flowID || isExecutingGraph || isTerminatingGraph}
+            isLoading={isExecutingGraph || isTerminatingGraph || isSaving}
+          >
+            {!isGraphRunning ? (
+              <PlayIcon className="size-6 drop-shadow-sm" />
+            ) : (
+              <StopIcon className="size-6 drop-shadow-sm" />
+            )}
+          </BuilderActionButton>
+        </TooltipTrigger>
+        <TooltipContent>
+          {isGraphRunning ? "Stop agent" : "Run agent"}
+        </TooltipContent>
+      </Tooltip>
       <RunInputDialog
         isOpen={openRunInputDialog}
         setIsOpen={setOpenRunInputDialog}
+        purpose="run"
       />
     </>
   );

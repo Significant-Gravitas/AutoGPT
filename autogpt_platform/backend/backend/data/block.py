@@ -29,6 +29,13 @@ from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.cache import cached
+from backend.util.exceptions import (
+    BlockError,
+    BlockExecutionError,
+    BlockInputError,
+    BlockOutputError,
+    BlockUnknownError,
+)
 from backend.util.settings import Config
 
 from .model import (
@@ -64,6 +71,7 @@ class BlockType(Enum):
     AGENT = "Agent"
     AI = "AI"
     AYRSHARE = "Ayrshare"
+    HUMAN_IN_THE_LOOP = "Human In The Loop"
 
 
 class BlockCategory(Enum):
@@ -259,13 +267,60 @@ class BlockSchema(BaseModel):
         }
 
     @classmethod
+    def get_auto_credentials_fields(cls) -> dict[str, dict[str, Any]]:
+        """
+        Get fields that have auto_credentials metadata (e.g., GoogleDriveFileInput).
+
+        Returns a dict mapping kwarg_name -> {field_name, auto_credentials_config}
+
+        Raises:
+            ValueError: If multiple fields have the same kwarg_name, as this would
+                cause silent overwriting and only the last field would be processed.
+        """
+        result: dict[str, dict[str, Any]] = {}
+        schema = cls.jsonschema()
+        properties = schema.get("properties", {})
+
+        for field_name, field_schema in properties.items():
+            auto_creds = field_schema.get("auto_credentials")
+            if auto_creds:
+                kwarg_name = auto_creds.get("kwarg_name", "credentials")
+                if kwarg_name in result:
+                    raise ValueError(
+                        f"Duplicate auto_credentials kwarg_name '{kwarg_name}' "
+                        f"in fields '{result[kwarg_name]['field_name']}' and "
+                        f"'{field_name}' on {cls.__qualname__}"
+                    )
+                result[kwarg_name] = {
+                    "field_name": field_name,
+                    "config": auto_creds,
+                }
+        return result
+
+    @classmethod
     def get_credentials_fields_info(cls) -> dict[str, CredentialsFieldInfo]:
-        return {
-            field_name: CredentialsFieldInfo.model_validate(
+        result = {}
+
+        # Regular credentials fields
+        for field_name in cls.get_credentials_fields().keys():
+            result[field_name] = CredentialsFieldInfo.model_validate(
                 cls.get_field_schema(field_name), by_alias=True
             )
-            for field_name in cls.get_credentials_fields().keys()
-        }
+
+        # Auto-generated credentials fields (from GoogleDriveFileInput etc.)
+        for kwarg_name, info in cls.get_auto_credentials_fields().items():
+            config = info["config"]
+            # Build a schema-like dict that CredentialsFieldInfo can parse
+            auto_schema = {
+                "credentials_provider": [config.get("provider", "google")],
+                "credentials_types": [config.get("type", "oauth2")],
+                "credentials_scopes": config.get("scopes"),
+            }
+            result[kwarg_name] = CredentialsFieldInfo.model_validate(
+                auto_schema, by_alias=True
+            )
+
+        return result
 
     @classmethod
     def get_input_defaults(cls, data: BlockInput) -> BlockInput:
@@ -542,9 +597,29 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         )
 
     async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        try:
+            async for output_name, output_data in self._execute(input_data, **kwargs):
+                yield output_name, output_data
+        except Exception as ex:
+            if isinstance(ex, BlockError):
+                raise ex
+            else:
+                raise (
+                    BlockExecutionError
+                    if isinstance(ex, ValueError)
+                    else BlockUnknownError
+                )(
+                    message=str(ex),
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from ex
+
+    async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
-            raise ValueError(
-                f"Unable to execute block with invalid input data: {error}"
+            raise BlockInputError(
+                message=f"Unable to execute block with invalid input data: {error}",
+                block_name=self.name,
+                block_id=self.id,
             )
 
         async for output_name, output_data in self.run(
@@ -552,11 +627,17 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             **kwargs,
         ):
             if output_name == "error":
-                raise RuntimeError(output_data)
+                raise BlockExecutionError(
+                    message=output_data, block_name=self.name, block_id=self.id
+                )
             if self.block_type == BlockType.STANDARD and (
                 error := self.output_schema.validate_field(output_name, output_data)
             ):
-                raise ValueError(f"Block produced an invalid output data: {error}")
+                raise BlockOutputError(
+                    message=f"Block produced an invalid output data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
             yield output_name, output_data
 
     def is_triggered_by_event_type(
@@ -766,4 +847,13 @@ def get_io_block_ids() -> Sequence[str]:
         id
         for id, B in get_blocks().items()
         if B().block_type in (BlockType.INPUT, BlockType.OUTPUT)
+    ]
+
+
+@cached(ttl_seconds=3600)
+def get_human_in_the_loop_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type == BlockType.HUMAN_IN_THE_LOOP
     ]

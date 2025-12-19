@@ -1,6 +1,10 @@
+import {
+  API_KEY_HEADER_NAME,
+  IMPERSONATION_HEADER_NAME,
+} from "@/lib/constants";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { Key, storage } from "@/services/storage/local-storage";
 import { environment } from "@/services/environment";
+import { Key, storage } from "@/services/storage/local-storage";
 
 import { GraphValidationErrorResponse } from "./types";
 
@@ -133,6 +137,7 @@ export function createRequestHeaders(
   token: string,
   hasRequestBody: boolean,
   contentType: string = "application/json",
+  originalRequest?: Request,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
 
@@ -142,6 +147,22 @@ export function createRequestHeaders(
 
   if (token && token !== "no-token-found") {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Forward admin impersonation header if present
+  if (originalRequest) {
+    const impersonationHeader = originalRequest.headers.get(
+      IMPERSONATION_HEADER_NAME,
+    );
+    if (impersonationHeader) {
+      headers[IMPERSONATION_HEADER_NAME] = impersonationHeader;
+    }
+
+    // Forward X-API-Key header if present
+    const apiKeyHeader = originalRequest.headers.get(API_KEY_HEADER_NAME);
+    if (apiKeyHeader) {
+      headers[API_KEY_HEADER_NAME] = apiKeyHeader;
+    }
   }
 
   return headers;
@@ -163,6 +184,11 @@ export function serializeRequestBody(
 }
 
 export async function parseApiError(response: Response): Promise<string> {
+  // Handle 413 Payload Too Large with user-friendly message
+  if (response.status === 413) {
+    return "File is too large — max size is 256MB";
+  }
+
   try {
     const errorData = await response.clone().json();
 
@@ -182,6 +208,16 @@ export async function parseApiError(response: Response): Promise<string> {
     if (typeof errorData.detail === "object" && errorData.detail !== null) {
       if (errorData.detail.message) return errorData.detail.message;
       return response.statusText; // Fallback to status text if no message
+    }
+
+    // Check for file size error from backend
+    if (
+      typeof errorData.detail === "string" &&
+      errorData.detail.includes("exceeds the maximum")
+    ) {
+      const match = errorData.detail.match(/maximum allowed size of (\d+)MB/);
+      const maxSize = match ? match[1] : "256";
+      return `File is too large — max size is ${maxSize}MB`;
     }
 
     return errorData.detail || errorData.error || response.statusText;
@@ -209,7 +245,7 @@ export async function parseApiResponse(response: Response): Promise<any> {
   }
 }
 
-function isAuthenticationError(
+export function isAuthenticationError(
   response: Response,
   errorDetail: string,
 ): boolean {
@@ -222,7 +258,7 @@ function isAuthenticationError(
   );
 }
 
-function isLogoutInProgress(): boolean {
+export function isLogoutInProgress(): boolean {
   if (environment.isServerSide()) return false;
 
   try {
@@ -249,6 +285,7 @@ export async function makeAuthenticatedRequest(
   url: string,
   payload?: Record<string, any>,
   contentType: string = "application/json",
+  originalRequest?: Request,
 ): Promise<any> {
   const token = await getServerAuthToken();
   const payloadAsQuery = ["GET", "DELETE"].includes(method);
@@ -262,7 +299,12 @@ export async function makeAuthenticatedRequest(
 
   const response = await fetch(requestUrl, {
     method,
-    headers: createRequestHeaders(token, hasRequestBody, contentType),
+    headers: createRequestHeaders(
+      token,
+      hasRequestBody,
+      contentType,
+      originalRequest,
+    ),
     body: hasRequestBody
       ? serializeRequestBody(payload, contentType)
       : undefined,
@@ -300,13 +342,17 @@ export async function makeAuthenticatedRequest(
 export async function makeAuthenticatedFileUpload(
   url: string,
   formData: FormData,
+  originalRequest?: Request,
 ): Promise<string> {
   const token = await getServerAuthToken();
 
-  const headers: Record<string, string> = {};
-  if (token && token !== "no-token-found") {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
+  // Reuse existing header creation logic but exclude Content-Type for FormData
+  const headers = createRequestHeaders(
+    token,
+    false,
+    "application/json",
+    originalRequest,
+  );
 
   // Don't set Content-Type for FormData - let the browser set it with boundary
   const response = await fetch(url, {

@@ -10,7 +10,7 @@ import {
   IconType,
   IconUploadCloud,
 } from "@/components/__legacy__/ui/icons";
-import { StorefrontIcon } from "@phosphor-icons/react";
+import { ChatsIcon, StorefrontIcon } from "@phosphor-icons/react";
 
 type Link = {
   name: string;
@@ -155,7 +155,7 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
 }
 
 export function getAccountMenuOptionIcon(icon: IconType) {
-  const iconClass = "w-5 h-5";
+  const iconClass = "size-4";
   switch (icon) {
     case IconType.LayoutDashboard:
       return <StorefrontIcon className={iconClass} />;
@@ -175,6 +175,8 @@ export function getAccountMenuOptionIcon(icon: IconType) {
       return <IconBuilder className={iconClass} />;
     case IconType.Sliders:
       return <IconSliders className={iconClass} />;
+    case IconType.Chat:
+      return <ChatsIcon className={iconClass} />;
     default:
       return <IconRefresh className={iconClass} />;
   }

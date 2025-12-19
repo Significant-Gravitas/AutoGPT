@@ -90,8 +90,8 @@ const specialColors = [
       },
       {
         name: "bg-light-grey",
-        hex: colors.lightGrey,
-        rgb: hexToRgb(colors.lightGrey),
+        hex: colors.bgLightGrey,
+        rgb: hexToRgb(colors.bgLightGrey),
         class: "bg-light-grey",
         textClass: "text-light-grey",
       },

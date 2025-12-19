@@ -52,9 +52,7 @@ export function EmptyAgentRuns({
           </div>
 
           <div className="flex flex-col gap-4">
-            <Text variant="h4">
-              You don&apos;t have any runs
-            </Text>
+            <Text variant="h4">You don&apos;t have any runs</Text>
             <Text variant="large">
               Get started with creating a run, and you&apos;ll see information
               here

@@ -1,13 +1,15 @@
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
+from prisma.enums import OnboardingStep
 
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.data.onboarding import complete_onboarding_step
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,9 @@ router = APIRouter(
 @router.get(
     "",
     summary="List Library Agents",
+    response_model=library_model.LibraryAgentResponse,
     responses={
+        200: {"description": "List of library agents"},
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
@@ -155,7 +159,12 @@ async def get_library_agent_by_graph_id(
 @router.get(
     "/marketplace/{store_listing_version_id}",
     summary="Get Agent By Store ID",
-    tags=["store, library"],
+    tags=["store", "library"],
+    response_model=library_model.LibraryAgent | None,
+    responses={
+        200: {"description": "Library agent found"},
+        404: {"description": "Agent not found"},
+    },
 )
 async def get_library_agent_by_store_listing_version_id(
     store_listing_version_id: str,
@@ -193,6 +202,9 @@ async def get_library_agent_by_store_listing_version_id(
 )
 async def add_marketplace_agent_to_library(
     store_listing_version_id: str = Body(embed=True),
+    source: Literal["onboarding", "marketplace"] = Body(
+        default="marketplace", embed=True
+    ),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     """
@@ -210,10 +222,15 @@ async def add_marketplace_agent_to_library(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        return await library_db.add_store_agent_to_library(
+        agent = await library_db.add_store_agent_to_library(
             store_listing_version_id=store_listing_version_id,
             user_id=user_id,
         )
+        if source != "onboarding":
+            await complete_onboarding_step(
+                user_id, OnboardingStep.MARKETPLACE_ADD_AGENT
+            )
+        return agent
 
     except store_exceptions.AgentNotFoundError as e:
         logger.warning(
@@ -269,6 +286,7 @@ async def update_library_agent(
             auto_update_version=payload.auto_update_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
+            settings=payload.settings,
         )
     except NotFoundError as e:
         raise HTTPException(

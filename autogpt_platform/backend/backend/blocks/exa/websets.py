@@ -1,8 +1,9 @@
+import time
 from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
 
-from exa_py import Exa
+from exa_py import AsyncExa, Exa
 from exa_py.websets.types import (
     CreateCriterionParameters,
     CreateEnrichmentParameters,
@@ -34,7 +35,6 @@ from backend.sdk import (
     BlockSchemaInput,
     BlockSchemaOutput,
     CredentialsMetaInput,
-    Requests,
     SchemaField,
 )
 
@@ -220,15 +220,32 @@ class ExaCreateWebsetBlock(Block):
             advanced=True,
         )
 
+        # Polling parameters
+        wait_for_initial_results: bool = SchemaField(
+            default=True,
+            description="Wait for the initial search to complete before returning. This ensures you get results immediately.",
+        )
+        polling_timeout: int = SchemaField(
+            default=300,
+            description="Maximum time to wait for completion in seconds (only used if wait_for_initial_results is True)",
+            advanced=True,
+            ge=1,
+            le=600,
+        )
+
     class Output(BlockSchemaOutput):
-        webset: Webset = SchemaField(
-            description="The unique identifier for the created webset"
+        webset: Webset = SchemaField(description="The created webset with full details")
+        initial_item_count: Optional[int] = SchemaField(
+            description="Number of items found in the initial search (only if wait_for_initial_results was True)"
+        )
+        completion_time: Optional[float] = SchemaField(
+            description="Time taken to complete the initial search in seconds (only if wait_for_initial_results was True)"
         )
 
     def __init__(self):
         super().__init__(
             id="0cda29ff-c549-4a19-8805-c982b7d4ec34",
-            description="Create a new Exa Webset for persistent web search collections",
+            description="Create a new Exa Webset for persistent web search collections with optional waiting for initial results",
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetBlock.Input,
             output_schema=ExaCreateWebsetBlock.Output,
@@ -240,9 +257,6 @@ class ExaCreateWebsetBlock(Block):
 
         exa = Exa(credentials.api_key.get_secret_value())
 
-        # ------------------------------------------------------------
-        # Build entity (if explicitly provided)
-        # ------------------------------------------------------------
         entity = None
         if input_data.search_entity_type == SearchEntityType.COMPANY:
             entity = WebsetCompanyEntity(type="company")
@@ -260,9 +274,6 @@ class ExaCreateWebsetBlock(Block):
                 type="custom", description=input_data.search_entity_description
             )
 
-        # ------------------------------------------------------------
-        # Build criteria list
-        # ------------------------------------------------------------
         criteria = None
         if input_data.search_criteria:
             criteria = [
@@ -270,9 +281,6 @@ class ExaCreateWebsetBlock(Block):
                 for item in input_data.search_criteria
             ]
 
-        # ------------------------------------------------------------
-        # Build exclude sources list
-        # ------------------------------------------------------------
         exclude_items = None
         if input_data.search_exclude_sources:
             exclude_items = []
@@ -289,9 +297,6 @@ class ExaCreateWebsetBlock(Block):
                     source_enum = ImportSource.import_
                 exclude_items.append(ExcludeItem(source=source_enum, id=src_id))
 
-        # ------------------------------------------------------------
-        # Build scope list
-        # ------------------------------------------------------------
         scope_items = None
         if input_data.search_scope_sources:
             scope_items = []
@@ -320,9 +325,6 @@ class ExaCreateWebsetBlock(Block):
                     ScopeItem(source=src_enum, id=src_id, relationship=relationship)
                 )
 
-        # ------------------------------------------------------------
-        # Assemble search parameters (only if a query is provided)
-        # ------------------------------------------------------------
         search_params = None
         if input_data.search_query:
             search_params = CreateWebsetParametersSearch(
@@ -334,9 +336,6 @@ class ExaCreateWebsetBlock(Block):
                 scope=scope_items,
             )
 
-        # ------------------------------------------------------------
-        # Build imports list
-        # ------------------------------------------------------------
         imports_params = None
         if input_data.import_sources:
             imports_params = []
@@ -350,9 +349,6 @@ class ExaCreateWebsetBlock(Block):
                     source_enum = ImportSource.import_
                 imports_params.append(ImportItem(source=source_enum, id=src_id))
 
-        # ------------------------------------------------------------
-        # Build enrichment list
-        # ------------------------------------------------------------
         enrichments_params = None
         if input_data.enrichment_descriptions:
             enrichments_params = []
@@ -387,21 +383,132 @@ class ExaCreateWebsetBlock(Block):
                     )
                 )
 
-        # ------------------------------------------------------------
-        # Create the webset
-        # ------------------------------------------------------------
-        webset = exa.websets.create(
-            params=CreateWebsetParameters(
-                search=search_params,
-                imports=imports_params,
-                enrichments=enrichments_params,
-                external_id=input_data.external_id,
-                metadata=input_data.metadata,
+        try:
+            start_time = time.time()
+            webset = exa.websets.create(
+                params=CreateWebsetParameters(
+                    search=search_params,
+                    imports=imports_params,
+                    enrichments=enrichments_params,
+                    external_id=input_data.external_id,
+                    metadata=input_data.metadata,
+                )
             )
+
+            webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
+
+            # If wait_for_initial_results is True, poll for completion
+            if input_data.wait_for_initial_results and search_params:
+                final_webset = exa.websets.wait_until_idle(
+                    id=webset_result.id,
+                    timeout=input_data.polling_timeout,
+                    poll_interval=5,
+                )
+                completion_time = time.time() - start_time
+
+                item_count = 0
+                if final_webset.searches:
+                    for search in final_webset.searches:
+                        if search.progress:
+                            item_count += search.progress.found
+
+                yield "webset", webset_result
+                yield "initial_item_count", item_count
+                yield "completion_time", completion_time
+            else:
+                yield "webset", webset_result
+
+        except ValueError as e:
+            raise ValueError(f"Invalid webset configuration: {e}") from e
+
+
+class ExaCreateOrFindWebsetBlock(Block):
+    """Create a new webset or return existing one if external_id already exists (idempotent)."""
+
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
 
-        # Use alias field names returned from Exa SDK so that nested models validate correctly
-        yield "webset", Webset.model_validate(webset.model_dump(by_alias=True))
+        external_id: str = SchemaField(
+            description="External identifier for this webset - used to find existing or create new",
+            placeholder="my-unique-webset-id",
+        )
+
+        search_query: Optional[str] = SchemaField(
+            default=None,
+            description="Search query (optional - only needed if creating new webset)",
+            placeholder="Marketing agencies based in the US",
+        )
+        search_count: int = SchemaField(
+            default=10,
+            description="Number of items to find in initial search",
+            ge=1,
+            le=1000,
+        )
+
+        metadata: Optional[dict] = SchemaField(
+            default=None,
+            description="Key-value pairs to associate with the webset",
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        webset: Webset = SchemaField(
+            description="The webset (existing or newly created)"
+        )
+        was_created: bool = SchemaField(
+            description="True if webset was newly created, False if it already existed"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="214542b6-3603-4bea-bc07-f51c2871cbd9",
+            description="Create a new webset or return existing one by external_id (idempotent operation)",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaCreateOrFindWebsetBlock.Input,
+            output_schema=ExaCreateOrFindWebsetBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        import httpx
+
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        try:
+            webset = aexa.websets.get(id=input_data.external_id)
+            webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
+
+            yield "webset", webset_result
+            yield "was_created", False
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # Not found - create new webset
+                search_params = None
+                if input_data.search_query:
+                    search_params = CreateWebsetParametersSearch(
+                        query=input_data.search_query,
+                        count=input_data.search_count,
+                    )
+
+                webset = aexa.websets.create(
+                    params=CreateWebsetParameters(
+                        search=search_params,
+                        external_id=input_data.external_id,
+                        metadata=input_data.metadata,
+                    )
+                )
+
+                webset_result = Webset.model_validate(webset.model_dump(by_alias=True))
+
+                yield "webset", webset_result
+                yield "was_created", True
+            else:
+                # Other HTTP errors should propagate
+                raise
 
 
 class ExaUpdateWebsetBlock(Block):
@@ -422,16 +529,11 @@ class ExaUpdateWebsetBlock(Block):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
         external_id: Optional[str] = SchemaField(
-            description="The external identifier for the webset", default=None
+            description="The external identifier for the webset"
         )
-        metadata: dict = SchemaField(
-            description="Updated metadata for the webset", default_factory=dict
-        )
+        metadata: dict = SchemaField(description="Updated metadata for the webset")
         updated_at: str = SchemaField(
             description="The date and time the webset was updated"
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -446,33 +548,27 @@ class ExaUpdateWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        # Build the payload
         payload = {}
         if input_data.metadata is not None:
             payload["metadata"] = input_data.metadata
 
-        try:
-            response = await Requests().post(url, headers=headers, json=payload)
-            data = response.json()
+        sdk_webset = aexa.websets.update(id=input_data.webset_id, params=payload)
 
-            yield "webset_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "external_id", data.get("externalId")
-            yield "metadata", data.get("metadata", {})
-            yield "updated_at", data.get("updatedAt", "")
+        status_str = (
+            sdk_webset.status.value
+            if hasattr(sdk_webset.status, "value")
+            else str(sdk_webset.status)
+        )
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "metadata", {}
-            yield "updated_at", ""
+        yield "webset_id", sdk_webset.id
+        yield "status", status_str
+        yield "external_id", sdk_webset.external_id
+        yield "metadata", sdk_webset.metadata or {}
+        yield "updated_at", (
+            sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""
+        )
 
 
 class ExaListWebsetsBlock(Block):
@@ -499,18 +595,12 @@ class ExaListWebsetsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        websets: list[Webset] = SchemaField(
-            description="List of websets", default_factory=list
-        )
+        websets: list[Webset] = SchemaField(description="List of websets")
         has_more: bool = SchemaField(
-            description="Whether there are more results to paginate through",
-            default=False,
+            description="Whether there are more results to paginate through"
         )
         next_cursor: Optional[str] = SchemaField(
-            description="Cursor for the next page of results", default=None
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
+            description="Cursor for the next page of results"
         )
 
     def __init__(self):
@@ -525,29 +615,20 @@ class ExaListWebsetsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = "https://api.exa.ai/websets/v0/websets"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        params: dict[str, Any] = {
-            "limit": input_data.limit,
-        }
-        if input_data.cursor:
-            params["cursor"] = input_data.cursor
+        response = aexa.websets.list(
+            cursor=input_data.cursor,
+            limit=input_data.limit,
+        )
 
-        try:
-            response = await Requests().get(url, headers=headers, params=params)
-            data = response.json()
+        websets_data = [
+            w.model_dump(by_alias=True, exclude_none=True) for w in response.data
+        ]
 
-            yield "websets", data.get("data", [])
-            yield "has_more", data.get("hasMore", False)
-            yield "next_cursor", data.get("nextCursor")
-
-        except Exception as e:
-            yield "error", str(e)
-            yield "websets", []
-            yield "has_more", False
+        yield "websets", websets_data
+        yield "has_more", response.has_more
+        yield "next_cursor", response.next_cursor
 
 
 class ExaGetWebsetBlock(Block):
@@ -564,33 +645,23 @@ class ExaGetWebsetBlock(Block):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
         external_id: Optional[str] = SchemaField(
-            description="The external identifier for the webset", default=None
+            description="The external identifier for the webset"
         )
         searches: list[dict] = SchemaField(
-            description="The searches performed on the webset", default_factory=list
+            description="The searches performed on the webset"
         )
         enrichments: list[dict] = SchemaField(
-            description="The enrichments applied to the webset", default_factory=list
+            description="The enrichments applied to the webset"
         )
-        monitors: list[dict] = SchemaField(
-            description="The monitors for the webset", default_factory=list
-        )
-        items: Optional[list[dict]] = SchemaField(
-            description="The items in the webset (if expand_items is true)",
-            default=None,
-        )
+        monitors: list[dict] = SchemaField(description="The monitors for the webset")
         metadata: dict = SchemaField(
-            description="Key-value pairs associated with the webset",
-            default_factory=dict,
+            description="Key-value pairs associated with the webset"
         )
         created_at: str = SchemaField(
             description="The date and time the webset was created"
         )
         updated_at: str = SchemaField(
             description="The date and time the webset was last updated"
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -605,36 +676,42 @@ class ExaGetWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        try:
-            response = await Requests().get(url, headers=headers)
-            data = response.json()
+        sdk_webset = aexa.websets.get(id=input_data.webset_id)
 
-            yield "webset_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "external_id", data.get("externalId")
-            yield "searches", data.get("searches", [])
-            yield "enrichments", data.get("enrichments", [])
-            yield "monitors", data.get("monitors", [])
-            yield "items", data.get("items")
-            yield "metadata", data.get("metadata", {})
-            yield "created_at", data.get("createdAt", "")
-            yield "updated_at", data.get("updatedAt", "")
+        status_str = (
+            sdk_webset.status.value
+            if hasattr(sdk_webset.status, "value")
+            else str(sdk_webset.status)
+        )
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "searches", []
-            yield "enrichments", []
-            yield "monitors", []
-            yield "metadata", {}
-            yield "created_at", ""
-            yield "updated_at", ""
+        searches_data = [
+            s.model_dump(by_alias=True, exclude_none=True)
+            for s in sdk_webset.searches or []
+        ]
+        enrichments_data = [
+            e.model_dump(by_alias=True, exclude_none=True)
+            for e in sdk_webset.enrichments or []
+        ]
+        monitors_data = [
+            m.model_dump(by_alias=True, exclude_none=True)
+            for m in sdk_webset.monitors or []
+        ]
+
+        yield "webset_id", sdk_webset.id
+        yield "status", status_str
+        yield "external_id", sdk_webset.external_id
+        yield "searches", searches_data
+        yield "enrichments", enrichments_data
+        yield "monitors", monitors_data
+        yield "metadata", sdk_webset.metadata or {}
+        yield "created_at", (
+            sdk_webset.created_at.isoformat() if sdk_webset.created_at else ""
+        )
+        yield "updated_at", (
+            sdk_webset.updated_at.isoformat() if sdk_webset.updated_at else ""
+        )
 
 
 class ExaDeleteWebsetBlock(Block):
@@ -652,15 +729,10 @@ class ExaDeleteWebsetBlock(Block):
             description="The unique identifier for the deleted webset"
         )
         external_id: Optional[str] = SchemaField(
-            description="The external identifier for the deleted webset", default=None
+            description="The external identifier for the deleted webset"
         )
         status: str = SchemaField(description="The status of the deleted webset")
-        success: str = SchemaField(
-            description="Whether the deletion was successful", default="true"
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
-        )
+        success: str = SchemaField(description="Whether the deletion was successful")
 
     def __init__(self):
         super().__init__(
@@ -674,25 +746,20 @@ class ExaDeleteWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
-        }
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        try:
-            response = await Requests().delete(url, headers=headers)
-            data = response.json()
+        deleted_webset = aexa.websets.delete(id=input_data.webset_id)
 
-            yield "webset_id", data.get("id", "")
-            yield "external_id", data.get("externalId")
-            yield "status", data.get("status", "")
-            yield "success", "true"
+        status_str = (
+            deleted_webset.status.value
+            if hasattr(deleted_webset.status, "value")
+            else str(deleted_webset.status)
+        )
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "success", "false"
+        yield "webset_id", deleted_webset.id
+        yield "external_id", deleted_webset.external_id
+        yield "status", status_str
+        yield "success", "true"
 
 
 class ExaCancelWebsetBlock(Block):
@@ -711,13 +778,10 @@ class ExaCancelWebsetBlock(Block):
             description="The status of the webset after cancellation"
         )
         external_id: Optional[str] = SchemaField(
-            description="The external identifier for the webset", default=None
+            description="The external identifier for the webset"
         )
         success: str = SchemaField(
-            description="Whether the cancellation was successful", default="true"
-        )
-        error: str = SchemaField(
-            description="Error message if the request failed", default=""
+            description="Whether the cancellation was successful"
         )
 
     def __init__(self):
@@ -732,22 +796,612 @@ class ExaCancelWebsetBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/cancel"
-        headers = {
-            "x-api-key": credentials.api_key.get_secret_value(),
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        canceled_webset = aexa.websets.cancel(id=input_data.webset_id)
+
+        status_str = (
+            canceled_webset.status.value
+            if hasattr(canceled_webset.status, "value")
+            else str(canceled_webset.status)
+        )
+
+        yield "webset_id", canceled_webset.id
+        yield "status", status_str
+        yield "external_id", canceled_webset.external_id
+        yield "success", "true"
+
+
+# Mirrored models for Preview response stability
+class PreviewCriterionModel(BaseModel):
+    """Stable model for preview criteria."""
+
+    description: str
+
+    @classmethod
+    def from_sdk(cls, sdk_criterion) -> "PreviewCriterionModel":
+        """Convert SDK criterion to our model."""
+        return cls(description=sdk_criterion.description)
+
+
+class PreviewEnrichmentModel(BaseModel):
+    """Stable model for preview enrichment."""
+
+    description: str
+    format: str
+    options: List[str]
+
+    @classmethod
+    def from_sdk(cls, sdk_enrichment) -> "PreviewEnrichmentModel":
+        """Convert SDK enrichment to our model."""
+        format_str = (
+            sdk_enrichment.format.value
+            if hasattr(sdk_enrichment.format, "value")
+            else str(sdk_enrichment.format)
+        )
+
+        options_list = []
+        if sdk_enrichment.options:
+            for opt in sdk_enrichment.options:
+                opt_dict = opt.model_dump(by_alias=True)
+                options_list.append(opt_dict.get("label", ""))
+
+        return cls(
+            description=sdk_enrichment.description,
+            format=format_str,
+            options=options_list,
+        )
+
+
+class PreviewSearchModel(BaseModel):
+    """Stable model for preview search details."""
+
+    entity_type: str
+    entity_description: Optional[str]
+    criteria: List[PreviewCriterionModel]
+
+    @classmethod
+    def from_sdk(cls, sdk_search) -> "PreviewSearchModel":
+        """Convert SDK search preview to our model."""
+        # Extract entity type from union
+        entity_dict = sdk_search.entity.model_dump(by_alias=True)
+        entity_type = entity_dict.get("type", "auto")
+        entity_description = entity_dict.get("description")
+
+        # Convert criteria
+        criteria = [
+            PreviewCriterionModel.from_sdk(c) for c in sdk_search.criteria or []
+        ]
+
+        return cls(
+            entity_type=entity_type,
+            entity_description=entity_description,
+            criteria=criteria,
+        )
+
+
+class PreviewWebsetModel(BaseModel):
+    """Stable model for preview response."""
+
+    search: PreviewSearchModel
+    enrichments: List[PreviewEnrichmentModel]
+
+    @classmethod
+    def from_sdk(cls, sdk_preview) -> "PreviewWebsetModel":
+        """Convert SDK PreviewWebsetResponse to our model."""
+
+        search = PreviewSearchModel.from_sdk(sdk_preview.search)
+        enrichments = [
+            PreviewEnrichmentModel.from_sdk(e) for e in sdk_preview.enrichments or []
+        ]
+
+        return cls(search=search, enrichments=enrichments)
+
+
+class ExaPreviewWebsetBlock(Block):
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        query: str = SchemaField(
+            description="Your search query to preview. Use this to see how Exa will interpret your search before creating a webset.",
+            placeholder="Marketing agencies based in the US, with brands worked with and city",
+        )
+        entity_type: Optional[SearchEntityType] = SchemaField(
+            default=None,
+            description="Entity type to force: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, Exa will auto-detect.",
+            advanced=True,
+        )
+        entity_description: Optional[str] = SchemaField(
+            default=None,
+            description="Description for custom entity type (required when entity_type is 'custom')",
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        preview: PreviewWebsetModel = SchemaField(
+            description="Full preview response with search and enrichment details"
+        )
+        entity_type: str = SchemaField(
+            description="The detected or specified entity type"
+        )
+        entity_description: Optional[str] = SchemaField(
+            description="Description of the entity type"
+        )
+        criteria: list[PreviewCriterionModel] = SchemaField(
+            description="Generated search criteria that will be used"
+        )
+        enrichment_columns: list[PreviewEnrichmentModel] = SchemaField(
+            description="Available enrichment columns that can be extracted"
+        )
+        interpretation: str = SchemaField(
+            description="Human-readable interpretation of how the query will be processed"
+        )
+        suggestions: list[str] = SchemaField(
+            description="Suggestions for improving the query"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="f8c4e2a1-9b3d-4e5f-a6c7-d8e9f0a1b2c3",
+            description="Preview how a search query will be interpreted before creating a webset. Helps understand entity detection, criteria generation, and available enrichments.",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaPreviewWebsetBlock.Input,
+            output_schema=ExaPreviewWebsetBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        payload: dict[str, Any] = {
+            "query": input_data.query,
         }
 
-        try:
-            response = await Requests().post(url, headers=headers)
-            data = response.json()
+        if input_data.entity_type:
+            entity: dict[str, Any] = {"type": input_data.entity_type.value}
+            if (
+                input_data.entity_type == SearchEntityType.CUSTOM
+                and input_data.entity_description
+            ):
+                entity["description"] = input_data.entity_description
+            payload["entity"] = entity
 
-            yield "webset_id", data.get("id", "")
-            yield "status", data.get("status", "")
-            yield "external_id", data.get("externalId")
-            yield "success", "true"
+        sdk_preview = aexa.websets.preview(params=payload)
 
-        except Exception as e:
-            yield "error", str(e)
-            yield "webset_id", ""
-            yield "status", ""
-            yield "success", "false"
+        preview = PreviewWebsetModel.from_sdk(sdk_preview)
+
+        entity_type = preview.search.entity_type
+        entity_description = preview.search.entity_description
+        criteria = preview.search.criteria
+        enrichments = preview.enrichments
+
+        # Generate interpretation
+        interpretation = f"Query will search for {entity_type}"
+        if entity_description:
+            interpretation += f" ({entity_description})"
+        if criteria:
+            interpretation += f" with {len(criteria)} criteria"
+        if enrichments:
+            interpretation += f" and {len(enrichments)} available enrichment columns"
+
+        # Generate suggestions
+        suggestions = []
+        if not criteria:
+            suggestions.append(
+                "Consider adding specific criteria to narrow your search"
+            )
+        if not enrichments:
+            suggestions.append(
+                "Consider specifying what data points you want to extract"
+            )
+
+        # Yield full model first
+        yield "preview", preview
+
+        # Then yield individual fields for graph flexibility
+        yield "entity_type", entity_type
+        yield "entity_description", entity_description
+        yield "criteria", criteria
+        yield "enrichment_columns", enrichments
+        yield "interpretation", interpretation
+        yield "suggestions", suggestions
+
+
+class ExaWebsetStatusBlock(Block):
+    """Get a quick status overview of a webset without fetching all details."""
+
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset",
+            placeholder="webset-id-or-external-id",
+        )
+
+    class Output(BlockSchemaOutput):
+        webset_id: str = SchemaField(description="The webset identifier")
+        status: str = SchemaField(
+            description="Current status (idle, running, paused, etc.)"
+        )
+        item_count: int = SchemaField(description="Total number of items in the webset")
+        search_count: int = SchemaField(description="Number of searches performed")
+        enrichment_count: int = SchemaField(
+            description="Number of enrichments configured"
+        )
+        monitor_count: int = SchemaField(description="Number of monitors configured")
+        last_updated: str = SchemaField(description="When the webset was last updated")
+        is_processing: bool = SchemaField(
+            description="Whether any operations are currently running"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="47cc3cd8-840f-4ec4-8d40-fcaba75fbe1a",
+            description="Get a quick status overview of a webset",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaWebsetStatusBlock.Input,
+            output_schema=ExaWebsetStatusBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        webset = aexa.websets.get(id=input_data.webset_id)
+
+        status = (
+            webset.status.value
+            if hasattr(webset.status, "value")
+            else str(webset.status)
+        )
+        is_processing = status in ["running", "pending"]
+
+        # Estimate item count from search progress
+        item_count = 0
+        if webset.searches:
+            for search in webset.searches:
+                if search.progress:
+                    item_count += search.progress.found
+
+        # Count searches, enrichments, monitors
+        search_count = len(webset.searches or [])
+        enrichment_count = len(webset.enrichments or [])
+        monitor_count = len(webset.monitors or [])
+
+        yield "webset_id", webset.id
+        yield "status", status
+        yield "item_count", item_count
+        yield "search_count", search_count
+        yield "enrichment_count", enrichment_count
+        yield "monitor_count", monitor_count
+        yield "last_updated", webset.updated_at.isoformat() if webset.updated_at else ""
+        yield "is_processing", is_processing
+
+
+# Summary models for ExaWebsetSummaryBlock
+class SearchSummaryModel(BaseModel):
+    """Summary of searches in a webset."""
+
+    total_searches: int
+    completed_searches: int
+    total_items_found: int
+    queries: List[str]
+
+
+class EnrichmentSummaryModel(BaseModel):
+    """Summary of enrichments in a webset."""
+
+    total_enrichments: int
+    completed_enrichments: int
+    enrichment_types: List[str]
+    titles: List[str]
+
+
+class MonitorSummaryModel(BaseModel):
+    """Summary of monitors in a webset."""
+
+    total_monitors: int
+    active_monitors: int
+    next_run: Optional[datetime] = None
+
+
+class WebsetStatisticsModel(BaseModel):
+    """Various statistics about a webset."""
+
+    total_operations: int
+    is_processing: bool
+    has_monitors: bool
+    avg_items_per_search: float
+
+
+class ExaWebsetSummaryBlock(Block):
+    """Get a comprehensive summary of a webset including samples and statistics."""
+
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset",
+            placeholder="webset-id-or-external-id",
+        )
+        include_sample_items: bool = SchemaField(
+            default=True,
+            description="Include sample items in the summary",
+        )
+        sample_size: int = SchemaField(
+            default=3,
+            description="Number of sample items to include",
+            ge=0,
+            le=10,
+        )
+        include_search_details: bool = SchemaField(
+            default=True,
+            description="Include details about searches",
+        )
+        include_enrichment_details: bool = SchemaField(
+            default=True,
+            description="Include details about enrichments",
+        )
+
+    class Output(BlockSchemaOutput):
+        webset_id: str = SchemaField(description="The webset identifier")
+        status: str = SchemaField(description="Current status")
+        entity_type: str = SchemaField(description="Type of entities in the webset")
+        total_items: int = SchemaField(description="Total number of items")
+        sample_items: list[Dict[str, Any]] = SchemaField(
+            description="Sample items from the webset"
+        )
+        search_summary: SearchSummaryModel = SchemaField(
+            description="Summary of searches performed"
+        )
+        enrichment_summary: EnrichmentSummaryModel = SchemaField(
+            description="Summary of enrichments applied"
+        )
+        monitor_summary: MonitorSummaryModel = SchemaField(
+            description="Summary of monitors configured"
+        )
+        statistics: WebsetStatisticsModel = SchemaField(
+            description="Various statistics about the webset"
+        )
+        created_at: str = SchemaField(description="When the webset was created")
+        updated_at: str = SchemaField(description="When the webset was last updated")
+
+    def __init__(self):
+        super().__init__(
+            id="9eff1710-a49b-490e-b486-197bf8b23c61",
+            description="Get a comprehensive summary of a webset with samples and statistics",
+            categories={BlockCategory.SEARCH},
+            input_schema=ExaWebsetSummaryBlock.Input,
+            output_schema=ExaWebsetSummaryBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        webset = aexa.websets.get(id=input_data.webset_id)
+
+        # Extract basic info
+        webset_id = webset.id
+        status = (
+            webset.status.value
+            if hasattr(webset.status, "value")
+            else str(webset.status)
+        )
+
+        # Determine entity type from searches
+        entity_type = "unknown"
+        searches = webset.searches or []
+        if searches:
+            first_search = searches[0]
+            if first_search.entity:
+                entity_dict = first_search.entity.model_dump(
+                    by_alias=True, exclude_none=True
+                )
+                entity_type = entity_dict.get("type", "unknown")
+
+        # Get sample items if requested
+        sample_items_data = []
+        total_items = 0
+
+        if input_data.include_sample_items and input_data.sample_size > 0:
+            items_response = aexa.websets.items.list(
+                webset_id=input_data.webset_id, limit=input_data.sample_size
+            )
+            sample_items_data = [
+                item.model_dump(by_alias=True, exclude_none=True)
+                for item in items_response.data
+            ]
+            total_items = len(sample_items_data)
+
+        # Build search summary using Pydantic model
+        search_summary = SearchSummaryModel(
+            total_searches=0,
+            completed_searches=0,
+            total_items_found=0,
+            queries=[],
+        )
+        if input_data.include_search_details and searches:
+            search_summary = SearchSummaryModel(
+                total_searches=len(searches),
+                completed_searches=sum(
+                    1
+                    for s in searches
+                    if (s.status.value if hasattr(s.status, "value") else str(s.status))
+                    == "completed"
+                ),
+                total_items_found=int(
+                    sum(s.progress.found if s.progress else 0 for s in searches)
+                ),
+                queries=[s.query for s in searches[:3]],  # First 3 queries
+            )
+
+        # Build enrichment summary using Pydantic model
+        enrichment_summary = EnrichmentSummaryModel(
+            total_enrichments=0,
+            completed_enrichments=0,
+            enrichment_types=[],
+            titles=[],
+        )
+        enrichments = webset.enrichments or []
+        if input_data.include_enrichment_details and enrichments:
+            enrichment_summary = EnrichmentSummaryModel(
+                total_enrichments=len(enrichments),
+                completed_enrichments=sum(
+                    1
+                    for e in enrichments
+                    if (e.status.value if hasattr(e.status, "value") else str(e.status))
+                    == "completed"
+                ),
+                enrichment_types=list(
+                    set(
+                        (
+                            e.format.value
+                            if e.format and hasattr(e.format, "value")
+                            else str(e.format) if e.format else "text"
+                        )
+                        for e in enrichments
+                    )
+                ),
+                titles=[(e.title or e.description or "")[:50] for e in enrichments[:3]],
+            )
+
+        # Build monitor summary using Pydantic model
+        monitors = webset.monitors or []
+        next_run_dt = None
+        if monitors:
+            next_runs = [m.next_run_at for m in monitors if m.next_run_at]
+            if next_runs:
+                next_run_dt = min(next_runs)
+
+        monitor_summary = MonitorSummaryModel(
+            total_monitors=len(monitors),
+            active_monitors=sum(
+                1
+                for m in monitors
+                if (m.status.value if hasattr(m.status, "value") else str(m.status))
+                == "enabled"
+            ),
+            next_run=next_run_dt,
+        )
+
+        # Build statistics using Pydantic model
+        statistics = WebsetStatisticsModel(
+            total_operations=len(searches) + len(enrichments),
+            is_processing=status in ["running", "pending"],
+            has_monitors=len(monitors) > 0,
+            avg_items_per_search=(
+                search_summary.total_items_found / len(searches) if searches else 0
+            ),
+        )
+
+        yield "webset_id", webset_id
+        yield "status", status
+        yield "entity_type", entity_type
+        yield "total_items", total_items
+        yield "sample_items", sample_items_data
+        yield "search_summary", search_summary
+        yield "enrichment_summary", enrichment_summary
+        yield "monitor_summary", monitor_summary
+        yield "statistics", statistics
+        yield "created_at", webset.created_at.isoformat() if webset.created_at else ""
+        yield "updated_at", webset.updated_at.isoformat() if webset.updated_at else ""
+
+
+class ExaWebsetReadyCheckBlock(Block):
+    """Check if a webset is ready for the next operation (conditional workflow helper)."""
+
+    class Input(BlockSchemaInput):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
+        webset_id: str = SchemaField(
+            description="The ID or external ID of the Webset to check",
+            placeholder="webset-id-or-external-id",
+        )
+        min_items: int = SchemaField(
+            default=1,
+            description="Minimum number of items required to be 'ready'",
+            ge=0,
+        )
+
+    class Output(BlockSchemaOutput):
+        is_ready: bool = SchemaField(
+            description="True if webset is idle AND has minimum items"
+        )
+        status: str = SchemaField(description="Current webset status")
+        item_count: int = SchemaField(description="Number of items in webset")
+        has_searches: bool = SchemaField(
+            description="Whether webset has any searches configured"
+        )
+        has_enrichments: bool = SchemaField(
+            description="Whether webset has any enrichments"
+        )
+        recommendation: str = SchemaField(
+            description="Suggested next action (ready_to_process, waiting_for_results, needs_search, etc.)"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="faf9f0f3-e659-4264-b33b-284a02166bec",
+            description="Check if webset is ready for next operation - enables conditional workflow branching",
+            categories={BlockCategory.SEARCH, BlockCategory.LOGIC},
+            input_schema=ExaWebsetReadyCheckBlock.Input,
+            output_schema=ExaWebsetReadyCheckBlock.Output,
+        )
+
+    async def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
+
+        # Get webset details
+        webset = aexa.websets.get(id=input_data.webset_id)
+
+        status = (
+            webset.status.value
+            if hasattr(webset.status, "value")
+            else str(webset.status)
+        )
+
+        # Estimate item count from search progress
+        item_count = 0
+        if webset.searches:
+            for search in webset.searches:
+                if search.progress:
+                    item_count += search.progress.found
+
+        # Determine readiness
+        is_idle = status == "idle"
+        has_min_items = item_count >= input_data.min_items
+        is_ready = is_idle and has_min_items
+
+        # Check resources
+        has_searches = len(webset.searches or []) > 0
+        has_enrichments = len(webset.enrichments or []) > 0
+
+        # Generate recommendation
+        recommendation = ""
+        if not has_searches:
+            recommendation = "needs_search"
+        elif status in ["running", "pending"]:
+            recommendation = "waiting_for_results"
+        elif not has_min_items:
+            recommendation = "insufficient_items"
+        elif not has_enrichments:
+            recommendation = "ready_to_enrich"
+        else:
+            recommendation = "ready_to_process"
+
+        yield "is_ready", is_ready
+        yield "status", status
+        yield "item_count", item_count
+        yield "has_searches", has_searches
+        yield "has_enrichments", has_enrichments
+        yield "recommendation", recommendation

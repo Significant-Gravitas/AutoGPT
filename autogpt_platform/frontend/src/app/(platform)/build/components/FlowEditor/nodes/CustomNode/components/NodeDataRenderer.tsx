@@ -63,7 +63,11 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
                   >
                     Pin:
                   </Text>
-                  <Text variant="body" className="text-slate-700" unmask={false}>
+                  <Text
+                    variant="body"
+                    className="text-slate-700"
+                    unmask={false}
+                  >
                     {beautifyString(key)}
                   </Text>
                 </div>
