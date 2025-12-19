@@ -145,7 +145,9 @@ async def preview_migration(db: Prisma) -> dict:
         AND u."passwordHash" IS NULL
         """
     )
-    credentials_to_migrate = credentials_preview[0]["count"] if credentials_preview else 0
+    credentials_to_migrate = (
+        credentials_preview[0]["count"] if credentials_preview else 0
+    )
 
     # Count users that would have Google OAuth migrated
     google_preview = await db.query_raw(
