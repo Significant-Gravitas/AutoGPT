@@ -14,12 +14,47 @@ from backend.util.virus_scanner import scan_content_safe
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
+# Maximum filename length (conservative limit for most filesystems)
+MAX_FILENAME_LENGTH = 200
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize and truncate filename to prevent filesystem errors.
+    """
+    # Remove or replace invalid characters
+    sanitized = re.sub(r'[<>:"/\\|?*\n\r\t]', "_", filename)
+
+    # Truncate if too long
+    if len(sanitized) > MAX_FILENAME_LENGTH:
+        # Keep the extension if possible
+        if "." in sanitized:
+            name, ext = sanitized.rsplit(".", 1)
+            max_name_length = MAX_FILENAME_LENGTH - len(ext) - 1
+            sanitized = name[:max_name_length] + "." + ext
+        else:
+            sanitized = sanitized[:MAX_FILENAME_LENGTH]
+
+    # Ensure it's not empty or just dots
+    if not sanitized or sanitized.strip(".") == "":
+        sanitized = f"file_{uuid.uuid4().hex[:8]}"
+
+    return sanitized
+
 
 def get_exec_file_path(graph_exec_id: str, path: str) -> str:
     """
     Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder.
     """
-    return str(TEMP_DIR / "exec_file" / graph_exec_id / path)
+    try:
+        full_path = TEMP_DIR / "exec_file" / graph_exec_id / path
+        return str(full_path)
+    except OSError as e:
+        if "File name too long" in str(e):
+            raise ValueError(
+                f"File path too long: {len(path)} characters. Maximum path length exceeded."
+            ) from e
+        raise ValueError(f"Invalid file path: {e}") from e
 
 
 def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
@@ -117,8 +152,11 @@ async def store_media_file(
 
         # Generate filename from cloud path
         _, path_part = cloud_storage.parse_cloud_path(file)
-        filename = Path(path_part).name or f"{uuid.uuid4()}.bin"
-        target_path = _ensure_inside_base(base_path / filename, base_path)
+        filename = sanitize_filename(Path(path_part).name or f"{uuid.uuid4()}.bin")
+        try:
+            target_path = _ensure_inside_base(base_path / filename, base_path)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{filename}': {e}") from e
 
         # Check file size limit
         if len(cloud_content) > MAX_FILE_SIZE:
@@ -144,7 +182,10 @@ async def store_media_file(
         # Generate filename and decode
         extension = _extension_from_mime(mime_type)
         filename = f"{uuid.uuid4()}{extension}"
-        target_path = _ensure_inside_base(base_path / filename, base_path)
+        try:
+            target_path = _ensure_inside_base(base_path / filename, base_path)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{filename}': {e}") from e
         content = base64.b64decode(b64_content)
 
         # Check file size limit
@@ -160,8 +201,11 @@ async def store_media_file(
     elif file.startswith(("http://", "https://")):
         # URL
         parsed_url = urlparse(file)
-        filename = Path(parsed_url.path).name or f"{uuid.uuid4()}"
-        target_path = _ensure_inside_base(base_path / filename, base_path)
+        filename = sanitize_filename(Path(parsed_url.path).name or f"{uuid.uuid4()}")
+        try:
+            target_path = _ensure_inside_base(base_path / filename, base_path)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{filename}': {e}") from e
 
         # Download and save
         resp = await Requests().get(file)
@@ -177,8 +221,12 @@ async def store_media_file(
         target_path.write_bytes(resp.content)
 
     else:
-        # Local path
-        target_path = _ensure_inside_base(base_path / file, base_path)
+        # Local path - sanitize the filename part to prevent long filename errors
+        sanitized_file = sanitize_filename(file)
+        try:
+            target_path = _ensure_inside_base(base_path / sanitized_file, base_path)
+        except OSError as e:
+            raise ValueError(f"Invalid file path '{sanitized_file}': {e}") from e
         if not target_path.is_file():
             raise ValueError(f"Local file does not exist: {target_path}")
 
