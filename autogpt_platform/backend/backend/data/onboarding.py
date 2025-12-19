@@ -442,6 +442,8 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
         )
         for agent in recommended_agents

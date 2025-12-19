@@ -9,6 +9,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePickerInput";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import {
   BlockIOObjectSubSchema,
@@ -32,6 +33,7 @@ interface Props {
   value?: any;
   placeholder?: string;
   onChange: (value: any) => void;
+  readOnly?: boolean;
 }
 
 /**
@@ -44,6 +46,7 @@ export function RunAgentInputs({
   value,
   placeholder,
   onChange,
+  readOnly = false,
   ...props
 }: Props & React.HTMLAttributes<HTMLElement>) {
   const { handleUploadFile, uploadProgress } = useRunAgentInputs();
@@ -62,7 +65,6 @@ export function RunAgentInputs({
           id={`${baseId}-number`}
           label={schema.title ?? placeholder ?? "Number"}
           hideLabel
-          size="small"
           type="number"
           value={value ?? ""}
           placeholder={placeholder || "Enter number"}
@@ -80,7 +82,6 @@ export function RunAgentInputs({
           id={`${baseId}-textarea`}
           label={schema.title ?? placeholder ?? "Text"}
           hideLabel
-          size="small"
           type="textarea"
           rows={3}
           value={value ?? ""}
@@ -102,7 +103,7 @@ export function RunAgentInputs({
           value={value}
           onChange={onChange}
           className="w-full"
-          showRemoveButton={false}
+          showRemoveButton={!readOnly}
         />
       );
       break;
@@ -130,7 +131,6 @@ export function RunAgentInputs({
           id={`${baseId}-date`}
           label={schema.title ?? placeholder ?? "Date"}
           hideLabel
-          size="small"
           type="date"
           value={value ? format(value as Date, "yyyy-MM-dd") : ""}
           onChange={(e) => {
@@ -159,7 +159,6 @@ export function RunAgentInputs({
           id={`${baseId}-datetime`}
           label={schema.title ?? placeholder ?? "Date time"}
           hideLabel
-          size="small"
           type="datetime-local"
           value={value ?? ""}
           onChange={(e) => onChange((e.target as HTMLInputElement).value)}
@@ -194,7 +193,6 @@ export function RunAgentInputs({
             label={schema.title ?? placeholder ?? "Select"}
             hideLabel
             value={value ?? ""}
-            size="small"
             onValueChange={(val: string) => onChange(val)}
             placeholder={placeholder || "Select an option"}
             options={schema.enum
@@ -217,7 +215,6 @@ export function RunAgentInputs({
           items={allKeys.map((key) => ({
             value: key,
             label: _schema.properties[key]?.title ?? key,
-            size: "small",
           }))}
           selectedValues={selectedValues}
           onChange={(values: string[]) =>
@@ -336,7 +333,6 @@ export function RunAgentInputs({
           id={`${baseId}-text`}
           label={schema.title ?? placeholder ?? "Text"}
           hideLabel
-          size="small"
           type="text"
           value={value ?? ""}
           onChange={(e) => onChange((e.target as HTMLInputElement).value)}
@@ -347,6 +343,17 @@ export function RunAgentInputs({
   }
 
   return (
-    <div className="no-drag relative flex w-full">{innerInputElement}</div>
+    <div className="flex w-full flex-col gap-0 space-y-2">
+      <label className="large-medium flex items-center gap-1 font-medium">
+        {schema.title || placeholder}
+        <InformationTooltip description={schema.description} />
+      </label>
+      <div
+        className="no-drag relative flex w-full"
+        style={readOnly ? { pointerEvents: "none", opacity: 0.7 } : undefined}
+      >
+        {innerInputElement}
+      </div>
+    </div>
   );
 }

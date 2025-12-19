@@ -154,7 +154,11 @@ async def get_agents(
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
-async def get_agent(username: str, agent_name: str):
+async def get_agent(
+    username: str,
+    agent_name: str,
+    include_changelog: bool = fastapi.Query(default=False),
+):
     """
     This is only used on the AgentDetails Page.
 
@@ -164,7 +168,7 @@ async def get_agent(username: str, agent_name: str):
     # URL decode the agent name since it comes from the URL path
     agent_name = urllib.parse.unquote(agent_name).lower()
     agent = await store_cache._get_cached_agent_details(
-        username=username, agent_name=agent_name
+        username=username, agent_name=agent_name, include_changelog=include_changelog
     )
     return agent
 

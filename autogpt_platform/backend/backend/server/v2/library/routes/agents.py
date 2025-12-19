@@ -284,6 +284,7 @@ async def update_library_agent(
             library_agent_id=library_agent_id,
             user_id=user_id,
             auto_update_version=payload.auto_update_version,
+            graph_version=payload.graph_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
             settings=payload.settings,

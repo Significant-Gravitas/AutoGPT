@@ -9,7 +9,6 @@ import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
-import { AnchorLinksWrap } from "../AnchorLinksWrap";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
@@ -17,19 +16,18 @@ import { SelectedViewLayout } from "../SelectedViewLayout";
 import { SelectedScheduleActions } from "./components/SelectedScheduleActions";
 import { useSelectedScheduleView } from "./useSelectedScheduleView";
 
-const anchorStyles =
-  "border-b-2 border-transparent pb-1 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 hover:border-slate-900";
-
 interface Props {
   agent: LibraryAgent;
   scheduleId: string;
   onClearSelectedRun?: () => void;
+  banner?: React.ReactNode;
 }
 
 export function SelectedScheduleView({
   agent,
   scheduleId,
   onClearSelectedRun,
+  banner,
 }: Props) {
   const { schedule, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
@@ -44,13 +42,6 @@ export function SelectedScheduleView({
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
-
-  function scrollToSection(id: string) {
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }
 
   if (error) {
     return (
@@ -85,7 +76,11 @@ export function SelectedScheduleView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout
+          agentName={agent.name}
+          agentId={agent.id}
+          banner={banner}
+        >
           <div className="flex flex-col gap-4">
             <div className="flex w-full flex-col gap-0">
               <RunDetailHeader
@@ -107,22 +102,6 @@ export function SelectedScheduleView({
                 </div>
               ) : null}
             </div>
-
-            {/* Navigation Links */}
-            <AnchorLinksWrap>
-              <button
-                onClick={() => scrollToSection("schedule")}
-                className={anchorStyles}
-              >
-                Schedule
-              </button>
-              <button
-                onClick={() => scrollToSection("input")}
-                className={anchorStyles}
-              >
-                Your input
-              </button>
-            </AnchorLinksWrap>
 
             {/* Schedule Section */}
             <div id="schedule" className="scroll-mt-4">

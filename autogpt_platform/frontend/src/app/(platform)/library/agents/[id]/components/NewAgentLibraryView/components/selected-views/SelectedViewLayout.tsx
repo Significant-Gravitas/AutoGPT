@@ -6,6 +6,7 @@ interface Props {
   agentName: string;
   agentId: string;
   children: React.ReactNode;
+  banner?: React.ReactNode;
 }
 
 export function SelectedViewLayout(props: Props) {
@@ -14,6 +15,7 @@ export function SelectedViewLayout(props: Props) {
       <div
         className={`${AGENT_LIBRARY_SECTION_PADDING_X} flex-shrink-0 border-b border-zinc-100 pb-0 lg:pb-4`}
       >
+        {props.banner && <div className="mb-4">{props.banner}</div>}
         <Breadcrumbs
           items={[
             { name: "My Library", link: "/library" },
