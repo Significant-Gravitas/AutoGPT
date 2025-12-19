@@ -5370,6 +5370,369 @@
         }
       }
     },
+    "/api/oauth/app/{client_id}": {
+      "get": {
+        "tags": ["oauth"],
+        "summary": "Get Oauth App Info",
+        "description": "Get public information about an OAuth application.\n\nThis endpoint is used by the consent screen to display application details\nto the user before they authorize access.\n\nReturns:\n- name: Application name\n- description: Application description (if provided)\n- scopes: List of scopes the application is allowed to request",
+        "operationId": "getOauthGetOauthAppInfo",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "client_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Client Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationPublicInfo"
+                }
+              }
+            }
+          },
+          "404": { "description": "Application not found or disabled" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/oauth/authorize": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Authorize",
+        "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scopes: List of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases return a redirect_url with error parameters, or raise HTTPException\nfor critical errors (like invalid redirect_uri).",
+        "operationId": "postOauthAuthorize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AuthorizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthorizeResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/oauth/token": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Token",
+        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
+        "operationId": "postOauthToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/TokenRequestByCode" },
+                  { "$ref": "#/components/schemas/TokenRequestByRefreshToken" }
+                ],
+                "title": "Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TokenResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/introspect": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Introspect",
+        "description": "OAuth 2.0 Token Introspection Endpoint (RFC 7662)\n\nAllows clients to check if a token is valid and get its metadata.\n\nReturns:\n- active: Whether the token is currently active\n- scopes: List of authorized scopes (if active)\n- client_id: The client the token was issued to (if active)\n- user_id: The user the token represents (if active)\n- exp: Expiration timestamp (if active)\n- token_type: \"access_token\" or \"refresh_token\" (if active)",
+        "operationId": "postOauthIntrospect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postOauthIntrospect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenIntrospectionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/revoke": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Revoke",
+        "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009)\n\nAllows clients to revoke an access or refresh token.\n\nNote: Revoking a refresh token does NOT revoke associated access tokens.\nRevoking an access token does NOT revoke the associated refresh token.",
+        "operationId": "postOauthRevoke",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Body_postOauthRevoke" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/apps/mine": {
+      "get": {
+        "tags": ["oauth"],
+        "summary": "List My Oauth Apps",
+        "description": "List all OAuth applications owned by the current user.\n\nReturns a list of OAuth applications with their details including:\n- id, name, description, logo_url\n- client_id (public identifier)\n- redirect_uris, grant_types, scopes\n- is_active status\n- created_at, updated_at timestamps\n\nNote: client_secret is never returned for security reasons.",
+        "operationId": "getOauthListMyOauthApps",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OAuthApplicationInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Getoauthlistmyoauthapps"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/oauth/apps/{app_id}/status": {
+      "patch": {
+        "tags": ["oauth"],
+        "summary": "Update App Status",
+        "description": "Enable or disable an OAuth application.\n\nOnly the application owner can update the status.\nWhen disabled, the application cannot be used for new authorizations\nand existing access tokens will fail validation.\n\nReturns the updated application info.",
+        "operationId": "patchOauthUpdateAppStatus",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "App Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_patchOauthUpdateAppStatus"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/oauth/apps/{app_id}/logo": {
+      "patch": {
+        "tags": ["oauth"],
+        "summary": "Update App Logo",
+        "description": "Update the logo URL for an OAuth application.\n\nOnly the application owner can update the logo.\nThe logo should be uploaded first using the media upload endpoint,\nthen this endpoint is called with the resulting URL.\n\nLogo requirements:\n- Must be square (1:1 aspect ratio)\n- Minimum 512x512 pixels\n- Maximum 2048x2048 pixels\n\nReturns the updated application info.",
+        "operationId": "patchOauthUpdateAppLogo",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "App Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateAppLogoRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/oauth/apps/{app_id}/logo/upload": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Upload App Logo",
+        "description": "Upload a logo image for an OAuth application.\n\nRequirements:\n- Image must be square (1:1 aspect ratio)\n- Minimum 512x512 pixels\n- Maximum 2048x2048 pixels\n- Allowed formats: JPEG, PNG, WebP\n- Maximum file size: 3MB\n\nThe image is uploaded to cloud storage and the app's logoUrl is updated.\nReturns the updated application info.",
+        "operationId": "postOauthUploadAppLogo",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "App Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postOauthUploadAppLogo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthApplicationInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["health"],
@@ -5418,28 +5781,29 @@
       },
       "APIKeyInfo": {
         "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "name": { "type": "string", "title": "Name" },
-          "head": {
-            "type": "string",
-            "title": "Head",
-            "description": "The first 8 characters of the key"
-          },
-          "tail": {
-            "type": "string",
-            "title": "Tail",
-            "description": "The last 8 characters of the key"
-          },
-          "status": { "$ref": "#/components/schemas/APIKeyStatus" },
-          "permissions": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "scopes": {
             "items": { "$ref": "#/components/schemas/APIKeyPermission" },
             "type": "array",
-            "title": "Permissions"
+            "title": "Scopes"
+          },
+          "type": {
+            "type": "string",
+            "const": "api_key",
+            "title": "Type",
+            "default": "api_key"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Expires At"
           },
           "last_used_at": {
             "anyOf": [
@@ -5455,28 +5819,41 @@
             ],
             "title": "Revoked At"
           },
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "head": {
+            "type": "string",
+            "title": "Head",
+            "description": "The first 8 characters of the key"
+          },
+          "tail": {
+            "type": "string",
+            "title": "Tail",
+            "description": "The last 8 characters of the key"
+          },
+          "status": { "$ref": "#/components/schemas/APIKeyStatus" },
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description"
-          },
-          "user_id": { "type": "string", "title": "User Id" }
+          }
         },
         "type": "object",
         "required": [
+          "user_id",
+          "scopes",
+          "created_at",
           "id",
           "name",
           "head",
           "tail",
-          "status",
-          "permissions",
-          "created_at",
-          "user_id"
+          "status"
         ],
         "title": "APIKeyInfo"
       },
       "APIKeyPermission": {
         "type": "string",
         "enum": [
+          "IDENTITY",
           "EXECUTE_GRAPH",
           "READ_GRAPH",
           "EXECUTE_BLOCK",
@@ -5613,6 +5990,72 @@
         "type": "object",
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
+      },
+      "AuthorizeRequest": {
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "Client identifier"
+          },
+          "redirect_uri": {
+            "type": "string",
+            "title": "Redirect Uri",
+            "description": "Redirect URI"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes",
+            "description": "List of scopes"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "Anti-CSRF token from client"
+          },
+          "response_type": {
+            "type": "string",
+            "title": "Response Type",
+            "description": "Must be 'code' for authorization code flow",
+            "default": "code"
+          },
+          "code_challenge": {
+            "type": "string",
+            "title": "Code Challenge",
+            "description": "PKCE code challenge (required)"
+          },
+          "code_challenge_method": {
+            "type": "string",
+            "enum": ["S256", "plain"],
+            "title": "Code Challenge Method",
+            "description": "PKCE code challenge method (S256 recommended)",
+            "default": "S256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_id",
+          "redirect_uri",
+          "scopes",
+          "state",
+          "code_challenge"
+        ],
+        "title": "AuthorizeRequest",
+        "description": "OAuth 2.0 authorization request"
+      },
+      "AuthorizeResponse": {
+        "properties": {
+          "redirect_url": {
+            "type": "string",
+            "title": "Redirect Url",
+            "description": "URL to redirect the user to"
+          }
+        },
+        "type": "object",
+        "required": ["redirect_url"],
+        "title": "AuthorizeResponse",
+        "description": "OAuth 2.0 authorization response with redirect URL"
       },
       "AutoTopUpConfig": {
         "properties": {
@@ -5862,6 +6305,86 @@
         "type": "object",
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
+      },
+      "Body_patchOauthUpdateAppStatus": {
+        "properties": {
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "Whether the app should be active"
+          }
+        },
+        "type": "object",
+        "required": ["is_active"],
+        "title": "Body_patchOauthUpdateAppStatus"
+      },
+      "Body_postOauthIntrospect": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Token to introspect"
+          },
+          "token_type_hint": {
+            "anyOf": [
+              { "type": "string", "enum": ["access_token", "refresh_token"] },
+              { "type": "null" }
+            ],
+            "title": "Token Type Hint",
+            "description": "Hint about token type ('access_token' or 'refresh_token')"
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "Client identifier"
+          },
+          "client_secret": {
+            "type": "string",
+            "title": "Client Secret",
+            "description": "Client secret"
+          }
+        },
+        "type": "object",
+        "required": ["token", "client_id", "client_secret"],
+        "title": "Body_postOauthIntrospect"
+      },
+      "Body_postOauthRevoke": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Token to revoke"
+          },
+          "token_type_hint": {
+            "anyOf": [
+              { "type": "string", "enum": ["access_token", "refresh_token"] },
+              { "type": "null" }
+            ],
+            "title": "Token Type Hint",
+            "description": "Hint about token type ('access_token' or 'refresh_token')"
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "Client identifier"
+          },
+          "client_secret": {
+            "type": "string",
+            "title": "Client Secret",
+            "description": "Client secret"
+          }
+        },
+        "type": "object",
+        "required": ["token", "client_id", "client_secret"],
+        "title": "Body_postOauthRevoke"
+      },
+      "Body_postOauthUploadAppLogo": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postOauthUploadAppLogo"
       },
       "Body_postV1Exchange_oauth_code_for_tokens": {
         "properties": {
@@ -7854,6 +8377,85 @@
         "type": "object",
         "required": ["provider", "access_token", "scopes"],
         "title": "OAuth2Credentials"
+      },
+      "OAuthApplicationInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "redirect_uris": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Redirect Uris"
+          },
+          "grant_types": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Grant Types"
+          },
+          "scopes": {
+            "items": { "$ref": "#/components/schemas/APIKeyPermission" },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "owner_id": { "type": "string", "title": "Owner Id" },
+          "is_active": { "type": "boolean", "title": "Is Active" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "client_id",
+          "redirect_uris",
+          "grant_types",
+          "scopes",
+          "owner_id",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OAuthApplicationInfo",
+        "description": "OAuth application information (without client secret hash)"
+      },
+      "OAuthApplicationPublicInfo": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": ["name", "scopes"],
+        "title": "OAuthApplicationPublicInfo",
+        "description": "Public information about an OAuth application (for consent screen)"
       },
       "OnboardingStep": {
         "type": "string",
@@ -9892,6 +10494,134 @@
         "required": ["timezone"],
         "title": "TimezoneResponse"
       },
+      "TokenIntrospectionResult": {
+        "properties": {
+          "active": { "type": "boolean", "title": "Active" },
+          "scopes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Scopes"
+          },
+          "client_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Client Id"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "exp": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Exp"
+          },
+          "token_type": {
+            "anyOf": [
+              { "type": "string", "enum": ["access_token", "refresh_token"] },
+              { "type": "null" }
+            ],
+            "title": "Token Type"
+          }
+        },
+        "type": "object",
+        "required": ["active"],
+        "title": "TokenIntrospectionResult",
+        "description": "Result of token introspection (RFC 7662)"
+      },
+      "TokenRequestByCode": {
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "const": "authorization_code",
+            "title": "Grant Type"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Authorization code"
+          },
+          "redirect_uri": {
+            "type": "string",
+            "title": "Redirect Uri",
+            "description": "Redirect URI (must match authorization request)"
+          },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_secret": { "type": "string", "title": "Client Secret" },
+          "code_verifier": {
+            "type": "string",
+            "title": "Code Verifier",
+            "description": "PKCE code verifier"
+          }
+        },
+        "type": "object",
+        "required": [
+          "grant_type",
+          "code",
+          "redirect_uri",
+          "client_id",
+          "client_secret",
+          "code_verifier"
+        ],
+        "title": "TokenRequestByCode"
+      },
+      "TokenRequestByRefreshToken": {
+        "properties": {
+          "grant_type": {
+            "type": "string",
+            "const": "refresh_token",
+            "title": "Grant Type"
+          },
+          "refresh_token": { "type": "string", "title": "Refresh Token" },
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_secret": { "type": "string", "title": "Client Secret" }
+        },
+        "type": "object",
+        "required": [
+          "grant_type",
+          "refresh_token",
+          "client_id",
+          "client_secret"
+        ],
+        "title": "TokenRequestByRefreshToken"
+      },
+      "TokenResponse": {
+        "properties": {
+          "token_type": {
+            "type": "string",
+            "const": "Bearer",
+            "title": "Token Type",
+            "default": "Bearer"
+          },
+          "access_token": { "type": "string", "title": "Access Token" },
+          "access_token_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Access Token Expires At"
+          },
+          "refresh_token": { "type": "string", "title": "Refresh Token" },
+          "refresh_token_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Refresh Token Expires At"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "access_token_expires_at",
+          "refresh_token",
+          "refresh_token_expires_at",
+          "scopes"
+        ],
+        "title": "TokenResponse",
+        "description": "OAuth 2.0 token response"
+      },
       "TransactionHistory": {
         "properties": {
           "transactions": {
@@ -9937,6 +10667,18 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "UpdateAppLogoRequest": {
+        "properties": {
+          "logo_url": {
+            "type": "string",
+            "title": "Logo Url",
+            "description": "URL of the uploaded logo image"
+          }
+        },
+        "type": "object",
+        "required": ["logo_url"],
+        "title": "UpdateAppLogoRequest"
       },
       "UpdatePermissionsRequest": {
         "properties": {
