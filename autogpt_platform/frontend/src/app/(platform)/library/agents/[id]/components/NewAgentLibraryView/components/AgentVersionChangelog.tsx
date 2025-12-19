@@ -5,6 +5,8 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { okData } from "@/app/api/helpers";
+import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import React from "react";
 
 interface AgentVersionChangelogProps {
@@ -39,18 +41,16 @@ export function AgentVersionChangelog({
   );
 
   // Create version info from available graph versions
-  const agentVersions: VersionInfo[] =
-    storeAgentData?.data &&
-    storeAgentData.status === 200 &&
-    storeAgentData.data.agentGraphVersions
-      ? storeAgentData.data.agentGraphVersions
-          .map((versionStr: string) => parseInt(versionStr, 10))
-          .sort((a: number, b: number) => b - a) // Sort descending (newest first)
-          .map((version: number) => ({
-            version,
-            isCurrentVersion: version === agent.graph_version,
-          }))
-      : [];
+  const storeData = okData<StoreAgentDetails>(storeAgentData);
+  const agentVersions: VersionInfo[] = storeData?.agentGraphVersions
+    ? storeData.agentGraphVersions
+        .map((versionStr: string) => parseInt(versionStr, 10))
+        .sort((a: number, b: number) => b - a) // Sort descending (newest first)
+        .map((version: number) => ({
+          version,
+          isCurrentVersion: version === agent.graph_version,
+        }))
+    : [];
 
   const renderVersionItem = (versionInfo: VersionInfo) => {
     return (

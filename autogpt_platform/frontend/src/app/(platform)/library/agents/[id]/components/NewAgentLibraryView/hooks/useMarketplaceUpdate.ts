@@ -10,6 +10,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
+import { okData } from "@/app/api/helpers";
 import * as React from "react";
 import { useState } from "react";
 
@@ -98,11 +99,11 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       user?.id && agent.marketplace_listing?.creator.id === user.id;
 
     // Check if there's a pending submission for this specific agent version
+    const submissionsResponse = okData(submissionsData) as any;
     const hasPendingSubmissionForCurrentVersion =
       isUserCreator &&
-      submissionsData?.status === 200 &&
-      submissionsData.data.submissions.some(
-        (submission) =>
+      submissionsResponse?.submissions?.some(
+        (submission: any) =>
           submission.agent_id === agent.graph_id &&
           submission.agent_version === agent.graph_version &&
           submission.status === "PENDING",

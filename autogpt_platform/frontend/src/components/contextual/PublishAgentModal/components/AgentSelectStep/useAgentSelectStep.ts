@@ -3,6 +3,7 @@ import {
   useGetV2GetMyAgents,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { okData } from "@/app/api/helpers";
 
 export interface Agent {
   name: string;
@@ -56,10 +57,9 @@ export function useAgentSelectStep({
   const error = agentsError || submissionsError;
 
   const agents: Agent[] = React.useMemo(() => {
-    // Properly handle API responses with status checks
-    const agentsData = myAgents?.status === 200 ? myAgents.data.agents : [];
-    const submissionsData =
-      mySubmissions?.status === 200 ? mySubmissions.data.submissions : [];
+    // Properly handle API responses with okData helper
+    const agentsData = (okData(myAgents) as any)?.agents || [];
+    const submissionsData = (okData(mySubmissions) as any)?.submissions || [];
 
     if (agentsData.length === 0) {
       return [];
@@ -101,17 +101,16 @@ export function useAgentSelectStep({
           isMarketplaceUpdate,
         };
       })
-      .filter((agent): agent is Agent => agent !== null)
+      .filter((agent: any): agent is Agent => agent !== null)
       .sort(
-        (a: Agent, b: Agent) =>
+        (a: any, b: any) =>
           new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime(),
       );
   }, [myAgents, mySubmissions]);
 
   // Function to get published submission data for pre-filling updates
   const getPublishedSubmissionData = (agentId: string) => {
-    const submissionsData =
-      mySubmissions?.status === 200 ? mySubmissions.data.submissions : [];
+    const submissionsData = (okData(mySubmissions) as any)?.submissions || [];
 
     const approvedSubmissions = submissionsData
       .filter(
@@ -161,8 +160,7 @@ export function useAgentSelectStep({
 
   // Helper to get published version for an agent
   const getPublishedVersion = (agentId: string): number | undefined => {
-    const submissionsData =
-      mySubmissions?.status === 200 ? mySubmissions.data.submissions : [];
+    const submissionsData = (okData(mySubmissions) as any)?.submissions || [];
 
     return submissionsData
       .filter((s: any) => s.status === "APPROVED" && s.agent_id === agentId)
