@@ -16,7 +16,7 @@ from fastapi import APIRouter, Body, HTTPException, Path, Security, status
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, SecretStr
 
-from backend.data.api_key import APIKeyInfo
+from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
@@ -255,7 +255,7 @@ def _get_oauth_handler_for_external(
 
 @integrations_router.get("/providers", response_model=list[ProviderInfo])
 async def list_providers(
-    api_key: APIKeyInfo = Security(
+    auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> list[ProviderInfo]:
@@ -319,7 +319,7 @@ async def list_providers(
 async def initiate_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
     request: OAuthInitiateRequest,
-    api_key: APIKeyInfo = Security(
+    auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
     ),
 ) -> OAuthInitiateResponse:
@@ -337,7 +337,10 @@ async def initiate_oauth(
     if not validate_callback_url(request.callback_url):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Callback URL origin is not allowed. Allowed origins: {settings.config.external_oauth_callback_origins}",
+            detail=(
+                f"Callback URL origin is not allowed. "
+                f"Allowed origins: {settings.config.external_oauth_callback_origins}",
+            ),
         )
 
     # Validate provider
@@ -359,13 +362,15 @@ async def initiate_oauth(
     )
 
     # Store state token with external flow metadata
+    # Note: initiated_by_api_key_id is only available for API key auth, not OAuth
+    api_key_id = getattr(auth, "id", None) if auth.type == "api_key" else None
     state_token, code_challenge = await creds_manager.store.store_state_token(
-        user_id=api_key.user_id,
+        user_id=auth.user_id,
         provider=provider if isinstance(provider_name, str) else provider_name.value,
         scopes=request.scopes,
         callback_url=request.callback_url,
         state_metadata=request.state_metadata,
-        initiated_by_api_key_id=api_key.id,
+        initiated_by_api_key_id=api_key_id,
     )
 
     # Build login URL
@@ -393,7 +398,7 @@ async def initiate_oauth(
 async def complete_oauth(
     provider: Annotated[str, Path(title="The OAuth provider")],
     request: OAuthCompleteRequest,
-    api_key: APIKeyInfo = Security(
+    auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
     ),
 ) -> OAuthCompleteResponse:
@@ -406,7 +411,7 @@ async def complete_oauth(
     """
     # Verify state token
     valid_state = await creds_manager.store.verify_state_token(
-        api_key.user_id, request.state_token, provider
+        auth.user_id, request.state_token, provider
     )
 
     if not valid_state:
@@ -453,7 +458,7 @@ async def complete_oauth(
         )
 
     # Store credentials
-    await creds_manager.create(api_key.user_id, credentials)
+    await creds_manager.create(auth.user_id, credentials)
 
     logger.info(f"Successfully completed external OAuth for provider {provider}")
 
@@ -470,7 +475,7 @@ async def complete_oauth(
 
 @integrations_router.get("/credentials", response_model=list[CredentialSummary])
 async def list_credentials(
-    api_key: APIKeyInfo = Security(
+    auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> list[CredentialSummary]:
@@ -479,7 +484,7 @@ async def list_credentials(
 
     Returns metadata about each credential without exposing sensitive tokens.
     """
-    credentials = await creds_manager.store.get_all_creds(api_key.user_id)
+    credentials = await creds_manager.store.get_all_creds(auth.user_id)
     return [
         CredentialSummary(
             id=cred.id,
@@ -499,7 +504,7 @@ async def list_credentials(
 )
 async def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
-    api_key: APIKeyInfo = Security(
+    auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> list[CredentialSummary]:
@@ -507,7 +512,7 @@ async def list_credentials_by_provider(
     List credentials for a specific provider.
     """
     credentials = await creds_manager.store.get_creds_by_provider(
-        api_key.user_id, provider
+        auth.user_id, provider
     )
     return [
         CredentialSummary(
@@ -536,7 +541,7 @@ async def create_credential(
         CreateUserPasswordCredentialRequest,
         CreateHostScopedCredentialRequest,
     ] = Body(..., discriminator="type"),
-    api_key: APIKeyInfo = Security(
+    auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.MANAGE_INTEGRATIONS)
     ),
 ) -> CreateCredentialResponse:
@@ -591,7 +596,7 @@ async def create_credential(
 
     # Store credentials
     try:
-        await creds_manager.create(api_key.user_id, credentials)
+        await creds_manager.create(auth.user_id, credentials)
     except Exception as e:
         logger.error(f"Failed to store credentials: {e}")
         raise HTTPException(
@@ -623,7 +628,7 @@ class DeleteCredentialResponse(BaseModel):
 async def delete_credential(
     provider: Annotated[str, Path(title="The provider")],
     cred_id: Annotated[str, Path(title="The credential ID to delete")],
-    api_key: APIKeyInfo = Security(
+    auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.DELETE_INTEGRATIONS)
     ),
 ) -> DeleteCredentialResponse:
@@ -634,7 +639,7 @@ async def delete_credential(
     use the main API's delete endpoint which handles webhook cleanup and
     token revocation.
     """
-    creds = await creds_manager.store.get_creds_by_id(api_key.user_id, cred_id)
+    creds = await creds_manager.store.get_creds_by_id(auth.user_id, cred_id)
     if not creds:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
@@ -645,6 +650,6 @@ async def delete_credential(
             detail="Credentials do not match the specified provider",
         )
 
-    await creds_manager.delete(api_key.user_id, cred_id)
+    await creds_manager.delete(auth.user_id, cred_id)
 
     return DeleteCredentialResponse(deleted=True, credentials_id=cred_id)

@@ -351,6 +351,62 @@ class AuthService:
 
         return raw_token
 
+    async def create_email_verification_token(self, user_id: str) -> str:
+        """
+        Create an email verification token for a user.
+
+        :param user_id: The user's ID
+        :return: The raw token to send to the user
+        """
+        raw_token, hashed_token = create_refresh_token()  # Reuse token generation
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+
+        await prisma.emailverificationtoken.create(
+            data={
+                "token": hashed_token,
+                "userId": user_id,
+                "expiresAt": expires_at,
+            }
+        )
+
+        return raw_token
+
+    async def verify_email_token(self, token: str) -> bool:
+        """
+        Verify an email verification token and mark the user's email as verified.
+
+        :param token: The raw token from the user
+        :return: True if successful, False if token is invalid
+        """
+        hashed_token = hash_token(token)
+
+        # Find and validate token
+        stored_token = await prisma.emailverificationtoken.find_first(
+            where={
+                "token": hashed_token,
+                "usedAt": None,
+                "expiresAt": {"gt": datetime.now(timezone.utc)},
+            }
+        )
+
+        if not stored_token:
+            return False
+
+        # Mark email as verified
+        await prisma.user.update(
+            where={"id": stored_token.userId},
+            data={"emailVerified": True},
+        )
+
+        # Mark token as used
+        await prisma.emailverificationtoken.update(
+            where={"id": stored_token.id},
+            data={"usedAt": datetime.now(timezone.utc)},
+        )
+
+        logger.info(f"Email verified for user {stored_token.userId}")
+        return True
+
     async def verify_password_reset_token(self, token: str) -> Optional[str]:
         """
         Verify a password reset token and return the user ID.

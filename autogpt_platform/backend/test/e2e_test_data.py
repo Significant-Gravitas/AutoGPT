@@ -23,10 +23,11 @@ from typing import Any, Dict, List
 
 from faker import Faker
 
-from backend.data.api_key import create_api_key
+from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
+from backend.data.user import get_or_create_user
 
 # Import API functions from the backend
 from backend.server.auth.service import AuthService
@@ -468,7 +469,7 @@ class TestDataCreator:
 
         api_keys = []
         for user in self.users:
-            from backend.data.api_key import APIKeyPermission
+            from backend.data.auth.api_key import APIKeyPermission
 
             try:
                 # Use the API function to create API key

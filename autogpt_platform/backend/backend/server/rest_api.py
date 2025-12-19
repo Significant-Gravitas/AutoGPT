@@ -22,6 +22,7 @@ import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.server.auth
+import backend.server.routers.oauth
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
@@ -298,6 +299,11 @@ app.include_router(
     chat_routes.router,
     tags=["v2", "chat"],
     prefix="/api/chat",
+)
+app.include_router(
+    backend.server.routers.oauth.router,
+    tags=["oauth"],
+    prefix="/api/oauth",
 )
 
 app.mount("/external-api", external_app)

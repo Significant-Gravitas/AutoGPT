@@ -5,15 +5,17 @@ Provides endpoints for:
 - User registration and login
 - Token refresh and logout
 - Password reset
+- Email verification
 - Google OAuth
 """
 
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
+from .email import get_auth_email_sender
 from .service import AuthService
 
 logger = logging.getLogger(__name__)
@@ -104,11 +106,12 @@ class UserResponse(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register(request: RegisterRequest):
+async def register(request: RegisterRequest, background_tasks: BackgroundTasks):
     """
     Register a new user with email and password.
 
     Returns access and refresh tokens on successful registration.
+    Sends a verification email in the background.
     """
     auth_service = get_auth_service()
 
@@ -118,6 +121,17 @@ async def register(request: RegisterRequest):
             password=request.password,
             name=request.name,
         )
+
+        # Create verification token and send email in background
+        verification_token = await auth_service.create_email_verification_token(user.id)
+        email_sender = get_auth_email_sender()
+        background_tasks.add_task(
+            email_sender.send_email_verification,
+            to_email=user.email,
+            verification_token=verification_token,
+            user_name=user.name,
+        )
+
         tokens = await auth_service.create_tokens(user)
         return TokenResponse(**tokens)
     except ValueError as e:
@@ -174,20 +188,28 @@ async def refresh_tokens(request: RefreshRequest):
 
 
 @router.post("/password-reset/request", response_model=MessageResponse)
-async def request_password_reset(request: PasswordResetRequest):
+async def request_password_reset(
+    request: PasswordResetRequest, background_tasks: BackgroundTasks
+):
     """
     Request a password reset email.
 
     Always returns success to prevent email enumeration attacks.
-    If the email exists, a reset token will be created (email sending not implemented).
+    If the email exists, a password reset email will be sent.
     """
     auth_service = get_auth_service()
 
     user = await auth_service.get_user_by_email(request.email)
     if user:
         token = await auth_service.create_password_reset_token(user.id)
-        # TODO: Send password reset email with token
-        logger.info(f"Password reset token created for user {user.id}: {token[:8]}...")
+        email_sender = get_auth_email_sender()
+        background_tasks.add_task(
+            email_sender.send_password_reset_email,
+            to_email=user.email,
+            reset_token=token,
+            user_name=user.name,
+        )
+        logger.info(f"Password reset email queued for user {user.id}")
 
     # Always return success to prevent email enumeration
     return MessageResponse(
@@ -209,6 +231,69 @@ async def confirm_password_reset(request: PasswordResetConfirm):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     return MessageResponse(message="Password has been reset successfully")
+
+
+# ============= Email Verification Endpoints =============
+
+
+class EmailVerificationRequest(BaseModel):
+    """Request model for email verification."""
+
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request model for resending verification email."""
+
+    email: EmailStr
+
+
+@router.post("/email/verify", response_model=MessageResponse)
+async def verify_email(request: EmailVerificationRequest):
+    """
+    Verify email address using a verification token.
+
+    Marks the user's email as verified if the token is valid.
+    """
+    auth_service = get_auth_service()
+
+    success = await auth_service.verify_email_token(request.token)
+    if not success:
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired verification token"
+        )
+
+    return MessageResponse(message="Email verified successfully")
+
+
+@router.post("/email/resend-verification", response_model=MessageResponse)
+async def resend_verification_email(
+    request: ResendVerificationRequest, background_tasks: BackgroundTasks
+):
+    """
+    Resend email verification email.
+
+    Always returns success to prevent email enumeration attacks.
+    If the email exists and is not verified, a new verification email will be sent.
+    """
+    auth_service = get_auth_service()
+
+    user = await auth_service.get_user_by_email(request.email)
+    if user and not user.emailVerified:
+        token = await auth_service.create_email_verification_token(user.id)
+        email_sender = get_auth_email_sender()
+        background_tasks.add_task(
+            email_sender.send_email_verification,
+            to_email=user.email,
+            verification_token=token,
+            user_name=user.name,
+        )
+        logger.info(f"Verification email queued for user {user.id}")
+
+    # Always return success to prevent email enumeration
+    return MessageResponse(
+        message="If the email exists and is not verified, a verification link has been sent"
+    )
 
 
 # ============= Google OAuth Endpoints =============

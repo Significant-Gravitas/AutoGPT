@@ -1,0 +1,65 @@
+{# Email Verification Template #}
+{# Variables:
+    verification_link: URL for email verification
+    user_name: Optional user name for personalization
+    frontend_url: Base frontend URL
+#}
+<table align="center" width="100%" border="0" cellspacing="0" cellpadding="0">
+  <tr>
+    <td height="30" style="line-height: 30px;"></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <h1 style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 28px; line-height: 125%; font-weight: bold; margin-bottom: 20px;">
+        Verify Your Email
+      </h1>
+    </td>
+  </tr>
+  <tr>
+    <td align="left">
+      <p style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 165%; margin-bottom: 20px;">
+        {% if user_name %}Hi {{ user_name }},{% else %}Hi,{% endif %}
+      </p>
+      <p style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 165%; margin-bottom: 20px;">
+        Welcome to AutoGPT! Please verify your email address by clicking the button below:
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding: 20px 0;">
+      <table border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td align="center" bgcolor="#4285F4" style="border-radius: 8px;">
+            <a href="{{ verification_link }}" target="_blank"
+              style="display: inline-block; padding: 16px 36px; font-family: 'Poppins', sans-serif; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none; border-radius: 8px;">
+              Verify Email
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td align="left">
+      <p style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 165%; margin-bottom: 20px;">
+        This link will expire in <strong>24 hours</strong>.
+      </p>
+      <p style="font-family: 'Poppins', sans-serif; color: #070629; font-size: 16px; line-height: 165%; margin-bottom: 20px;">
+        If you didn't create an account with AutoGPT, you can safely ignore this email.
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td align="left">
+      <p style="font-family: 'Poppins', sans-serif; color: #888888; font-size: 14px; line-height: 165%; margin-bottom: 10px;">
+        If the button doesn't work, copy and paste this link into your browser:
+      </p>
+      <p style="font-family: 'Poppins', sans-serif; color: #4285F4; font-size: 14px; line-height: 165%; word-break: break-all;">
+        <a href="{{ verification_link }}" style="color: #4285F4; text-decoration: underline;">{{ verification_link }}</a>
+      </p>
+    </td>
+  </tr>
+  <tr>
+    <td height="30" style="line-height: 30px;"></td>
+  </tr>
+</table>
