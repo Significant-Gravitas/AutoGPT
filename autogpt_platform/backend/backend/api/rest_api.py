@@ -58,6 +58,7 @@ from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.cors import build_cors_params
+from .utils.openapi import sort_openapi
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -178,6 +179,9 @@ app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
 
 # Add 401 responses to authenticated endpoints in OpenAPI spec
 add_auth_responses_to_openapi(app)
+
+# Sort OpenAPI schema to eliminate diff on refactors
+sort_openapi(app)
 
 # Add Prometheus instrumentation
 instrument_fastapi(
