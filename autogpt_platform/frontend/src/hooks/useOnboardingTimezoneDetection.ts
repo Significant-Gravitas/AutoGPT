@@ -1,17 +1,34 @@
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { usePostV1UpdateUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 
 /**
- * Hook to silently detect and set user's timezone during onboarding
- * This version doesn't show any toast notifications
+ * Hook to silently detect and set user's timezone ONLY during actual onboarding flow
+ * This prevents unnecessary timezone API calls during authentication and platform usage
  * @returns void
  */
 export const useOnboardingTimezoneDetection = () => {
   const updateTimezone = usePostV1UpdateUserTimezone();
   const hasAttemptedDetection = useRef(false);
+  const pathname = usePathname();
+  const { user, isUserLoading } = useSupabase();
+
+  // Check if we're on onboarding route (computed outside useEffect to avoid re-computing)
+  const isOnOnboardingRoute = pathname.startsWith("/onboarding");
 
   useEffect(() => {
-    // Only attempt once
+    // Only run during actual onboarding routes - prevents running on every auth
+    if (!isOnOnboardingRoute) {
+      return;
+    }
+
+    // Wait for proper authentication state instead of using arbitrary timeout
+    if (isUserLoading || !user) {
+      return;
+    }
+
+    // Only attempt once per session
     if (hasAttemptedDetection.current) {
       return;
     }
@@ -30,13 +47,13 @@ export const useOnboardingTimezoneDetection = () => {
           return;
         }
 
-        // Silently update the timezone in the backend
-        await updateTimezone.mutateAsync({
+        // Fire-and-forget timezone update - we don't need to wait for response
+        updateTimezone.mutate({
           data: { timezone: browserTimezone } as any,
         });
 
-        console.log(
-          `Timezone automatically set to ${browserTimezone} during onboarding`,
+        console.info(
+          `Timezone automatically set to ${browserTimezone} during onboarding flow`,
         );
       } catch (error) {
         console.error(
@@ -47,11 +64,6 @@ export const useOnboardingTimezoneDetection = () => {
       }
     };
 
-    // Small delay to ensure user is created
-    const timer = setTimeout(() => {
-      detectAndSetTimezone();
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, []); // Run once on mount
+    detectAndSetTimezone();
+  }, [isOnOnboardingRoute, updateTimezone, user, isUserLoading]); // Use computed boolean to reduce re-renders
 };

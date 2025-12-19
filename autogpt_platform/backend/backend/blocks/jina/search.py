@@ -8,20 +8,26 @@ from backend.blocks.jina._auth import (
     JinaCredentialsInput,
 )
 from backend.blocks.search import GetRequest
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import SchemaField
+from backend.util.exceptions import BlockExecutionError
 
 
 class SearchTheWebBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: JinaCredentialsInput = JinaCredentialsField()
         query: str = SchemaField(description="The search query to search the web for")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         results: str = SchemaField(
             description="The search results including content from top 5 URLs"
         )
-        error: str = SchemaField(description="Error message if the search fails")
 
     def __init__(self):
         super().__init__(
@@ -51,14 +57,24 @@ class SearchTheWebBlock(Block, GetRequest):
 
         # Prepend the Jina Search URL to the encoded query
         jina_search_url = f"https://s.jina.ai/{encoded_query}"
-        results = await self.get_request(jina_search_url, headers=headers, json=False)
+
+        try:
+            results = await self.get_request(
+                jina_search_url, headers=headers, json=False
+            )
+        except Exception as e:
+            raise BlockExecutionError(
+                message=f"Search failed: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
 
         # Output the search results
         yield "results", results
 
 
 class ExtractWebsiteContentBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         credentials: JinaCredentialsInput = JinaCredentialsField()
         url: str = SchemaField(description="The URL to scrape the content from")
         raw_content: bool = SchemaField(
@@ -68,7 +84,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             advanced=True,
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         content: str = SchemaField(description="The scraped content from the given URL")
         error: str = SchemaField(
             description="Error message if the content cannot be retrieved"

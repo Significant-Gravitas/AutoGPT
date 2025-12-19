@@ -4,7 +4,13 @@ from urllib.parse import quote
 from pydantic import SecretStr
 
 from backend.blocks.helpers.http import GetRequest
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -15,10 +21,10 @@ from backend.integrations.providers import ProviderName
 
 
 class GetWikipediaSummaryBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         topic: str = SchemaField(description="The topic to fetch the summary for")
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         summary: str = SchemaField(description="The summary of the given topic")
         error: str = SchemaField(
             description="Error message if the summary cannot be retrieved"
@@ -39,10 +45,16 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         topic = input_data.topic
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
-        response = await self.get_request(url, json=True)
-        if "extract" not in response:
-            raise RuntimeError(f"Unable to parse Wikipedia response: {response}")
-        yield "summary", response["extract"]
+
+        # Note: User-Agent is now automatically set by the request library
+        # to comply with Wikimedia's robot policy (https://w.wiki/4wJS)
+        try:
+            response = await self.get_request(url, json=True)
+            if "extract" not in response:
+                raise ValueError(f"Unable to parse Wikipedia response: {response}")
+            yield "summary", response["extract"]
+        except Exception as e:
+            raise ValueError(f"Failed to fetch Wikipedia summary: {e}") from e
 
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -61,7 +73,7 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class GetWeatherInformationBlock(Block, GetRequest):
-    class Input(BlockSchema):
+    class Input(BlockSchemaInput):
         location: str = SchemaField(
             description="Location to get weather information for"
         )
@@ -76,7 +88,7 @@ class GetWeatherInformationBlock(Block, GetRequest):
             description="Whether to use Celsius or Fahrenheit for temperature",
         )
 
-    class Output(BlockSchema):
+    class Output(BlockSchemaOutput):
         temperature: str = SchemaField(
             description="Temperature in the specified location"
         )

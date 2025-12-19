@@ -58,14 +58,14 @@ const NodeHandle: FC<HandleProps> = ({
     <div className="flex flex-grow flex-row">
       <span
         className={cn(
-          "text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100",
+          "data-sentry-unmask text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100",
           className,
         )}
       >
         {title || schema.title || beautifyString(keyName.toLowerCase())}
         {isRequired ? "*" : ""}
       </span>
-      <span className={`${typeClass} flex items-end`}>
+      <span className={`${typeClass} data-sentry-unmask flex items-end`}>
         ({TYPE_NAME[schema.type as keyof typeof TYPE_NAME] || "any"})
       </span>
     </div>

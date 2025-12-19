@@ -22,7 +22,7 @@ from typing import (
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType
+from prisma.enums import CreditTransactionType, OnboardingStep
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -46,6 +46,7 @@ from backend.util.settings import Secrets
 
 # Type alias for any provider name (including custom ones)
 AnyProviderName = str  # Will be validated as ProviderName at runtime
+USER_TIMEZONE_NOT_SET = "not-set"
 
 
 class User(BaseModel):
@@ -98,7 +99,7 @@ class User(BaseModel):
 
     # User timezone for scheduling and time display
     timezone: str = Field(
-        default="not-set",
+        default=USER_TIMEZONE_NOT_SET,
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
 
@@ -155,7 +156,7 @@ class User(BaseModel):
             notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
             notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
             notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
-            timezone=prisma_user.timezone or "not-set",
+            timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
         )
 
 
@@ -270,6 +271,7 @@ def SchemaField(
     min_length: Optional[int] = None,
     max_length: Optional[int] = None,
     discriminator: Optional[str] = None,
+    format: Optional[str] = None,
     json_schema_extra: Optional[dict[str, Any]] = None,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
@@ -285,6 +287,7 @@ def SchemaField(
             "advanced": advanced,
             "hidden": hidden,
             "depends_on": depends_on,
+            "format": format,
             **(json_schema_extra or {}),
         }.items()
         if v is not None
@@ -345,6 +348,9 @@ class APIKeyCredentials(_BaseCredentials):
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
     def auth_header(self) -> str:
+        # Linear API keys should not have Bearer prefix
+        if self.provider == "linear":
+            return self.api_key.get_secret_value()
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
@@ -428,6 +434,18 @@ class OAuthState(BaseModel):
     code_verifier: Optional[str] = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
     scopes: list[str]
+    # Fields for external API OAuth flows
+    callback_url: Optional[str] = None
+    """External app's callback URL for OAuth redirect"""
+    state_metadata: dict[str, Any] = Field(default_factory=dict)
+    """Metadata to echo back to external app on completion"""
+    initiated_by_api_key_id: Optional[str] = None
+    """ID of the API key that initiated this OAuth flow"""
+
+    @property
+    def is_external(self) -> bool:
+        """Whether this OAuth flow was initiated via external API."""
+        return self.callback_url is not None
 
 
 class UserMetadata(BaseModel):
@@ -828,6 +846,10 @@ class GraphExecutionStats(BaseModel):
     activity_status: Optional[str] = Field(
         default=None, description="AI-generated summary of what the agent did"
     )
+    correctness_score: Optional[float] = Field(
+        default=None,
+        description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
+    )
 
 
 class UserExecutionSummaryStats(BaseModel):
@@ -846,3 +868,20 @@ class UserExecutionSummaryStats(BaseModel):
     total_execution_time: float = Field(default=0)
     average_execution_time: float = Field(default=0)
     cost_breakdown: dict[str, float] = Field(default_factory=dict)
+
+
+class UserOnboarding(BaseModel):
+    userId: str
+    completedSteps: list[OnboardingStep]
+    walletShown: bool
+    notified: list[OnboardingStep]
+    rewardedFor: list[OnboardingStep]
+    usageReason: Optional[str]
+    integrations: list[str]
+    otherIntegrations: Optional[str]
+    selectedStoreListingVersionId: Optional[str]
+    agentInput: Optional[dict[str, Any]]
+    onboardingAgentExecutionId: Optional[str]
+    agentRuns: int
+    lastRunAt: Optional[datetime]
+    consecutiveRunDays: int

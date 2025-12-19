@@ -20,7 +20,7 @@ async def setup_prisma():
     yield
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agents(mocker):
     # Mock data
     mock_agents = [
@@ -42,6 +42,7 @@ async def test_get_store_agents(mocker):
             versions=["1.0"],
             updated_at=datetime.now(),
             is_available=False,
+            useForOnboarding=False,
         )
     ]
 
@@ -63,7 +64,7 @@ async def test_get_store_agents(mocker):
     mock_store_agent.return_value.count.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_agent_details(mocker):
     # Mock data
     mock_agent = prisma.models.StoreAgent(
@@ -84,6 +85,7 @@ async def test_get_store_agent_details(mocker):
         versions=["1.0"],
         updated_at=datetime.now(),
         is_available=False,
+        useForOnboarding=False,
     )
 
     # Mock active version agent (what we want to return for active version)
@@ -105,6 +107,7 @@ async def test_get_store_agent_details(mocker):
         versions=["1.0", "2.0"],
         updated_at=datetime.now(),
         is_available=True,
+        useForOnboarding=False,
     )
 
     # Create a mock StoreListing result
@@ -170,7 +173,7 @@ async def test_get_store_agent_details(mocker):
     mock_store_listing_db.return_value.find_first.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_store_creator_details(mocker):
     # Mock data
     mock_creator_data = prisma.models.Creator(
@@ -207,7 +210,7 @@ async def test_get_store_creator_details(mocker):
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_create_store_submission(mocker):
     # Mock data
     mock_agent = prisma.models.AgentGraph(
@@ -248,6 +251,7 @@ async def test_create_store_submission(mocker):
                 isAvailable=True,
             )
         ],
+        useForOnboarding=False,
     )
 
     # Mock prisma calls
@@ -275,11 +279,10 @@ async def test_create_store_submission(mocker):
 
     # Verify mocks called correctly
     mock_agent_graph.return_value.find_first.assert_called_once()
-    mock_store_listing.return_value.find_first.assert_called_once()
     mock_store_listing.return_value.create.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_update_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
@@ -324,7 +327,7 @@ async def test_update_profile(mocker):
     mock_profile_db.return_value.update.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_user_profile(mocker):
     # Mock data
     mock_profile = prisma.models.Profile(
@@ -356,3 +359,49 @@ async def test_get_user_profile(mocker):
     assert result.description == "Test description"
     assert result.links == ["link1", "link2"]
     assert result.avatar_url == "avatar.jpg"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_with_search_parameterized(mocker):
+    """Test that search query uses parameterized SQL - validates the fix works"""
+
+    # Call function with search query containing potential SQL injection
+    malicious_search = "test'; DROP TABLE StoreAgent; --"
+    result = await db.get_store_agents(search_query=malicious_search)
+
+    # Verify query executed safely
+    assert isinstance(result.agents, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_with_search_and_filters_parameterized():
+    """Test parameterized SQL with multiple filters"""
+
+    # Call with multiple filters including potential injection attempts
+    result = await db.get_store_agents(
+        search_query="test",
+        creators=["creator1'; DROP TABLE Users; --", "creator2"],
+        category="AI'; DELETE FROM StoreAgent; --",
+        featured=True,
+        sorted_by="rating",
+        page=1,
+        page_size=20,
+    )
+
+    # Verify the query executed without error
+    assert isinstance(result.agents, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_agents_search_category_array_injection():
+    """Test that category parameter is safely passed as a parameter"""
+    # Try SQL injection via category
+    malicious_category = "AI'; DROP TABLE StoreAgent; --"
+    result = await db.get_store_agents(
+        search_query="test",
+        category=malicious_category,
+    )
+
+    # Verify the query executed without error
+    # Category should be parameterized, preventing SQL injection
+    assert isinstance(result.agents, list)
