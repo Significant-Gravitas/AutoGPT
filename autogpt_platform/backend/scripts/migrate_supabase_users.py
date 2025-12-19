@@ -42,13 +42,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def migrate_password_hashes(db: Prisma) -> int:
+async def migrate_credentials(db: Prisma) -> int:
     """
     Copy bcrypt password hashes from auth.users to platform.User.
 
     Returns the number of users updated.
     """
-    logger.info("Migrating password hashes from auth.users to platform.User...")
+    logger.info("Migrating user credentials from auth.users to platform.User...")
 
     result = await db.execute_raw(
         """
@@ -63,7 +63,7 @@ async def migrate_password_hashes(db: Prisma) -> int:
         """
     )
 
-    logger.info(f"Updated {result} users with password hashes")
+    logger.info(f"Updated {result} users with credentials")
     return result
 
 
@@ -96,8 +96,8 @@ async def get_migration_stats(db: Prisma) -> dict:
     # Count users in platform.User
     platform_users = await db.user.count()
 
-    # Count users with password hashes (not null)
-    users_with_password = await db.user.count(
+    # Count users with credentials (not null)
+    users_with_credentials = await db.user.count(
         where={"passwordHash": {"not": None}}  # type: ignore
     )
 
@@ -113,7 +113,7 @@ async def get_migration_stats(db: Prisma) -> dict:
 
     return {
         "total_platform_users": platform_users,
-        "users_with_password": users_with_password,
+        "users_with_credentials": users_with_credentials,
         "users_with_google_oauth": users_with_google,
         "users_without_auth": users_without_auth,
     }
@@ -135,8 +135,8 @@ async def preview_migration(db: Prisma) -> dict:
     """Preview what would be migrated without making changes."""
     logger.info("Previewing migration (dry-run mode)...")
 
-    # Count users that would have passwords migrated
-    password_preview = await db.query_raw(
+    # Count users that would have credentials migrated
+    credentials_preview = await db.query_raw(
         """
         SELECT COUNT(*) as count
         FROM platform."User" u
@@ -145,7 +145,9 @@ async def preview_migration(db: Prisma) -> dict:
         AND u."passwordHash" IS NULL
         """
     )
-    passwords_to_migrate = password_preview[0]["count"] if password_preview else 0
+    credentials_to_migrate = (
+        credentials_preview[0]["count"] if credentials_preview else 0
+    )
 
     # Count users that would have Google OAuth migrated
     google_preview = await db.query_raw(
@@ -161,7 +163,7 @@ async def preview_migration(db: Prisma) -> dict:
     google_to_migrate = google_preview[0]["count"] if google_preview else 0
 
     return {
-        "passwords_to_migrate": passwords_to_migrate,
+        "credentials_to_migrate": credentials_to_migrate,
         "google_oauth_to_migrate": google_to_migrate,
     }
 
@@ -198,7 +200,7 @@ async def main(dry_run: bool = False):
             logger.info("\n--- Preview (would be migrated) ---")
             preview = await preview_migration(db)
             logger.info(
-                f"  Password hashes to migrate: {preview['passwords_to_migrate']}"
+                f"  Credentials to migrate: {preview['credentials_to_migrate']}"
             )
             logger.info(
                 f"  Google OAuth IDs to migrate: {preview['google_oauth_to_migrate']}"
@@ -209,7 +211,7 @@ async def main(dry_run: bool = False):
         else:
             # Run actual migrations
             logger.info("\n--- Running Migration ---")
-            passwords_migrated = await migrate_password_hashes(db)
+            credentials_migrated = await migrate_credentials(db)
             google_migrated = await migrate_google_oauth_users(db)
 
             # Get stats after migration
@@ -220,7 +222,7 @@ async def main(dry_run: bool = False):
 
             # Summary
             logger.info("\n--- Summary ---")
-            logger.info(f"Password hashes migrated: {passwords_migrated}")
+            logger.info(f"Credentials migrated: {credentials_migrated}")
             logger.info(f"Google OAuth IDs migrated: {google_migrated}")
             logger.info(
                 f"Users still without auth: {stats_after['users_without_auth']} "
