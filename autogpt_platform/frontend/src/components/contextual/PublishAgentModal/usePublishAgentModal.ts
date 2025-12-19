@@ -7,6 +7,7 @@ import {
   useGetV2GetMyAgents,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
+import { okData } from "@/app/api/helpers";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -94,25 +95,20 @@ export function usePublishAgentModal({
       !preSelectedAgentVersion
     )
       return;
-    if (
-      !myAgents ||
-      myAgents.status !== 200 ||
-      !mySubmissions ||
-      mySubmissions.status !== 200
-    )
-      return;
+    const agentsData = okData(myAgents) as any;
+    const submissionsData = okData(mySubmissions) as any;
+
+    if (!agentsData || !submissionsData) return;
 
     // Find the agent data
-    const agentsData = myAgents.data.agents;
-    const agent = agentsData.find(
+    const agent = agentsData.agents?.find(
       (a: any) => a.agent_id === preSelectedAgentId,
     );
     if (!agent) return;
 
     // Find published submission data for this agent (for updates)
-    const submissionsData = mySubmissions.data.submissions;
-    const publishedSubmissionData = submissionsData
-      .filter(
+    const publishedSubmissionData = submissionsData.submissions
+      ?.filter(
         (s: any) =>
           s.status === "APPROVED" && s.agent_id === preSelectedAgentId,
       )

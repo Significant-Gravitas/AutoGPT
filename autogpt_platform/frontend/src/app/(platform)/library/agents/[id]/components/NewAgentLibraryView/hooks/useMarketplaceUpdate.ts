@@ -76,7 +76,8 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
 
   // Check if marketplace has a newer version than user's current version
   const marketplaceUpdateInfo = React.useMemo(() => {
-    if (!agent || !storeAgentData || storeAgentData.status !== 200) {
+    const storeAgent = okData(storeAgentData) as any;
+    if (!agent || !storeAgent) {
       return {
         hasUpdate: false,
         latestVersion: undefined,
@@ -84,13 +85,13 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       };
     }
 
-    const storeAgent = storeAgentData.data;
-
     // Get the latest version from the marketplace
     // agentGraphVersions array contains graph version numbers as strings, get the highest one
     const latestMarketplaceVersion =
-      storeAgent.agentGraphVersions.length > 0
-        ? Math.max(...storeAgent.agentGraphVersions.map((v) => parseInt(v, 10)))
+      storeAgent.agentGraphVersions?.length > 0
+        ? Math.max(
+            ...storeAgent.agentGraphVersions.map((v: any) => parseInt(v, 10)),
+          )
         : undefined;
 
     // Determine if the user is the creator of this agent
