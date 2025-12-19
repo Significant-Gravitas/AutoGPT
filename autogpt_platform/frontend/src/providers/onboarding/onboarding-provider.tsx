@@ -161,6 +161,20 @@ export default function OnboardingProvider({
           router.push("/marketplace");
         }
       } catch (error) {
+        // Silently handle 401 errors - these are expected during login transition
+        // when the auth cookies haven't propagated to the server yet
+        const isAuthError =
+          error &&
+          typeof error === "object" &&
+          "status" in error &&
+          (error as { status: number }).status === 401;
+
+        if (isAuthError) {
+          console.debug("Onboarding initialization skipped - auth not ready yet");
+          hasInitialized.current = false; // Allow retry on next render
+          return;
+        }
+
         console.error("Failed to initialize onboarding:", error);
 
         toast({
@@ -252,6 +266,18 @@ export default function OnboardingProvider({
           await postV1CompleteOnboardingStep({ step });
           await fetchOnboarding();
         } catch (error) {
+          // Silently handle 401 errors - auth may not be ready yet
+          const isAuthError =
+            error &&
+            typeof error === "object" &&
+            "status" in error &&
+            (error as { status: number }).status === 401;
+
+          if (isAuthError) {
+            console.debug("Onboarding step completion skipped - auth not ready yet");
+            return;
+          }
+
           if (isMounted.current) {
             console.error("Failed to complete onboarding step:", error);
           }
