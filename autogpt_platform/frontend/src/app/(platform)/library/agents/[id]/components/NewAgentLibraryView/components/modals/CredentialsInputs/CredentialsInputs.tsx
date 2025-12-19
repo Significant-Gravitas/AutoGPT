@@ -34,6 +34,7 @@ type Props = {
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
+  showTitle?: boolean;
 };
 
 export function CredentialsInput({
@@ -44,6 +45,7 @@ export function CredentialsInput({
   siblingInputs,
   onLoaded,
   readOnly = false,
+  showTitle = true,
 }: Props) {
   const hookData = useCredentialsInput({
     schema,
@@ -90,12 +92,14 @@ export function CredentialsInput({
 
   return (
     <div className={cn("mb-6", className)}>
-      <div className="mb-2 flex items-center gap-2">
-        <Text variant="large-medium">{displayName} credentials</Text>
-        {schema.description && (
-          <InformationTooltip description={schema.description} />
-        )}
-      </div>
+      {showTitle && (
+        <div className="mb-2 flex items-center gap-2">
+          <Text variant="large-medium">{displayName} credentials</Text>
+          {schema.description && (
+            <InformationTooltip description={schema.description} />
+          )}
+        </div>
+      )}
 
       {hasCredentialsToShow ? (
         <>

@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ImageIcon, SealCheckIcon } from "@phosphor-icons/react";
 import {
   postOauthAuthorize,
@@ -47,6 +49,7 @@ export default function AuthorizePage() {
     data: appInfoResponse,
     isLoading,
     error,
+    refetch,
   } = useGetOauthGetOauthAppInfo(clientID || "", {
     query: {
       enabled: !!clientID,
@@ -117,9 +120,14 @@ export default function AuthorizePage() {
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
         <AuthCard title="Invalid Request">
-          <Text variant="body" className="text-center text-red-600">
-            Missing required parameters: {missingParams.join(", ")}
-          </Text>
+          <ErrorCard
+            context="request parameters"
+            responseError={{
+              message: `Missing required parameters: ${missingParams.join(", ")}`,
+            }}
+            hint="Please contact the administrator of the app that sent you here."
+            isOurProblem={false}
+          />
         </AuthCard>
       </div>
     );
@@ -130,9 +138,12 @@ export default function AuthorizePage() {
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
         <AuthCard title="Loading...">
-          <Text variant="body" className="text-center">
-            Loading application information...
-          </Text>
+          <div className="flex flex-col items-center gap-4 py-8">
+            <LoadingSpinner size="large" />
+            <Text variant="body" className="text-center text-slate-500">
+              Loading application information...
+            </Text>
+          </div>
         </AuthCard>
       </div>
     );
@@ -143,10 +154,18 @@ export default function AuthorizePage() {
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
         <AuthCard title="Application Not Found">
-          <Text variant="body" className="text-center text-red-600">
-            The application you&apos;re trying to authorize could not be found
-            or is not active.
-          </Text>
+          <ErrorCard
+            context="application"
+            responseError={
+              error
+                ? error
+                : {
+                    message:
+                      "The application you're trying to authorize could not be found or is disabled.",
+                  }
+            }
+            onRetry={refetch}
+          />
           {redirectURI && (
             <Button
               variant="secondary"
@@ -170,10 +189,14 @@ export default function AuthorizePage() {
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
         <AuthCard title="Invalid Scopes">
-          <Text variant="body" className="text-center text-red-600">
-            The application is requesting scopes it is not authorized for:{" "}
-            {invalidScopes.join(", ")}
-          </Text>
+          <ErrorCard
+            context="scopes"
+            responseError={{
+              message: `The application is requesting scopes it is not authorized for: ${invalidScopes.join(", ")}`,
+            }}
+            hint="Please contact the administrator of the app that sent you here."
+            isOurProblem={false}
+          />
           <Button
             variant="secondary"
             onClick={handleDeny}
@@ -193,7 +216,7 @@ export default function AuthorizePage() {
           {/* App info */}
           <div className="flex flex-col items-center text-center">
             {/* App logo */}
-            <div className="mb-4 flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-muted">
+            <div className="mb-4 flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-slate-100">
               {appInfo.logo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -202,7 +225,7 @@ export default function AuthorizePage() {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                <ImageIcon className="h-8 w-8 text-slate-400" />
               )}
             </div>
             <Text variant="h4" className="mb-2">
@@ -235,9 +258,10 @@ export default function AuthorizePage() {
 
           {/* Error message */}
           {authorizeError && (
-            <Text variant="body" className="text-center text-red-600">
-              {authorizeError}
-            </Text>
+            <ErrorCard
+              context="authorization"
+              responseError={{ message: authorizeError }}
+            />
           )}
 
           {/* Action buttons */}
