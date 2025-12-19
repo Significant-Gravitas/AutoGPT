@@ -1123,21 +1123,33 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
+  // Note: BlockIOStringSubSchema's type definition does not include numeric types,
+  // but this component can receive numeric schemas with enums (e.g. via NodeFallbackInput
+  // or other code paths). We use an `any` cast here to detect numeric enum schemas
+  // and parse selected values as numbers.
   const schemaType = (schema as any).type;
   const isNumeric = schemaType === "number" || schemaType === "integer";
-  value ||= schema.default || "";
-  const normalizedValue = value === undefined ? "" : String(value);
+  const effectiveValue = value || schema.default || "";
+  const normalizedValue = String(effectiveValue);
   return (
     <div className={className}>
       {schema.enum && schema.enum.length > 0 ? (
         <Select
           defaultValue={normalizedValue}
-          onValueChange={(newValue) =>
-            handleInputChange(
-              selfKey,
-              isNumeric ? parseFloat(newValue) : newValue,
-            )
-          }
+          onValueChange={(newValue) => {
+            let nextValue: string | number = newValue;
+            if (isNumeric) {
+              const parsed =
+                schemaType === "integer"
+                  ? parseInt(newValue, 10)
+                  : parseFloat(newValue);
+              // Only use parsed value if valid, otherwise fall back to string
+              if (!Number.isNaN(parsed)) {
+                nextValue = parsed;
+              }
+            }
+            handleInputChange(selfKey, nextValue);
+          }}
         >
           <SelectTrigger>
             <SelectValue placeholder={schema.placeholder || displayName} />
@@ -1163,7 +1175,11 @@ const NodeStringInput: FC<{
           <LocalValuedInput
             type="text"
             id={selfKey}
-            value={schema.secret && value ? "*".repeat(value.length) : value}
+            value={
+              schema.secret && effectiveValue
+                ? "*".repeat(effectiveValue.length)
+                : effectiveValue
+            }
             onChange={(e) => handleInputChange(selfKey, e.target.value)}
             readOnly={schema.secret}
             placeholder={
