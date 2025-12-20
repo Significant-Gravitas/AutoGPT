@@ -25,7 +25,7 @@ export default function Page() {
     ready,
     error,
     showInput,
-    agent,
+    agentGraph,
     onboarding,
     storeAgent,
     runningAgent,
@@ -76,19 +76,19 @@ export default function Page() {
                   <CardTitle className="font-poppins text-lg">Input</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  {Object.entries(agent?.input_schema.properties || {}).map(
-                    ([key, inputSubSchema]) => (
-                      <RunAgentInputs
-                        key={key}
-                        schema={inputSubSchema}
-                        value={onboarding.state?.agentInput?.[key]}
-                        placeholder={inputSubSchema.description}
-                        onChange={(value) => handleSetAgentInput(key, value)}
-                      />
-                    ),
-                  )}
+                  {Object.entries(
+                    agentGraph?.input_schema.properties || {},
+                  ).map(([key, inputSubSchema]) => (
+                    <RunAgentInputs
+                      key={key}
+                      schema={inputSubSchema}
+                      value={onboarding.state?.agentInput?.[key]}
+                      placeholder={inputSubSchema.description}
+                      onChange={(value) => handleSetAgentInput(key, value)}
+                    />
+                  ))}
                   <AgentOnboardingCredentials
-                    agent={agent}
+                    agent={agentGraph}
                     siblingInputs={
                       (onboarding.state?.agentInput as Record<string, any>) ||
                       undefined
@@ -104,7 +104,7 @@ export default function Page() {
                 className="mt-8 w-[136px]"
                 loading={runningAgent}
                 disabled={isRunDisabled({
-                  agent,
+                  agent: agentGraph,
                   isRunning: runningAgent,
                   agentInputs:
                     (onboarding.state?.agentInput as unknown as InputValues) ||

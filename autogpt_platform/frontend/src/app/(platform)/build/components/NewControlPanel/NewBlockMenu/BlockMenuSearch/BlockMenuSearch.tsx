@@ -14,7 +14,7 @@ import { NoSearchResult } from "../NoSearchResult";
 
 export const BlockMenuSearch = () => {
   const {
-    allSearchData,
+    searchResults,
     isFetchingNextPage,
     fetchNextPage,
     hasNextPage,
@@ -39,7 +39,7 @@ export const BlockMenuSearch = () => {
     );
   }
 
-  if (allSearchData.length === 0) {
+  if (searchResults.length === 0) {
     return <NoSearchResult />;
   }
 
@@ -53,7 +53,7 @@ export const BlockMenuSearch = () => {
         loader={<LoadingSpinner className="size-13" />}
         className="space-y-2.5"
       >
-        {allSearchData.map((item: SearchResponseItemsItem, index: number) => {
+        {searchResults.map((item: SearchResponseItemsItem, index: number) => {
           const { type, data } = getSearchItemType(item);
           // backend give support to these 3 types only [right now] - we need to give support to integration and ai agent types in follow up PRs
           switch (type) {

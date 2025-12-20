@@ -44,8 +44,8 @@ export function PendingReviewsList({
 
   const reviewActionMutation = usePostV2ProcessReviewAction({
     mutation: {
-      onSuccess: (data: any) => {
-        if (data.status !== 200) {
+      onSuccess: (res) => {
+        if (res.status !== 200) {
           toast({
             title: "Failed to process reviews",
             description: "Unexpected response from server",
@@ -54,18 +54,18 @@ export function PendingReviewsList({
           return;
         }
 
-        const response = data.data;
+        const result = res.data;
 
-        if (response.failed_count > 0) {
+        if (result.failed_count > 0) {
           toast({
             title: "Reviews partially processed",
-            description: `${response.approved_count + response.rejected_count} succeeded, ${response.failed_count} failed. ${response.error || "Some reviews could not be processed."}`,
+            description: `${result.approved_count + result.rejected_count} succeeded, ${result.failed_count} failed. ${result.error || "Some reviews could not be processed."}`,
             variant: "destructive",
           });
         } else {
           toast({
             title: "Reviews processed successfully",
-            description: `${response.approved_count} approved, ${response.rejected_count} rejected`,
+            description: `${result.approved_count} approved, ${result.rejected_count} rejected`,
             variant: "default",
           });
         }

@@ -4624,7 +4624,7 @@
       "get": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews for Execution",
-        "description": "Get all pending reviews for a specific graph execution.\n\nRetrieves all reviews with status \"WAITING\" for the specified graph execution\nthat belong to the authenticated user. Results are ordered by creation time\n(oldest first) to preserve review order within the execution.\n\nArgs:\n    graph_exec_id: ID of the graph execution to get reviews for\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects for the specified execution\n\nRaises:\n    HTTPException:\n        - 403: If user doesn't own the graph execution\n        - 500: If authentication fails or database error occurs\n\nNote:\n    Only returns reviews owned by the authenticated user for security.\n    Reviews with invalid status are excluded with warning logs.",
+        "description": "Get all pending reviews for a specific graph execution.\n\nRetrieves all reviews with status \"WAITING\" for the specified graph execution\nthat belong to the authenticated user. Results are ordered by creation time\n(oldest first) to preserve review order within the execution.\n\nArgs:\n    graph_exec_id: ID of the graph execution to get reviews for\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects for the specified execution\n\nRaises:\n    HTTPException:\n        - 404: If the graph execution doesn't exist or isn't owned by this user\n        - 500: If authentication fails or database error occurs\n\nNote:\n    Only returns reviews owned by the authenticated user for security.\n    Reviews with invalid status are excluded with warning logs.",
         "operationId": "getV2Get pending reviews for execution",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4650,11 +4650,10 @@
               }
             }
           },
-          "400": { "description": "Invalid graph execution ID" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "403": { "description": "Access denied to graph execution" },
+          "404": { "description": "Graph execution not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5349,7 +5348,11 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GraphMeta" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"

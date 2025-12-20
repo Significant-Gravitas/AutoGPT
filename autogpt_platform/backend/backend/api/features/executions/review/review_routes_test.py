@@ -55,7 +55,7 @@ def sample_pending_review(test_user_id: str) -> PendingHumanReviewModel:
 
 
 def test_get_pending_reviews_empty(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     snapshot: Snapshot,
     test_user_id: str,
 ) -> None:
@@ -73,7 +73,7 @@ def test_get_pending_reviews_empty(
 
 
 def test_get_pending_reviews_with_data(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
     test_user_id: str,
@@ -95,7 +95,7 @@ def test_get_pending_reviews_with_data(
 
 
 def test_get_pending_reviews_for_execution_success(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     snapshot: Snapshot,
     test_user_id: str,
@@ -122,9 +122,8 @@ def test_get_pending_reviews_for_execution_success(
     assert data[0]["graph_exec_id"] == "test_graph_exec_456"
 
 
-def test_get_pending_reviews_for_execution_access_denied(
-    mocker: pytest_mock.MockFixture,
-    test_user_id: str,
+def test_get_pending_reviews_for_execution_not_available(
+    mocker: pytest_mock.MockerFixture,
 ) -> None:
     """Test access denied when user doesn't own the execution"""
     mock_get_graph_execution = mocker.patch(
@@ -134,12 +133,12 @@ def test_get_pending_reviews_for_execution_access_denied(
 
     response = client.get("/api/review/execution/test_graph_exec_456")
 
-    assert response.status_code == 403
-    assert "Access denied" in response.json()["detail"]
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"]
 
 
 def test_process_review_action_approve_success(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
@@ -203,7 +202,7 @@ def test_process_review_action_approve_success(
 
 
 def test_process_review_action_reject_success(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
@@ -263,7 +262,7 @@ def test_process_review_action_reject_success(
 
 
 def test_process_review_action_mixed_success(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
@@ -370,7 +369,7 @@ def test_process_review_action_mixed_success(
 
 
 def test_process_review_action_empty_request(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
     """Test error when no reviews provided"""
@@ -387,7 +386,7 @@ def test_process_review_action_empty_request(
 
 
 def test_process_review_action_review_not_found(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
     """Test error when review is not found"""
@@ -423,7 +422,7 @@ def test_process_review_action_review_not_found(
 
 
 def test_process_review_action_partial_failure(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:
@@ -457,7 +456,7 @@ def test_process_review_action_partial_failure(
 
 
 def test_process_review_action_invalid_node_exec_id(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockerFixture,
     sample_pending_review: PendingHumanReviewModel,
     test_user_id: str,
 ) -> None:

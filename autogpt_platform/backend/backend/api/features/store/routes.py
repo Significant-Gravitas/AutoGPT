@@ -173,7 +173,9 @@ async def get_agent(username: str, agent_name: str):
     tags=["store"],
     dependencies=[fastapi.Security(autogpt_libs.auth.requires_user)],
 )
-async def get_graph_meta_by_store_listing_version_id(store_listing_version_id: str):
+async def get_graph_meta_by_store_listing_version_id(
+    store_listing_version_id: str,
+) -> backend.data.graph.GraphMeta:
     """
     Get Agent Graph from Store Listing Version ID.
     """
