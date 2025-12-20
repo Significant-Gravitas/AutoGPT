@@ -111,7 +111,7 @@ export function SelectedRunView({
               <ScrollableTabsList className="px-4">
                 {withReviews && (
                   <ScrollableTabsTrigger value="reviews">
-                    Review
+                    Reviews ({pendingReviews.length})
                   </ScrollableTabsTrigger>
                 )}
                 {withSummary && (
@@ -125,17 +125,12 @@ export function SelectedRunView({
                 <ScrollableTabsTrigger value="input">
                   Your input
                 </ScrollableTabsTrigger>
-                {withReviews && (
-                  <ScrollableTabsTrigger value="reviews">
-                    Reviews ({pendingReviews.length})
-                  </ScrollableTabsTrigger>
-                )}
               </ScrollableTabsList>
               <div className="my-6 flex flex-col gap-6">
                 {/* Human-in-the-Loop Reviews Section */}
                 {withReviews && (
                   <ScrollableTabsContent value="reviews">
-                    <div id="reviews" className="scroll-mt-4">
+                    <div id="reviews" className="scroll-mt-4 px-4">
                       {reviewsLoading ? (
                         <LoadingSpinner size="small" />
                       ) : pendingReviews.length > 0 ? (
@@ -215,29 +210,6 @@ export function SelectedRunView({
                     </RunDetailCard>
                   </div>
                 </ScrollableTabsContent>
-
-                {/* Reviews Section */}
-                {withReviews && (
-                  <ScrollableTabsContent value="reviews">
-                    <div className="scroll-mt-4">
-                      <RunDetailCard>
-                        {reviewsLoading ? (
-                          <LoadingSpinner size="small" />
-                        ) : pendingReviews.length > 0 ? (
-                          <PendingReviewsList
-                            reviews={pendingReviews}
-                            onReviewComplete={refetchReviews}
-                            emptyMessage="No pending reviews for this execution"
-                          />
-                        ) : (
-                          <Text variant="body" className="text-zinc-700">
-                            No pending reviews for this execution
-                          </Text>
-                        )}
-                      </RunDetailCard>
-                    </div>
-                  </ScrollableTabsContent>
-                )}
               </div>
             </ScrollableTabs>
           </div>

@@ -13,7 +13,6 @@ interface Props {
 }
 
 export function SelectedViewLayout(props: Props) {
-  console.log("props", props);
   return (
     <SectionWrap className="relative mb-3 flex min-h-0 flex-1 flex-col">
       <div

@@ -72,15 +72,13 @@ export function SelectedScheduleView({
   }
 
   if (isLoading && !schedule) {
-    return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
+    return <LoadingSelectedContent agent={agent} />;
   }
 
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <SelectedViewLayout
-          agentName={agent.name}
-          agentId={agent.id}
           agent={agent}
           onSelectSettings={onSelectSettings}
           selectedSettings={selectedSettings}
