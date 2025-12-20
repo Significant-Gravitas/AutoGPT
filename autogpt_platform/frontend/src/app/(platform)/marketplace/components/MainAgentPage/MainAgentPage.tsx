@@ -12,34 +12,28 @@ import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { useMainAgentPage } from "./useMainAgentPage";
 
-type MainAgentPageProps = {
+interface Props {
   params: MarketplaceAgentPageParams;
-};
+}
 
-export const MainAgentPage = ({ params }: MainAgentPageProps) => {
+export function MainAgentPage({ params }: Props) {
   const {
     agent,
-    otherAgents,
-    similarAgents,
-    libraryAgent,
-    isLoading,
-    hasError,
     user,
-  } = useMainAgentPage({ params });
+    isLoading,
+    similarAgents,
+    otherAgents,
+    libraryAgent,
+  } = useMainAgentPage(params);
 
   if (isLoading) {
-    return <AgentPageLoading />;
-  }
-  if (hasError) {
     return (
       <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
-          <div className="flex min-h-[400px] items-center justify-center">
-            <ErrorCard
-              isSuccess={false}
-              responseError={{ message: "Failed to load agent data" }}
-              context="agent page"
-              onRetry={() => window.location.reload()}
+          <div className="flex h-[600px] items-center justify-center">
+            <AgentPageLoading
+              message="Discovering agent..."
+              submessage="Loading agent details"
               className="w-full max-w-md"
             />
           </div>
@@ -58,8 +52,6 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
               isSuccess={false}
               responseError={{ message: "Agent not found" }}
               context="agent page"
-              onRetry={() => window.location.reload()}
-              className="w-full max-w-md"
             />
           </div>
         </main>
@@ -154,13 +146,8 @@ export const MainAgentPage = ({ params }: MainAgentPageProps) => {
             sectionTitle="Similar agents"
           />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
+        <BecomeACreator />
       </main>
     </div>
   );
-};
+}

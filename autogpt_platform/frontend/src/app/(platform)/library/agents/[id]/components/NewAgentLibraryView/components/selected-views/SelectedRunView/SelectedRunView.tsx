@@ -80,11 +80,7 @@ export function SelectedRunView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout
-          agentName={agent.name}
-          agentId={agent.id}
-          banner={banner}
-        >
+        <SelectedViewLayout agentName={agent.name} agentId={agent.id} banner={banner}>
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={run} />
 
@@ -108,10 +104,15 @@ export function SelectedRunView({
               )}
 
             <ScrollableTabs
-              defaultValue="output"
+              defaultValue={withReviews ? "reviews" : "output"}
               className="-mt-2 flex flex-col"
             >
               <ScrollableTabsList className="px-4">
+                {withReviews && (
+                  <ScrollableTabsTrigger value="reviews">
+                    Reviews ({pendingReviews.length})
+                  </ScrollableTabsTrigger>
+                )}
                 {withSummary && (
                   <ScrollableTabsTrigger value="summary">
                     Summary
@@ -123,13 +124,31 @@ export function SelectedRunView({
                 <ScrollableTabsTrigger value="input">
                   Your input
                 </ScrollableTabsTrigger>
-                {withReviews && (
-                  <ScrollableTabsTrigger value="reviews">
-                    Reviews ({pendingReviews.length})
-                  </ScrollableTabsTrigger>
-                )}
               </ScrollableTabsList>
               <div className="my-6 flex flex-col gap-6">
+                {/* Human-in-the-Loop Reviews Section */}
+                {withReviews && (
+                  <ScrollableTabsContent value="reviews">
+                    <div className="scroll-mt-4">
+                      <RunDetailCard>
+                        {reviewsLoading ? (
+                          <LoadingSpinner size="small" />
+                        ) : pendingReviews.length > 0 ? (
+                          <PendingReviewsList
+                            reviews={pendingReviews}
+                            onReviewComplete={refetchReviews}
+                            emptyMessage="No pending reviews for this execution"
+                          />
+                        ) : (
+                          <Text variant="body" className="text-zinc-700">
+                            No pending reviews for this execution
+                          </Text>
+                        )}
+                      </RunDetailCard>
+                    </div>
+                  </ScrollableTabsContent>
+                )}
+
                 {/* Summary Section */}
                 {withSummary && (
                   <ScrollableTabsContent value="summary">
@@ -192,29 +211,6 @@ export function SelectedRunView({
                     </RunDetailCard>
                   </div>
                 </ScrollableTabsContent>
-
-                {/* Reviews Section */}
-                {withReviews && (
-                  <ScrollableTabsContent value="reviews">
-                    <div className="scroll-mt-4">
-                      <RunDetailCard>
-                        {reviewsLoading ? (
-                          <LoadingSpinner size="small" />
-                        ) : pendingReviews.length > 0 ? (
-                          <PendingReviewsList
-                            reviews={pendingReviews}
-                            onReviewComplete={refetchReviews}
-                            emptyMessage="No pending reviews for this execution"
-                          />
-                        ) : (
-                          <Text variant="body" className="text-zinc-700">
-                            No pending reviews for this execution
-                          </Text>
-                        )}
-                      </RunDetailCard>
-                    </div>
-                  </ScrollableTabsContent>
-                )}
               </div>
             </ScrollableTabs>
           </div>

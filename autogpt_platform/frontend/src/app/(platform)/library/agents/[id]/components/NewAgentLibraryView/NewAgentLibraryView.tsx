@@ -1,24 +1,27 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
+import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
-import * as React from "react";
+import { AgentSettingsButton } from "@/components/molecules/AgentSettingsButton/AgentSettingsButton";
+import { useEffect, useState } from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { MarketplaceBanners } from "@/components/contextual/MarketplaceBanners/MarketplaceBanners";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
-import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
 import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { SectionWrap } from "./components/other/SectionWrap";
 import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
+import { SelectedSettingsView } from "./components/selected-views/SelectedSettingsView/SelectedSettingsView";
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
@@ -28,6 +31,7 @@ import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
   const {
+    agentId,
     agent,
     ready,
     activeTemplate,
@@ -41,6 +45,7 @@ export function NewAgentLibraryView() {
     handleSelectRun,
     handleCountsChange,
     handleClearSelectedRun,
+    handleSelectSettings,
     onRunInitiated,
     onTriggerSetup,
     onScheduleCreated,
@@ -57,7 +62,13 @@ export function NewAgentLibraryView() {
     handleUpdateToLatest,
   } = useMarketplaceUpdate({ agent });
 
-  const [changelogOpen, setChangelogOpen] = React.useState(false);
+  const [changelogOpen, setChangelogOpen] = useState(false);
+
+  useEffect(() => {
+    if (agent) {
+      document.title = `${agent.name} - Library - AutoGPT Platform`;
+    }
+  }, [agent]);
 
   function renderMarketplaceUpdateBanner() {
     return (
@@ -95,10 +106,62 @@ export function NewAgentLibraryView() {
     );
   }
 
-  function renderAgentLibraryView() {
+  function renderVersionChangelog() {
     if (!agent) return null;
 
     return (
+      <AgentVersionChangelog
+        agent={agent}
+        isOpen={changelogOpen}
+        onClose={() => setChangelogOpen(false)}
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorCard
+        isSuccess={false}
+        responseError={error || undefined}
+        context="agent"
+        onRetry={() => window.location.reload()}
+      />
+    );
+  }
+
+  if (!ready || !agent) {
+    return <AgentRunsLoading />;
+  }
+
+  if (!sidebarLoading && !hasAnyItems) {
+    return (
+      <>
+        <div className="flex h-full flex-col">
+          <div className="mx-6 pt-4">
+            <Breadcrumbs
+              items={[
+                { name: "My Library", link: "/library" },
+                { name: agent.name, link: `/library/agents/${agentId}` },
+              ]}
+            />
+          </div>
+          <div className="flex min-h-0 flex-1">
+            <EmptyTasks
+              agent={agent}
+              onRun={onRunInitiated}
+              onTriggerSetup={onTriggerSetup}
+              onScheduleCreated={onScheduleCreated}
+            />
+          </div>
+        </div>
+        {renderPublishAgentModal()}
+        {renderVersionChangelog()}
+      </>
+    );
+  }
+
+  return (
+    <>
       <div className="mx-4 grid h-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
         <SectionWrap className="mb-3 block">
           <div
@@ -107,24 +170,31 @@ export function NewAgentLibraryView() {
               AGENT_LIBRARY_SECTION_PADDING_X,
             )}
           >
-            <RunAgentModal
-              triggerSlot={
-                <Button
-                  variant="primary"
-                  size="large"
-                  className="w-full"
-                  disabled={isTemplateLoading && activeTab === "templates"}
-                >
-                  <PlusIcon size={20} /> New task
-                </Button>
-              }
-              agent={agent}
-              onRunCreated={onRunInitiated}
-              onScheduleCreated={onScheduleCreated}
-              onTriggerSetup={onTriggerSetup}
-              initialInputValues={activeTemplate?.inputs}
-              initialInputCredentials={activeTemplate?.credentials}
-            />
+            <div className="flex items-center gap-2">
+              <RunAgentModal
+                triggerSlot={
+                  <Button
+                    variant="primary"
+                    size="large"
+                    className="flex-1"
+                    disabled={isTemplateLoading && activeTab === "templates"}
+                  >
+                    <PlusIcon size={20} /> New task
+                  </Button>
+                }
+                agent={agent}
+                onRunCreated={onRunInitiated}
+                onScheduleCreated={onScheduleCreated}
+                onTriggerSetup={onTriggerSetup}
+                initialInputValues={activeTemplate?.inputs}
+                initialInputCredentials={activeTemplate?.credentials}
+              />
+              <AgentSettingsButton
+                agent={agent}
+                onSelectSettings={handleSelectSettings}
+                selected={activeItem === "settings"}
+              />
+            </div>
           </div>
 
           <SidebarRunsList
@@ -138,7 +208,12 @@ export function NewAgentLibraryView() {
         </SectionWrap>
 
         {activeItem ? (
-          activeTab === "scheduled" ? (
+          activeItem === "settings" ? (
+            <SelectedSettingsView
+              agent={agent}
+              onClearSelectedRun={handleClearSelectedRun}
+            />
+          ) : activeTab === "scheduled" ? (
             <SelectedScheduleView
               agent={agent}
               scheduleId={activeItem}
@@ -150,9 +225,7 @@ export function NewAgentLibraryView() {
               agent={agent}
               templateId={activeItem}
               onClearSelectedRun={handleClearSelectedRun}
-              onRunCreated={(execution) =>
-                handleSelectRun(execution.id, "runs")
-              }
+              onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
               onSwitchToRunsTab={() => setActiveTab("runs")}
               banner={renderMarketplaceUpdateBanner()}
             />
@@ -214,60 +287,6 @@ export function NewAgentLibraryView() {
           </SelectedViewLayout>
         )}
       </div>
-    );
-  }
-
-  function renderVersionChangelog() {
-    if (!agent) return null;
-
-    return (
-      <AgentVersionChangelog
-        agent={agent}
-        isOpen={changelogOpen}
-        onClose={() => setChangelogOpen(false)}
-      />
-    );
-  }
-
-  if (error) {
-    return (
-      <ErrorCard
-        isSuccess={false}
-        responseError={error || undefined}
-        context="agent"
-        onRetry={() => window.location.reload()}
-      />
-    );
-  }
-
-  if (!ready || !agent) {
-    return <AgentRunsLoading />;
-  }
-
-  if (!sidebarLoading && !hasAnyItems) {
-    return (
-      <>
-        <SelectedViewLayout
-          agentName={agent.name}
-          agentId={agent.id}
-          banner={renderMarketplaceUpdateBanner()}
-        >
-          <EmptyTasks
-            agent={agent}
-            onRun={onRunInitiated}
-            onTriggerSetup={onTriggerSetup}
-            onScheduleCreated={onScheduleCreated}
-          />
-        </SelectedViewLayout>
-        {renderPublishAgentModal()}
-        {renderVersionChangelog()}
-      </>
-    );
-  }
-
-  return (
-    <>
-      {renderAgentLibraryView()}
       {renderPublishAgentModal()}
       {renderVersionChangelog()}
     </>

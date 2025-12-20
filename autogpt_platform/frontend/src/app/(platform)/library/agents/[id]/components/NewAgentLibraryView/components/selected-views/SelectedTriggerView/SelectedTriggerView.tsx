@@ -83,7 +83,7 @@ export function SelectedTriggerView({
   }
 
   if (isLoading && !trigger) {
-    return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
+    return <LoadingSelectedContent agent={agent} />;
   }
 
   if (!trigger) {
@@ -95,11 +95,7 @@ export function SelectedTriggerView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout
-          agentName={agent.name}
-          agentId={agent.id}
-          banner={banner}
-        >
+        <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={undefined} />
 

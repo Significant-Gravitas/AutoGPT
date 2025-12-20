@@ -89,8 +89,9 @@ export function useNewAgentLibraryView() {
     [sidebarCounts],
   );
 
-  // Show sidebar layout while loading or when there are items
-  const showSidebarLayout = sidebarLoading || hasAnyItems;
+  // Show sidebar layout while loading or when there are items or settings is selected
+  const showSidebarLayout =
+    sidebarLoading || hasAnyItems || activeItem === "settings";
 
   useEffect(() => {
     if (agent) {
@@ -131,6 +132,13 @@ export function useNewAgentLibraryView() {
   ) {
     setQueryStates({
       activeTab: tab,
+    });
+  }
+
+  function handleSelectSettings() {
+    setQueryStates({
+      activeItem: "settings",
+      activeTab: "runs", // Reset to runs tab when going to settings
     });
   }
 
@@ -204,6 +212,7 @@ export function useNewAgentLibraryView() {
     handleClearSelectedRun,
     handleCountsChange,
     handleSelectRun,
+    handleSelectSettings,
     onRunInitiated,
     onTriggerSetup,
     onScheduleCreated,
