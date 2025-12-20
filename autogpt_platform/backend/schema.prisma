@@ -25,6 +25,12 @@ model User {
   stripeCustomerId String?
   topUpConfig      Json?
 
+  // Native auth fields (for migration from Supabase)
+  passwordHash          String?  // NULL for OAuth users or migrated users awaiting password reset
+  authProvider          String   @default("supabase") // "password", "google", "supabase" (legacy)
+  migratedFromSupabase  Boolean  @default(false)
+  emailVerifiedAt       DateTime?
+
   maxEmailsPerDay              Int     @default(3)
   notifyOnAgentRun             Boolean @default(true)
   notifyOnZeroBalance          Boolean @default(true)
@@ -67,6 +73,10 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+
+  // Native auth relations
+  UserAuthRefreshTokens   UserAuthRefreshToken[]
+  UserAuthMagicLinks      UserAuthMagicLink[]
 }
 
 enum OnboardingStep {
@@ -1090,5 +1100,49 @@ model OAuthRefreshToken {
 
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
+  @@index([expiresAt]) // For cleanup
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////////   NATIVE AUTH TABLES    /////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// Refresh tokens for native authentication (30 days TTL)
+model UserAuthRefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique // SHA256 hash of plaintext token
+  createdAt DateTime @default(now())
+  expiresAt DateTime // Now + 30 days
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  revokedAt DateTime? // Set when token is revoked
+
+  @@index([tokenHash]) // For token lookup
+  @@index([userId])
+  @@index([expiresAt]) // For cleanup
+}
+
+// Magic links for email verification and password reset
+model UserAuthMagicLink {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique // SHA256 hash of plaintext token
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  email   String
+  purpose String // "email_verification" or "password_reset"
+
+  // For password reset, track which user this is for
+  userId String?
+  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  usedAt DateTime? // Set when link is consumed (single-use)
+
+  @@index([tokenHash]) // For token lookup
+  @@index([email, purpose])
   @@index([expiresAt]) // For cleanup
 }

@@ -308,6 +308,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Admin configuration for native auth
+    admin_email_domains: str = Field(
+        default="agpt.co",
+        description="Comma-separated list of email domains that grant admin role (e.g., 'agpt.co,autogpt.com')",
+    )
+    admin_emails: str = Field(
+        default="",
+        description="Comma-separated list of specific email addresses that grant admin role",
+    )
+
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",

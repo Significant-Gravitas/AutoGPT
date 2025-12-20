@@ -23,6 +23,7 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.server.routers.oauth
 import backend.server.routers.postmark.postmark
+import backend.server.routers.user_auth
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.execution_analytics_routes
@@ -302,6 +303,11 @@ app.include_router(
     backend.server.routers.oauth.router,
     tags=["oauth"],
     prefix="/api/oauth",
+)
+app.include_router(
+    backend.server.routers.user_auth.router,
+    tags=["user-auth"],
+    prefix="/api",
 )
 
 app.mount("/external-api", external_app)
