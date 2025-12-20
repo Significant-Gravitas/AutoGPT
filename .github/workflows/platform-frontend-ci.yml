@@ -2,11 +2,12 @@ name: AutoGPT Platform - Frontend CI
 
 on:
   push:
-    branches: [master, dev]
+    branches: [master, dev, native-auth]
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
   pull_request:
+    branches: [master, dev, native-auth]
     paths:
       - ".github/workflows/platform-frontend-ci.yml"
       - "autogpt_platform/frontend/**"
@@ -147,7 +148,7 @@ jobs:
       - name: Enable corepack
         run: corepack enable
 
-      - name: Copy default supabase .env
+      - name: Copy default platform .env
         run: |
           cp ../.env.default ../.env
 

@@ -2,13 +2,13 @@ name: AutoGPT Platform - Backend CI
 
 on:
   push:
-    branches: [master, dev, ci-test*]
+    branches: [master, dev, ci-test*, native-auth]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   pull_request:
-    branches: [master, dev, release-*]
+    branches: [master, dev, release-*, native-auth]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - "autogpt_platform/backend/**"
@@ -36,6 +36,19 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: your-super-secret-and-long-postgres-password
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
       redis:
         image: redis:latest
         ports:
@@ -77,11 +90,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Setup Supabase
-        uses: supabase/setup-cli@v1
-        with:
-          version: 1.178.1
 
       - id: get_date
         name: Get date
@@ -136,16 +144,6 @@ jobs:
       - name: Generate Prisma Client
         run: poetry run prisma generate
 
-      - id: supabase
-        name: Start Supabase
-        working-directory: .
-        run: |
-          supabase init
-          supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
-          supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
-        # outputs:
-        # DB_URL, API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET
-
       - name: Wait for ClamAV to be ready
         run: |
           echo "Waiting for ClamAV daemon to start..."
@@ -178,8 +176,8 @@ jobs:
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --name updates
         env:
-          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
-          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
+          DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
 
       - id: lint
         name: Run Linter
@@ -195,11 +193,9 @@ jobs:
         if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
-          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
-          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
-          SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
-          JWT_VERIFY_KEY: ${{ steps.supabase.outputs.JWT_SECRET }}
+          DATABASE_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+          DIRECT_URL: postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres
+          JWT_SECRET: your-super-secret-jwt-token-with-at-least-32-characters-long
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!

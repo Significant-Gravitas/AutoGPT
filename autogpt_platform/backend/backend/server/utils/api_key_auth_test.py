@@ -522,8 +522,8 @@ async def test_api_keys_with_newline_variations(mock_request):
         "valid\r\ntoken",  # Windows newline
         "valid\rtoken",  # Mac newline
         "valid\x85token",  # NEL (Next Line)
-        "valid\x0Btoken",  # Vertical Tab
-        "valid\x0Ctoken",  # Form Feed
+        "valid\x0btoken",  # Vertical Tab
+        "valid\x0ctoken",  # Form Feed
     ]
 
     for api_key in newline_variations:

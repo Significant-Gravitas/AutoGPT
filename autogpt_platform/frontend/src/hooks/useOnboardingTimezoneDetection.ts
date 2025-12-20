@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { usePostV1UpdateUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 
 /**
@@ -12,7 +12,7 @@ export const useOnboardingTimezoneDetection = () => {
   const updateTimezone = usePostV1UpdateUserTimezone();
   const hasAttemptedDetection = useRef(false);
   const pathname = usePathname();
-  const { user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
 
   // Check if we're on onboarding route (computed outside useEffect to avoid re-computing)
   const isOnOnboardingRoute = pathname.startsWith("/onboarding");

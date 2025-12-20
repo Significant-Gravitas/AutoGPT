@@ -9,11 +9,11 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { User } from "@supabase/supabase-js";
+import { AuthUser } from "@/lib/auth";
 import { useEmailForm } from "./useEmailForm";
 
 type EmailFormProps = {
-  user: User;
+  user: AuthUser;
 };
 
 export function EmailForm({ user }: EmailFormProps) {

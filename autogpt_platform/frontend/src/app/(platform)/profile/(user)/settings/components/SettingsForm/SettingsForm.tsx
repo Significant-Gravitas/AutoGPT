@@ -2,14 +2,14 @@
 
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import { Separator } from "@/components/__legacy__/ui/separator";
-import { User } from "@supabase/supabase-js";
+import { AuthUser } from "@/lib/auth";
 import { EmailForm } from "./components/EmailForm/EmailForm";
 import { NotificationForm } from "./components/NotificationForm/NotificationForm";
 import { TimezoneForm } from "./components/TimezoneForm/TimezoneForm";
 
 type SettingsFormProps = {
   preferences: NotificationPreference;
-  user: User;
+  user: AuthUser;
   timezone?: string;
 };
 

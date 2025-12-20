@@ -2628,6 +2628,351 @@
         }
       }
     },
+    "/api/auth/register": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Register",
+        "description": "Register a new user with email and password.\n\nReturns access and refresh tokens on successful registration.\nSends a verification email in the background.",
+        "operationId": "postAuthRegister",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__server__auth__routes__TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Login",
+        "description": "Login with email and password.\n\nReturns access and refresh tokens on successful authentication.",
+        "operationId": "postAuthLogin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__server__auth__routes__TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Logout",
+        "description": "Logout by revoking the refresh token.\n\nThis invalidates the refresh token so it cannot be used to get new access tokens.",
+        "operationId": "postAuthLogout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LogoutRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Refresh Tokens",
+        "description": "Refresh access token using a refresh token.\n\nThe old refresh token is invalidated and a new one is returned (token rotation).",
+        "operationId": "postAuthRefreshTokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RefreshRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__server__auth__routes__TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/password-reset/request": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Request Password Reset",
+        "description": "Request a password reset email.\n\nAlways returns success to prevent email enumeration attacks.\nIf the email exists, a password reset email will be sent.",
+        "operationId": "postAuthRequestPasswordReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PasswordResetRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/password-reset/confirm": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Confirm Password Reset",
+        "description": "Reset password using a password reset token.\n\nAll existing sessions (refresh tokens) will be invalidated.",
+        "operationId": "postAuthConfirmPasswordReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PasswordResetConfirm" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/email/verify": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Verify Email",
+        "description": "Verify email address using a verification token.\n\nMarks the user's email as verified if the token is valid.",
+        "operationId": "postAuthVerifyEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/email/resend-verification": {
+      "post": {
+        "tags": ["auth", "auth"],
+        "summary": "Resend Verification Email",
+        "description": "Resend email verification email.\n\nAlways returns success to prevent email enumeration attacks.\nIf the email exists and is not verified, a new verification email will be sent.",
+        "operationId": "postAuthResendVerificationEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessageResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google/login": {
+      "get": {
+        "tags": ["auth", "auth"],
+        "summary": "Google Login",
+        "description": "Initiate Google OAuth flow.\n\nReturns the Google OAuth authorization URL to redirect the user to.",
+        "operationId": "getAuthGoogleLogin",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GoogleLoginResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google/callback": {
+      "get": {
+        "tags": ["auth", "auth"],
+        "summary": "Google Callback",
+        "description": "Handle Google OAuth callback.\n\nExchanges the authorization code for user info and creates/updates the user.\nReturns access and refresh tokens.",
+        "operationId": "getAuthGoogleCallback",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Code" }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/backend__server__auth__routes__TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/profile": {
       "get": {
         "tags": ["v2", "store", "private"],
@@ -5474,7 +5819,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/TokenResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/backend__server__routers__oauth__TokenResponse"
+                }
               }
             }
           },
@@ -6796,6 +7143,13 @@
         "required": ["url", "relevance_score"],
         "title": "Document"
       },
+      "EmailVerificationRequest": {
+        "properties": { "token": { "type": "string", "title": "Token" } },
+        "type": "object",
+        "required": ["token"],
+        "title": "EmailVerificationRequest",
+        "description": "Request model for email verification."
+      },
       "ExecutionAnalyticsConfig": {
         "properties": {
           "available_models": {
@@ -6957,6 +7311,13 @@
           "status"
         ],
         "title": "ExecutionAnalyticsResult"
+      },
+      "GoogleLoginResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "GoogleLoginResponse",
+        "description": "Response model for Google OAuth login initiation."
       },
       "Graph": {
         "properties": {
@@ -8006,6 +8367,16 @@
         "required": ["metric_name", "metric_value", "data_string"],
         "title": "LogRawMetricRequest"
       },
+      "LoginRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" },
+          "password": { "type": "string", "title": "Password" }
+        },
+        "type": "object",
+        "required": ["email", "password"],
+        "title": "LoginRequest",
+        "description": "Request model for user login."
+      },
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
@@ -8014,6 +8385,15 @@
         "type": "object",
         "required": ["login_url", "state_token"],
         "title": "LoginResponse"
+      },
+      "LogoutRequest": {
+        "properties": {
+          "refresh_token": { "type": "string", "title": "Refresh Token" }
+        },
+        "type": "object",
+        "required": ["refresh_token"],
+        "title": "LogoutRequest",
+        "description": "Request model for logout."
       },
       "MarketplaceListing": {
         "properties": {
@@ -8048,6 +8428,13 @@
         "type": "object",
         "required": ["query", "response"],
         "title": "Message"
+      },
+      "MessageResponse": {
+        "properties": { "message": { "type": "string", "title": "Message" } },
+        "type": "object",
+        "required": ["message"],
+        "title": "MessageResponse",
+        "description": "Generic message response."
       },
       "ModelInfo": {
         "properties": {
@@ -8514,6 +8901,29 @@
         "type": "object",
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
+      },
+      "PasswordResetConfirm": {
+        "properties": {
+          "token": { "type": "string", "title": "Token" },
+          "new_password": {
+            "type": "string",
+            "minLength": 8,
+            "title": "New Password"
+          }
+        },
+        "type": "object",
+        "required": ["token", "new_password"],
+        "title": "PasswordResetConfirm",
+        "description": "Request model for password reset confirmation."
+      },
+      "PasswordResetRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "PasswordResetRequest",
+        "description": "Request model for password reset request."
       },
       "PendingHumanReviewModel": {
         "properties": {
@@ -9048,6 +9458,15 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "RefreshRequest": {
+        "properties": {
+          "refresh_token": { "type": "string", "title": "Refresh Token" }
+        },
+        "type": "object",
+        "required": ["refresh_token"],
+        "title": "RefreshRequest",
+        "description": "Request model for token refresh."
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -9084,6 +9503,20 @@
         ],
         "title": "RefundRequest"
       },
+      "RegisterRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" },
+          "password": { "type": "string", "minLength": 8, "title": "Password" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["email", "password"],
+        "title": "RegisterRequest",
+        "description": "Request model for user registration."
+      },
       "RequestTopUp": {
         "properties": {
           "credit_amount": { "type": "integer", "title": "Credit Amount" }
@@ -9091,6 +9524,15 @@
         "type": "object",
         "required": ["credit_amount"],
         "title": "RequestTopUp"
+      },
+      "ResendVerificationRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "ResendVerificationRequest",
+        "description": "Request model for resending verification email."
       },
       "ReviewItem": {
         "properties": {
@@ -10585,43 +11027,6 @@
         ],
         "title": "TokenRequestByRefreshToken"
       },
-      "TokenResponse": {
-        "properties": {
-          "token_type": {
-            "type": "string",
-            "const": "Bearer",
-            "title": "Token Type",
-            "default": "Bearer"
-          },
-          "access_token": { "type": "string", "title": "Access Token" },
-          "access_token_expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Access Token Expires At"
-          },
-          "refresh_token": { "type": "string", "title": "Refresh Token" },
-          "refresh_token_expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Refresh Token Expires At"
-          },
-          "scopes": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Scopes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "access_token",
-          "access_token_expires_at",
-          "refresh_token",
-          "refresh_token_expires_at",
-          "scopes"
-        ],
-        "title": "TokenResponse",
-        "description": "OAuth 2.0 token response"
-      },
       "TransactionHistory": {
         "properties": {
           "transactions": {
@@ -11624,6 +12029,59 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "backend__server__auth__routes__TokenResponse": {
+        "properties": {
+          "access_token": { "type": "string", "title": "Access Token" },
+          "refresh_token": { "type": "string", "title": "Refresh Token" },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": { "type": "integer", "title": "Expires In" }
+        },
+        "type": "object",
+        "required": ["access_token", "refresh_token", "expires_in"],
+        "title": "TokenResponse",
+        "description": "Response model for authentication tokens."
+      },
+      "backend__server__routers__oauth__TokenResponse": {
+        "properties": {
+          "token_type": {
+            "type": "string",
+            "const": "Bearer",
+            "title": "Token Type",
+            "default": "Bearer"
+          },
+          "access_token": { "type": "string", "title": "Access Token" },
+          "access_token_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Access Token Expires At"
+          },
+          "refresh_token": { "type": "string", "title": "Refresh Token" },
+          "refresh_token_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Refresh Token Expires At"
+          },
+          "scopes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "access_token_expires_at",
+          "refresh_token",
+          "refresh_token_expires_at",
+          "scopes"
+        ],
+        "title": "TokenResponse",
+        "description": "OAuth 2.0 token response"
       }
     },
     "securitySchemes": {

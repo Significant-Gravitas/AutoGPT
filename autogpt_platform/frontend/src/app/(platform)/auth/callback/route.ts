@@ -1,92 +1,74 @@
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import BackendAPI from "@/lib/autogpt-server-api";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { shouldShowOnboarding } from "@/app/api/helpers";
+import { setAuthCookies } from "@/lib/auth/cookies";
+import { environment } from "@/services/environment";
 
-// Handle the callback to complete the user session login
+// Handle the OAuth callback from the backend
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const state = searchParams.get("state");
 
   let next = "/marketplace";
 
   if (code) {
-    const supabase = await getServerSupabase();
+    try {
+      // Exchange the code with the backend's Google OAuth callback
+      const callbackUrl = new URL(
+        `${environment.getAGPTServerApiUrl()}/auth/google/callback`,
+      );
+      callbackUrl.searchParams.set("code", code);
+      if (state) {
+        callbackUrl.searchParams.set("state", state);
+      }
 
-    if (!supabase) {
-      return NextResponse.redirect(`${origin}/error`);
-    }
+      const response = await fetch(callbackUrl.toString());
+      const data = await response.json();
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (!response.ok) {
+        console.error("OAuth callback error:", data);
+        return NextResponse.redirect(`${origin}/auth/auth-code-error`);
+      }
 
-    if (!error) {
-      try {
-        const api = new BackendAPI();
-        await api.createUser();
+      // Set the auth cookies with the tokens from the backend
+      if (data.access_token && data.refresh_token) {
+        await setAuthCookies(
+          data.access_token,
+          data.refresh_token,
+          data.expires_in || 900, // Default 15 minutes
+        );
 
-        if (await shouldShowOnboarding()) {
-          next = "/onboarding";
-          revalidatePath("/onboarding", "layout");
-        } else {
+        // Check if onboarding is needed
+        // Note: This may fail for OAuth logins since the cookies were just set
+        // on the response and aren't available for the backend request yet.
+        // In that case, just go to marketplace and let client-side handle onboarding.
+        try {
+          if (await shouldShowOnboarding()) {
+            next = "/onboarding";
+            revalidatePath("/onboarding", "layout");
+          } else {
+            revalidatePath("/", "layout");
+          }
+        } catch {
+          // If onboarding check fails, just go to marketplace
           revalidatePath("/", "layout");
         }
-      } catch (createUserError) {
-        console.error("Error creating user:", createUserError);
 
-        // Handle ApiError from the backend API client
-        if (
-          createUserError &&
-          typeof createUserError === "object" &&
-          "status" in createUserError
-        ) {
-          const apiError = createUserError as any;
+        const forwardedHost = request.headers.get("x-forwarded-host");
+        const isLocalEnv = process.env.NODE_ENV === "development";
 
-          if (apiError.status === 401) {
-            // Authentication issues - token missing/invalid
-            return NextResponse.redirect(
-              `${origin}/error?message=auth-token-invalid`,
-            );
-          } else if (apiError.status >= 500) {
-            // Server/database errors
-            return NextResponse.redirect(
-              `${origin}/error?message=server-error`,
-            );
-          } else if (apiError.status === 429) {
-            // Rate limiting
-            return NextResponse.redirect(
-              `${origin}/error?message=rate-limited`,
-            );
-          }
+        if (isLocalEnv) {
+          return NextResponse.redirect(`${origin}${next}`);
+        } else if (forwardedHost) {
+          return NextResponse.redirect(`https://${forwardedHost}${next}`);
+        } else {
+          return NextResponse.redirect(`${origin}${next}`);
         }
-
-        // Handle network/fetch errors
-        if (
-          createUserError instanceof TypeError &&
-          createUserError.message.includes("fetch")
-        ) {
-          return NextResponse.redirect(`${origin}/error?message=network-error`);
-        }
-
-        // Generic user creation failure
-        return NextResponse.redirect(
-          `${origin}/error?message=user-creation-failed`,
-        );
       }
-
-      // Get redirect destination from 'next' query parameter
-      next = searchParams.get("next") || next;
-
-      const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
-      const isLocalEnv = process.env.NODE_ENV === "development";
-      if (isLocalEnv) {
-        // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
-        return NextResponse.redirect(`${origin}${next}`);
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`);
-      } else {
-        return NextResponse.redirect(`${origin}${next}`);
-      }
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      return NextResponse.redirect(`${origin}/auth/auth-code-error`);
     }
   }
 

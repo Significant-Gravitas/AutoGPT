@@ -9,7 +9,7 @@ import { ToolCallMessage } from "@/app/(platform)/chat/components/ToolCallMessag
 import { ToolResponseMessage } from "@/app/(platform)/chat/components/ToolResponseMessage/ToolResponseMessage";
 import { AuthPromptWidget } from "@/app/(platform)/chat/components/AuthPromptWidget/AuthPromptWidget";
 import { ChatCredentialsSetup } from "@/app/(platform)/chat/components/ChatCredentialsSetup/ChatCredentialsSetup";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { useChatMessage, type ChatMessageData } from "./useChatMessage";
 import { getToolActionPhrase } from "@/app/(platform)/chat/helpers";
 export interface ChatMessageProps {
@@ -26,7 +26,7 @@ export function ChatMessage({
   onDismissCredentials,
   onSendMessage,
 }: ChatMessageProps) {
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const {
     formattedTimestamp,
     isUser,

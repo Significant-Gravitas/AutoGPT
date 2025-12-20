@@ -5,7 +5,7 @@ networks:
     name: shared-network
 
 volumes:
-  supabase-config:
+  clamav-data:
 
 x-agpt-services:
   &agpt-services
@@ -13,28 +13,18 @@ x-agpt-services:
     - app-network
     - shared-network
 
-x-supabase-services:
-  &supabase-services
-  networks:
-    - app-network
-    - shared-network
-
-
-volumes:
-  clamav-data:
-
 services:
-   
+
   db:
-    <<: *supabase-services
+    <<: *agpt-services
     extends:
       file: ../db/docker/docker-compose.yml
       service: db
     ports:
-      - ${POSTGRES_PORT}:5432 # We don't use Supavisor locally, so we expose the db directly.
+      - ${POSTGRES_PORT}:5432
 
   vector:
-    <<: *supabase-services
+    <<: *agpt-services
     extends:
       file: ../db/docker/docker-compose.yml
       service: vector
@@ -67,6 +57,7 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+
   clamav:
     image: clamav/clamav-debian:latest
     ports:
@@ -85,6 +76,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
 networks:
-     app-network-test:
-       driver: bridge
+  app-network-test:
+    driver: bridge

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useEffect, useState } from "react";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -68,7 +68,7 @@ export default function CredentialsProvider({
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
   const [providerNames, setProviderNames] = useState<string[]>([]);
-  const { isLoggedIn } = useSupabase();
+  const { isLoggedIn } = useAuth();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
 

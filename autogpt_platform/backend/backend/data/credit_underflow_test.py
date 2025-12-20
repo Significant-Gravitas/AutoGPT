@@ -6,12 +6,14 @@ doesn't underflow below POSTGRES_INT_MIN, which could cause integer wraparound i
 """
 
 import asyncio
+from typing import cast
 from uuid import uuid4
 
 import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
+from prisma.types import UserBalanceUpsertInput, UserCreateInput
 
 from backend.data.credit import POSTGRES_INT_MIN, UserCredit
 from backend.util.test import SpinTestServer
@@ -21,11 +23,14 @@ async def create_test_user(user_id: str) -> None:
     """Create a test user for underflow tests."""
     try:
         await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"test-{user_id}@example.com",
-                "name": f"Test User {user_id[:8]}",
-            }
+            data=cast(
+                UserCreateInput,
+                {
+                    "id": user_id,
+                    "email": f"test-{user_id}@example.com",
+                    "name": f"Test User {user_id[:8]}",
+                },
+            )
         )
     except UniqueViolationError:
         # User already exists, continue
@@ -33,7 +38,10 @@ async def create_test_user(user_id: str) -> None:
 
     await UserBalance.prisma().upsert(
         where={"userId": user_id},
-        data={"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        data=cast(
+            UserBalanceUpsertInput,
+            {"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        ),
     )
 
 
@@ -70,10 +78,13 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
 
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": initial_balance_target},
-                "update": {"balance": initial_balance_target},
-            },
+            data=cast(
+                UserBalanceUpsertInput,
+                {
+                    "create": {"userId": user_id, "balance": initial_balance_target},
+                    "update": {"balance": initial_balance_target},
+                },
+            ),
         )
 
         current_balance = await credit_system.get_credits(user_id)
@@ -110,10 +121,13 @@ async def test_debug_underflow_step_by_step(server: SpinTestServer):
         # Set balance to exactly POSTGRES_INT_MIN
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": POSTGRES_INT_MIN},
-                "update": {"balance": POSTGRES_INT_MIN},
-            },
+            data=cast(
+                UserBalanceUpsertInput,
+                {
+                    "create": {"userId": user_id, "balance": POSTGRES_INT_MIN},
+                    "update": {"balance": POSTGRES_INT_MIN},
+                },
+            ),
         )
 
         edge_balance = await credit_system.get_credits(user_id)
@@ -152,10 +166,13 @@ async def test_underflow_protection_large_refunds(server: SpinTestServer):
         test_balance = POSTGRES_INT_MIN + 1000
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": test_balance},
-                "update": {"balance": test_balance},
-            },
+            data=cast(
+                UserBalanceUpsertInput,
+                {
+                    "create": {"userId": user_id, "balance": test_balance},
+                    "update": {"balance": test_balance},
+                },
+            ),
         )
 
         current_balance = await credit_system.get_credits(user_id)
@@ -217,10 +234,13 @@ async def test_multiple_large_refunds_cumulative_underflow(server: SpinTestServe
         initial_balance = POSTGRES_INT_MIN + 500  # Close to minimum but with some room
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": initial_balance},
-                "update": {"balance": initial_balance},
-            },
+            data=cast(
+                UserBalanceUpsertInput,
+                {
+                    "create": {"userId": user_id, "balance": initial_balance},
+                    "update": {"balance": initial_balance},
+                },
+            ),
         )
 
         # Apply multiple refunds that would cumulatively underflow
@@ -295,10 +315,13 @@ async def test_concurrent_large_refunds_no_underflow(server: SpinTestServer):
         initial_balance = POSTGRES_INT_MIN + 1000  # Close to minimum
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": initial_balance},
-                "update": {"balance": initial_balance},
-            },
+            data=cast(
+                UserBalanceUpsertInput,
+                {
+                    "create": {"userId": user_id, "balance": initial_balance},
+                    "update": {"balance": initial_balance},
+                },
+            ),
         )
 
         async def large_refund(amount: int, label: str):

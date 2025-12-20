@@ -36,12 +36,13 @@ import secrets
 import sys
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 from urllib.parse import urlparse
 
 import click
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
+from prisma.types import OAuthApplicationCreateInput
 
 keysmith = APIKeySmith()
 
@@ -834,19 +835,22 @@ async def create_test_app_in_db(
 
     # Insert into database
     app = await OAuthApplication.prisma().create(
-        data={
-            "id": creds["id"],
-            "name": creds["name"],
-            "description": creds["description"],
-            "clientId": creds["client_id"],
-            "clientSecret": creds["client_secret_hash"],
-            "clientSecretSalt": creds["client_secret_salt"],
-            "redirectUris": creds["redirect_uris"],
-            "grantTypes": creds["grant_types"],
-            "scopes": creds["scopes"],
-            "ownerId": owner_id,
-            "isActive": True,
-        }
+        data=cast(
+            OAuthApplicationCreateInput,
+            {
+                "id": creds["id"],
+                "name": creds["name"],
+                "description": creds["description"],
+                "clientId": creds["client_id"],
+                "clientSecret": creds["client_secret_hash"],
+                "clientSecretSalt": creds["client_secret_salt"],
+                "redirectUris": creds["redirect_uris"],
+                "grantTypes": creds["grant_types"],
+                "scopes": creds["scopes"],
+                "ownerId": owner_id,
+                "isActive": True,
+            },
+        )
     )
 
     click.echo(f"✓ Created test OAuth application: {app.clientId}")

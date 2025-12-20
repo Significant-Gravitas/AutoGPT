@@ -1,6 +1,6 @@
 .PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend load-store-agents
 
-# Run just Supabase + Redis + RabbitMQ
+# Run just PostgreSQL + Redis + RabbitMQ + ClamAV
 start-core:
 	docker compose up -d deps
 
@@ -49,7 +49,7 @@ load-store-agents:
 help:
 	@echo "Usage: make <target>"
 	@echo "Targets:"
-	@echo "  start-core - Start just the core services (Supabase, Redis, RabbitMQ) in background"
+	@echo "  start-core - Start just the core services (PostgreSQL, Redis, RabbitMQ, ClamAV) in background"
 	@echo "  stop-core - Stop the core services"
 	@echo "  reset-db - Reset the database by deleting the volume"
 	@echo "  logs-core - Tail the logs for core services"

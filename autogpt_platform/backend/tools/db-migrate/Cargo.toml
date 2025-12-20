@@ -1,0 +1,36 @@
+[package]
+name = "db-migrate"
+version = "0.1.0"
+edition = "2024"
+description = "Database migration tool for AutoGPT Platform - Supabase to GCP Cloud SQL"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# PostgreSQL
+tokio-postgres = { version = "0.7", features = ["with-uuid-0_8", "with-chrono-0_4", "with-serde_json-1"] }
+postgres-types = { version = "0.2", features = ["derive"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utilities
+uuid = { version = "0.8", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+indicatif = "0.17"  # Progress bars
+comfy-table = "7"   # Pretty tables
+url = "2"
+futures = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true

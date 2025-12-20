@@ -18,3 +18,6 @@ load-tests/results/
 load-tests/*.json
 load-tests/*.log
 load-tests/node_modules/*
+
+# Migration backups (contain user data)
+migration_backups/

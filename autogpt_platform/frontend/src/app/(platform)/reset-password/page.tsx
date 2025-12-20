@@ -5,7 +5,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { Form, FormField } from "@/components/__legacy__/ui/form";
 import LoadingBox from "@/components/__legacy__/ui/loading";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -15,7 +15,7 @@ import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
 
 function ResetPasswordContent() {
-  const { supabase, user, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useAuth();
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -112,14 +112,6 @@ function ResetPasswordContent() {
 
   if (isUserLoading) {
     return <LoadingBox className="h-[80vh]" />;
-  }
-
-  if (!supabase) {
-    return (
-      <div>
-        User accounts are disabled because Supabase client is unavailable
-      </div>
-    );
   }
 
   return (

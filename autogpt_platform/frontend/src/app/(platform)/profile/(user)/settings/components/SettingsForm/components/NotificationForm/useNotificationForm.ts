@@ -5,7 +5,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
-import { User } from "@supabase/supabase-js";
+import { AuthUser } from "@/lib/auth";
 import { usePostV1UpdateNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
 import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api/types";
 
@@ -46,7 +46,7 @@ export function useNotificationForm({
   user,
 }: {
   preferences: NotificationPreference;
-  user: User;
+  user: AuthUser;
 }) {
   const { toast } = useToast();
   const defaultValues = createNotificationDefaultValues(preferences);

@@ -28,6 +28,7 @@ from prisma.models import (
     AgentNodeExecutionKeyValueData,
 )
 from prisma.types import (
+    AgentGraphExecutionCreateInput,
     AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
@@ -35,7 +36,6 @@ from prisma.types import (
     AgentNodeExecutionKeyValueDataCreateInput,
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
-    AgentNodeExecutionWhereUniqueInput,
 )
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from pydantic.fields import Field
@@ -709,37 +709,40 @@ async def create_graph_execution(
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
     result = await AgentGraphExecution.prisma().create(
-        data={
-            "agentGraphId": graph_id,
-            "agentGraphVersion": graph_version,
-            "executionStatus": ExecutionStatus.INCOMPLETE,
-            "inputs": SafeJson(inputs),
-            "credentialInputs": (
-                SafeJson(credential_inputs) if credential_inputs else Json({})
-            ),
-            "nodesInputMasks": (
-                SafeJson(nodes_input_masks) if nodes_input_masks else Json({})
-            ),
-            "NodeExecutions": {
-                "create": [
-                    AgentNodeExecutionCreateInput(
-                        agentNodeId=node_id,
-                        executionStatus=ExecutionStatus.QUEUED,
-                        queuedTime=datetime.now(tz=timezone.utc),
-                        Input={
-                            "create": [
-                                {"name": name, "data": SafeJson(data)}
-                                for name, data in node_input.items()
-                            ]
-                        },
-                    )
-                    for node_id, node_input in starting_nodes_input
-                ]
+        data=cast(
+            AgentGraphExecutionCreateInput,
+            {
+                "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
+                "executionStatus": ExecutionStatus.INCOMPLETE,
+                "inputs": SafeJson(inputs),
+                "credentialInputs": (
+                    SafeJson(credential_inputs) if credential_inputs else Json({})
+                ),
+                "nodesInputMasks": (
+                    SafeJson(nodes_input_masks) if nodes_input_masks else Json({})
+                ),
+                "NodeExecutions": {
+                    "create": [
+                        AgentNodeExecutionCreateInput(
+                            agentNodeId=node_id,
+                            executionStatus=ExecutionStatus.QUEUED,
+                            queuedTime=datetime.now(tz=timezone.utc),
+                            Input={
+                                "create": [
+                                    {"name": name, "data": SafeJson(data)}
+                                    for name, data in node_input.items()
+                                ]
+                            },
+                        )
+                        for node_id, node_input in starting_nodes_input
+                    ]
+                },
+                "userId": user_id,
+                "agentPresetId": preset_id,
+                "parentGraphExecutionId": parent_graph_exec_id,
             },
-            "userId": user_id,
-            "agentPresetId": preset_id,
-            "parentGraphExecutionId": parent_graph_exec_id,
-        },
+        ),
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 
@@ -831,10 +834,13 @@ async def upsert_execution_output(
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    data: AgentNodeExecutionInputOutputCreateInput = {
-        "name": output_name,
-        "referencedByOutputExecId": node_exec_id,
-    }
+    data: AgentNodeExecutionInputOutputCreateInput = cast(
+        AgentNodeExecutionInputOutputCreateInput,
+        {
+            "name": output_name,
+            "referencedByOutputExecId": node_exec_id,
+        },
+    )
     if output_data is not None:
         data["data"] = SafeJson(output_data)
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
@@ -974,25 +980,30 @@ async def update_node_execution_status(
             f"Invalid status transition: {status} has no valid source statuses"
         )
 
-    if res := await AgentNodeExecution.prisma().update(
-        where=cast(
-            AgentNodeExecutionWhereUniqueInput,
-            {
-                "id": node_exec_id,
-                "executionStatus": {"in": [s.value for s in allowed_from]},
-            },
-        ),
+    # First verify the current status allows this transition
+    current_exec = await AgentNodeExecution.prisma().find_unique(
+        where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
+    )
+
+    if not current_exec:
+        raise ValueError(f"Execution {node_exec_id} not found.")
+
+    # Check if current status allows the requested transition
+    if current_exec.executionStatus not in allowed_from:
+        # Status transition not allowed, return current state without updating
+        return NodeExecutionResult.from_db(current_exec)
+
+    # Status transition is valid, perform the update
+    updated_exec = await AgentNodeExecution.prisma().update(
+        where={"id": node_exec_id},
         data=_get_update_status_data(status, execution_data, stats),
         include=EXECUTION_RESULT_INCLUDE,
-    ):
-        return NodeExecutionResult.from_db(res)
+    )
 
-    if res := await AgentNodeExecution.prisma().find_unique(
-        where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
-    ):
-        return NodeExecutionResult.from_db(res)
+    if not updated_exec:
+        raise ValueError(f"Failed to update execution {node_exec_id}.")
 
-    raise ValueError(f"Execution {node_exec_id} not found.")
+    return NodeExecutionResult.from_db(updated_exec)
 
 
 def _get_update_status_data(

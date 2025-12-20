@@ -7,7 +7,7 @@ import { useGetV2GetAgentByStoreId } from "@/app/api/__generated__/endpoints/lib
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
 import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 
 export const useMainAgentPage = ({
   params,
@@ -15,7 +15,7 @@ export const useMainAgentPage = ({
   params: MarketplaceAgentPageParams;
 }) => {
   const creator_lower = params.creator.toLowerCase();
-  const { user } = useSupabase();
+  const { user } = useAuth();
   const {
     data: agent,
     isLoading: isAgentLoading,

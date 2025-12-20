@@ -12,11 +12,11 @@ generator client {
   partial_type_generator = "backend/data/partial_types.py"
 }
 
-// User model to mirror Auth provider users
+// User model for authentication and platform data
 model User {
-  id               String   @id // This should match the Supabase user ID
+  id               String   @id @default(uuid())
   email            String   @unique
-  emailVerified    Boolean  @default(true)
+  emailVerified    Boolean  @default(false)
   name             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -24,6 +24,11 @@ model User {
   integrations     String   @default("")
   stripeCustomerId String?
   topUpConfig      Json?
+
+  // Authentication fields
+  passwordHash String? // bcrypt hash (nullable for OAuth-only users)
+  googleId     String? @unique // Google OAuth user ID
+  role         String  @default("authenticated") // user role
 
   maxEmailsPerDay              Int     @default(3)
   notifyOnAgentRun             Boolean @default(true)
@@ -38,6 +43,11 @@ model User {
   notifyOnAgentRejected        Boolean @default(true)
 
   timezone String @default("not-set")
+
+  // Auth token relations
+  RefreshTokens           RefreshToken[]
+  PasswordResetTokens     PasswordResetToken[]
+  EmailVerificationTokens EmailVerificationToken[]
 
   // Relations
 
@@ -67,6 +77,49 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+}
+
+// Refresh tokens for JWT authentication
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique // SHA-256 hashed refresh token
+  userId    String
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([token])
+}
+
+// Password reset tokens
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  token     String    @unique // SHA-256 hashed token
+  userId    String
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// Email verification tokens
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  token     String    @unique // SHA-256 hashed token
+  userId    String
+  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
 }
 
 enum OnboardingStep {

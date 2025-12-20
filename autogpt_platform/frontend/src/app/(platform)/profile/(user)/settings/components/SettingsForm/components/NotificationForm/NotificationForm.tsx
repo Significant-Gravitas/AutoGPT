@@ -9,13 +9,13 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
-import { User } from "@supabase/supabase-js";
+import { AuthUser } from "@/lib/auth";
 import { useNotificationForm } from "./useNotificationForm";
 import { Switch } from "@/components/atoms/Switch/Switch";
 
 type NotificationFormProps = {
   preferences: NotificationPreference;
-  user: User;
+  user: AuthUser;
 };
 
 export function NotificationForm({ preferences, user }: NotificationFormProps) {

@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { environment } from "../environment";
 
 export enum Key {
-  LOGOUT = "supabase-logout",
+  LOGOUT = "auth-logout",
   WEBSOCKET_DISCONNECT_INTENT = "websocket-disconnect-intent",
   COPIED_FLOW_DATA = "copied-flow-data",
   SHEPHERD_TOUR = "shepherd-tour",

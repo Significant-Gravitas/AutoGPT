@@ -56,7 +56,7 @@ async def postmark_webhook_handler(
     webhook: Annotated[
         PostmarkWebhook,
         Body(discriminator="RecordType"),
-    ]
+    ],
 ):
     logger.info(f"Received webhook from Postmark: {webhook}")
     match webhook:

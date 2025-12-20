@@ -4,11 +4,11 @@ import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/
 import { ProfileInfoForm } from "@/components/__legacy__/ProfileInfoForm";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { ProfileLoading } from "./ProfileLoading";
 
 export default function UserProfilePage() {
-  const { user } = useSupabase();
+  const { user } = useAuth();
 
   const {
     data: profile,

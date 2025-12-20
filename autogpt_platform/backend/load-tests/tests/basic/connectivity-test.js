@@ -45,7 +45,7 @@ export default function () {
     // Handle authentication failure gracefully
     if (!headers || !headers.Authorization) {
       console.log(
-        `⚠️ VU ${__VU} has no valid pre-authentication token - skipping iteration`,
+        `VU ${__VU} has no valid pre-authentication token - skipping iteration`,
       );
       check(null, {
         "Authentication: Failed gracefully without crashing VU": () => true,
@@ -53,21 +53,23 @@ export default function () {
       return; // Exit iteration gracefully without crashing
     }
 
-    console.log(`🚀 VU ${__VU} making ${requestsPerVU} concurrent requests...`);
+    console.log(`VU ${__VU} making ${requestsPerVU} concurrent requests...`);
 
     // Create array of request functions to run concurrently
     const requests = [];
 
     for (let i = 0; i < requestsPerVU; i++) {
-      requests.push({
-        method: "GET",
-        url: `${config.SUPABASE_URL}/rest/v1/`,
-        params: { headers: { apikey: config.SUPABASE_ANON_KEY } },
-      });
-
+      // Health check endpoint
       requests.push({
         method: "GET",
         url: `${config.API_BASE_URL}/health`,
+        params: { headers },
+      });
+
+      // API endpoint check
+      requests.push({
+        method: "GET",
+        url: `${config.API_BASE_URL}/api`,
         params: { headers },
       });
     }
@@ -76,33 +78,32 @@ export default function () {
     const responses = http.batch(requests);
 
     // Validate results
-    let supabaseSuccesses = 0;
-    let backendSuccesses = 0;
+    let healthSuccesses = 0;
+    let apiSuccesses = 0;
 
     for (let i = 0; i < responses.length; i++) {
       const response = responses[i];
 
       if (i % 2 === 0) {
-        // Supabase request
-        const connectivityCheck = check(response, {
-          "Supabase connectivity: Status is not 500": (r) => r.status !== 500,
-          "Supabase connectivity: Response time < 5s": (r) =>
+        // Health check request
+        const healthCheck = check(response, {
+          "Health endpoint: Status is not 500": (r) => r.status !== 500,
+          "Health endpoint: Response time < 5s": (r) =>
             r.timings.duration < 5000,
         });
-        if (connectivityCheck) supabaseSuccesses++;
+        if (healthCheck) healthSuccesses++;
       } else {
-        // Backend request
-        const backendCheck = check(response, {
-          "Backend server: Responds (any status)": (r) => r.status > 0,
-          "Backend server: Response time < 5s": (r) =>
-            r.timings.duration < 5000,
+        // API request
+        const apiCheck = check(response, {
+          "API server: Responds (any status)": (r) => r.status > 0,
+          "API server: Response time < 5s": (r) => r.timings.duration < 5000,
         });
-        if (backendCheck) backendSuccesses++;
+        if (apiCheck) apiSuccesses++;
       }
     }
 
     console.log(
-      `✅ VU ${__VU} completed: ${supabaseSuccesses}/${requestsPerVU} Supabase, ${backendSuccesses}/${requestsPerVU} backend requests successful`,
+      `VU ${__VU} completed: ${healthSuccesses}/${requestsPerVU} health, ${apiSuccesses}/${requestsPerVU} API requests successful`,
     );
 
     // Basic auth validation (once per iteration)
@@ -125,7 +126,7 @@ export default function () {
         parts[2] && parts[2].length > 10,
     });
   } catch (error) {
-    console.error(`💥 Test failed: ${error.message}`);
+    console.error(`Test failed: ${error.message}`);
     check(null, {
       "Test execution: No errors": () => false,
     });
@@ -133,5 +134,5 @@ export default function () {
 }
 
 export function teardown(data) {
-  console.log(`🏁 Basic connectivity test completed`);
+  console.log(`Basic connectivity test completed`);
 }

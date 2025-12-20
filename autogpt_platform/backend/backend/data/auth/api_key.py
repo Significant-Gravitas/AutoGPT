@@ -1,12 +1,12 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
-from prisma.types import APIKeyWhereUniqueInput
+from prisma.types import APIKeyCreateInput, APIKeyWhereUniqueInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
@@ -82,17 +82,20 @@ async def create_api_key(
     generated_key = keysmith.generate_key()
 
     saved_key_obj = await PrismaAPIKey.prisma().create(
-        data={
-            "id": str(uuid.uuid4()),
-            "name": name,
-            "head": generated_key.head,
-            "tail": generated_key.tail,
-            "hash": generated_key.hash,
-            "salt": generated_key.salt,
-            "permissions": [p for p in permissions],
-            "description": description,
-            "userId": user_id,
-        }
+        data=cast(
+            APIKeyCreateInput,
+            {
+                "id": str(uuid.uuid4()),
+                "name": name,
+                "head": generated_key.head,
+                "tail": generated_key.tail,
+                "hash": generated_key.hash,
+                "salt": generated_key.salt,
+                "permissions": [p for p in permissions],
+                "description": description,
+                "userId": user_id,
+            },
+        )
     )
 
     return APIKeyInfo.from_db(saved_key_obj), generated_key.key

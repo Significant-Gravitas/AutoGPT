@@ -62,7 +62,6 @@ sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlal
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
 stripe = "^11.5.0"
-supabase = "2.17.0"
 tenacity = "^9.1.2"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.16.0"
@@ -82,6 +81,7 @@ firecrawl-py = "^4.3.6"
 exa-py = "^1.14.20"
 croniter = "^6.0.0"
 stagehand = "^0.5.1"
+bcrypt = ">=4.1.0,<5.0.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

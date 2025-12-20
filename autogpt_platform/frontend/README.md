@@ -166,7 +166,8 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 
 ### Backend & Services
 
-- [**Supabase**](https://supabase.com/) - Backend-as-a-Service (database, auth, storage)
+- [**FastAPI**](https://fastapi.tiangolo.com/) - Python API framework (backend)
+- [**PostgreSQL**](https://www.postgresql.org/) - Database
 - [**Sentry**](https://sentry.io/) - Error monitoring and performance tracking
 
 ### Package Management

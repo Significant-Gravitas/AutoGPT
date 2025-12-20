@@ -11,6 +11,7 @@ class User:
     email: str
     phone_number: str
     role: str
+    email_verified: bool = False
 
     @classmethod
     def from_payload(cls, payload):
@@ -18,5 +19,6 @@ class User:
             user_id=payload["sub"],
             email=payload.get("email", ""),
             phone_number=payload.get("phone", ""),
-            role=payload["role"],
+            role=payload.get("role", "authenticated"),
+            email_verified=payload.get("email_verified", False),
         )

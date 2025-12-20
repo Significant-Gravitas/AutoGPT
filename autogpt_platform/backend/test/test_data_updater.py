@@ -12,10 +12,12 @@ Run this after test_data_creator.py to test that materialized views update corre
 import asyncio
 import random
 from datetime import datetime, timedelta
+from typing import cast
 
 import prisma.enums
 from faker import Faker
 from prisma import Json, Prisma
+from prisma.types import CreditTransactionCreateInput, StoreListingReviewCreateInput
 
 faker = Faker()
 
@@ -166,16 +168,19 @@ async def main():
                 score = random.choices([1, 2, 3, 4, 5], weights=[5, 10, 20, 40, 25])[0]
 
                 await db.storelistingreview.create(
-                    data={
-                        "storeListingVersionId": version.id,
-                        "reviewByUserId": reviewer.id,
-                        "score": score,
-                        "comments": (
-                            faker.text(max_nb_chars=200)
-                            if random.random() < 0.7
-                            else None
-                        ),
-                    }
+                    data=cast(
+                        StoreListingReviewCreateInput,
+                        {
+                            "storeListingVersionId": version.id,
+                            "reviewByUserId": reviewer.id,
+                            "score": score,
+                            "comments": (
+                                faker.text(max_nb_chars=200)
+                                if random.random() < 0.7
+                                else None
+                            ),
+                        },
+                    )
                 )
                 new_reviews_count += 1
 
@@ -244,17 +249,20 @@ async def main():
             )
 
             await db.credittransaction.create(
-                data={
-                    "userId": user.id,
-                    "amount": amount,
-                    "type": transaction_type,
-                    "metadata": Json(
-                        {
-                            "source": "test_updater",
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                    ),
-                }
+                data=cast(
+                    CreditTransactionCreateInput,
+                    {
+                        "userId": user.id,
+                        "amount": amount,
+                        "type": transaction_type,
+                        "metadata": Json(
+                            {
+                                "source": "test_updater",
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        ),
+                    },
+                )
             )
             transaction_count += 1
 

@@ -1,10 +1,8 @@
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 
 export function useNavbar() {
-  const { isLoggedIn, isUserLoading } = useSupabase();
-
-  console.log("isLoggedIn", isLoggedIn);
+  const { isLoggedIn, isUserLoading } = useAuth();
 
   const {
     data: profileResponse,
@@ -12,7 +10,8 @@ export function useNavbar() {
     error: profileError,
   } = useGetV2GetUserProfile({
     query: {
-      enabled: isLoggedIn === true,
+      // Only fetch when user is confirmed logged in and auth loading is complete
+      enabled: isLoggedIn === true && !isUserLoading,
     },
   });
 

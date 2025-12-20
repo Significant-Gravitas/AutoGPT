@@ -1,0 +1,14 @@
+# Build artifacts
+/target/
+
+# Environment files with credentials
+.env
+
+# Editor files
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store

@@ -21,6 +21,7 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
+import backend.server.auth
 import backend.server.routers.oauth
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
@@ -255,6 +256,7 @@ app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
+app.include_router(backend.server.auth.auth_router, tags=["auth"], prefix="/api")
 app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
 )

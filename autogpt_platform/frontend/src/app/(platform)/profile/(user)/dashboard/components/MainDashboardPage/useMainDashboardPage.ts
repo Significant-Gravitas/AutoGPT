@@ -7,7 +7,7 @@ import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission"
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 
@@ -32,7 +32,7 @@ type EditState = {
 export const useMainDashboardPage = () => {
   const queryClient = getQueryClient();
 
-  const { user } = useSupabase();
+  const { user } = useAuth();
 
   const [publishState, setPublishState] = useState<PublishState>({
     isOpen: false,

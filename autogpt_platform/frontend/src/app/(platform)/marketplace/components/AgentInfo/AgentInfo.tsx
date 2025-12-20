@@ -3,12 +3,12 @@
 import { StarRatingIcons } from "@/components/__legacy__/ui/icons";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import Link from "next/link";
-import { User } from "@supabase/supabase-js";
+import { AuthUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { useAgentInfo } from "./useAgentInfo";
 
 interface AgentInfoProps {
-  user: User | null;
+  user: AuthUser | null;
   agentId: string;
   name: string;
   creator: string;

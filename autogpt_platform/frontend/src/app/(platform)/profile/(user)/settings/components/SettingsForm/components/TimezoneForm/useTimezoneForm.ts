@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { User } from "@supabase/supabase-js";
+import { AuthUser } from "@/lib/auth";
 import {
   usePostV1UpdateUserTimezone,
   getGetV1GetUserTimezoneQueryKey,
@@ -19,7 +19,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 type UseTimezoneFormProps = {
-  user: User;
+  user: AuthUser;
   currentTimezone: string;
 };
 

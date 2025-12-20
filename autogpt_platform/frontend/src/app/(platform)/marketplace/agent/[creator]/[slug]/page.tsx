@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import { getServerUser } from "@/lib/auth/server/getServerAuth";
 import {
   getV2GetSpecificAgent,
   prefetchGetV2GetSpecificAgentQuery,
@@ -50,7 +50,7 @@ export default async function MarketplaceAgentPage({
     }),
   ]);
 
-  const { user } = await getServerUser();
+  const user = await getServerUser();
   const { data: creator_agent, status } = await getV2GetSpecificAgent(
     creator_lower,
     params.slug,

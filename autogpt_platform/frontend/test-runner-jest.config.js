@@ -12,5 +12,5 @@ module.exports = {
    *  to merge testRunnerConfig properties with your own
    * @see https://jestjs.io/docs/configuration
    */
-  testPathIgnorePatterns: ["/node_modules/", "/supabase/"],
+  testPathIgnorePatterns: ["/node_modules/"],
 };

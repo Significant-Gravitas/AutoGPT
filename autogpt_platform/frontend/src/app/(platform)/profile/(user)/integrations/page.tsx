@@ -15,7 +15,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { providerIcons } from "@/components/renderers/input-renderer/fields/CredentialField/helpers";
 import { CredentialsProviderName } from "@/lib/autogpt-server-api";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { Trash2Icon } from "lucide-react";
@@ -23,7 +23,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 export default function UserIntegrationsPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
+  const { isUserLoading, isLoggedIn } = useAuth();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
   const { toast } = useToast();
@@ -122,8 +122,8 @@ export default function UserIntegrationsPage() {
 
   useEffect(() => {
     if (isUserLoading) return;
-    if (!user || !supabase) router.push("/login");
-  }, [isUserLoading, user, supabase, router]);
+    if (!isLoggedIn) router.push("/login");
+  }, [isUserLoading, isLoggedIn, router]);
 
   if (isUserLoading) {
     return <LoadingBox className="h-[80vh]" />;

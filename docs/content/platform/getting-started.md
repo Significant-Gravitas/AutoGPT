@@ -61,7 +61,7 @@ Once you have Docker and Docker Compose installed, you can proceed to the next s
  <summary>
  Raspberry Pi 5 Specific Notes
  </summary>
-    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the <code>supabase-vector</code> container (expected: 4K).
+    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with some containers (expected: 4K).
     </br>
     To fix this, edit <code>/boot/firmware/config.txt</code> and add:
     </br>
@@ -75,8 +75,6 @@ Once you have Docker and Docker Compose installed, you can proceed to the next s
     ```
     <code>16384</code> means 16K (incorrect), and <code>4096</code> means 4K (correct).
     After adjusting, <code>docker compose up -d --build</code> should work normally.
-    </br>
-    See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
 </details>
 
 ## Quick Setup with Auto Setup Script (Recommended)
@@ -142,7 +140,7 @@ Inside the `autogpt_platform` directory, you can use:
 
 | Command                | What it Does                                                                 |
 |------------------------|-------------------------------------------------------------------------------|
-| `make start-core`      | Start just the core services (Supabase, Redis, RabbitMQ) in background        |
+| `make start-core`      | Start just the core services (PostgreSQL, Redis, RabbitMQ) in background      |
 | `make stop-core`       | Stop the core services                                                        |
 | `make logs-core`       | Tail the logs for core services                                               |
 | `make format`          | Format & lint backend (Python) and frontend (TypeScript) code                 |
@@ -197,7 +195,7 @@ Then, replace the existing key in the `autogpt_platform/backend/.env` file with 
 
 ### 📌 Windows Installation Note
 
-When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with Supabase, leading to the `supabase-db` container being marked as **unhealthy**.
+When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V for better performance and compatibility.
 
 #### **Steps to enable WSL 2 for Docker:**
 1. Install [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install).
@@ -208,7 +206,7 @@ When installing Docker on Windows, it is **highly recommended** to select **WSL 
 3. Restart **Docker Desktop**.
 
 #### **Already Installed Docker with Hyper-V?**
-If you initially installed Docker with Hyper-V, you **don’t need to reinstall** it. You can switch to WSL 2 by following these steps:
+If you initially installed Docker with Hyper-V, you **don't need to reinstall** it. You can switch to WSL 2 by following these steps:
 1. Open **Docker Desktop**.
 2. Go to **Settings > General**.
 3. Enable **Use the WSL 2 based engine**.

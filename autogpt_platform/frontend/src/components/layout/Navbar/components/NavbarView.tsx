@@ -4,7 +4,7 @@ import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/
 import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useAuth } from "@/lib/auth";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
@@ -14,13 +14,24 @@ import { LoginButton } from "./LoginButton";
 import { MobileNavBar } from "./MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./NavbarLink";
 import { Wallet } from "./Wallet/Wallet";
+
 interface NavbarViewProps {
+  /** Initial logged in state from server - client state takes precedence */
   isLoggedIn: boolean;
   previewBranchName?: string | null;
 }
 
-export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
-  const { user } = useSupabase();
+export function NavbarView({
+  isLoggedIn: _serverIsLoggedIn,
+  previewBranchName,
+}: NavbarViewProps) {
+  // Use client-side auth state for rendering - this responds to cross-tab logout
+  const { user, isUserLoading, isLoggedIn: clientIsLoggedIn } = useAuth();
+
+  // Client-side auth state takes precedence over server-rendered state
+  // This ensures cross-tab logout updates the UI immediately
+  const isLoggedIn = clientIsLoggedIn;
+
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
   const dynamicMenuItems = getAccountMenuItems(user?.role);
@@ -30,14 +41,13 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
     {
       query: {
         select: (res) => (res.status === 200 ? res.data : null),
-        enabled: isLoggedIn && !!user,
+        // Only fetch when user is confirmed logged in and auth loading is complete
+        enabled: isLoggedIn && !!user && !isUserLoading,
         // Include user ID in query key to ensure cache invalidation when user changes
         queryKey: ["/api/store/profile", user?.id],
       },
     },
   );
-
-  const { isUserLoading } = useSupabase();
   const isLoadingProfile = isProfileLoading || isUserLoading;
 
   const linksWithChat = useMemo(() => {

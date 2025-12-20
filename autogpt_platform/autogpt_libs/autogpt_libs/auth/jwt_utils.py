@@ -1,4 +1,8 @@
+import hashlib
 import logging
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
@@ -14,6 +18,57 @@ logger = logging.getLogger(__name__)
 bearer_jwt_auth = HTTPBearer(
     bearerFormat="jwt", scheme_name="HTTPBearerJWT", auto_error=False
 )
+
+
+def create_access_token(
+    user_id: str,
+    email: str,
+    role: str = "authenticated",
+    email_verified: bool = False,
+) -> str:
+    """
+    Generate a new JWT access token.
+
+    :param user_id: The user's unique identifier
+    :param email: The user's email address
+    :param role: The user's role (default: "authenticated")
+    :param email_verified: Whether the user's email is verified
+    :return: Encoded JWT token
+    """
+    settings = get_settings()
+    now = datetime.now(timezone.utc)
+
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "role": role,
+        "email_verified": email_verified,
+        "aud": settings.JWT_AUDIENCE,
+        "iss": settings.JWT_ISSUER,
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        "jti": str(uuid.uuid4()),  # Unique token ID
+    }
+
+    return jwt.encode(payload, settings.JWT_SIGN_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_refresh_token() -> tuple[str, str]:
+    """
+    Generate a new refresh token.
+
+    Returns a tuple of (raw_token, hashed_token).
+    The raw token should be sent to the client.
+    The hashed token should be stored in the database.
+    """
+    raw_token = secrets.token_urlsafe(64)
+    hashed_token = hashlib.sha256(raw_token.encode()).hexdigest()
+    return raw_token, hashed_token
+
+
+def hash_token(token: str) -> str:
+    """Hash a token using SHA-256."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 async def get_jwt_payload(
@@ -52,11 +107,19 @@ def parse_jwt_token(token: str) -> dict[str, Any]:
     """
     settings = get_settings()
     try:
+        # Build decode options
+        options = {
+            "verify_aud": True,
+            "verify_iss": bool(settings.JWT_ISSUER),
+        }
+
         payload = jwt.decode(
             token,
             settings.JWT_VERIFY_KEY,
             algorithms=[settings.JWT_ALGORITHM],
-            audience="authenticated",
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER if settings.JWT_ISSUER else None,
+            options=options,
         )
         return payload
     except jwt.ExpiredSignatureError:
