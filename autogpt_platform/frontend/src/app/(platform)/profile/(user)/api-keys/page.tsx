@@ -1,5 +1,5 @@
 import { Metadata } from "next/types";
-import { APIKeysSection } from "@/app/(platform)/profile/(user)/api_keys/components/APIKeySection/APIKeySection";
+import { APIKeysSection } from "@/app/(platform)/profile/(user)/api-keys/components/APIKeySection/APIKeySection";
 import {
   Card,
   CardContent,

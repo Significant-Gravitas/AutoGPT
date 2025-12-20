@@ -912,7 +912,7 @@ export interface APIKey {
   prefix: string;
   postfix: string;
   status: APIKeyStatus;
-  permissions: APIKeyPermission[];
+  scopes: APIKeyPermission[];
   created_at: string;
   last_used_at?: string;
   revoked_at?: string;

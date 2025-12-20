@@ -5,7 +5,7 @@ import { Cross2Icon } from "@radix-ui/react-icons";
 import React, { useCallback } from "react";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
 
-export interface GoogleDrivePickerInputProps {
+export interface Props {
   config: GoogleDrivePickerConfig;
   value: any;
   onChange: (value: any) => void;
@@ -21,7 +21,7 @@ export function GoogleDrivePickerInput({
   error,
   className,
   showRemoveButton = true,
-}: GoogleDrivePickerInputProps) {
+}: Props) {
   const [pickerError, setPickerError] = React.useState<string | null>(null);
   const isMultiSelect = config.multiselect || false;
   const hasAutoCredentials = !!config.auto_credentials;
