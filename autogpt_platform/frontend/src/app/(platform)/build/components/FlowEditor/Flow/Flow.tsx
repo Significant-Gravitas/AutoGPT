@@ -16,11 +16,11 @@ import { useCopyPaste } from "./useCopyPaste";
 import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
 import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
-import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 import { resolveCollisions } from "./helpers/resolve-collision";
+import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -112,8 +112,7 @@ export const Flow = () => {
           {graph && (
             <FloatingSafeModeToggle
               graph={graph}
-              className="right-4 top-32 p-2"
-              variant="black"
+              className="right-2 top-32 p-2"
             />
           )}
         </ReactFlow>

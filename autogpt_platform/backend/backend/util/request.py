@@ -21,6 +21,26 @@ from tenacity import (
 
 from backend.util.json import loads
 
+
+class HTTPClientError(Exception):
+    """4xx client errors (400-499)"""
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class HTTPServerError(Exception):
+    """5xx server errors (500-599)"""
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+# Default User-Agent for all requests
+DEFAULT_USER_AGENT = "AutoGPT-Platform/1.0 (https://github.com/Significant-Gravitas/AutoGPT; info@agpt.co) aiohttp"
+
 # Retry status codes for which we will automatically retry the request
 THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
 
@@ -450,6 +470,10 @@ class Requests:
         if self.extra_headers is not None:
             req_headers.update(self.extra_headers)
 
+        # Set default User-Agent if not provided
+        if "User-Agent" not in req_headers and "user-agent" not in req_headers:
+            req_headers["User-Agent"] = DEFAULT_USER_AGENT
+
         # Override Host header if using IP connection
         if connector:
             req_headers["Host"] = hostname
@@ -476,9 +500,16 @@ class Requests:
                         response.raise_for_status()
                     except ClientResponseError as e:
                         body = await response.read()
-                        raise Exception(
-                            f"HTTP {response.status} Error: {response.reason}, Body: {body.decode(errors='replace')}"
-                        ) from e
+                        error_message = f"HTTP {response.status} Error: {response.reason}, Body: {body.decode(errors='replace')}"
+
+                        # Raise specific exceptions based on status code range
+                        if 400 <= response.status <= 499:
+                            raise HTTPClientError(error_message, response.status) from e
+                        elif 500 <= response.status <= 599:
+                            raise HTTPServerError(error_message, response.status) from e
+                        else:
+                            # Generic fallback for other HTTP errors
+                            raise Exception(error_message) from e
 
                 # If allowed and a redirect is received, follow the redirect manually
                 if allow_redirects and response.status in (301, 302, 303, 307, 308):

@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -14,17 +14,21 @@ export function useSignupPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
+  // Get redirect destination from 'next' query parameter
+  const nextUrl = searchParams.get("next");
+
   useEffect(() => {
     if (isLoggedIn && !isSigningUp) {
-      router.push("/marketplace");
+      router.push(nextUrl || "/marketplace");
     }
-  }, [isLoggedIn, isSigningUp]);
+  }, [isLoggedIn, isSigningUp, nextUrl, router]);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -41,10 +45,16 @@ export function useSignupPage() {
     setIsSigningUp(true);
 
     try {
+      // Include next URL in OAuth flow if present
+      const callbackUrl = nextUrl
+        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
+        : `/auth/callback`;
+      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
       });
 
       if (!response.ok) {
@@ -118,8 +128,9 @@ export function useSignupPage() {
         return;
       }
 
-      const next = result.next || "/";
-      if (next) router.replace(next);
+      // Prefer the URL's next parameter, then result.next (for onboarding), then default
+      const redirectTo = nextUrl || result.next || "/";
+      router.replace(redirectTo);
     } catch (error) {
       setIsLoading(false);
       setIsSigningUp(false);

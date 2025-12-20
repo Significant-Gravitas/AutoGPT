@@ -45,10 +45,16 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         topic = input_data.topic
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
-        response = await self.get_request(url, json=True)
-        if "extract" not in response:
-            raise RuntimeError(f"Unable to parse Wikipedia response: {response}")
-        yield "summary", response["extract"]
+
+        # Note: User-Agent is now automatically set by the request library
+        # to comply with Wikimedia's robot policy (https://w.wiki/4wJS)
+        try:
+            response = await self.get_request(url, json=True)
+            if "extract" not in response:
+                raise ValueError(f"Unable to parse Wikipedia response: {response}")
+            yield "summary", response["extract"]
+        except Exception as e:
+            raise ValueError(f"Failed to fetch Wikipedia summary: {e}") from e
 
 
 TEST_CREDENTIALS = APIKeyCredentials(

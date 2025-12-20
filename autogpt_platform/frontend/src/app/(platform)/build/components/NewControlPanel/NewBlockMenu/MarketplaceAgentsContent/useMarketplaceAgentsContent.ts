@@ -2,6 +2,7 @@ import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { getGetV2GetBuilderItemCountsQueryKey } from "@/app/api/__generated__/endpoints/default/default";
 import {
   getGetV2ListLibraryAgentsQueryKey,
+  getV2GetLibraryAgent,
   usePostV2AddMarketplaceAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
 import {
@@ -93,8 +94,16 @@ export const useMarketplaceAgentsContent = () => {
         },
       });
 
+      // Here, libraryAgent has empty input and output schemas.
+      // Not updating the endpoint because this endpoint is used elsewhere.
+      // TODO: Create a new endpoint for builder specific to marketplace agents.
       const libraryAgent = response.data as LibraryAgent;
-      addAgentToBuilder(libraryAgent);
+
+      const { data: libraryAgentDetails } = await getV2GetLibraryAgent(
+        libraryAgent.id,
+      );
+
+      addAgentToBuilder(libraryAgentDetails as LibraryAgent);
 
       toast({
         title: "Agent Added",

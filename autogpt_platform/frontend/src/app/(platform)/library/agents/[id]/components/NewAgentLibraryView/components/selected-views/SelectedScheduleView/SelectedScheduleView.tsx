@@ -20,12 +20,16 @@ interface Props {
   agent: LibraryAgent;
   scheduleId: string;
   onClearSelectedRun?: () => void;
+  onSelectSettings?: () => void;
+  selectedSettings?: boolean;
 }
 
 export function SelectedScheduleView({
   agent,
   scheduleId,
   onClearSelectedRun,
+  onSelectSettings,
+  selectedSettings,
 }: Props) {
   const { schedule, isLoading, error } = useSelectedScheduleView(
     agent.graph_id,
@@ -64,13 +68,17 @@ export function SelectedScheduleView({
   }
 
   if (isLoading && !schedule) {
-    return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
+    return <LoadingSelectedContent agent={agent} />;
   }
 
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout
+          agent={agent}
+          onSelectSettings={onSelectSettings}
+          selectedSettings={selectedSettings}
+        >
           <div className="flex flex-col gap-4">
             <div className="flex w-full flex-col gap-0">
               <RunDetailHeader
