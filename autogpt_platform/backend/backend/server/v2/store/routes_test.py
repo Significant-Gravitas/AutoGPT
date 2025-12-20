@@ -65,6 +65,7 @@ def test_get_agents_defaults(
         category=None,
         page=1,
         page_size=20,
+        filter_mode="permissive",
     )
 
 
@@ -112,6 +113,7 @@ def test_get_agents_featured(
         category=None,
         page=1,
         page_size=20,
+        filter_mode="permissive",
     )
 
 
@@ -159,6 +161,7 @@ def test_get_agents_by_creator(
         category=None,
         page=1,
         page_size=20,
+        filter_mode="permissive",
     )
 
 
@@ -206,6 +209,7 @@ def test_get_agents_sorted(
         category=None,
         page=1,
         page_size=20,
+        filter_mode="permissive",
     )
 
 
@@ -253,6 +257,7 @@ def test_get_agents_search(
         category=None,
         page=1,
         page_size=20,
+        filter_mode="permissive",
     )
 
 
@@ -299,6 +304,7 @@ def test_get_agents_category(
         category="test-category",
         page=1,
         page_size=20,
+        filter_mode="permissive",
     )
 
 
@@ -348,6 +354,7 @@ def test_get_agents_pagination(
         category=None,
         page=2,
         page_size=5,
+        filter_mode="permissive",
     )
 
 

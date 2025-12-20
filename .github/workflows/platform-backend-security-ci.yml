@@ -1,0 +1,145 @@
+name: AutoGPT Platform - Backend Security CI
+
+# This workflow runs ClamAV-dependent security tests.
+# It only runs on merge to master to avoid the 3-5 minute ClamAV startup time on every PR.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "autogpt_platform/backend/**/file*.py"
+      - "autogpt_platform/backend/**/scan*.py"
+      - "autogpt_platform/backend/**/virus*.py"
+      - "autogpt_platform/backend/**/media*.py"
+      - ".github/workflows/platform-backend-security-ci.yml"
+
+concurrency:
+  group: ${{ format('backend-security-ci-{0}', github.sha) }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/backend
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+      clamav:
+        image: clamav/clamav-debian:latest
+        ports:
+          - 3310:3310
+        env:
+          CLAMAV_NO_FRESHCLAMD: false
+          CLAMD_CONF_StreamMaxLength: 50M
+          CLAMD_CONF_MaxFileSize: 100M
+          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_MaxThreads: 4
+          CLAMD_CONF_ReadTimeout: 300
+        options: >-
+          --health-cmd "clamdscan --version || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+          --health-start-period 180s
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Setup Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: 1.178.1
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate
+
+      - id: supabase
+        name: Start Supabase
+        working-directory: .
+        run: |
+          supabase init
+          supabase start --exclude postgres-meta,realtime,storage-api,imgproxy,inbucket,studio,edge-runtime,logflare,vector,supavisor
+          supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
+
+      - name: Wait for ClamAV to be ready
+        run: |
+          echo "Waiting for ClamAV daemon to start..."
+          max_attempts=60
+          attempt=0
+
+          until nc -z localhost 3310 || [ $attempt -eq $max_attempts ]; do
+            echo "ClamAV is unavailable - sleeping (attempt $((attempt+1))/$max_attempts)"
+            sleep 5
+            attempt=$((attempt+1))
+          done
+
+          if [ $attempt -eq $max_attempts ]; then
+            echo "ClamAV failed to start after $((max_attempts*5)) seconds"
+            exit 1
+          fi
+
+          echo "ClamAV is ready!"
+
+      - name: Run Database Migrations
+        run: poetry run prisma migrate dev --name updates
+        env:
+          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
+          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
+
+      - name: Run security-related tests
+        run: |
+          poetry run pytest -v \
+            backend/util/virus_scanner_test.py \
+            backend/util/file_test.py \
+            backend/server/v2/store/media_test.py \
+            -x
+        env:
+          DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
+          DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
+          SUPABASE_URL: ${{ steps.supabase.outputs.API_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.SERVICE_ROLE_KEY }}
+          JWT_VERIFY_KEY: ${{ steps.supabase.outputs.JWT_SECRET }}
+          REDIS_HOST: "localhost"
+          REDIS_PORT: "6379"
+          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw="
+          CLAMAV_SERVICE_HOST: "localhost"
+          CLAMAV_SERVICE_PORT: "3310"
+          CLAMAV_SERVICE_ENABLED: "true"
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+      RUN_ENV: local
+      PORT: 8080

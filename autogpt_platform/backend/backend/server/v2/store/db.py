@@ -26,6 +26,7 @@ from backend.data.notifications import (
     AgentRejectionData,
     NotificationEventModel,
 )
+from backend.integrations.embeddings import create_search_text, get_embedding_service
 from backend.notifications.notifications import queue_notification_async
 from backend.util.exceptions import DatabaseError
 from backend.util.settings import Settings
@@ -38,6 +39,25 @@ settings = Settings()
 DEFAULT_ADMIN_NAME = "AutoGPT Admin"
 DEFAULT_ADMIN_EMAIL = "admin@autogpt.co"
 
+# Minimum similarity threshold for vector search results
+# Cosine similarity ranges from -1 to 1, where 1 is identical
+# 0.4 filters loosely related results while keeping semantically relevant ones
+VECTOR_SEARCH_SIMILARITY_THRESHOLD = 0.4
+
+# Minimum relevance threshold for BM25 full-text search results
+# ts_rank_cd returns values typically in range 0-1 (can exceed 1 for exact matches)
+# 0.05 allows partial keyword matches
+BM25_RELEVANCE_THRESHOLD = 0.05
+
+# RRF constant (k) - standard value that balances influence of top vs lower ranks
+# Higher k values reduce the influence of high-ranking items
+RRF_K = 60
+
+# Minimum RRF score threshold for combined mode
+# Filters out results that rank poorly across all signals
+# For reference: rank #1 in all = ~0.041, rank #100 in all = ~0.016
+RRF_SCORE_THRESHOLD = 0.02
+
 
 async def get_store_agents(
     featured: bool = False,
@@ -47,64 +67,223 @@ async def get_store_agents(
     category: str | None = None,
     page: int = 1,
     page_size: int = 20,
+    filter_mode: Literal["strict", "permissive", "combined"] = "permissive",
 ) -> backend.server.v2.store.model.StoreAgentsResponse:
     """
-    Get PUBLIC store agents from the StoreAgent view
+    Get PUBLIC store agents from the StoreAgent view.
+
+    When search_query is provided, uses hybrid search combining:
+    - BM25 full-text search (lexical matching via PostgreSQL tsvector)
+    - Vector semantic similarity (meaning-based matching via pgvector)
+    - Popularity signal (run counts as PageRank proxy)
+
+    Results are ranked using Reciprocal Rank Fusion (RRF).
+
+    Args:
+        featured: Filter to only show featured agents.
+        creators: Filter agents by creator usernames.
+        sorted_by: Sort agents by "runs", "rating", "name", or "updated_at".
+        search_query: Search query for hybrid search.
+        category: Filter agents by category.
+        page: Page number for pagination.
+        page_size: Number of agents per page.
+        filter_mode: Controls how results are filtered when searching:
+            - "strict": Must match BOTH BM25 AND vector thresholds
+            - "permissive": Must match EITHER BM25 OR vector threshold
+            - "combined": No threshold filtering, rely on RRF score (default)
+
+    Returns:
+        StoreAgentsResponse with paginated list of agents.
     """
     logger.debug(
-        f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
+        f"Getting store agents. featured={featured}, creators={creators}, "
+        f"sorted_by={sorted_by}, search={search_query}, category={category}, "
+        f"page={page}, filter_mode={filter_mode}"
     )
 
     try:
-        # If search_query is provided, use full-text search
+        # If search_query is provided, use hybrid search (BM25 + vector + popularity)
         if search_query:
             offset = (page - 1) * page_size
 
-            # Whitelist allowed order_by columns
-            ALLOWED_ORDER_BY = {
-                "rating": "rating DESC, rank DESC",
-                "runs": "runs DESC, rank DESC",
-                "name": "agent_name ASC, rank ASC",
-                "updated_at": "updated_at DESC, rank DESC",
-            }
+            # Try to generate embedding for vector search
+            # Falls back to BM25-only if embedding service is not available
+            query_embedding: list[float] | None = None
+            try:
+                embedding_service = get_embedding_service()
+                query_embedding = await embedding_service.generate_embedding(
+                    search_query
+                )
+            except (ValueError, Exception) as e:
+                # Embedding service not configured or failed - use BM25 only
+                logger.warning(f"Embedding generation failed, using BM25 only: {e}")
 
-            # Validate and get order clause
-            if sorted_by and sorted_by in ALLOWED_ORDER_BY:
-                order_by_clause = ALLOWED_ORDER_BY[sorted_by]
-            else:
-                order_by_clause = "updated_at DESC, rank DESC"
+            # Convert embedding to PostgreSQL array format (or None for BM25-only)
+            embedding_str = (
+                "[" + ",".join(map(str, query_embedding)) + "]"
+                if query_embedding
+                else None
+            )
 
             # Build WHERE conditions and parameters list
+            # When embedding is not available (no OpenAI key), $1 will be NULL
             where_parts: list[str] = []
-            params: list[typing.Any] = [search_query]  # $1 - search term
+            params: list[typing.Any] = [embedding_str]  # $1 - query embedding (or NULL)
             param_index = 2  # Start at $2 for next parameter
 
             # Always filter for available agents
             where_parts.append("is_available = true")
 
+            # Require search signals to be present
+            if embedding_str is None:
+                # No embedding available - require BM25 search only
+                where_parts.append("search IS NOT NULL")
+            elif filter_mode == "strict":
+                # Strict mode: require both embedding AND search to be available
+                where_parts.append("embedding IS NOT NULL")
+                where_parts.append("search IS NOT NULL")
+            else:
+                # Permissive/combined: require at least one signal
+                where_parts.append("(embedding IS NOT NULL OR search IS NOT NULL)")
+
             if featured:
                 where_parts.append("featured = true")
 
-            if creators and creators:
+            if creators:
                 # Use ANY with array parameter
                 where_parts.append(f"creator_username = ANY(${param_index})")
                 params.append(creators)
                 param_index += 1
 
-            if category and category:
+            if category:
                 where_parts.append(f"${param_index} = ANY(categories)")
                 params.append(category)
                 param_index += 1
 
+            # Add search query for BM25
+            params.append(search_query)
+            bm25_query_param = f"${param_index}"
+            param_index += 1
+
             sql_where_clause: str = " AND ".join(where_parts) if where_parts else "1=1"
+
+            # Build score filter based on filter_mode
+            # This filter is applied BEFORE RRF ranking in the filtered_agents CTE
+            if embedding_str is None:
+                # No embedding - filter only on BM25 score
+                score_filter = f"bm25_score >= {BM25_RELEVANCE_THRESHOLD}"
+            elif filter_mode == "strict":
+                score_filter = f"""
+                    bm25_score >= {BM25_RELEVANCE_THRESHOLD}
+                    AND vector_score >= {VECTOR_SEARCH_SIMILARITY_THRESHOLD}
+                """
+            elif filter_mode == "permissive":
+                score_filter = f"""
+                    bm25_score >= {BM25_RELEVANCE_THRESHOLD}
+                    OR vector_score >= {VECTOR_SEARCH_SIMILARITY_THRESHOLD}
+                """
+            else:  # combined - no pre-filtering on individual scores
+                score_filter = "1=1"
+
+            # RRF score filter is applied AFTER ranking to filter irrelevant results
+            rrf_score_filter = f"rrf_score >= {RRF_SCORE_THRESHOLD}"
+
+            # Build ORDER BY clause - sorted_by takes precedence, rrf_score as secondary
+            if sorted_by == "rating":
+                order_by_clause = "rating DESC, rrf_score DESC"
+            elif sorted_by == "runs":
+                order_by_clause = "runs DESC, rrf_score DESC"
+            elif sorted_by == "name":
+                order_by_clause = "agent_name ASC, rrf_score DESC"
+            elif sorted_by == "updated_at":
+                order_by_clause = "updated_at DESC, rrf_score DESC"
+            else:
+                # Default: order by RRF relevance score
+                order_by_clause = "rrf_score DESC, updated_at DESC"
 
             # Add pagination params
             params.extend([page_size, offset])
             limit_param = f"${param_index}"
             offset_param = f"${param_index + 1}"
 
-            # Execute full-text search query with parameterized values
+            # Hybrid search SQL with Reciprocal Rank Fusion (RRF)
+            # CTEs: scored_agents -> filtered_agents -> ranked_agents -> rrf_scored
             sql_query = f"""
+                WITH scored_agents AS (
+                    SELECT
+                        slug,
+                        agent_name,
+                        agent_image,
+                        creator_username,
+                        creator_avatar,
+                        sub_heading,
+                        description,
+                        runs,
+                        rating,
+                        categories,
+                        featured,
+                        is_available,
+                        updated_at,
+                        -- BM25 score using ts_rank_cd (covers density normalization)
+                        COALESCE(
+                            ts_rank_cd(
+                                search,
+                                plainto_tsquery('english', {bm25_query_param}),
+                                32  -- normalization: divide by document length
+                            ),
+                            0
+                        ) AS bm25_score,
+                        -- Vector similarity score (cosine: 1 - distance)
+                        -- Returns 0 when query embedding ($1) is NULL (no OpenAI key)
+                        CASE
+                            WHEN $1 IS NOT NULL AND embedding IS NOT NULL
+                            THEN 1 - (embedding <=> $1::vector)
+                            ELSE 0
+                        END AS vector_score,
+                        -- Popularity score (log-normalized run count)
+                        CASE
+                            WHEN runs > 0
+                            THEN LN(runs + 1)
+                            ELSE 0
+                        END AS popularity_score
+                    FROM {{schema_prefix}}"StoreAgent"
+                    WHERE {sql_where_clause}
+                ),
+                max_popularity AS (
+                    SELECT GREATEST(MAX(popularity_score), 1) AS max_pop
+                    FROM scored_agents
+                ),
+                normalized_agents AS (
+                    SELECT
+                        sa.*,
+                        -- Normalize popularity to [0, 1] range
+                        sa.popularity_score / mp.max_pop AS norm_popularity_score
+                    FROM scored_agents sa
+                    CROSS JOIN max_popularity mp
+                ),
+                filtered_agents AS (
+                    SELECT *
+                    FROM normalized_agents
+                    WHERE {score_filter}
+                ),
+                ranked_agents AS (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (ORDER BY bm25_score DESC NULLS LAST) AS bm25_rank,
+                        ROW_NUMBER() OVER (ORDER BY vector_score DESC NULLS LAST) AS vector_rank,
+                        ROW_NUMBER() OVER (ORDER BY norm_popularity_score DESC NULLS LAST) AS popularity_rank
+                    FROM filtered_agents
+                ),
+                rrf_scored AS (
+                    SELECT
+                        *,
+                        -- RRF formula with weighted contributions
+                        -- BM25 and vector get full weight, popularity gets 0.5x weight
+                        (1.0 / ({RRF_K} + bm25_rank)) +
+                        (1.0 / ({RRF_K} + vector_rank)) +
+                        (0.5 / ({RRF_K} + popularity_rank)) AS rrf_score
+                    FROM ranked_agents
+                )
                 SELECT
                     slug,
                     agent_name,
@@ -119,25 +298,79 @@ async def get_store_agents(
                     featured,
                     is_available,
                     updated_at,
-                    ts_rank_cd(search, query) AS rank
-                FROM {{schema_prefix}}"StoreAgent",
-                    plainto_tsquery('english', $1) AS query
-                WHERE {sql_where_clause}
-                    AND search @@ query
+                    rrf_score
+                FROM rrf_scored
+                WHERE {rrf_score_filter}
                 ORDER BY {order_by_clause}
                 LIMIT {limit_param} OFFSET {offset_param}
             """
 
-            # Count query for pagination - only uses search term parameter
+            # Count query (without pagination) - requires same CTE structure because:
+            # 1. RRF scoring requires computing ranks across ALL matching results
+            # 2. The rrf_score_filter threshold must be applied consistently
+            # Note: This is inherent to RRF - there's no way to count without ranking
             count_query = f"""
+                WITH scored_agents AS (
+                    SELECT
+                        runs,
+                        COALESCE(
+                            ts_rank_cd(
+                                search,
+                                plainto_tsquery('english', {bm25_query_param}),
+                                32
+                            ),
+                            0
+                        ) AS bm25_score,
+                        CASE
+                            WHEN $1 IS NOT NULL AND embedding IS NOT NULL
+                            THEN 1 - (embedding <=> $1::vector)
+                            ELSE 0
+                        END AS vector_score,
+                        CASE
+                            WHEN runs > 0
+                            THEN LN(runs + 1)
+                            ELSE 0
+                        END AS popularity_score
+                    FROM {{schema_prefix}}"StoreAgent"
+                    WHERE {sql_where_clause}
+                ),
+                max_popularity AS (
+                    SELECT GREATEST(MAX(popularity_score), 1) AS max_pop
+                    FROM scored_agents
+                ),
+                normalized_agents AS (
+                    SELECT
+                        sa.*,
+                        sa.popularity_score / mp.max_pop AS norm_popularity_score
+                    FROM scored_agents sa
+                    CROSS JOIN max_popularity mp
+                ),
+                filtered_agents AS (
+                    SELECT *
+                    FROM normalized_agents
+                    WHERE {score_filter}
+                ),
+                ranked_agents AS (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (ORDER BY bm25_score DESC NULLS LAST) AS bm25_rank,
+                        ROW_NUMBER() OVER (ORDER BY vector_score DESC NULLS LAST) AS vector_rank,
+                        ROW_NUMBER() OVER (ORDER BY norm_popularity_score DESC NULLS LAST) AS popularity_rank
+                    FROM filtered_agents
+                ),
+                rrf_scored AS (
+                    SELECT
+                        (1.0 / ({RRF_K} + bm25_rank)) +
+                        (1.0 / ({RRF_K} + vector_rank)) +
+                        (0.5 / ({RRF_K} + popularity_rank)) AS rrf_score
+                    FROM ranked_agents
+                )
                 SELECT COUNT(*) as count
-                FROM {{schema_prefix}}"StoreAgent",
-                    plainto_tsquery('english', $1) AS query
-                WHERE {sql_where_clause}
-                    AND search @@ query
+                FROM rrf_scored
+                WHERE {rrf_score_filter}
             """
 
-            # Execute both queries with parameters
+            # Execute queries
             agents = await query_raw_with_schema(sql_query, *params)
 
             # For count, use params without pagination (last 2 params)
@@ -253,6 +486,56 @@ async def log_search_term(search_query: str):
     except Exception as e:
         # Fail silently here so that logging search terms doesn't break the app
         logger.error(f"Error logging search term: {e}")
+
+
+async def _generate_and_store_embedding(
+    store_listing_version_id: str,
+    name: str,
+    sub_heading: str,
+    description: str,
+) -> None:
+    """
+    Generate and store embedding for a store listing version.
+
+    This creates a vector embedding from the agent's name, sub_heading, and
+    description, which is used for semantic search.
+
+    Args:
+        store_listing_version_id: The ID of the store listing version.
+        name: The agent name.
+        sub_heading: The agent sub-heading/tagline.
+        description: The agent description.
+    """
+    try:
+        embedding_service = get_embedding_service()
+        search_text = create_search_text(name, sub_heading, description)
+
+        if not search_text:
+            logger.warning(
+                f"No searchable text for version {store_listing_version_id}, "
+                "skipping embedding generation"
+            )
+            return
+
+        embedding = await embedding_service.generate_embedding(search_text)
+        embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+
+        await query_raw_with_schema(
+            """
+            UPDATE {schema_prefix}"StoreListingVersion"
+            SET embedding = $1::vector
+            WHERE id = $2
+            """,
+            embedding_str,
+            store_listing_version_id,
+        )
+        logger.debug(f"Generated embedding for version {store_listing_version_id}")
+    except Exception as e:
+        # Log error but don't fail the whole operation
+        # Embeddings can be generated later via backfill
+        logger.error(
+            f"Failed to generate embedding for {store_listing_version_id}: {e}"
+        )
 
 
 async def get_store_agent_details(
@@ -805,6 +1088,12 @@ async def create_store_submission(
             else None
         )
 
+        # Generate embedding for semantic search
+        if store_listing_version_id:
+            await _generate_and_store_embedding(
+                store_listing_version_id, name, sub_heading, description
+            )
+
         logger.debug(f"Created store listing for agent {agent_id}")
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
@@ -970,6 +1259,12 @@ async def edit_store_submission(
 
             if not updated_version:
                 raise DatabaseError("Failed to update store listing version")
+
+            # Regenerate embedding with updated content
+            await _generate_and_store_embedding(
+                store_listing_version_id, name, sub_heading, description
+            )
+
             return backend.server.v2.store.model.StoreSubmission(
                 agent_id=current_version.agentGraphId,
                 agent_version=current_version.agentGraphVersion,
@@ -1102,6 +1397,12 @@ async def create_store_version(
         logger.debug(
             f"Created new version for listing {store_listing_id} of agent {agent_id}"
         )
+
+        # Generate embedding for semantic search
+        await _generate_and_store_embedding(
+            new_version.id, name, sub_heading, description
+        )
+
         # Return submission details
         return backend.server.v2.store.model.StoreSubmission(
             agent_id=agent_id,

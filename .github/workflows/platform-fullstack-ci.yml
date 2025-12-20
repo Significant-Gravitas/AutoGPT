@@ -83,6 +83,66 @@ jobs:
         run: |
           cp ../backend/.env.default ../backend/.env
 
+      # Docker image tar caching - loads images from cache in parallel for faster startup
+      - name: Set up Docker image cache
+        id: docker-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/docker-cache
+          key: docker-images-fullstack-${{ runner.os }}-${{ hashFiles('autogpt_platform/docker-compose.yml') }}
+          restore-keys: |
+            docker-images-fullstack-${{ runner.os }}-
+
+      - name: Load or pull Docker images
+        working-directory: autogpt_platform
+        run: |
+          mkdir -p ~/docker-cache
+
+          # Define image list for easy maintenance
+          IMAGES=(
+            "redis:latest"
+            "rabbitmq:management"
+            "kong:2.8.1"
+            "supabase/gotrue:v2.170.0"
+            "supabase/postgres:15.8.1.049"
+          )
+
+          # Check if any cached tar files exist
+          if ls ~/docker-cache/*.tar 1> /dev/null 2>&1; then
+            echo "Docker cache found, loading images in parallel..."
+            for image in "${IMAGES[@]}"; do
+              filename=$(echo "$image" | tr ':/' '--')
+              if [ -f ~/docker-cache/${filename}.tar ]; then
+                echo "Loading $image..."
+                docker load -i ~/docker-cache/${filename}.tar || echo "Warning: Failed to load $image from cache" &
+              fi
+            done
+            wait
+            echo "All cached images loaded"
+          else
+            echo "No Docker cache found, pulling images in parallel..."
+            for image in "${IMAGES[@]}"; do
+              docker pull "$image" &
+            done
+            wait
+
+            # Only save cache on main branches (not PRs) to avoid cache pollution
+            if [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+              echo "Saving Docker images to cache in parallel..."
+              for image in "${IMAGES[@]}"; do
+                filename=$(echo "$image" | tr ':/' '--')
+                echo "Saving $image..."
+                docker save -o ~/docker-cache/${filename}.tar "$image" || echo "Warning: Failed to save $image" &
+              done
+              wait
+              echo "Docker image cache saved"
+            else
+              echo "Skipping cache save for PR/feature branch"
+            fi
+          fi
+
+          echo "Docker images ready for use"
+
       - name: Run docker compose
         run: |
           docker compose -f ../docker-compose.yml --profile local --profile deps_backend up -d
@@ -104,9 +164,9 @@ jobs:
       - name: Wait for services to be ready
         run: |
           echo "Waiting for rest_server to be ready..."
-          timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
+          timeout 30 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
           echo "Waiting for database to be ready..."
-          timeout 60 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
+          timeout 30 sh -c 'until docker compose -f ../docker-compose.yml exec -T db pg_isready -U postgres 2>/dev/null; do sleep 2; done' || echo "Database ready check timeout, continuing..."
 
       - name: Generate API queries
         run: pnpm generate:api:force

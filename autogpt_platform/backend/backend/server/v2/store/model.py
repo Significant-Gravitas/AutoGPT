@@ -1,10 +1,24 @@
 import datetime
+from enum import Enum
 from typing import List
 
 import prisma.enums
 import pydantic
 
 from backend.util.models import Pagination
+
+
+class SearchFilterMode(str, Enum):
+    """How to combine BM25 and vector search results for filtering.
+
+    - STRICT: Must pass BOTH BM25 AND vector similarity thresholds
+    - PERMISSIVE: Must pass EITHER BM25 OR vector similarity threshold
+    - COMBINED: No pre-filtering, only the combined RRF score matters (default)
+    """
+
+    STRICT = "strict"
+    PERMISSIVE = "permissive"
+    COMBINED = "combined"
 
 
 class MyAgent(pydantic.BaseModel):
