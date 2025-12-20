@@ -18,6 +18,7 @@ from backend.data.block import (
     BlockSchemaOutput,
 )
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
+from backend.util.exceptions import BlockExecutionError, BlockInputError
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +112,27 @@ class ReplicateModelBlock(Block):
             yield "status", "succeeded"
             yield "model_name", input_data.model_name
         except Exception as e:
-            error_msg = f"Unexpected error running Replicate model: {str(e)}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            error_msg = str(e)
+            logger.error(f"Error running Replicate model: {error_msg}")
+
+            # Input validation errors (422, 400) → BlockInputError
+            if (
+                "422" in error_msg
+                or "Input validation failed" in error_msg
+                or "400" in error_msg
+            ):
+                raise BlockInputError(
+                    message=f"Invalid model inputs: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
+            # Everything else → BlockExecutionError
+            else:
+                raise BlockExecutionError(
+                    message=f"Replicate model error: {error_msg}",
+                    block_name=self.name,
+                    block_id=self.id,
+                ) from e
 
     async def run_model(self, model_ref: str, model_inputs: dict, api_key: SecretStr):
         """

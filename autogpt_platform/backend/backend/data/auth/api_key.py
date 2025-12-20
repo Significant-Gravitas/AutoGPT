@@ -1,22 +1,24 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
 from prisma.types import APIKeyWhereUniqueInput
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
+
+from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
 
 
-class APIKeyInfo(BaseModel):
+class APIKeyInfo(APIAuthorizationInfo):
     id: str
     name: str
     head: str = Field(
@@ -26,12 +28,9 @@ class APIKeyInfo(BaseModel):
         description=f"The last {APIKeySmith.TAIL_LENGTH} characters of the key"
     )
     status: APIKeyStatus
-    permissions: list[APIKeyPermission]
-    created_at: datetime
-    last_used_at: Optional[datetime] = None
-    revoked_at: Optional[datetime] = None
     description: Optional[str] = None
-    user_id: str
+
+    type: Literal["api_key"] = "api_key"  # type: ignore
 
     @staticmethod
     def from_db(api_key: PrismaAPIKey):
@@ -41,7 +40,7 @@ class APIKeyInfo(BaseModel):
             head=api_key.head,
             tail=api_key.tail,
             status=APIKeyStatus(api_key.status),
-            permissions=[APIKeyPermission(p) for p in api_key.permissions],
+            scopes=[APIKeyPermission(p) for p in api_key.permissions],
             created_at=api_key.createdAt,
             last_used_at=api_key.lastUsedAt,
             revoked_at=api_key.revokedAt,
@@ -211,7 +210,7 @@ async def suspend_api_key(key_id: str, user_id: str) -> APIKeyInfo:
 
 
 def has_permission(api_key: APIKeyInfo, required_permission: APIKeyPermission) -> bool:
-    return required_permission in api_key.permissions
+    return required_permission in api_key.scopes
 
 
 async def get_api_key_by_id(key_id: str, user_id: str) -> Optional[APIKeyInfo]:

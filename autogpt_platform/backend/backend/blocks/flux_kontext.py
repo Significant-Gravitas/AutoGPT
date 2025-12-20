@@ -19,6 +19,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import ModerationError
 from backend.util.file import MediaFileType, store_media_file
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -153,6 +154,8 @@ class AIImageEditorBlock(Block):
             ),
             aspect_ratio=input_data.aspect_ratio.value,
             seed=input_data.seed,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
         )
         yield "output_image", result
 
@@ -164,6 +167,8 @@ class AIImageEditorBlock(Block):
         input_image_b64: Optional[str],
         aspect_ratio: str,
         seed: Optional[int],
+        user_id: str,
+        graph_exec_id: str,
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
         input_params = {
@@ -173,11 +178,21 @@ class AIImageEditorBlock(Block):
             **({"seed": seed} if seed is not None else {}),
         }
 
-        output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore
-            model_name,
-            input=input_params,
-            wait=False,
-        )
+        try:
+            output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore
+                model_name,
+                input=input_params,
+                wait=False,
+            )
+        except Exception as e:
+            if "flagged as sensitive" in str(e).lower():
+                raise ModerationError(
+                    message="Content was flagged as sensitive by the model provider",
+                    user_id=user_id,
+                    graph_exec_id=graph_exec_id,
+                    moderation_type="model_provider",
+                )
+            raise ValueError(f"Model execution failed: {e}") from e
 
         if isinstance(output, list) and output:
             output = output[0]
