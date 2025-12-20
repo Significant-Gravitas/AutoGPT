@@ -2,7 +2,6 @@ import { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { FloatingSafeModeToggle } from "@/components/molecules/FloatingSafeModeToggle/FloatingSafeModeToggle";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   ArrowBendLeftUpIcon,
@@ -16,6 +15,7 @@ import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";
 import { CreateTemplateModal } from "../CreateTemplateModal/CreateTemplateModal";
 import { useSelectedRunActions } from "./useSelectedRunActions";
+import { SafeModeToggle } from "../SafeModeToggle";
 
 type Props = {
   agent: LibraryAgent;
@@ -113,7 +113,7 @@ export function SelectedRunActions({
           shareToken={run.share_token}
         />
       )}
-      <FloatingSafeModeToggle graph={agent} variant="white" fullWidth={false} />
+      <SafeModeToggle graph={agent} fullWidth={false} />
       {canRunManually && (
         <>
           <Button

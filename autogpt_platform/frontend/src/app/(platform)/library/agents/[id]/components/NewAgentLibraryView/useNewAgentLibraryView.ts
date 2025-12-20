@@ -89,10 +89,8 @@ export function useNewAgentLibraryView() {
     [sidebarCounts],
   );
 
-  // Show sidebar layout while loading or when there are items
-  const showSidebarLayout = sidebarLoading || hasAnyItems;
-
-  useEffect(() => {
+  // Show sidebar layout while loading or when there are items or settings is selected
+  const showSidebarLayout = useEffect(() => {
     if (agent) {
       document.title = `${agent.name} - Library - AutoGPT Platform`;
     }
@@ -131,6 +129,13 @@ export function useNewAgentLibraryView() {
   ) {
     setQueryStates({
       activeTab: tab,
+    });
+  }
+
+  function handleSelectSettings() {
+    setQueryStates({
+      activeItem: "settings",
+      activeTab: "runs", // Reset to runs tab when going to settings
     });
   }
 
@@ -205,6 +210,7 @@ export function useNewAgentLibraryView() {
     handleCountsChange,
     handleSelectRun,
     onRunInitiated,
+    handleSelectSettings,
     onTriggerSetup,
     onScheduleCreated,
   };
