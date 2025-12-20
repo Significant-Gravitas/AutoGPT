@@ -39,11 +39,12 @@ pub async fn migrate_auth(source: &Database, dest: &Database) -> Result<()> {
     info!("Found {} users with auth data to migrate", auth_user_count);
 
     // Create temp table in destination
+    // Note: platform.User.id is TEXT, not UUID, so we use TEXT here for compatibility
     info!("Creating temp table for auth data...");
     dest.batch_execute(
         r#"
         CREATE TEMP TABLE IF NOT EXISTS temp_auth_users (
-            id UUID,
+            id TEXT,
             encrypted_password TEXT,
             email_verified BOOLEAN,
             google_id TEXT
@@ -55,7 +56,7 @@ pub async fn migrate_auth(source: &Database, dest: &Database) -> Result<()> {
     // Extract and insert auth data in batches
     info!("Extracting auth data from source...");
 
-    let batch_size = 1000;
+    let batch_size = 1000i64;
     let mut offset = 0i64;
     let mut total_migrated = 0i64;
 

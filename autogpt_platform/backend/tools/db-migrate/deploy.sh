@@ -50,7 +50,7 @@ NAMESPACE="${NAMESPACE:-dev-agpt}"
 
 echo "=== Building db-migrate ==="
 cd "$SCRIPT_DIR"
-docker build -t "$IMAGE" .
+docker build --platform linux/amd64 -t "$IMAGE" .
 
 echo ""
 echo "=== Pushing to GCR ==="

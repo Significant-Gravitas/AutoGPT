@@ -3,6 +3,39 @@ use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing::{info, warn};
 
+/// Get default value for NULL columns that have NOT NULL constraints in dest
+/// Returns Some(default_sql) if a default should be used, None otherwise
+fn get_null_default(table: &str, column: &str) -> Option<&'static str> {
+    match (table, column) {
+        // User table - all Prisma @default values
+        ("User", "createdAt") => Some("NOW()"),
+        ("User", "updatedAt") => Some("NOW()"),
+        ("User", "metadata") => Some("'{}'::jsonb"),
+        ("User", "integrations") => Some("''"),
+        ("User", "emailVerified") => Some("false"),
+        ("User", "role") => Some("'authenticated'"),
+        ("User", "maxEmailsPerDay") => Some("3"),
+        ("User", "notifyOnAgentRun") => Some("true"),
+        ("User", "notifyOnZeroBalance") => Some("true"),
+        ("User", "notifyOnLowBalance") => Some("true"),
+        ("User", "notifyOnBlockExecutionFailed") => Some("true"),
+        ("User", "notifyOnContinuousAgentError") => Some("true"),
+        ("User", "notifyOnDailySummary") => Some("true"),
+        ("User", "notifyOnWeeklySummary") => Some("true"),
+        ("User", "notifyOnMonthlySummary") => Some("true"),
+        ("User", "notifyOnAgentApproved") => Some("true"),
+        ("User", "notifyOnAgentRejected") => Some("true"),
+        ("User", "timezone") => Some("'not-set'"),
+        // UserOnboarding defaults
+        ("UserOnboarding", "createdAt") => Some("NOW()"),
+        ("UserOnboarding", "updatedAt") => Some("NOW()"),
+        // UserBalance defaults
+        ("UserBalance", "balance") => Some("0"),
+        ("UserBalance", "updatedAt") => Some("NOW()"),
+        _ => None,
+    }
+}
+
 /// Tables to skip during initial migration (large execution history)
 const LARGE_TABLES: &[&str] = &[
     "AgentGraphExecution",
@@ -27,31 +60,75 @@ pub async fn migrate_schema(source: &Database, dest: &Database) -> Result<()> {
     ))
     .await?;
 
+    // Create enum types first (before tables that reference them)
+    info!("Creating enum types...");
+    let enums = source
+        .query(
+            r#"
+            SELECT
+                t.typname,
+                string_agg(e.enumlabel, ',' ORDER BY e.enumsortorder) as labels
+            FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            JOIN pg_enum e ON e.enumtypid = t.oid
+            WHERE n.nspname = $1
+            GROUP BY t.typname
+            "#,
+            &[&source.schema()],
+        )
+        .await?;
+
+    for row in &enums {
+        let type_name: String = row.get(0);
+        let labels: String = row.get(1);
+        let label_list: Vec<&str> = labels.split(',').collect();
+        let quoted_labels = label_list
+            .iter()
+            .map(|l| format!("'{}'", l))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let create_enum = format!(
+            "CREATE TYPE {}.\"{}\" AS ENUM ({})",
+            source.schema(),
+            type_name,
+            quoted_labels
+        );
+
+        if let Err(e) = dest.batch_execute(&create_enum).await {
+            warn!("Failed to create enum {}: {:?}", type_name, e);
+        } else {
+            info!("  Created enum: {}", type_name);
+        }
+    }
+
     // Get and apply table definitions
     for table in &tables {
         info!("Creating table: {}", table);
 
+        // Use pg_attribute and format_type() for proper type names (handles arrays, enums, etc.)
         let rows = source
             .query(
                 r#"
                 SELECT
-                    'CREATE TABLE IF NOT EXISTS ' || $1 || '."' || $2 || '" (' ||
+                    'CREATE TABLE IF NOT EXISTS ' || $1 || '."' || c.relname || '" (' ||
                     string_agg(
-                        '"' || column_name || '" ' ||
-                        data_type ||
-                        CASE
-                            WHEN character_maximum_length IS NOT NULL
-                            THEN '(' || character_maximum_length || ')'
-                            ELSE ''
-                        END ||
-                        CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END ||
-                        CASE WHEN column_default IS NOT NULL THEN ' DEFAULT ' || column_default ELSE '' END,
+                        '"' || a.attname || '" ' ||
+                        format_type(a.atttypid, a.atttypmod) ||
+                        CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
+                        CASE WHEN d.adrelid IS NOT NULL THEN ' DEFAULT ' || pg_get_expr(d.adbin, d.adrelid) ELSE '' END,
                         ', '
-                        ORDER BY ordinal_position
+                        ORDER BY a.attnum
                     ) || ')'
-                FROM information_schema.columns
-                WHERE table_schema = $1 AND table_name = $2
-                GROUP BY table_schema, table_name
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+                JOIN pg_attribute a ON a.attrelid = c.oid
+                LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
+                WHERE n.nspname = $1
+                  AND c.relname = $2
+                  AND a.attnum > 0
+                  AND NOT a.attisdropped
+                GROUP BY c.relname
                 "#,
                 &[&source.schema(), table],
             )
@@ -60,7 +137,7 @@ pub async fn migrate_schema(source: &Database, dest: &Database) -> Result<()> {
         if let Some(row) = rows.first() {
             let create_sql: String = row.get(0);
             if let Err(e) = dest.batch_execute(&create_sql).await {
-                warn!("Failed to create table {}: {} (may already exist)", table, e);
+                warn!("Failed to create table {}: {:?}", table, e);
             }
         }
     }
@@ -250,25 +327,35 @@ pub async fn migrate_table(source: &Database, dest: &Database, table: &str) -> R
             // This is simplified - full implementation would handle all types
             let values: Vec<String> = (0..column_names.len())
                 .map(|i| {
+                    let col_name = &column_names[i];
+
                     // Try to get as different types and format appropriately
-                    if let Ok(v) = row.try_get::<_, Option<String>>(i) {
+                    let is_null = if let Ok(v) = row.try_get::<_, Option<String>>(i) {
                         match v {
-                            Some(s) => format!("'{}'", s.replace('\'', "''")),
-                            None => "NULL".to_string(),
+                            Some(s) => return format!("'{}'", s.replace('\'', "''")),
+                            None => true,
                         }
                     } else if let Ok(v) = row.try_get::<_, Option<i64>>(i) {
                         match v {
-                            Some(n) => n.to_string(),
-                            None => "NULL".to_string(),
+                            Some(n) => return n.to_string(),
+                            None => true,
                         }
                     } else if let Ok(v) = row.try_get::<_, Option<bool>>(i) {
                         match v {
-                            Some(b) => b.to_string(),
-                            None => "NULL".to_string(),
+                            Some(b) => return b.to_string(),
+                            None => true,
                         }
                     } else {
-                        "NULL".to_string()
+                        true
+                    };
+
+                    // If NULL, check if we have a default for this column
+                    if is_null {
+                        if let Some(default) = get_null_default(table, col_name) {
+                            return default.to_string();
+                        }
                     }
+                    "NULL".to_string()
                 })
                 .collect();
 
@@ -281,7 +368,7 @@ pub async fn migrate_table(source: &Database, dest: &Database, table: &str) -> R
             );
 
             if let Err(e) = dest.batch_execute(&insert).await {
-                warn!("Failed to insert row: {}", e);
+                warn!("Failed to insert row: {:?}", e);
             }
         }
 
@@ -375,29 +462,39 @@ pub async fn migrate_single_user(source: &Database, dest: &Database, user_id: &s
         for row in &data_rows {
             let values: Vec<String> = (0..column_names.len())
                 .map(|i| {
-                    if let Ok(v) = row.try_get::<_, Option<String>>(i) {
+                    let col_name = &column_names[i];
+
+                    let is_null = if let Ok(v) = row.try_get::<_, Option<String>>(i) {
                         match v {
-                            Some(s) => format!("'{}'", s.replace('\'', "''")),
-                            None => "NULL".to_string(),
+                            Some(s) => return format!("'{}'", s.replace('\'', "''")),
+                            None => true,
                         }
                     } else if let Ok(v) = row.try_get::<_, Option<i64>>(i) {
                         match v {
-                            Some(n) => n.to_string(),
-                            None => "NULL".to_string(),
+                            Some(n) => return n.to_string(),
+                            None => true,
                         }
                     } else if let Ok(v) = row.try_get::<_, Option<bool>>(i) {
                         match v {
-                            Some(b) => b.to_string(),
-                            None => "NULL".to_string(),
+                            Some(b) => return b.to_string(),
+                            None => true,
                         }
                     } else if let Ok(v) = row.try_get::<_, Option<uuid::Uuid>>(i) {
                         match v {
-                            Some(u) => format!("'{}'", u),
-                            None => "NULL".to_string(),
+                            Some(u) => return format!("'{}'", u),
+                            None => true,
                         }
                     } else {
-                        "NULL".to_string()
+                        true
+                    };
+
+                    // If NULL, check if we have a default for this column
+                    if is_null {
+                        if let Some(default) = get_null_default(table, col_name) {
+                            return default.to_string();
+                        }
                     }
+                    "NULL".to_string()
                 })
                 .collect();
 

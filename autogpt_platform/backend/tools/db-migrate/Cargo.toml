@@ -1,7 +1,7 @@
 [package]
 name = "db-migrate"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Database migration tool for AutoGPT Platform - Supabase to GCP Cloud SQL"
 
 [dependencies]

@@ -71,7 +71,7 @@ impl Database {
         self.client
             .batch_execute(sql)
             .await
-            .context("Batch execute failed")
+            .with_context(|| format!("Batch execute failed:\n{}", sql.chars().take(500).collect::<String>()))
     }
 
     /// Get all table names in the schema

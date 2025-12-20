@@ -151,6 +151,16 @@ async fn main() -> Result<()> {
             info!("\n=== Step 1: Creating Schema ===");
             migrate::migrate_schema(&source, &dest).await?;
 
+            // Step 1.5: Verify all quick tables exist in destination
+            info!("\n=== Step 1.5: Verifying Tables Exist ===");
+            for table in &quick_tables {
+                let exists = dest.table_exists(table).await?;
+                if !exists {
+                    anyhow::bail!("Table {} was not created in destination! Check schema migration errors.", table);
+                }
+                info!("  ✓ {} exists", table);
+            }
+
             // Step 2: Migrate user-related tables
             info!("\n=== Step 2: Migrating User Tables ===");
             for table in &quick_tables {
