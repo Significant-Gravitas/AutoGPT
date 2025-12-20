@@ -17,14 +17,8 @@ interface Props {
 }
 
 export function MainAgentPage({ params }: Props) {
-  const {
-    agent,
-    user,
-    isLoading,
-    similarAgents,
-    otherAgents,
-    libraryAgent,
-  } = useMainAgentPage(params);
+  const { agent, user, isLoading, similarAgents, otherAgents, libraryAgent } =
+    useMainAgentPage(params);
 
   if (isLoading) {
     return (

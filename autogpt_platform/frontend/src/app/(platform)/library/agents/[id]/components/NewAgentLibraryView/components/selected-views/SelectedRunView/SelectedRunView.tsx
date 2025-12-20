@@ -80,7 +80,11 @@ export function SelectedRunView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id} banner={banner}>
+        <SelectedViewLayout
+          agentName={agent.name}
+          agentId={agent.id}
+          banner={banner}
+        >
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={run} />
 

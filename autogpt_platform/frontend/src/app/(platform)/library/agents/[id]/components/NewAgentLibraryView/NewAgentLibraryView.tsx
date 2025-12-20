@@ -225,7 +225,9 @@ export function NewAgentLibraryView() {
               agent={agent}
               templateId={activeItem}
               onClearSelectedRun={handleClearSelectedRun}
-              onRunCreated={(execution) => handleSelectRun(execution.id, "runs")}
+              onRunCreated={(execution) =>
+                handleSelectRun(execution.id, "runs")
+              }
               onSwitchToRunsTab={() => setActiveTab("runs")}
               banner={renderMarketplaceUpdateBanner()}
             />
