@@ -92,8 +92,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1 = "o1"
     O1_MINI = "o1-mini"
     # GPT-5 models
-    GPT5 = "gpt-5-2025-08-07"
+    GPT5_2 = "gpt-5.2-2025-12-11"
     GPT5_1 = "gpt-5.1-2025-11-13"
+    GPT5 = "gpt-5-2025-08-07"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
     GPT5_CHAT = "gpt-5-chat-latest"
@@ -194,8 +195,9 @@ MODEL_METADATA = {
     LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
-    LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_2: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
@@ -302,6 +304,8 @@ MODEL_METADATA = {
     LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000),
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000),
 }
+
+DEFAULT_LLM_MODEL = LlmModel.GPT5_2
 
 for model in LlmModel:
     if model not in MODEL_METADATA:
@@ -790,7 +794,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -855,7 +859,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             input_schema=AIStructuredResponseGeneratorBlock.Input,
             output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expected_format": {
                     "key1": "value1",
@@ -1221,7 +1225,7 @@ class AITextGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -1317,7 +1321,7 @@ class AITextSummarizerBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for summarizing the text.",
         )
         focus: str = SchemaField(
@@ -1534,7 +1538,7 @@ class AIConversationBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for the conversation.",
         )
         credentials: AICredentials = AICredentialsField()
@@ -1572,7 +1576,7 @@ class AIConversationBlock(AIBlockBase):
                     },
                     {"role": "user", "content": "Where was it played?"},
                 ],
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -1635,7 +1639,7 @@ class AIListGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for generating the list.",
             advanced=True,
         )
@@ -1692,7 +1696,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of "
                     "fictional worlds."
                 ),
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
                 "force_json_output": False,

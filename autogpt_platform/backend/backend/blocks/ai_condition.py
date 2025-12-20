@@ -1,6 +1,7 @@
 from typing import Any
 
 from backend.blocks.llm import (
+    DEFAULT_LLM_MODEL,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     AIBlockBase,
@@ -49,7 +50,7 @@ class AIConditionBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for evaluating the condition.",
             advanced=False,
         )
@@ -81,7 +82,7 @@ class AIConditionBlock(AIBlockBase):
                 "condition": "the input is an email address",
                 "yes_value": "Valid email",
                 "no_value": "Not an email",
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
