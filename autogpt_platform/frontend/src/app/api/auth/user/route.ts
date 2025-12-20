@@ -2,10 +2,8 @@ import {
   getServerAuthToken,
   getServerUser,
 } from "@/lib/auth/server/getServerAuth";
+import { environment } from "@/services/environment";
 import { NextResponse } from "next/server";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006";
 
 export async function GET() {
   const user = await getServerUser();
@@ -31,14 +29,17 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/auth/update-email`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+    const response = await fetch(
+      `${environment.getAGPTServerBaseUrl()}/api/auth/update-email`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email }),
       },
-      body: JSON.stringify({ email }),
-    });
+    );
 
     if (!response.ok) {
       const data = await response.json();

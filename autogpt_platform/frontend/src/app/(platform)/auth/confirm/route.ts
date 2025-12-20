@@ -1,8 +1,6 @@
 import { type NextRequest } from "next/server";
 import { redirect } from "next/navigation";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006";
+import { environment } from "@/services/environment";
 
 // Email confirmation route
 export async function GET(request: NextRequest) {
@@ -13,7 +11,7 @@ export async function GET(request: NextRequest) {
   if (token) {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+        `${environment.getAGPTServerBaseUrl()}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
         {
           method: "GET",
         },

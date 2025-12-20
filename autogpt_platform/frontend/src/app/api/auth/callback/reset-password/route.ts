@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006";
+import { environment } from "@/services/environment";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -19,7 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     // Verify the token is valid with the backend
     const response = await fetch(
-      `${API_BASE_URL}/api/auth/password-reset/verify?token=${encodeURIComponent(token)}`,
+      `${environment.getAGPTServerBaseUrl()}/api/auth/password-reset/verify?token=${encodeURIComponent(token)}`,
       {
         method: "GET",
       },

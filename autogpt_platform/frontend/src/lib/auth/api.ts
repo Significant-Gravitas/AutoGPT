@@ -2,6 +2,8 @@
  * API client for backend authentication endpoints.
  */
 
+import { environment } from "@/services/environment";
+
 import type {
   AuthResult,
   AuthTokens,
@@ -10,8 +12,10 @@ import type {
   RegisterCredentials,
 } from "./types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+// Use environment service to get correct URL (handles server-side Docker URLs)
+function getApiBaseUrl() {
+  return environment.getAGPTServerApiUrl();
+}
 
 /**
  * Make an authenticated API request.
@@ -21,7 +25,7 @@ async function authFetch<T>(
   options: RequestInit = {},
 ): Promise<AuthResult<T>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth${endpoint}`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",

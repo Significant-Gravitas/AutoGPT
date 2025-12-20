@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { shouldShowOnboarding } from "@/app/api/helpers";
 import { setAuthCookies } from "@/lib/auth/cookies";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+import { environment } from "@/services/environment";
 
 // Handle the OAuth callback from the backend
 export async function GET(request: Request) {
@@ -17,7 +15,9 @@ export async function GET(request: Request) {
   if (code) {
     try {
       // Exchange the code with the backend's Google OAuth callback
-      const callbackUrl = new URL(`${API_BASE_URL}/auth/google/callback`);
+      const callbackUrl = new URL(
+        `${environment.getAGPTServerApiUrl()}/auth/google/callback`,
+      );
       callbackUrl.searchParams.set("code", code);
       if (state) {
         callbackUrl.searchParams.set("state", state);
