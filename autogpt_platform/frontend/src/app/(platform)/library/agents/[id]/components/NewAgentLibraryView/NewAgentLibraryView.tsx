@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
@@ -17,6 +18,7 @@ import { SelectedRunView } from "./components/selected-views/SelectedRunView/Sel
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
 import { SelectedTriggerView } from "./components/selected-views/SelectedTriggerView/SelectedTriggerView";
+import { SelectedSettingsView } from "./components/selected-views/SelectedSettingsView/SelectedSettingsView";
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
@@ -24,7 +26,6 @@ import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
 export function NewAgentLibraryView() {
   const {
-    agentId,
     agent,
     ready,
     activeTemplate,
@@ -39,9 +40,16 @@ export function NewAgentLibraryView() {
     handleCountsChange,
     handleClearSelectedRun,
     onRunInitiated,
+    handleSelectSettings,
     onTriggerSetup,
     onScheduleCreated,
   } = useNewAgentLibraryView();
+
+  useEffect(() => {
+    if (agent) {
+      document.title = `${agent.name} - Library - AutoGPT Platform`;
+    }
+  }, [agent]);
 
   if (error) {
     return (
@@ -62,12 +70,14 @@ export function NewAgentLibraryView() {
     return (
       <div className="flex h-full flex-col">
         <div className="mx-6 pt-4">
-          <Breadcrumbs
-            items={[
-              { name: "My Library", link: "/library" },
-              { name: agent.name, link: `/library/agents/${agentId}` },
-            ]}
-          />
+          <div className="relative flex items-center gap-2">
+            <Breadcrumbs
+              items={[
+                { name: "My Library", link: "/library" },
+                { name: agent.name },
+              ]}
+            />
+          </div>
         </div>
         <div className="flex min-h-0 flex-1">
           <EmptyTasks
@@ -121,7 +131,12 @@ export function NewAgentLibraryView() {
       </SectionWrap>
 
       {activeItem ? (
-        activeTab === "scheduled" ? (
+        activeItem === "settings" ? (
+          <SelectedSettingsView
+            agent={agent}
+            onClearSelectedRun={handleClearSelectedRun}
+          />
+        ) : activeTab === "scheduled" ? (
           <SelectedScheduleView
             agent={agent}
             scheduleId={activeItem}
@@ -148,24 +163,40 @@ export function NewAgentLibraryView() {
             runId={activeItem}
             onSelectRun={handleSelectRun}
             onClearSelectedRun={handleClearSelectedRun}
+            onSelectSettings={handleSelectSettings}
           />
         )
       ) : sidebarLoading ? (
-        <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />
+        <LoadingSelectedContent
+          agent={agent}
+          onSelectSettings={handleSelectSettings}
+        />
       ) : activeTab === "scheduled" ? (
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout
+          agent={agent}
+          onSelectSettings={handleSelectSettings}
+        >
           <EmptySchedules />
         </SelectedViewLayout>
       ) : activeTab === "templates" ? (
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout
+          agent={agent}
+          onSelectSettings={handleSelectSettings}
+        >
           <EmptyTemplates />
         </SelectedViewLayout>
       ) : activeTab === "triggers" ? (
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout
+          agent={agent}
+          onSelectSettings={handleSelectSettings}
+        >
           <EmptyTriggers />
         </SelectedViewLayout>
       ) : (
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout
+          agent={agent}
+          onSelectSettings={handleSelectSettings}
+        >
           <EmptyTasks
             agent={agent}
             onRun={onRunInitiated}

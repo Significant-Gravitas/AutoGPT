@@ -70,7 +70,7 @@ export function CredentialRow({
         </Text>
         <Text
           variant="large"
-          className="relative top-1 hidden flex-[0_0_40%] overflow-hidden truncate font-mono tracking-tight md:block"
+          className="lex-[0_0_40%] relative top-1 hidden overflow-hidden whitespace-nowrap font-mono tracking-tight md:block"
         >
           {"*".repeat(MASKED_KEY_LENGTH)}
         </Text>
