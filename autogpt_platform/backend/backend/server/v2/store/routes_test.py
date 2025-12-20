@@ -405,7 +405,9 @@ def test_get_agent_details(
     assert data.creator == "creator1"
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agt_details")
-    mock_db_call.assert_called_once_with(username="creator1", agent_name="test-agent")
+    mock_db_call.assert_called_once_with(
+        username="creator1", agent_name="test-agent", include_changelog=False
+    )
 
 
 def test_get_creators_defaults(
