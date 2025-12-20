@@ -151,12 +151,6 @@ export function BlocksControl({
           (block.uiType == BlockUIType.WEBHOOK &&
             graphHasWebhookNodes &&
             "Agents can only have one webhook-triggered block") ||
-          (block.uiType == BlockUIType.WEBHOOK &&
-            graphHasInputNodes &&
-            "Webhook-triggered blocks can't be used together with input blocks") ||
-          (block.uiType == BlockUIType.INPUT &&
-            graphHasWebhookNodes &&
-            "Input blocks can't be used together with a webhook-triggered block") ||
           null,
       }));
   }, [
