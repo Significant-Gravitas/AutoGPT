@@ -246,6 +246,8 @@ export function NewAgentLibraryView() {
               onSelectRun={handleSelectRun}
               onClearSelectedRun={handleClearSelectedRun}
               banner={renderMarketplaceUpdateBanner()}
+              onSelectSettings={handleSelectSettings}
+              selectedSettings={activeItem === "settings"}
             />
           )
         ) : sidebarLoading ? (
