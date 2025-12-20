@@ -59,12 +59,13 @@ from backend.integrations.credentials_store import (
 
 MODEL_COST: dict[LlmModel, int] = {
     LlmModel.O3: 4,
-    LlmModel.O3_MINI: 2,  # $1.10 / $4.40
-    LlmModel.O1: 16,  # $15 / $60
+    LlmModel.O3_MINI: 2,
+    LlmModel.O1: 16,
     LlmModel.O1_MINI: 4,
     # GPT-5 models
-    LlmModel.GPT5: 2,
+    LlmModel.GPT5_2: 6,
     LlmModel.GPT5_1: 5,
+    LlmModel.GPT5: 2,
     LlmModel.GPT5_MINI: 1,
     LlmModel.GPT5_NANO: 1,
     LlmModel.GPT5_CHAT: 5,
@@ -87,7 +88,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.AIML_API_LLAMA3_3_70B: 1,
     LlmModel.AIML_API_META_LLAMA_3_1_70B: 1,
     LlmModel.AIML_API_LLAMA_3_2_3B: 1,
-    LlmModel.LLAMA3_3_70B: 1,  # $0.59 / $0.79
+    LlmModel.LLAMA3_3_70B: 1,
     LlmModel.LLAMA3_1_8B: 1,
     LlmModel.OLLAMA_LLAMA3_3: 1,
     LlmModel.OLLAMA_LLAMA3_2: 1,
