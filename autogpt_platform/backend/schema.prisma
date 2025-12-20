@@ -272,6 +272,11 @@ model LibraryAgent {
 
   imageUrl String?
 
+  // Optional custom name/description override (e.g., from marketplace)
+  // If set, these take precedence over AgentGraph name/description
+  name        String?
+  description String?
+
   agentGraphId      String
   agentGraphVersion Int
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
