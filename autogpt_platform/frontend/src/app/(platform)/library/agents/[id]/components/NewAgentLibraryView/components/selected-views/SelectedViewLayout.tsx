@@ -26,7 +26,9 @@ export function SelectedViewLayout(props: Props) {
               { name: "My Library", link: "/library" },
               {
                 name: props.agent.name,
+                link: `/library/agents/${props.agent.id}`,
               },
+              ...(props.additionalBreadcrumb ? [props.additionalBreadcrumb] : []),
             ]}
           />
           {props.agent && props.onSelectSettings && (
@@ -34,6 +36,7 @@ export function SelectedViewLayout(props: Props) {
               <AgentSettingsButton
                 agent={props.agent}
                 onSelectSettings={props.onSelectSettings}
+                selected={props.selectedSettings}
               />
             </div>
           )}

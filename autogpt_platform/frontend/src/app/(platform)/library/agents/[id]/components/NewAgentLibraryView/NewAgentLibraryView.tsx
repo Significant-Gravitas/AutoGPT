@@ -5,13 +5,13 @@ import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "@phosphor-icons/react";
-import { AgentSettingsButton } from "@/components/molecules/AgentSettingsButton/AgentSettingsButton";
 import { useEffect, useState } from "react";
 import { RunAgentModal } from "./components/modals/RunAgentModal/RunAgentModal";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { AgentVersionChangelog } from "./components/AgentVersionChangelog";
 import { MarketplaceBanners } from "@/components/contextual/MarketplaceBanners/MarketplaceBanners";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import { AgentSettingsButton } from "./components/other/AgentSettingsButton";
 import { AgentRunsLoading } from "./components/other/AgentRunsLoading";
 import { EmptySchedules } from "./components/other/EmptySchedules";
 import { EmptyTasks } from "./components/other/EmptyTasks";
@@ -249,35 +249,31 @@ export function NewAgentLibraryView() {
             />
           )
         ) : sidebarLoading ? (
-          <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />
+          <LoadingSelectedContent agent={agent} />
         ) : activeTab === "scheduled" ? (
           <SelectedViewLayout
-            agentName={agent.name}
-            agentId={agent.id}
+            agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
             <EmptySchedules />
           </SelectedViewLayout>
         ) : activeTab === "templates" ? (
           <SelectedViewLayout
-            agentName={agent.name}
-            agentId={agent.id}
+            agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
             <EmptyTemplates />
           </SelectedViewLayout>
         ) : activeTab === "triggers" ? (
           <SelectedViewLayout
-            agentName={agent.name}
-            agentId={agent.id}
+            agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
             <EmptyTriggers />
           </SelectedViewLayout>
         ) : (
           <SelectedViewLayout
-            agentName={agent.name}
-            agentId={agent.id}
+            agent={agent}
             banner={renderMarketplaceUpdateBanner()}
           >
             <EmptyTasks
