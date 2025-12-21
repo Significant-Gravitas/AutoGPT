@@ -48,7 +48,7 @@ const mockFlags = {
   [Flag.AGENT_FAVORITING]: false,
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.CHAT]: true,
+  [Flag.CHAT]: false,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
