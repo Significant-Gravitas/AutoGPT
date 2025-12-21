@@ -20,6 +20,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 
 export const useFlow = () => {
   const [isLocked, setIsLocked] = useState(false);
+  const [hasAutoFramed, setHasAutoFramed] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
@@ -187,9 +188,36 @@ export const useFlow = () => {
     };
   }, []);
 
+  const linkCount = graph?.links?.length ?? 0;
+
   useEffect(() => {
-    fitView({ padding: 0.2, duration: 800, maxZoom: 2 });
-  }, [fitView]);
+    if (isGraphLoading || isBlocksLoading) {
+      setHasAutoFramed(false);
+      return;
+    }
+
+    if (hasAutoFramed) {
+      return;
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+      setHasAutoFramed(true);
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    fitView,
+    hasAutoFramed,
+    customNodes.length,
+    isBlocksLoading,
+    isGraphLoading,
+    linkCount,
+  ]);
+
+  useEffect(() => {
+    setHasAutoFramed(false);
+  }, [flowID, flowVersion]);
 
   // Drag and drop block from block menu
   const onDragOver = useCallback((event: React.DragEvent) => {

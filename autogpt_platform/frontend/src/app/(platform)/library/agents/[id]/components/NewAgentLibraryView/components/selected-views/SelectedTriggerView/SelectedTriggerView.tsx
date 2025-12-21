@@ -3,7 +3,6 @@
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
@@ -23,6 +22,7 @@ interface Props {
   triggerId: string;
   onClearSelectedRun?: () => void;
   onSwitchToRunsTab?: () => void;
+  banner?: React.ReactNode;
 }
 
 export function SelectedTriggerView({
@@ -30,6 +30,7 @@ export function SelectedTriggerView({
   triggerId,
   onClearSelectedRun,
   onSwitchToRunsTab,
+  banner,
 }: Props) {
   const {
     trigger,
@@ -82,7 +83,7 @@ export function SelectedTriggerView({
   }
 
   if (isLoading && !trigger) {
-    return <LoadingSelectedContent agentName={agent.name} agentId={agent.id} />;
+    return <LoadingSelectedContent agent={agent} />;
   }
 
   if (!trigger) {
@@ -94,7 +95,7 @@ export function SelectedTriggerView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agentName={agent.name} agentId={agent.id}>
+        <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={undefined} />
 
@@ -131,25 +132,13 @@ export function SelectedTriggerView({
               <RunDetailCard title="Your Input">
                 <div className="flex flex-col gap-4">
                   {inputFields.map(([key, inputSubSchema]) => (
-                    <div
+                    <RunAgentInputs
                       key={key}
-                      className="flex w-full flex-col gap-0 space-y-2"
-                    >
-                      <label className="flex items-center gap-1 text-sm font-medium">
-                        {inputSubSchema.title || key}
-                        {inputSubSchema.description && (
-                          <InformationTooltip
-                            description={inputSubSchema.description}
-                          />
-                        )}
-                      </label>
-                      <RunAgentInputs
-                        schema={inputSubSchema}
-                        value={inputs[key] ?? inputSubSchema.default}
-                        placeholder={inputSubSchema.description}
-                        onChange={(value) => setInputValue(key, value)}
-                      />
-                    </div>
+                      schema={inputSubSchema}
+                      value={inputs[key] ?? inputSubSchema.default}
+                      placeholder={inputSubSchema.description}
+                      onChange={(value) => setInputValue(key, value)}
+                    />
                   ))}
                 </div>
               </RunDetailCard>
