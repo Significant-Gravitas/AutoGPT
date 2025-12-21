@@ -24,8 +24,9 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 
-export const useBlockMenuSearch = () => {
-  const { searchQuery, searchId, setSearchId } = useBlockMenuStore();
+export const useBlockMenuSearchContent = () => {
+  const { searchQuery, searchId, setSearchId, filters } = useBlockMenuStore();
+  console.log(filters);
   const { toast } = useToast();
   const { addAgentToBuilder, addLibraryAgentToBuilder } =
     useAddAgentToBuilder();
@@ -57,6 +58,7 @@ export const useBlockMenuSearch = () => {
       page_size: 8,
       search_query: searchQuery,
       search_id: searchId,
+      filter: filters.length > 0 ? filters : undefined,
     },
     {
       query: { getNextPageParam: getPaginationNextPageNumber },
