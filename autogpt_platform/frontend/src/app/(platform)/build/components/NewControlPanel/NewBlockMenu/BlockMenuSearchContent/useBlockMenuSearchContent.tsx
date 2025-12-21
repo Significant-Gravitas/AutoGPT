@@ -23,10 +23,19 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
+import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
 
 export const useBlockMenuSearchContent = () => {
-  const { searchQuery, searchId, setSearchId, filters } = useBlockMenuStore();
-  console.log(filters);
+  const {
+    searchQuery,
+    searchId,
+    setSearchId,
+    filters,
+    setCreatorsList,
+    creators,
+    setCategoryCounts,
+  } = useBlockMenuStore();
+
   const { toast } = useToast();
   const { addAgentToBuilder, addLibraryAgentToBuilder } =
     useAddAgentToBuilder();
@@ -59,6 +68,7 @@ export const useBlockMenuSearchContent = () => {
       search_query: searchQuery,
       search_id: searchId,
       filter: filters.length > 0 ? filters : undefined,
+      by_creator: creators.length > 0 ? creators : undefined,
     },
     {
       query: { getNextPageParam: getPaginationNextPageNumber },
@@ -99,6 +109,26 @@ export const useBlockMenuSearchContent = () => {
       setSearchId(lastPage.search_id);
     }
   }, [searchQueryData, searchId, setSearchId]);
+
+  // from all the results, we need to get all the unique creators
+  useEffect(() => {
+    if (!searchQueryData?.pages?.length) {
+      return;
+    }
+    const latestData = okData(searchQueryData.pages.at(-1));
+    setCategoryCounts(
+      (latestData?.total_items as Record<
+        GetV2BuilderSearchFilterAnyOfItem,
+        number
+      >) || {
+        blocks: 0,
+        integrations: 0,
+        marketplace_agents: 0,
+        my_agents: 0,
+      },
+    );
+    setCreatorsList(latestData?.items || []);
+  }, [searchQueryData]);
 
   useEffect(() => {
     if (searchId && !searchQuery) {

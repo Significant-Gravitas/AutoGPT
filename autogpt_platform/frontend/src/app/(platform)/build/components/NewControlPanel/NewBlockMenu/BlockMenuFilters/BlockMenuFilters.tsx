@@ -2,26 +2,54 @@ import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore"
 import { FilterChip } from "../FilterChip";
 import { categories } from "./constants";
 import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
+import { FilterSheet } from "../FilterSheet/FilterSheet";
 
 export const BlockMenuFilters = () => {
-  const { filters, setFilter, removeFilter } = useBlockMenuStore();
+  const {
+    filters,
+    addFilter,
+    removeFilter,
+    categoryCounts,
+    creators,
+    addCreator,
+    removeCreator,
+  } = useBlockMenuStore();
 
   const handleFilterClick = (filter: GetV2BuilderSearchFilterAnyOfItem) => {
     if (filters.includes(filter)) {
       removeFilter(filter);
     } else {
-      setFilter(filter);
+      addFilter(filter);
+    }
+  };
+
+  const handleCreatorClick = (creator: string) => {
+    if (creators.includes(creator)) {
+      removeCreator(creator);
+    } else {
+      addCreator(creator);
     }
   };
 
   return (
     <div className="flex flex-wrap gap-2">
+      <FilterSheet categories={categories} />
+      {creators.length > 0 &&
+        creators.map((creator) => (
+          <FilterChip
+            key={creator}
+            name={"Created by " + creator.slice(0, 10) + "..."}
+            selected={creators.includes(creator)}
+            onClick={() => handleCreatorClick(creator)}
+          />
+        ))}
       {categories.map((category) => (
         <FilterChip
           key={category.key}
           name={category.name}
           selected={filters.includes(category.key)}
           onClick={() => handleFilterClick(category.key)}
+          number={categoryCounts[category.key] ?? 0}
         />
       ))}
     </div>
