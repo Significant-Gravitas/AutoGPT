@@ -15,11 +15,11 @@ import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import { ClockIcon, Loader2 } from "lucide-react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import {
   formatScheduleTime,
   getTimezoneAbbreviation,
 } from "@/lib/timezone-utils";
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import {
   Select,
   SelectContent,
@@ -66,11 +66,7 @@ export const SchedulesTable = ({
   const [selectedFilter, setSelectedFilter] = useState<string>(""); // Graph ID
 
   // Get user's timezone for displaying schedule times
-  const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : "UTC"),
-    },
-  });
+  const userTimezone = useUserTimezone() ?? "UTC";
 
   const filteredAndSortedSchedules = [...schedules]
     .filter(
