@@ -17,7 +17,6 @@ export function FilterSheet({
 }) {
   const {
     isOpen,
-    setIsOpen,
     localCategories,
     localCreators,
     displayedCreatorsCount,
@@ -30,6 +29,7 @@ export function FilterSheet({
     hasLocalActiveFilters,
     visibleCreators,
     creators,
+    handleOpenFilters,
     hasActiveFilters,
   } = useFilterSheet();
 
@@ -37,9 +37,7 @@ export function FilterSheet({
     <div className="m-0 inline w-fit p-0">
       <FilterChip
         name={hasActiveFilters() ? "Edit filters" : "All filters"}
-        onClick={() => {
-          setIsOpen(true);
-        }}
+        onClick={handleOpenFilters}
       />
 
       <AnimatePresence>

@@ -1,15 +1,15 @@
-import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
+import { FilterType } from "@/app/api/__generated__/models/filterType";
 import { CategoryKey } from "./types";
 
 export const categories: Array<{ key: CategoryKey; name: string }> = [
-  { key: GetV2BuilderSearchFilterAnyOfItem.blocks, name: "Blocks" },
+  { key: FilterType.blocks, name: "Blocks" },
   {
-    key: GetV2BuilderSearchFilterAnyOfItem.integrations,
+    key: FilterType.integrations,
     name: "Integrations",
   },
   {
-    key: GetV2BuilderSearchFilterAnyOfItem.marketplace_agents,
+    key: FilterType.marketplace_agents,
     name: "Marketplace agents",
   },
-  { key: GetV2BuilderSearchFilterAnyOfItem.my_agents, name: "My agents" },
+  { key: FilterType.my_agents, name: "My agents" },
 ];

@@ -1,30 +1,28 @@
 import { create } from "zustand";
 import { DefaultStateType } from "../components/NewControlPanel/NewBlockMenu/types";
-import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
 import { SearchResponseItemsItem } from "@/app/api/__generated__/models/searchResponseItemsItem";
 import { getSearchItemType } from "../components/NewControlPanel/NewBlockMenu/BlockMenuSearchContent/helper";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
+import { FilterType } from "@/app/api/__generated__/models/filterType";
 
 type BlockMenuStore = {
   searchQuery: string;
   searchId: string | undefined;
   defaultState: DefaultStateType;
   integration: string | undefined;
-  filters: GetV2BuilderSearchFilterAnyOfItem[];
+  filters: FilterType[];
   creators: string[];
   creators_list: string[];
-  categoryCounts: Record<GetV2BuilderSearchFilterAnyOfItem, number>;
+  categoryCounts: Record<FilterType, number>;
 
-  setCategoryCounts: (
-    counts: Record<GetV2BuilderSearchFilterAnyOfItem, number>,
-  ) => void;
+  setCategoryCounts: (counts: Record<FilterType, number>) => void;
   setCreatorsList: (searchData: SearchResponseItemsItem[]) => void;
   addCreator: (creator: string) => void;
   setCreators: (creators: string[]) => void;
   removeCreator: (creator: string) => void;
-  addFilter: (filter: GetV2BuilderSearchFilterAnyOfItem) => void;
-  setFilters: (filters: GetV2BuilderSearchFilterAnyOfItem[]) => void;
-  removeFilter: (filter: GetV2BuilderSearchFilterAnyOfItem) => void;
+  addFilter: (filter: FilterType) => void;
+  setFilters: (filters: FilterType[]) => void;
+  removeFilter: (filter: FilterType) => void;
   setSearchQuery: (query: string) => void;
   setSearchId: (id: string | undefined) => void;
   setDefaultState: (state: DefaultStateType) => void;
