@@ -7,7 +7,6 @@ import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useMemo } from "react";
-import { okData } from "@/app/api/helpers";
 import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
 import { AccountMenu } from "./AccountMenu/AccountMenu";
 import { AgentActivityDropdown } from "./AgentActivityDropdown/AgentActivityDropdown";
@@ -30,7 +29,7 @@ export function NavbarView({ isLoggedIn, previewBranchName }: NavbarViewProps) {
   const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
     {
       query: {
-        select: okData,
+        select: (res) => (res.status === 200 ? res.data : null),
         enabled: isLoggedIn && !!user,
         // Include user ID in query key to ensure cache invalidation when user changes
         queryKey: ["/api/store/profile", user?.id],

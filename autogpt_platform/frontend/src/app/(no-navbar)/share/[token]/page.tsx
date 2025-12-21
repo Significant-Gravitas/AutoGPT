@@ -1,7 +1,6 @@
 "use client";
 
 import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/RunOutputs";
-import { okData } from "@/app/api/helpers";
 import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
 import {
   Card,
@@ -18,11 +17,12 @@ export default function SharePage() {
   const token = params.token as string;
 
   const {
-    data: executionData,
+    data: response,
     isLoading: loading,
     error,
-  } = useGetV1GetSharedExecution(token, { query: { select: okData } });
+  } = useGetV1GetSharedExecution(token);
 
+  const executionData = response?.status === 200 ? response.data : undefined;
   const is404 = !loading && !executionData;
 
   if (loading) {

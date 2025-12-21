@@ -15,7 +15,6 @@ import {
   normalizePickerResponse,
   scopesIncludeDrive,
 } from "./helpers";
-import { okData } from "@/app/api/helpers";
 
 const defaultScopes = ["https://www.googleapis.com/auth/drive.file"];
 
@@ -127,9 +126,9 @@ export function useGoogleDrivePicker(options: Props) {
           );
 
           const response = await queryClient.fetchQuery(queryOptions);
-          const cred = okData(response);
 
-          if (cred) {
+          if (response.status === 200 && response.data) {
+            const cred = response.data;
             if (cred.type === "oauth2") {
               const oauthCred = cred as OAuth2Credentials;
               if (oauthCred.access_token) {

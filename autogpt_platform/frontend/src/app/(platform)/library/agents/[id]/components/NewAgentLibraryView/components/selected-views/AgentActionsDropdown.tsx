@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  getGetV1ListGraphExecutionsQueryKey,
+  getGetV1ListGraphExecutionsInfiniteQueryOptions,
   getV1GetGraphVersion,
   useDeleteV1DeleteGraphExecution,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
@@ -127,7 +127,9 @@ export function AgentActionsDropdown({
       toast({ title: "Task deleted" });
 
       await queryClient.refetchQueries({
-        queryKey: getGetV1ListGraphExecutionsQueryKey(agentGraphId),
+        queryKey:
+          getGetV1ListGraphExecutionsInfiniteQueryOptions(agentGraphId)
+            .queryKey,
       });
 
       if (onClearSelectedRun) onClearSelectedRun();

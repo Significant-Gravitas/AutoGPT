@@ -4,7 +4,6 @@ import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { okData } from "@/app/api/helpers";
 import {
   NotificationState,
   categorizeExecutions,
@@ -27,7 +26,7 @@ export function useAgentActivityDropdown() {
     isSuccess: executionsSuccess,
     error: executionsError,
   } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    query: { select: (res) => (res.status === 200 ? res.data : null) },
   });
 
   // Get all graph IDs from agentInfoMap

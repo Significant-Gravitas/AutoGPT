@@ -1,3 +1,6 @@
+import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
+import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
+import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
@@ -5,19 +8,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { computeInitialAgentInputs } from "./helpers";
 import { InputValues } from "./types";
-import { okData, resolveResponse } from "@/app/api/helpers";
-import { postV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
 import {
   useGetV2GetAgentByVersion,
   useGetV2GetAgentGraph,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { CredentialsMetaInput } from "@/app/api/__generated__/models/credentialsMetaInput";
+import { resolveResponse } from "@/app/api/helpers";
+import { postV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
 import { GraphID } from "@/lib/autogpt-server-api";
 
 export function useOnboardingRunStep() {
   const onboarding = useOnboarding(undefined, "AGENT_CHOICE");
 
   const [showInput, setShowInput] = useState(false);
+  const [agent, setAgent] = useState<GraphMeta | null>(null);
+  const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
   const [runningAgent, setRunningAgent] = useState(false);
 
   const [inputCredentials, setInputCredentials] = useState<
@@ -34,26 +38,12 @@ export function useOnboardingRunStep() {
   const currentAgentVersion =
     onboarding.state?.selectedStoreListingVersionId ?? "";
 
-  const {
-    data: storeAgent,
-    error: storeAgentQueryError,
-    isSuccess: storeAgentQueryIsSuccess,
-  } = useGetV2GetAgentByVersion(currentAgentVersion, {
-    query: {
-      enabled: !!currentAgentVersion,
-      select: okData,
-    },
+  const storeAgentQuery = useGetV2GetAgentByVersion(currentAgentVersion, {
+    query: { enabled: !!currentAgentVersion },
   });
 
-  const {
-    data: agentGraphMeta,
-    error: agentGraphQueryError,
-    isSuccess: agentGraphQueryIsSuccess,
-  } = useGetV2GetAgentGraph(currentAgentVersion, {
-    query: {
-      enabled: !!currentAgentVersion,
-      select: okData,
-    },
+  const graphMetaQuery = useGetV2GetAgentGraph(currentAgentVersion, {
+    query: { enabled: !!currentAgentVersion },
   });
 
   useEffect(() => {
@@ -61,15 +51,29 @@ export function useOnboardingRunStep() {
   }, []);
 
   useEffect(() => {
-    if (agentGraphMeta && onboarding.state) {
-      const initialAgentInputs = computeInitialAgentInputs(
-        agentGraphMeta,
+    if (storeAgentQuery.data && storeAgentQuery.data.status === 200) {
+      setStoreAgent(storeAgentQuery.data.data);
+    }
+  }, [storeAgentQuery.data]);
+
+  useEffect(() => {
+    if (
+      graphMetaQuery.data &&
+      graphMetaQuery.data.status === 200 &&
+      onboarding.state
+    ) {
+      const graphMeta = graphMetaQuery.data.data as GraphMeta;
+
+      setAgent(graphMeta);
+
+      const update = computeInitialAgentInputs(
+        graphMeta,
         (onboarding.state.agentInput as unknown as InputValues) || null,
       );
 
-      onboarding.updateState({ agentInput: initialAgentInputs });
+      onboarding.updateState({ agentInput: update });
     }
-  }, [agentGraphMeta]);
+  }, [graphMetaQuery.data]);
 
   function handleNewRun() {
     if (!onboarding.state) return;
@@ -91,7 +95,7 @@ export function useOnboardingRunStep() {
   }
 
   async function handleRunAgent() {
-    if (!agentGraphMeta || !storeAgent || !onboarding.state) {
+    if (!agent || !storeAgent || !onboarding.state) {
       toast({
         title: "Error getting agent",
         description:
@@ -138,12 +142,12 @@ export function useOnboardingRunStep() {
   }
 
   return {
-    ready: agentGraphQueryIsSuccess && storeAgentQueryIsSuccess,
-    error: agentGraphQueryError || storeAgentQueryError,
-    agentGraph: agentGraphMeta || null,
+    ready: graphMetaQuery.isSuccess && storeAgentQuery.isSuccess,
+    error: graphMetaQuery.error || storeAgentQuery.error,
+    agent,
     onboarding,
     showInput,
-    storeAgent: storeAgent || null,
+    storeAgent,
     runningAgent,
     credentialsValid,
     credentialsLoaded,

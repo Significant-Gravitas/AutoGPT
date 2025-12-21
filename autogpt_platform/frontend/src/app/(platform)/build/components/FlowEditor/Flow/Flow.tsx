@@ -17,6 +17,7 @@ import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPane
 import { parseAsString, useQueryStates } from "nuqs";
 import { CustomControls } from "./components/CustomControl";
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { okData } from "@/app/api/helpers";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 import { resolveCollisions } from "./helpers/resolve-collision";
@@ -33,7 +34,7 @@ export const Flow = () => {
     {},
     {
       query: {
-        select: okData,
+        select: okData<GraphModel>,
         enabled: !!flowID,
       },
     },

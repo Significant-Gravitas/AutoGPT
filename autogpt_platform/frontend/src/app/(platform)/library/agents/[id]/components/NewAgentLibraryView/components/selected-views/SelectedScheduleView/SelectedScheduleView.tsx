@@ -1,12 +1,12 @@
 "use client";
 
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { isLargeScreen, useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { formatInTimezone, getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { AgentInputsReadOnly } from "../../modals/AgentInputsReadOnly/AgentInputsReadOnly";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
@@ -38,7 +38,11 @@ export function SelectedScheduleView({
     scheduleId,
   );
 
-  const userTimezone = useUserTimezone();
+  const { data: userTzRes } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
+    },
+  });
 
   const breakpoint = useBreakpoint();
   const isLgScreenUp = isLargeScreen(breakpoint);
@@ -89,7 +93,7 @@ export function SelectedScheduleView({
                 run={undefined}
                 scheduleRecurrence={
                   schedule
-                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTimezone || "UTC")}`
+                    ? `${humanizeCronExpression(schedule.cron || "")} · ${getTimezoneDisplayName(schedule.timezone || userTzRes || "UTC")}`
                     : undefined
                 }
               />
@@ -124,7 +128,7 @@ export function SelectedScheduleView({
                         <span className="text-zinc-500">•</span>{" "}
                         <span className="text-zinc-500">
                           {getTimezoneDisplayName(
-                            schedule.timezone || userTimezone || "UTC",
+                            schedule.timezone || userTzRes || "UTC",
                           )}
                         </span>
                       </Text>
@@ -134,7 +138,7 @@ export function SelectedScheduleView({
                       <Text variant="body" className="flex items-center gap-3">
                         {formatInTimezone(
                           schedule.next_run_time,
-                          userTimezone || "UTC",
+                          userTzRes || "UTC",
                           {
                             year: "numeric",
                             month: "long",
@@ -147,7 +151,7 @@ export function SelectedScheduleView({
                         <span className="text-zinc-500">•</span>{" "}
                         <span className="text-zinc-500">
                           {getTimezoneDisplayName(
-                            schedule.timezone || userTimezone || "UTC",
+                            schedule.timezone || userTzRes || "UTC",
                           )}
                         </span>
                       </Text>

@@ -1,11 +1,15 @@
-import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
+import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { InfoIcon } from "@phosphor-icons/react";
 
 export function TimezoneNotice() {
-  const userTimezone = useUserTimezone();
+  const { data: userTimezone, isSuccess } = useGetV1GetUserTimezone({
+    query: {
+      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
+    },
+  });
 
-  if (!userTimezone) {
+  if (!isSuccess) {
     return null;
   }
 

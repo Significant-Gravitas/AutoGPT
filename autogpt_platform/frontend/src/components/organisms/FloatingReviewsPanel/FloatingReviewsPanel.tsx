@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { Text } from "@/components/atoms/Text/Text";
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
-import { okData } from "@/app/api/helpers";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { useShallow } from "zustand/react/shallow";
 
@@ -30,10 +29,12 @@ export function FloatingReviewsPanel({
     {
       query: {
         enabled: !!(graphId && executionId),
-        select: okData,
       },
     },
   );
+
+  const executionStatus =
+    executionDetails?.status === 200 ? executionDetails.data.status : undefined;
 
   // Get graph execution status from the store (updated via WebSocket)
   const graphExecutionStatus = useGraphStore(
@@ -48,7 +49,7 @@ export function FloatingReviewsPanel({
     if (executionId) {
       refetch();
     }
-  }, [executionDetails?.status, executionId, refetch]);
+  }, [executionStatus, executionId, refetch]);
 
   // Refetch when graph execution status changes to REVIEW
   useEffect(() => {
@@ -61,7 +62,7 @@ export function FloatingReviewsPanel({
     !executionId ||
     (!isLoading &&
       pendingReviews.length === 0 &&
-      executionDetails?.status !== AgentExecutionStatus.REVIEW)
+      executionStatus !== AgentExecutionStatus.REVIEW)
   ) {
     return null;
   }

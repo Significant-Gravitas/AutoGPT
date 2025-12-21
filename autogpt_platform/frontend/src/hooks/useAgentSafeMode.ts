@@ -7,7 +7,6 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { okData } from "@/app/api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { Graph } from "@/lib/autogpt-server-api/types";
 
@@ -48,19 +47,15 @@ export function useAgentSafeMode(graph: GraphModel | LibraryAgent | Graph) {
   const { data: libraryAgent, isLoading } = useGetV2GetLibraryAgentByGraphId(
     graphId,
     {},
-    {
-      query: {
-        enabled: !isAgent && shouldShowToggle,
-        select: okData,
-      },
-    },
+    { query: { enabled: !isAgent && shouldShowToggle } },
   );
 
   const [localSafeMode, setLocalSafeMode] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!isAgent && libraryAgent) {
-      const backendValue = libraryAgent.settings?.human_in_the_loop_safe_mode;
+    if (!isAgent && libraryAgent?.status === 200) {
+      const backendValue =
+        libraryAgent.data?.settings?.human_in_the_loop_safe_mode;
       if (backendValue !== undefined) {
         setLocalSafeMode(backendValue);
       }

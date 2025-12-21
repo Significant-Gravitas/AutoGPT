@@ -2,29 +2,30 @@
 
 import { useMemo } from "react";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import { okData } from "@/app/api/helpers";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 
 export function useSelectedScheduleView(graphId: string, scheduleId: string) {
-  const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
+  const query = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
-      select: okData,
+      select: (res) =>
+        res.status === 200 ? (res.data as GraphExecutionJobInfo[]) : [],
     },
   });
 
   const schedule = useMemo(
-    () => schedulesQuery.data?.find((s) => s.id === scheduleId),
-    [schedulesQuery.data, scheduleId],
+    () => query.data?.find((s) => s.id === scheduleId),
+    [query.data, scheduleId],
   );
 
   const httpError =
-    schedulesQuery.isSuccess && !schedule
+    query.isSuccess && !schedule
       ? { status: 404, statusText: "Not found" }
       : undefined;
 
   return {
     schedule,
-    isLoading: schedulesQuery.isLoading,
-    error: schedulesQuery.error || httpError,
+    isLoading: query.isLoading,
+    error: query.error || httpError,
   } as const;
 }

@@ -1,20 +1,15 @@
 import {
-  GraphExecutionMeta as LegacyGraphExecutionMeta,
-  GraphID,
-  GraphExecutionID,
-} from "@/lib/autogpt-server-api";
-import { getQueryClient } from "@/lib/react-query/queryClient";
-import {
-  getPaginatedTotalCount,
-  getPaginationNextPageNumber,
-  unpaginate,
-} from "@/app/api/helpers";
-import {
   getV1ListGraphExecutionsResponse,
   getV1ListGraphExecutionsResponse200,
   useGetV1ListGraphExecutionsInfinite,
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { GraphExecutionsPaginated } from "@/app/api/__generated__/models/graphExecutionsPaginated";
+import { getQueryClient } from "@/lib/react-query/queryClient";
+import {
+  GraphExecutionMeta as LegacyGraphExecutionMeta,
+  GraphID,
+  GraphExecutionID,
+} from "@/lib/autogpt-server-api";
 import { GraphExecutionMeta as RawGraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 
 export type GraphExecutionMeta = Omit<
@@ -49,7 +44,15 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
     { page: 1, page_size: 20 },
     {
       query: {
-        getNextPageParam: getPaginationNextPageNumber,
+        getNextPageParam: (lastPage) => {
+          const pagination = (lastPage.data as GraphExecutionsPaginated)
+            .pagination;
+          const hasMore =
+            pagination.current_page * pagination.page_size <
+            pagination.total_items;
+
+          return hasMore ? pagination.current_page + 1 : undefined;
+        },
 
         // Prevent query from running if graphID is not available (yet)
         ...(!graphID
@@ -77,8 +80,15 @@ export const useAgentRunsInfinite = (graphID?: GraphID) => {
     queryClient,
   );
 
-  const agentRuns = queryResults ? unpaginate(queryResults, "executions") : [];
-  const agentRunCount = getPaginatedTotalCount(queryResults);
+  const agentRuns =
+    queryResults?.pages.flatMap((page) => {
+      const response = page.data as GraphExecutionsPaginated;
+      return response.executions;
+    }) ?? [];
+
+  const agentRunCount = (
+    queryResults?.pages.at(-1)?.data as GraphExecutionsPaginated | undefined
+  )?.pagination.total_items;
 
   const upsertAgentRun = (newAgentRun: GraphExecutionMeta) => {
     queryClient.setQueryData(
