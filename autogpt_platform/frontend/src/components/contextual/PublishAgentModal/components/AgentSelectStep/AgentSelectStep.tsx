@@ -9,7 +9,6 @@ import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
-import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 
 interface Props {
   onSelect: (agentId: string, agentVersion: number) => void;
@@ -23,7 +22,6 @@ interface Props {
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
-    publishedSubmissionData?: StoreSubmission | null,
   ) => void;
   onOpenBuilder: () => void;
 }
@@ -44,8 +42,6 @@ export function AgentSelectStep({
     // Handlers
     handleAgentClick,
     handleNext,
-    // Utils
-    getPublishedVersion,
     // Computed
     isNextDisabled,
   } = useAgentSelectStep({ onSelect, onNext });
@@ -135,17 +131,26 @@ export function AgentSelectStep({
               <div className="p-2">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {agents.map((agent) => (
-                    <button
+                    <div
                       key={agent.id}
                       data-testid="agent-card"
-                      onClick={() =>
-                        handleAgentClick(agent.name, agent.id, agent.version)
-                      }
-                      className={`w-full select-none overflow-hidden rounded-2xl border border-neutral-200 text-left shadow-sm transition-all ${
+                      className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-sm transition-all ${
                         selectedAgentId === agent.id
                           ? "border-transparent shadow-none ring-4 ring-violet-600"
                           : "hover:shadow-md"
                       }`}
+                      onClick={() =>
+                        handleAgentClick(agent.name, agent.id, agent.version)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleAgentClick(agent.name, agent.id, agent.version);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-pressed={selectedAgentId === agent.id}
                     >
                       <div className="relative h-32 bg-zinc-400 sm:h-40">
                         <Image
@@ -157,44 +162,12 @@ export function AgentSelectStep({
                         />
                       </div>
                       <div className="flex flex-col gap-2 p-3">
-                        <Text variant="large-medium" className="line-clamp-2">
-                          {agent.name}
+                        <Text variant="large-medium">{agent.name}</Text>
+                        <Text variant="small" className="!text-neutral-500">
+                          Edited {agent.lastEdited}
                         </Text>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1">
-                            <Text variant="small" className="text-neutral-500">
-                              Edited {agent.lastEdited}
-                            </Text>
-                            {agent.isMarketplaceUpdate &&
-                              (() => {
-                                const publishedVersion = getPublishedVersion(
-                                  agent.id,
-                                );
-                                return (
-                                  publishedVersion && (
-                                    <Text
-                                      variant="small"
-                                      className="block text-neutral-500"
-                                    >
-                                      v{publishedVersion} → v{agent.version}
-                                    </Text>
-                                  )
-                                );
-                              })()}
-                          </div>
-                          {agent.isMarketplaceUpdate && (
-                            <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              Update
-                            </span>
-                          )}
-                          {!agent.isMarketplaceUpdate && (
-                            <span className="shrink-0 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
-                              New
-                            </span>
-                          )}
-                        </div>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
