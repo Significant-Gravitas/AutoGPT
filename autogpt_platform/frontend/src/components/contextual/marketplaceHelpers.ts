@@ -15,15 +15,14 @@ export function getLatestMarketplaceVersion(
 
 /**
  * Check if the current user is the creator of the agent
+ * Uses ID-based comparison for accurate matching
  */
 export function isUserCreator(
-  creator: string,
-  currentUser: { email?: string } | null,
+  creatorId: string | undefined,
+  currentUserId: string | undefined,
 ): boolean {
-  if (!currentUser?.email) return false;
-
-  const userHandle = currentUser.email.split("@")[0]?.toLowerCase() || "";
-  return creator.toLowerCase().includes(userHandle);
+  if (!creatorId || !currentUserId) return false;
+  return creatorId === currentUserId;
 }
 
 /**

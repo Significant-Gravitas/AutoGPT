@@ -17,8 +17,15 @@ interface Props {
 }
 
 export function MainAgentPage({ params }: Props) {
-  const { agent, user, isLoading, similarAgents, otherAgents, libraryAgent } =
-    useMainAgentPage(params);
+  const {
+    agent,
+    user,
+    isLoading,
+    hasError,
+    similarAgents,
+    otherAgents,
+    libraryAgent,
+  } = useMainAgentPage(params);
 
   if (isLoading) {
     return (
@@ -28,6 +35,24 @@ export function MainAgentPage({ params }: Props) {
             <AgentPageLoading
               message="Discovering agent..."
               submessage="Loading agent details"
+              className="w-full max-w-md"
+            />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="mx-auto w-full max-w-[1360px]">
+        <main className="px-4">
+          <div className="flex min-h-[400px] items-center justify-center">
+            <ErrorCard
+              isSuccess={false}
+              responseError={{ message: "Failed to load agent data" }}
+              context="agent page"
+              onRetry={() => window.location.reload()}
               className="w-full max-w-md"
             />
           </div>

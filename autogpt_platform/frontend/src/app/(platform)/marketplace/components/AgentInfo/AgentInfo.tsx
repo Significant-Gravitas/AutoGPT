@@ -87,23 +87,11 @@ export const AgentInfo = ({
   const agentVersions = allVersions.slice(0, visibleVersionCount);
   const hasMoreVersions = allVersions.length > visibleVersionCount;
 
-  const formatDate = (version: number) => {
-    // Generate sample dates based on version
-    const baseDate = new Date("2025-12-18");
-    baseDate.setDate(baseDate.getDate() - (19 - version) * 7);
-    return baseDate.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-
   const renderVersionItem = (versionInfo: {
     version: number;
     isCurrentVersion: boolean;
   }) => {
     // Find real changelog data for this version
-    const storeData = okData<StoreAgentDetails>(storeAgentData);
     const changelogEntry = storeData?.changelog?.find(
       (entry: ChangelogEntry) =>
         entry.version === versionInfo.version.toString(),
@@ -126,18 +114,18 @@ export const AgentInfo = ({
               </span>
             )}
           </div>
-          <Text
-            variant="small"
-            className="text-neutral-500 dark:text-neutral-400"
-          >
-            {changelogEntry
-              ? new Date(changelogEntry.date).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })
-              : formatDate(versionInfo.version)}
-          </Text>
+          {changelogEntry && (
+            <Text
+              variant="small"
+              className="text-neutral-500 dark:text-neutral-400"
+            >
+              {new Date(changelogEntry.date).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </Text>
+          )}
         </div>
 
         {/* Real Changelog Content */}
