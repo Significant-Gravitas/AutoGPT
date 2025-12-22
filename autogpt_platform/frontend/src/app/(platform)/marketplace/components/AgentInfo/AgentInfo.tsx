@@ -71,7 +71,7 @@ export const AgentInfo = ({
   );
 
   // Calculate update information using simple helper functions
-  const storeData = okData<StoreAgentDetails>(storeAgentData);
+  const storeData = okData(storeAgentData) as StoreAgentDetails | undefined;
 
   // Process version data for display - use store listing versions (not agentGraphVersions)
   const allVersions = storeData?.versions
