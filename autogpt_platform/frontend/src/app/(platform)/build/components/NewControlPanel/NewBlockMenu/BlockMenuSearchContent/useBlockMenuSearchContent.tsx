@@ -23,7 +23,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
-import { FilterType } from "@/app/api/__generated__/models/filterType";
+import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
 
 export const useBlockMenuSearchContent = () => {
   const {
@@ -117,7 +117,10 @@ export const useBlockMenuSearchContent = () => {
     }
     const latestData = okData(searchQueryData.pages.at(-1));
     setCategoryCounts(
-      (latestData?.total_items as Record<FilterType, number>) || {
+      (latestData?.total_items as Record<
+        GetV2BuilderSearchFilterAnyOfItem,
+        number
+      >) || {
         blocks: 0,
         integrations: 0,
         marketplace_agents: 0,

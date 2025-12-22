@@ -1,20 +1,23 @@
 import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore";
 import { useState } from "react";
 import { INITIAL_CREATORS_TO_SHOW } from "./constant";
-import { FilterType } from "@/app/api/__generated__/models/filterType";
+import { GetV2BuilderSearchFilterAnyOfItem } from "@/app/api/__generated__/models/getV2BuilderSearchFilterAnyOfItem";
 
 export const useFilterSheet = () => {
   const { filters, creators_list, creators, setFilters, setCreators } =
     useBlockMenuStore();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [localCategories, setLocalCategories] = useState<FilterType[]>(filters);
+  const [localCategories, setLocalCategories] =
+    useState<GetV2BuilderSearchFilterAnyOfItem[]>(filters);
   const [localCreators, setLocalCreators] = useState<string[]>(creators);
   const [displayedCreatorsCount, setDisplayedCreatorsCount] = useState(
     INITIAL_CREATORS_TO_SHOW,
   );
 
-  const handleLocalCategoryChange = (category: FilterType) => {
+  const handleLocalCategoryChange = (
+    category: GetV2BuilderSearchFilterAnyOfItem,
+  ) => {
     setLocalCategories((prev) => {
       if (prev.includes(category)) {
         return prev.filter((c) => c !== category);
