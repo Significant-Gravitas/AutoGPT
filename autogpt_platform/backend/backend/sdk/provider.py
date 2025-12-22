@@ -14,7 +14,6 @@ from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
     CredentialsType,
-    FieldSchemaExtra,
     OAuth2Credentials,
     UserPasswordCredentials,
 )
@@ -82,7 +81,7 @@ class Provider:
         discriminator_values = kwargs.pop("discriminator_values", None)
 
         # Create json_schema_extra with provider information
-        json_schema_extra: FieldSchemaExtra = {
+        json_schema_extra: dict[str, Any] = {
             "credentials_provider": [self.name],
             "credentials_types": (
                 list(self.supported_auth_types) if self.supported_auth_types else []
@@ -91,7 +90,7 @@ class Provider:
 
         # Merge any existing json_schema_extra
         if "json_schema_extra" in kwargs:
-            extra: FieldSchemaExtra = kwargs.pop("json_schema_extra")
+            extra: dict[str, Any] = kwargs.pop("json_schema_extra")
             json_schema_extra.update(extra)
 
         return CredentialsField(

@@ -357,8 +357,14 @@ def SchemaField(
     max_length: Optional[int] = None,
     discriminator: Optional[str] = None,
     format: Optional[str] = None,
-    json_schema_extra: Optional[FieldSchemaExtra] = None,
+    json_schema_extra: dict[str, Any] | None = None,
 ) -> T:
+    """Create a schema field with extended metadata.
+
+    Args:
+        json_schema_extra: Additional schema metadata. See FieldSchemaExtra for
+            documented keys, but any dict with string keys is accepted.
+    """
     if default is PydanticUndefined and default_factory is None:
         advanced = False
     elif advanced is None:
@@ -771,11 +777,17 @@ def CredentialsField(
     discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
-    json_schema_extra: Optional[FieldSchemaExtra] = None,
+    json_schema_extra: dict[str, Any] | None = None,
     **kwargs,
 ) -> CredentialsMetaInput:
-    """
-    `CredentialsField` must and can only be used on fields named `credentials`.
+    """Create a credentials field with extended metadata.
+
+    Args:
+        json_schema_extra: Additional schema metadata. See FieldSchemaExtra for
+            documented keys, but any dict with string keys is accepted.
+
+    Note:
+        `CredentialsField` must and can only be used on fields named `credentials`.
     This is enforced by the `BlockSchema` base class.
     """
 
