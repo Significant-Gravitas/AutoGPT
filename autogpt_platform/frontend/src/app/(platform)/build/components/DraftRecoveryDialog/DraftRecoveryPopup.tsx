@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useDraftRecoveryPopup } from "./useDraftRecoveryPopup";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface DraftRecoveryPopupProps {
   isInitialLoadComplete: boolean;
@@ -41,15 +42,18 @@ export function DraftRecoveryPopup({
         </div>
 
         <div className="flex flex-col">
-          <span className="text-sm font-medium text-amber-900 dark:text-amber-100">
+          <Text
+            variant="small-medium"
+            className="text-amber-900 dark:text-amber-100"
+          >
             Unsaved changes found
-          </span>
-          <span className="text-xs text-amber-700 dark:text-amber-400">
+          </Text>
+          <Text variant="small" className="text-amber-700 dark:text-amber-400">
             {nodeCount} block{nodeCount !== 1 ? "s" : ""}, {edgeCount}{" "}
             connection
             {edgeCount !== 1 ? "s" : ""} •{" "}
             {formatTimeAgo(new Date(savedAt).toISOString())}
-          </span>
+          </Text>
         </div>
 
         <div className="ml-2 flex items-center gap-2">
