@@ -15,7 +15,6 @@ import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { ShareRunButton } from "../../../ShareRunButton/ShareRunButton";
 import { CreateTemplateModal } from "../CreateTemplateModal/CreateTemplateModal";
 import { useSelectedRunActions } from "./useSelectedRunActions";
-import { SafeModeToggle } from "../SafeModeToggle";
 
 type Props = {
   agent: LibraryAgent;
@@ -113,7 +112,6 @@ export function SelectedRunActions({
           shareToken={run.share_token}
         />
       )}
-      <SafeModeToggle graph={agent} fullWidth={false} />
       {canRunManually && (
         <>
           <Button

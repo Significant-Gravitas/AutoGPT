@@ -538,6 +538,7 @@ async def update_library_agent(
     library_agent_id: str,
     user_id: str,
     auto_update_version: Optional[bool] = None,
+    graph_version: Optional[int] = None,
     is_favorite: Optional[bool] = None,
     is_archived: Optional[bool] = None,
     is_deleted: Optional[Literal[False]] = None,
@@ -550,6 +551,7 @@ async def update_library_agent(
         library_agent_id: The ID of the LibraryAgent to update.
         user_id: The owner of this LibraryAgent.
         auto_update_version: Whether the agent should auto-update to active version.
+        graph_version: Specific graph version to update to.
         is_favorite: Whether this agent is marked as a favorite.
         is_archived: Whether this agent is archived.
         settings: User-specific settings for this library agent.
@@ -563,8 +565,8 @@ async def update_library_agent(
     """
     logger.debug(
         f"Updating library agent {library_agent_id} for user {user_id} with "
-        f"auto_update_version={auto_update_version}, is_favorite={is_favorite}, "
-        f"is_archived={is_archived}, settings={settings}"
+        f"auto_update_version={auto_update_version}, graph_version={graph_version}, "
+        f"is_favorite={is_favorite}, is_archived={is_archived}, settings={settings}"
     )
     update_fields: prisma.types.LibraryAgentUpdateManyMutationInput = {}
     if auto_update_version is not None:
@@ -581,10 +583,23 @@ async def update_library_agent(
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
         update_fields["settings"] = SafeJson(settings.model_dump())
-    if not update_fields:
-        raise ValueError("No values were passed to update")
 
     try:
+        # If graph_version is provided, update to that specific version
+        if graph_version is not None:
+            # Get the current agent to find its graph_id
+            agent = await get_library_agent(id=library_agent_id, user_id=user_id)
+            # Update to the specified version using existing function
+            return await update_agent_version_in_library(
+                user_id=user_id,
+                agent_graph_id=agent.graph_id,
+                agent_graph_version=graph_version,
+            )
+
+        # Otherwise, just update the simple fields
+        if not update_fields:
+            raise ValueError("No values were passed to update")
+
         n_updated = await prisma.models.LibraryAgent.prisma().update_many(
             where={"id": library_agent_id, "userId": user_id},
             data=update_fields,

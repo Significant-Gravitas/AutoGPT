@@ -257,7 +257,7 @@ async def log_search_term(search_query: str):
 
 
 async def get_store_agent_details(
-    username: str, agent_name: str
+    username: str, agent_name: str, include_changelog: bool = False
 ) -> store_model.StoreAgentDetails:
     """Get PUBLIC store agent details from the StoreAgent view"""
     logger.debug(f"Getting store agent details for {username}/{agent_name}")
@@ -322,6 +322,27 @@ async def get_store_agent_details(
         else:
             recommended_schedule_cron = None
 
+        # Fetch changelog data if requested
+        changelog_data = None
+        if include_changelog and store_listing:
+            changelog_versions = (
+                await prisma.models.StoreListingVersion.prisma().find_many(
+                    where={
+                        "storeListingId": store_listing.id,
+                        "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+                    },
+                    order=[{"version": "desc"}],
+                )
+            )
+            changelog_data = [
+                store_model.ChangelogEntry(
+                    version=str(version.version),
+                    changes_summary=version.changesSummary or "No changes recorded",
+                    date=version.createdAt,
+                )
+                for version in changelog_versions
+            ]
+
         logger.debug(f"Found agent details for {username}/{agent_name}")
         return store_model.StoreAgentDetails(
             store_listing_version_id=agent.storeListingVersionId,
@@ -338,10 +359,13 @@ async def get_store_agent_details(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
             active_version_id=active_version_id,
             has_approved_version=has_approved_version,
             recommended_schedule_cron=recommended_schedule_cron,
+            changelog=changelog_data,
         )
     except store_exceptions.AgentNotFoundError:
         raise
@@ -409,6 +433,8 @@ async def get_store_agent_by_version_id(
             runs=agent.runs,
             rating=agent.rating,
             versions=agent.versions,
+            agentGraphVersions=agent.agentGraphVersions,
+            agentGraphId=agent.agentGraphId,
             last_updated=agent.updated_at,
         )
     except store_exceptions.AgentNotFoundError:

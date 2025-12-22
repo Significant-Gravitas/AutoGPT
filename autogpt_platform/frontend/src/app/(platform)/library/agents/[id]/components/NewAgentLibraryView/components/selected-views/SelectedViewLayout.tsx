@@ -7,6 +7,7 @@ import { SectionWrap } from "../other/SectionWrap";
 interface Props {
   agent: LibraryAgent;
   children: React.ReactNode;
+  banner?: React.ReactNode;
   additionalBreadcrumb?: { name: string; link?: string };
   onSelectSettings?: () => void;
   selectedSettings?: boolean;
@@ -18,13 +19,18 @@ export function SelectedViewLayout(props: Props) {
       <div
         className={`${AGENT_LIBRARY_SECTION_PADDING_X} flex-shrink-0 border-b border-zinc-100 pb-0 lg:pb-4`}
       >
+        {props.banner && <div className="mb-4">{props.banner}</div>}
         <div className="relative flex w-fit items-center gap-2">
           <Breadcrumbs
             items={[
               { name: "My Library", link: "/library" },
               {
                 name: props.agent.name,
+                link: `/library/agents/${props.agent.id}`,
               },
+              ...(props.additionalBreadcrumb
+                ? [props.additionalBreadcrumb]
+                : []),
             ]}
           />
           {props.agent && props.onSelectSettings && (
@@ -32,6 +38,7 @@ export function SelectedViewLayout(props: Props) {
               <AgentSettingsButton
                 agent={props.agent}
                 onSelectSettings={props.onSelectSettings}
+                selected={props.selectedSettings}
               />
             </div>
           )}

@@ -22,6 +22,7 @@ interface Props {
   triggerId: string;
   onClearSelectedRun?: () => void;
   onSwitchToRunsTab?: () => void;
+  banner?: React.ReactNode;
 }
 
 export function SelectedTriggerView({
@@ -29,6 +30,7 @@ export function SelectedTriggerView({
   triggerId,
   onClearSelectedRun,
   onSwitchToRunsTab,
+  banner,
 }: Props) {
   const {
     trigger,
@@ -93,7 +95,7 @@ export function SelectedTriggerView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agent={agent}>
+        <SelectedViewLayout agent={agent} banner={banner}>
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={undefined} />
 

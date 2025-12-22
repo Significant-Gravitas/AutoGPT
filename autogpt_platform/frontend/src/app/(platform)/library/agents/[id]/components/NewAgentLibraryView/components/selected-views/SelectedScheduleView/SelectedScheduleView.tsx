@@ -20,6 +20,7 @@ interface Props {
   agent: LibraryAgent;
   scheduleId: string;
   onClearSelectedRun?: () => void;
+  banner?: React.ReactNode;
   onSelectSettings?: () => void;
   selectedSettings?: boolean;
 }
@@ -28,6 +29,7 @@ export function SelectedScheduleView({
   agent,
   scheduleId,
   onClearSelectedRun,
+  banner,
   onSelectSettings,
   selectedSettings,
 }: Props) {
@@ -76,6 +78,7 @@ export function SelectedScheduleView({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <SelectedViewLayout
           agent={agent}
+          banner={banner}
           onSelectSettings={onSelectSettings}
           selectedSettings={selectedSettings}
         >

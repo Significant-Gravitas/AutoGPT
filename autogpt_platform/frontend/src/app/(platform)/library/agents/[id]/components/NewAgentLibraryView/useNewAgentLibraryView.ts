@@ -85,7 +85,10 @@ export function useNewAgentLibraryView() {
   );
 
   // Show sidebar layout while loading or when there are items or settings is selected
-  const showSidebarLayout = useEffect(() => {
+  const showSidebarLayout =
+    sidebarLoading || hasAnyItems || activeItem === "settings";
+
+  useEffect(() => {
     if (agent) {
       document.title = `${agent.name} - Library - AutoGPT Platform`;
     }
@@ -204,8 +207,8 @@ export function useNewAgentLibraryView() {
     handleClearSelectedRun,
     handleCountsChange,
     handleSelectRun,
-    onRunInitiated,
     handleSelectSettings,
+    onRunInitiated,
     onTriggerSetup,
     onScheduleCreated,
   };

@@ -32,6 +32,7 @@ interface Props {
   runId: string;
   onSelectRun?: (id: string) => void;
   onClearSelectedRun?: () => void;
+  banner?: React.ReactNode;
   onSelectSettings?: () => void;
   selectedSettings?: boolean;
 }
@@ -41,7 +42,9 @@ export function SelectedRunView({
   runId,
   onSelectRun,
   onClearSelectedRun,
+  banner,
   onSelectSettings,
+  selectedSettings,
 }: Props) {
   const { run, preset, isLoading, responseError, httpError } =
     useSelectedRunView(agent.graph_id, runId);
@@ -81,7 +84,12 @@ export function SelectedRunView({
   return (
     <div className="flex h-full w-full gap-4">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <SelectedViewLayout agent={agent} onSelectSettings={onSelectSettings}>
+        <SelectedViewLayout
+          agent={agent}
+          banner={banner}
+          onSelectSettings={onSelectSettings}
+          selectedSettings={selectedSettings}
+        >
           <div className="flex flex-col gap-4">
             <RunDetailHeader agent={agent} run={run} />
 
@@ -105,7 +113,7 @@ export function SelectedRunView({
               )}
 
             <ScrollableTabs
-              defaultValue="output"
+              defaultValue={withReviews ? "reviews" : "output"}
               className="-mt-2 flex flex-col"
             >
               <ScrollableTabsList className="px-4">
@@ -130,20 +138,22 @@ export function SelectedRunView({
                 {/* Human-in-the-Loop Reviews Section */}
                 {withReviews && (
                   <ScrollableTabsContent value="reviews">
-                    <div id="reviews" className="scroll-mt-4 px-4">
-                      {reviewsLoading ? (
-                        <LoadingSpinner size="small" />
-                      ) : pendingReviews.length > 0 ? (
-                        <PendingReviewsList
-                          reviews={pendingReviews}
-                          onReviewComplete={refetchReviews}
-                          emptyMessage="No pending reviews for this execution"
-                        />
-                      ) : (
-                        <Text variant="body" className="text-zinc-600">
-                          No pending reviews for this execution
-                        </Text>
-                      )}
+                    <div className="scroll-mt-4">
+                      <RunDetailCard>
+                        {reviewsLoading ? (
+                          <LoadingSpinner size="small" />
+                        ) : pendingReviews.length > 0 ? (
+                          <PendingReviewsList
+                            reviews={pendingReviews}
+                            onReviewComplete={refetchReviews}
+                            emptyMessage="No pending reviews for this execution"
+                          />
+                        ) : (
+                          <Text variant="body" className="text-zinc-700">
+                            No pending reviews for this execution
+                          </Text>
+                        )}
+                      </RunDetailCard>
                     </div>
                   </ScrollableTabsContent>
                 )}

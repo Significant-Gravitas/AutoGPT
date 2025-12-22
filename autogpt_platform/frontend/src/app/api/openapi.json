@@ -5113,6 +5113,16 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Agent Name" }
+          },
+          {
+            "name": "include_changelog",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Changelog"
+            }
           }
         ],
         "responses": {
@@ -6509,6 +6519,16 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
+      },
+      "ChangelogEntry": {
+        "properties": {
+          "version": { "type": "string", "title": "Version" },
+          "changes_summary": { "type": "string", "title": "Changes Summary" },
+          "date": { "type": "string", "format": "date-time", "title": "Date" }
+        },
+        "type": "object",
+        "required": ["version", "changes_summary", "date"],
+        "title": "ChangelogEntry"
       },
       "ChatRequest": {
         "properties": {
@@ -7952,6 +7972,11 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Auto Update Version",
             "description": "Auto-update the agent version"
+          },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version",
+            "description": "Specific graph version to update to"
           },
           "is_favorite": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -9508,6 +9533,12 @@
             "type": "array",
             "title": "Versions"
           },
+          "agentGraphVersions": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Agentgraphversions"
+          },
+          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
           "last_updated": {
             "type": "string",
             "format": "date-time",
@@ -9525,6 +9556,16 @@
             "type": "boolean",
             "title": "Has Approved Version",
             "default": false
+          },
+          "changelog": {
+            "anyOf": [
+              {
+                "items": { "$ref": "#/components/schemas/ChangelogEntry" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Changelog"
           }
         },
         "type": "object",
@@ -9543,6 +9584,8 @@
           "runs",
           "rating",
           "versions",
+          "agentGraphVersions",
+          "agentGraphId",
           "last_updated"
         ],
         "title": "StoreAgentDetails"

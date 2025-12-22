@@ -374,6 +374,8 @@ def test_get_agent_details(
         runs=100,
         rating=4.5,
         versions=["1.0.0", "1.1.0"],
+        agentGraphVersions=["1", "2"],
+        agentGraphId="test-graph-id",
         last_updated=FIXED_NOW,
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_agent_details")
@@ -387,7 +389,9 @@ def test_get_agent_details(
     assert data.creator == "creator1"
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "agt_details")
-    mock_db_call.assert_called_once_with(username="creator1", agent_name="test-agent")
+    mock_db_call.assert_called_once_with(
+        username="creator1", agent_name="test-agent", include_changelog=False
+    )
 
 
 def test_get_creators_defaults(
