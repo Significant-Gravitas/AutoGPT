@@ -5,7 +5,6 @@ import {
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
 import { useGetV2GetAgentByStoreId } from "@/app/api/__generated__/endpoints/library/library";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
-import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -54,18 +53,14 @@ export const useMainAgentPage = ({
     data: libraryAgent,
     isLoading: isLibraryAgentLoading,
     isError: isLibraryAgentError,
-  } = useGetV2GetAgentByStoreId(
-    okData<StoreAgentDetails>(agent)?.active_version_id ?? "",
-    {
-      query: {
-        select: (x) => {
-          return x.data as LibraryAgent;
-        },
-        enabled:
-          !!user && !!okData<StoreAgentDetails>(agent)?.active_version_id,
+  } = useGetV2GetAgentByStoreId(okData(agent)?.active_version_id ?? "", {
+    query: {
+      select: (x) => {
+        return x.data as LibraryAgent;
       },
+      enabled: !!user && !!okData(agent)?.active_version_id,
     },
-  );
+  });
 
   const isLoading =
     isAgentLoading ||

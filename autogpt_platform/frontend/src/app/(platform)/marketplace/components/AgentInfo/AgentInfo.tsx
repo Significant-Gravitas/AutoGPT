@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { okData } from "@/app/api/helpers";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import type { ChangelogEntry } from "@/app/api/__generated__/models/changelogEntry";
+import type { GetV2GetSpecificAgentParams } from "@/app/api/__generated__/models/getV2GetSpecificAgentParams";
 import { useAgentInfo } from "./useAgentInfo";
 import { useGetV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import { Text } from "@/components/atoms/Text/Text";
@@ -59,10 +60,11 @@ export const AgentInfo = ({
   const [visibleVersionCount, setVisibleVersionCount] = React.useState(3);
 
   // Get store agent data for version history
+  const params: GetV2GetSpecificAgentParams = { include_changelog: true };
   const { data: storeAgentData } = useGetV2GetSpecificAgent(
     creatorSlug || "",
     agentSlug || "",
-    { include_changelog: true },
+    params,
     {
       query: {
         enabled: !!(creatorSlug && agentSlug),

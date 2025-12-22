@@ -3,7 +3,6 @@ import { Separator } from "@/components/__legacy__/ui/separator";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { okData } from "@/app/api/helpers";
-import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
 import { AgentImages } from "../AgentImages/AgentImage";
 import { AgentInfo } from "../AgentInfo/AgentInfo";
@@ -25,18 +24,14 @@ export function MainAgentPage({ params }: Props) {
     similarAgents,
     otherAgents,
     libraryAgent,
-  } = useMainAgentPage(params);
+  } = useMainAgentPage({ params });
 
   if (isLoading) {
     return (
       <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex h-[600px] items-center justify-center">
-            <AgentPageLoading
-              message="Discovering agent..."
-              submessage="Loading agent details"
-              className="w-full max-w-md"
-            />
+            <AgentPageLoading />
           </div>
         </main>
       </div>
@@ -61,7 +56,7 @@ export function MainAgentPage({ params }: Props) {
     );
   }
 
-  const agentData = okData<StoreAgentDetails>(agent);
+  const agentData = okData(agent);
   if (!agentData) {
     return (
       <div className="mx-auto w-full max-w-[1360px]">
