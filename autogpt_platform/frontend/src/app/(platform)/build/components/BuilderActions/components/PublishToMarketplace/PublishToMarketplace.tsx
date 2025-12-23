@@ -30,6 +30,7 @@ export const PublishToMarketplace = ({ flowID }: { flowID: string | null }) => {
         targetState={publishState}
         onStateChange={handleStateChange}
         preSelectedAgentId={flowID || undefined}
+        showTrigger={false}
       />
     </>
   );
