@@ -7,6 +7,7 @@ import { widgets } from "./widgets";
 import { preprocessInputSchema } from "./utils/input-schema-pre-processor";
 import { useMemo } from "react";
 import { customValidator } from "./utils/custom-validator";
+import { isLlmModelFieldSchema } from "./fields/LlmModelField/LlmModelField";
 
 type FormContextType = {
   nodeId?: string;
@@ -33,6 +34,14 @@ export const FormRenderer = ({
   const preprocessedSchema = useMemo(() => {
     return preprocessInputSchema(jsonSchema);
   }, [jsonSchema]);
+
+  const llmModelUiSchema = useMemo(() => {
+    return buildLlmModelUiSchema(preprocessedSchema);
+  }, [preprocessedSchema]);
+
+  const mergedUiSchema = useMemo(() => {
+    return mergeUiSchema(uiSchema, llmModelUiSchema);
+  }, [uiSchema, llmModelUiSchema]);
   return (
     <div className={"mt-4"}>
       <Form
@@ -43,7 +52,7 @@ export const FormRenderer = ({
         widgets={widgets}
         formContext={formContext}
         onChange={handleChange}
-        uiSchema={uiSchema}
+        uiSchema={mergedUiSchema}
         formData={initialValues}
         noValidate={true}
         liveValidate={false}
@@ -51,3 +60,51 @@ export const FormRenderer = ({
     </div>
   );
 };
+
+function buildLlmModelUiSchema(schema: RJSFSchema): Record<string, any> {
+  if (!schema || typeof schema !== "object") {
+    return {};
+  }
+
+  if (isLlmModelFieldSchema(schema)) {
+    return { "ui:field": "llmModel" };
+  }
+
+  const result: Record<string, any> = {};
+
+  if (schema.type === "object" && schema.properties) {
+    for (const [key, property] of Object.entries(schema.properties)) {
+      if (property && typeof property === "object") {
+        const nestedSchema = buildLlmModelUiSchema(property as RJSFSchema);
+        if (Object.keys(nestedSchema).length > 0) {
+          result[key] = nestedSchema;
+        }
+      }
+    }
+  }
+
+  if (schema.type === "array" && schema.items) {
+    const nestedSchema = buildLlmModelUiSchema(schema.items as RJSFSchema);
+    if (Object.keys(nestedSchema).length > 0) {
+      result.items = nestedSchema;
+    }
+  }
+
+  return result;
+}
+
+function mergeUiSchema(base: any, overrides: any): any {
+  if (!overrides || typeof overrides !== "object") {
+    return base ?? overrides;
+  }
+
+  const result: Record<string, any> = { ...(base || {}) };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      result[key] = mergeUiSchema((base || {})[key], value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
