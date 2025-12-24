@@ -6,10 +6,10 @@ import {
   StrictRJSFSchema,
   TranslatableString,
   WrapIfAdditionalTemplateProps,
-} from '@rjsf/utils';
+} from "@rjsf/utils";
 
-import { Input } from '../components/ui/input';
-import { Separator } from '../components/ui/separator';
+import { Input } from "@/components/__legacy__/ui/input";
+import { Separator } from "@/components/__legacy__/ui/separator";
 
 /** The `WrapIfAdditional` component is used by the `FieldTemplate` to rename, or remove properties that are
  * part of an `additionalProperties` part of a schema.
@@ -57,15 +57,21 @@ export default function WrapIfAdditionalTemplate<
 
   return (
     <>
-      <div className={`grid grid-cols-12 col-span-12 items-center gap-2 ${classNames}`} style={style}>
-        <div className='grid gap-2 col-span-5'>
-          <div className='flex flex-col gap-2'>
+      <div
+        className={`col-span-12 grid grid-cols-12 items-center gap-2 ${classNames}`}
+        style={style}
+      >
+        <div className="col-span-5 grid gap-2">
+          <div className="flex flex-col gap-2">
             {displayLabel && (
-              <label htmlFor={keyId} className='text-sm font-medium text-muted-foreground leading-none'>
+              <label
+                htmlFor={keyId}
+                className="text-sm font-medium leading-none text-muted-foreground"
+              >
                 {keyLabel}
               </label>
             )}
-            <div className='pl-0.5'>
+            <div className="pl-0.5">
               <Input
                 required={required}
                 defaultValue={label}
@@ -73,23 +79,26 @@ export default function WrapIfAdditionalTemplate<
                 id={keyId}
                 name={keyId}
                 onBlur={!readonly ? onKeyRenameBlur : undefined}
-                type='text'
-                className='w-full border shadow-sm'
+                type="text"
+                className="w-full border shadow-sm"
               />
             </div>
             {!!rawDescription && (
-              <span className='text-xs font-medium text-muted-foreground'>
-                <div className='text-sm text-muted-foreground'>&nbsp;</div>
+              <span className="text-xs font-medium text-muted-foreground">
+                <div className="text-sm text-muted-foreground">&nbsp;</div>
               </span>
             )}
           </div>
         </div>
-        <div className='grid gap-2 col-span-6 pr-0.5'>{children}</div>
-        <div className='grid gap-2 col-span-1' style={{ marginTop: `${margin}px` }}>
+        <div className="col-span-6 grid gap-2 pr-0.5">{children}</div>
+        <div
+          className="col-span-1 grid gap-2"
+          style={{ marginTop: `${margin}px` }}
+        >
           <RemoveButton
-            id={buttonId(id, 'remove')}
-            iconType='block'
-            className='rjsf-object-property-remove w-full'
+            id={buttonId(id, "remove")}
+            iconType="block"
+            className="rjsf-object-property-remove w-full"
             disabled={disabled || readonly}
             onClick={onRemoveProperty}
             uiSchema={uiSchema}
@@ -97,7 +106,7 @@ export default function WrapIfAdditionalTemplate<
           />
         </div>
       </div>
-      <Separator dir='horizontal' className='mt-2' />
+      <Separator dir="horizontal" className="mt-2" />
     </>
   );
 }

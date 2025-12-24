@@ -13,7 +13,6 @@ export default function TitleField<
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
 >({ id, title, required, schema }: TitleFieldProps<T, S, F>) {
-  const type = schema.type;
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
   return (
     <div className="flex items-center gap-1">

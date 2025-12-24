@@ -4,14 +4,14 @@ import {
   RJSFSchema,
   StrictRJSFSchema,
 } from "@rjsf/utils";
-import CheckboxWidget from "../CheckboxWidget/CheckboxWidget";
-import CheckboxesWidget from "../CheckboxesWidget/CheckboxesWidget";
-import RadioWidget from "../RadioWidget/RadioWidget";
-import RangeWidget from "../RangeWidget/RangeWidget";
-import SelectWidget from "../SelectWidget/SelectWidget";
-import TextareaWidget from "../TextareaWidget/TextareaWidget";
-import TextInputWidget from "../TextInputWidget/TextInputWidget";
+import TextWidget from "./components/TextWidget/TextWidget";
 import { ExtendedFormContextType } from "../types";
+import { FileWidget } from "./components/FileWidget/FileWidget";
+import { DateWidget } from "./components/DateWidget/DateWidget";
+import { TimeWidget } from "./components/TimeWidget/TimeWidget";
+import { DateTimeWidget } from "./components/DateTimeWidget/DateTimeWidget";
+import { SelectWidget } from "./components/SelectWidget/SelectWidget";
+import { CheckboxWidget } from "./components/CheckBoxWidget/CheckBoxWidget";
 
 export function generateWidgets<
   T = any,
@@ -19,13 +19,13 @@ export function generateWidgets<
   F extends FormContextType = ExtendedFormContextType,
 >(): RegistryWidgetsType<T, S, F> {
   return {
-    CheckboxWidget,
-    CheckboxesWidget,
-    RadioWidget,
-    RangeWidget,
+    TextWidget,
     SelectWidget,
-    TextareaWidget,
-    TextWidget: TextInputWidget,
+    CheckboxWidget,
+    FileWidget,
+    DateWidget,
+    TimeWidget,
+    DateTimeWidget,
   };
 }
 

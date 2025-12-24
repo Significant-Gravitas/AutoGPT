@@ -7,13 +7,11 @@ import {
 import AddButton from "../AddButton";
 import ArrayFieldItemTemplate from "../ArrayFieldItemTemplate";
 import ArrayFieldTemplate from "../ArrayFieldTemplate";
-import BaseInputTemplate from "../BaseInputTemplate/BaseInputTemplate";
 import DescriptionField from "../DescriptionField";
 import ErrorList from "../ErrorList";
 import FieldErrorTemplate from "../FieldErrorTemplate";
 import FieldHelpTemplate from "../FieldHelpTemplate";
 import FieldTemplate from "../FieldTemplate";
-import GridTemplate from "../GridTemplate";
 import { CopyButton, RemoveButton } from "../IconButton";
 import MultiSchemaFieldTemplate from "../MultiSchemaFieldTemplate";
 import ObjectFieldTemplate from "../ObjectFieldTemplate";
@@ -31,7 +29,6 @@ export function generateTemplates<
   return {
     ArrayFieldItemTemplate,
     ArrayFieldTemplate,
-    BaseInputTemplate,
     ButtonTemplates: {
       AddButton,
       CopyButton,
@@ -41,11 +38,10 @@ export function generateTemplates<
       SubmitButton: NoButton,
     },
     DescriptionFieldTemplate: DescriptionField,
-    ErrorListTemplate: ErrorList,
+    // ErrorListTemplate: ErrorList,
     FieldErrorTemplate,
     FieldHelpTemplate,
     FieldTemplate,
-    GridTemplate,
     MultiSchemaFieldTemplate,
     ObjectFieldTemplate,
     OptionalDataControlsTemplate,

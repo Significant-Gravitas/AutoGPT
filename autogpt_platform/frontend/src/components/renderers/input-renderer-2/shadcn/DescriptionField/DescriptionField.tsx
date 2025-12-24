@@ -13,10 +13,6 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
-/** The `DescriptionField` is the template to use to render the description of a field
- *
- * @param props - The `DescriptionFieldProps` for this component
- */
 export default function DescriptionField<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
@@ -27,7 +23,7 @@ export default function DescriptionField<
   }
 
   return (
-    <div id={id} className="inline w-fit bg-red-500">
+    <div id={id} className="0 inline w-fit">
       <Tooltip>
         <TooltipTrigger asChild>
           <InfoIcon size={16} className="cursor-pointer" />

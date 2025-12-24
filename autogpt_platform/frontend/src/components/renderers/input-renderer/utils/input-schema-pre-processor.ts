@@ -27,13 +27,17 @@ export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
           !processedProperty.allOf
         ) {
           processedProperty.anyOf = [
-            { type: "string" },
-            { type: "number" },
-            { type: "integer" },
-            { type: "boolean" },
-            { type: "array", items: { type: "string" } },
-            { type: "object" },
-            { type: "null" },
+            { type: "string", title: "String" },
+            { type: "number", title: "Number" },
+            { type: "integer", title: "Integer" },
+            { type: "boolean", title: "Boolean" },
+            {
+              type: "array",
+              items: { type: "string" },
+              title: "Array",
+            },
+            { type: "object", title: "Object" },
+            { type: "null", title: "Null" },
           ];
         }
 

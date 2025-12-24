@@ -7,8 +7,6 @@ import {
   StrictRJSFSchema,
 } from "@rjsf/utils";
 
-import { cn } from "../lib/utils";
-
 /** The `FieldTemplate` component is the template used by `SchemaField` to render any field. It renders the field
  * content, (label, description, children, errors and help) inside a `WrapIfAdditional` component.
  *
@@ -22,7 +20,6 @@ export default function FieldTemplate<
   id,
   children,
   displayLabel,
-  rawErrors = [],
   errors,
   help,
   description,
@@ -57,7 +54,6 @@ export default function FieldTemplate<
     uiOptions,
   );
 
-  const isCheckbox = uiOptions.widget === "checkbox";
   return (
     <WrapIfAdditionalTemplate
       classNames={classNames}
@@ -87,9 +83,7 @@ export default function FieldTemplate<
               registry={registry}
             />
           )}
-          {displayLabel && rawDescription && !isCheckbox && (
-            <span>{description}</span>
-          )}
+          {displayLabel && rawDescription && <span>{description}</span>}
         </div>
 
         {children}
