@@ -170,6 +170,29 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     V0_1_5_LG = "v0-1.5-lg"
     V0_1_0_MD = "v0-1.0-md"
 
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        json_schema = handler(schema)
+        #TODO this may need to be updated once we have model registry
+        llm_model_metadata = {}
+        for model in cls:
+            model_name = model.value
+            provider = model.metadata.provider
+            if "/" in model_name:
+                creator, title = model_name.split("/", 1)
+            else:
+                creator = provider
+                title = model_name
+            llm_model_metadata[model_name] = {
+                "creator": creator,
+                "title": title,
+                "provider": provider,
+                "name": model_name,
+            }
+        json_schema["llm_model"] = True
+        json_schema["llm_model_metadata"] = llm_model_metadata
+        return json_schema
+
     @property
     def metadata(self) -> ModelMetadata:
         return MODEL_METADATA[self]
