@@ -49,6 +49,91 @@ AnyProviderName = str  # Will be validated as ProviderName at runtime
 USER_TIMEZONE_NOT_SET = "not-set"
 
 
+# ============================================================================
+# JSON Schema Extra TypedDict definitions
+# These provide structured type hints for the json_schema_extra field used in
+# SchemaField and CredentialsField to ensure consistency across the codebase.
+# ============================================================================
+
+
+class AutoCredentialsConfig(TypedDict, total=False):
+    """Configuration for auto-credentials injection on input fields.
+
+    Used to automatically inject credentials into a field based on the provider
+    and authentication type without requiring explicit credential selection.
+    """
+
+    provider: str
+    """The provider name (e.g., 'google', 'github')"""
+    type: str
+    """The authentication type (e.g., 'oauth2', 'api_key')"""
+    scopes: list[str]
+    """OAuth2 scopes required for the credentials"""
+    kwarg_name: str
+    """The keyword argument name to inject credentials as"""
+
+
+class GoogleDrivePickerConfig(TypedDict, total=False):
+    """Configuration for Google Drive file picker component.
+
+    Controls the behavior and appearance of the Google Drive picker
+    in the frontend.
+    """
+
+    allowed_mime_types: list[str]
+    """List of allowed MIME types for file selection"""
+    auto_credentials: AutoCredentialsConfig
+    """Credentials configuration for Google Drive access"""
+
+
+class FieldSchemaExtra(TypedDict, total=False):
+    """Extended schema metadata for input/output fields.
+
+    This TypedDict defines all valid keys that can appear in the
+    json_schema_extra parameter of SchemaField and CredentialsField.
+    """
+
+    # Display and UI hints
+    placeholder: str
+    """Placeholder text shown in empty input fields"""
+    secret: bool
+    """Whether this field contains sensitive data (masks input)"""
+    advanced: bool
+    """Whether this is an advanced option (hidden by default in UI)"""
+    hidden: bool
+    """Whether this field should be completely hidden from the UI"""
+    format: str
+    """Custom format hint for rendering (e.g., 'google-drive-picker')"""
+
+    # Field dependencies
+    depends_on: list[str]
+    """List of field names this field depends on"""
+
+    # Credentials configuration (used by CredentialsField)
+    credentials_provider: list[str]
+    """List of provider names that can supply credentials for this field"""
+    credentials_types: list[str]
+    """List of credential types accepted (e.g., ['oauth2', 'api_key'])"""
+    credentials_scopes: list[str]
+    """Required OAuth2 scopes for credentials"""
+
+    # Discriminator configuration for union types
+    discriminator: str
+    """Discriminator field name for union types"""
+    discriminator_mapping: dict[str, Any]
+    """Mapping of discriminator values to types"""
+    discriminator_values: set[Any]
+    """Set of valid discriminator values"""
+
+    # Auto-credentials for fields that implicitly need credentials
+    auto_credentials: AutoCredentialsConfig
+    """Configuration for automatic credential injection"""
+
+    # Google Drive specific
+    google_drive_picker_config: GoogleDrivePickerConfig
+    """Configuration for Google Drive picker component"""
+
+
 class User(BaseModel):
     """Application-layer User model with snake_case convention."""
 
@@ -272,8 +357,14 @@ def SchemaField(
     max_length: Optional[int] = None,
     discriminator: Optional[str] = None,
     format: Optional[str] = None,
-    json_schema_extra: Optional[dict[str, Any]] = None,
+    json_schema_extra: dict[str, Any] | None = None,
 ) -> T:
+    """Create a schema field with extended metadata.
+
+    Args:
+        json_schema_extra: Additional schema metadata. See FieldSchemaExtra for
+            documented keys, but any dict with string keys is accepted.
+    """
     if default is PydanticUndefined and default_factory is None:
         advanced = False
     elif advanced is None:
@@ -686,14 +777,21 @@ def CredentialsField(
     discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
+    json_schema_extra: dict[str, Any] | None = None,
     **kwargs,
 ) -> CredentialsMetaInput:
-    """
-    `CredentialsField` must and can only be used on fields named `credentials`.
+    """Create a credentials field with extended metadata.
+
+    Args:
+        json_schema_extra: Additional schema metadata. See FieldSchemaExtra for
+            documented keys, but any dict with string keys is accepted.
+
+    Note:
+        `CredentialsField` must and can only be used on fields named `credentials`.
     This is enforced by the `BlockSchema` base class.
     """
 
-    field_schema_extra = {
+    field_schema_extra: dict[str, Any] = {
         k: v
         for k, v in {
             "credentials_scopes": list(required_scopes) or None,
@@ -704,10 +802,9 @@ def CredentialsField(
         if v is not None
     }
 
-    # Merge any json_schema_extra passed in kwargs
-    if "json_schema_extra" in kwargs:
-        extra_schema = kwargs.pop("json_schema_extra")
-        field_schema_extra.update(extra_schema)
+    # Merge any json_schema_extra passed as parameter
+    if json_schema_extra:
+        field_schema_extra.update(json_schema_extra)
 
     return Field(
         title=title,
