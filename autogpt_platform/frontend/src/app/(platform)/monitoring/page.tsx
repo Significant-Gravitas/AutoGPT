@@ -7,6 +7,7 @@ import {
   useGetV1ListExecutionSchedulesForAUser,
   useDeleteV1DeleteExecutionSchedule,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { okData } from "@/app/api/helpers";
 
 import { Card } from "@/components/__legacy__/ui/card";
 import { SchedulesTable } from "@/app/(platform)/monitoring/components/SchedulesTable";
@@ -34,8 +35,7 @@ const Monitor = () => {
     useGetV1ListExecutionSchedulesForAUser();
   const deleteScheduleMutation = useDeleteV1DeleteExecutionSchedule();
 
-  const schedules =
-    schedulesResponse?.status === 200 ? schedulesResponse.data : [];
+  const schedules = okData(schedulesResponse) ?? [];
 
   const removeSchedule = useCallback(
     async (scheduleId: string) => {

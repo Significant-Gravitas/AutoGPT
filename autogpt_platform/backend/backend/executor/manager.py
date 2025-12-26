@@ -48,27 +48,8 @@ from backend.data.notifications import (
     ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
-from backend.executor.activity_status_generator import (
-    generate_activity_status_for_execution,
-)
-from backend.executor.utils import (
-    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
-    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-    GRAPH_EXECUTION_EXCHANGE,
-    GRAPH_EXECUTION_QUEUE_NAME,
-    GRAPH_EXECUTION_ROUTING_KEY,
-    CancelExecutionEvent,
-    ExecutionOutputEntry,
-    LogMetadata,
-    NodeExecutionProgress,
-    block_usage_cost,
-    create_execution_queue_config,
-    execution_usage_cost,
-    validate_exec,
-)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.notifications.notifications import queue_notification
-from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -95,7 +76,24 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
+from .activity_status_generator import generate_activity_status_for_execution
+from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .utils import (
+    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
+    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_EXCHANGE,
+    GRAPH_EXECUTION_QUEUE_NAME,
+    GRAPH_EXECUTION_ROUTING_KEY,
+    CancelExecutionEvent,
+    ExecutionOutputEntry,
+    LogMetadata,
+    NodeExecutionProgress,
+    block_usage_cost,
+    create_execution_queue_config,
+    execution_usage_cost,
+    validate_exec,
+)
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
@@ -167,9 +165,8 @@ def execute_graph(
     cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
-    return _tls.processor.on_graph_execution(
-        graph_exec_entry, cancel_event, cluster_lock
-    )
+    processor: ExecutionProcessor = _tls.processor
+    return processor.on_graph_execution(graph_exec_entry, cancel_event, cluster_lock)
 
 
 T = TypeVar("T")
@@ -177,8 +174,8 @@ T = TypeVar("T")
 
 async def execute_node(
     node: Node,
-    creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
+    execution_processor: "ExecutionProcessor",
     execution_stats: NodeExecutionStats | None = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
 ) -> BlockOutput:
@@ -203,6 +200,7 @@ async def execute_node(
     node_id = data.node_id
     node_block = node.block
     execution_context = data.execution_context
+    creds_manager = execution_processor.creds_manager
 
     log_metadata = LogMetadata(
         logger=_logger,
@@ -246,6 +244,7 @@ async def execute_node(
         "node_exec_id": node_exec_id,
         "user_id": user_id,
         "execution_context": execution_context,
+        "execution_processor": execution_processor,
     }
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
@@ -642,8 +641,8 @@ class ExecutionProcessor:
 
             async for output_name, output_data in execute_node(
                 node=node,
-                creds_manager=self.creds_manager,
                 data=node_exec,
+                execution_processor=self,
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
             ):
@@ -894,11 +893,16 @@ class ExecutionProcessor:
         execution_stats_lock = threading.Lock()
 
         # State holders ----------------------------------------------------
-        running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
+        self.running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
             NodeExecutionProgress
         )
-        running_node_evaluation: dict[str, Future] = {}
+        self.running_node_evaluation: dict[str, Future] = {}
+        self.execution_stats = execution_stats
+        self.execution_stats_lock = execution_stats_lock
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
+
+        running_node_execution = self.running_node_execution
+        running_node_evaluation = self.running_node_evaluation
 
         try:
             if db_client.get_credits(graph_exec.user_id) <= 0:

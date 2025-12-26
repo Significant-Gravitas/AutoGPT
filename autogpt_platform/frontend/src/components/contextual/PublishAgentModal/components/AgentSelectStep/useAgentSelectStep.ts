@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
+import { okData } from "@/app/api/helpers";
 
 export interface Agent {
   name: string;
@@ -36,27 +37,33 @@ export function useAgentSelectStep({
     number | null
   >(null);
 
-  const { data: myAgents, isLoading, error } = useGetV2GetMyAgents();
-
-  const agents: Agent[] =
-    (myAgents?.status === 200 &&
-      myAgents.data.agents
-        .map(
-          (agent): Agent => ({
-            name: agent.agent_name,
-            id: agent.agent_id,
-            version: agent.agent_version,
-            lastEdited: agent.last_edited.toLocaleDateString(),
-            imageSrc: agent.agent_image || "https://picsum.photos/300/200",
-            description: agent.description || "",
-            recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
-          }),
-        )
-        .sort(
-          (a: Agent, b: Agent) =>
-            new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime(),
-        )) ||
-    [];
+  const {
+    data: _myAgents,
+    isLoading,
+    error,
+  } = useGetV2GetMyAgents(undefined, {
+    query: {
+      select: (res) =>
+        okData(res)
+          ?.agents.map(
+            (agent): Agent => ({
+              name: agent.agent_name,
+              id: agent.agent_id,
+              version: agent.agent_version,
+              lastEdited: agent.last_edited.toLocaleDateString(),
+              imageSrc: agent.agent_image || "https://picsum.photos/300/200",
+              description: agent.description || "",
+              recommendedScheduleCron: agent.recommended_schedule_cron ?? null,
+            }),
+          )
+          .sort(
+            (a: Agent, b: Agent) =>
+              new Date(b.lastEdited).getTime() -
+              new Date(a.lastEdited).getTime(),
+          ),
+    },
+  });
+  const myAgents = _myAgents ?? [];
 
   const handleAgentClick = (
     _: string,
@@ -70,7 +77,7 @@ export function useAgentSelectStep({
 
   const handleNext = () => {
     if (selectedAgentId && selectedAgentVersion) {
-      const selectedAgent = agents.find(
+      const selectedAgent = myAgents.find(
         (agent) => agent.id === selectedAgentId,
       );
       if (selectedAgent) {
@@ -86,7 +93,7 @@ export function useAgentSelectStep({
 
   return {
     // Data
-    agents,
+    myAgents,
     isLoading,
     error,
     // State

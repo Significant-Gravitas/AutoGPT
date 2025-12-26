@@ -7,6 +7,7 @@ import { ActionButtons } from "./components/ActionButtons";
 
 export interface ErrorCardProps {
   isSuccess?: boolean;
+  isOurProblem?: boolean;
   responseError?: {
     detail?: Array<{ msg: string }> | string;
     message?: string;
@@ -17,15 +18,18 @@ export interface ErrorCardProps {
     message?: string;
   };
   context?: string;
+  hint?: string;
   onRetry?: () => void;
   className?: string;
 }
 
 export function ErrorCard({
   isSuccess = false,
+  isOurProblem = true,
   responseError,
   httpError,
   context = "data",
+  hint,
   onRetry,
   className = "",
 }: ErrorCardProps) {
@@ -50,13 +54,19 @@ export function ErrorCard({
     <CardWrapper className={className}>
       <div className="relative space-y-4 p-6">
         <ErrorHeader />
-        <ErrorMessage errorMessage={errorMessage} context={context} />
-        <ActionButtons
-          onRetry={onRetry}
-          responseError={responseError}
-          httpError={httpError}
+        <ErrorMessage
+          errorMessage={errorMessage}
           context={context}
+          hint={hint}
         />
+        {isOurProblem && (
+          <ActionButtons
+            onRetry={onRetry}
+            responseError={responseError}
+            httpError={httpError}
+            context={context}
+          />
+        )}
       </div>
     </CardWrapper>
   );
