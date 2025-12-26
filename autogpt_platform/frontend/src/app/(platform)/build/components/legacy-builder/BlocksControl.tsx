@@ -12,7 +12,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { Block, BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
+import {
+  Block,
+  BlockIORootSchema,
+  BlockUIType,
+  GraphInputSchema,
+  GraphOutputSchema,
+  SpecialBlockID,
+} from "@/lib/autogpt-server-api";
 import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
 import { IconToyBrick } from "@/components/__legacy__/ui/icons";
 import { getPrimaryCategoryColor } from "@/lib/utils";
@@ -24,8 +31,10 @@ import {
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import jaro from "jaro-winkler";
 
-type _Block = Block & {
+type _Block = Omit<Block, "inputSchema" | "outputSchema"> & {
   uiKey?: string;
+  inputSchema: BlockIORootSchema | GraphInputSchema;
+  outputSchema: BlockIORootSchema | GraphOutputSchema;
   hardcodedValues?: Record<string, any>;
   _cached?: {
     blockName: string;

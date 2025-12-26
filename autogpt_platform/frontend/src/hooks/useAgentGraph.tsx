@@ -233,6 +233,7 @@ export default function useAgentGraph(
         title: `${block.name} ${node.id}`,
         inputSchema: block.inputSchema,
         outputSchema: block.outputSchema,
+        isOutputStatic: block.staticOutput,
         hardcodedValues: node.input_default,
         uiType: block.uiType,
         metadata: metadata,
