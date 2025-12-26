@@ -910,6 +910,13 @@ class UserCredit(UserCreditBase):
             metadata=successful_transaction,
         )
 
+        # Clear insufficient funds notification flags so user can receive
+        # Discord alerts again if they run out of funds in the future.
+        # Lazy import to avoid circular dependency with executor.manager
+        from backend.executor.manager import clear_insufficient_funds_notifications
+
+        clear_insufficient_funds_notifications(user_id)
+
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         if amount < 500 or amount % 100 != 0:
             raise ValueError(
@@ -1007,6 +1014,13 @@ class UserCredit(UserCreditBase):
                 user_id=credit_transaction.userId,
                 metadata=SafeJson(checkout_session),
             )
+
+            # Clear insufficient funds notification flags so user can receive
+            # Discord alerts again if they run out of funds in the future.
+            # Lazy import to avoid circular dependency with executor.manager
+            from backend.executor.manager import clear_insufficient_funds_notifications
+
+            clear_insufficient_funds_notifications(credit_transaction.userId)
 
     async def get_credits(self, user_id: str) -> int:
         balance, _ = await self._get_credits(user_id)
