@@ -4,13 +4,12 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTimeAgo } from "@/lib/utils/time";
 import {
-  CheckCircle,
-  CircleDashed,
-  CircleNotch,
-  Clock,
-  Eye,
-  StopCircle,
-  WarningOctagon,
+  CheckCircleIcon,
+  ClockIcon,
+  StopCircleIcon,
+  WarningIcon,
+  SpinnerIcon,
+  MinusCircleIcon,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import type { AgentExecutionWithInfo } from "../helpers";
@@ -24,68 +23,68 @@ export function ActivityItem({ execution }: Props) {
   function getStatusIcon() {
     switch (execution.status) {
       case AgentExecutionStatus.QUEUED:
-        return <Clock size={18} className="text-purple-500" />;
+        return <ClockIcon size={18} className="text-purple-500" />;
       case AgentExecutionStatus.RUNNING:
         return (
-          <CircleNotch
-            size={18}
-            className="animate-spin text-purple-500"
-            weight="bold"
-          />
+          <SpinnerIcon size={18} className="animate-spin text-purple-500" />
         );
       case AgentExecutionStatus.COMPLETED:
-        return (
-          <CheckCircle size={18} weight="fill" className="text-purple-500" />
-        );
+        return <CheckCircleIcon size={18} className="text-purple-500" />;
       case AgentExecutionStatus.FAILED:
-        return <WarningOctagon size={18} className="text-purple-500" />;
+        return <WarningIcon size={18} className="text-purple-500" />;
       case AgentExecutionStatus.TERMINATED:
-        return (
-          <StopCircle size={18} className="text-purple-500" weight="fill" />
-        );
+        return <StopCircleIcon size={18} className="text-purple-500" />;
       case AgentExecutionStatus.INCOMPLETE:
-        return <CircleDashed size={18} className="text-purple-500" />;
+        return <MinusCircleIcon size={18} className="text-purple-500" />;
       case AgentExecutionStatus.REVIEW:
-        return <Eye size={18} className="text-purple-500" weight="bold" />;
+        return <WarningIcon size={18} className="text-yellow-600" />;
       default:
         return null;
     }
   }
 
-  function getTimeDisplay() {
+  function getItemDisplay() {
+    // Handle active statuses (running/queued)
     const isActiveStatus =
       execution.status === AgentExecutionStatus.RUNNING ||
-      execution.status === AgentExecutionStatus.QUEUED ||
-      execution.status === AgentExecutionStatus.REVIEW;
+      execution.status === AgentExecutionStatus.QUEUED;
 
     if (isActiveStatus) {
       const timeAgo = formatTimeAgo(execution.started_at.toString());
-      let statusText = "running";
-      if (execution.status === AgentExecutionStatus.QUEUED) {
-        statusText = "queued";
-      }
-      return `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`;
+      const statusText =
+        execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
+      return [
+        `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`,
+      ];
     }
 
-    if (execution.ended_at) {
-      const timeAgo = formatTimeAgo(execution.ended_at.toString());
-      switch (execution.status) {
-        case AgentExecutionStatus.COMPLETED:
-          return `Completed ${timeAgo}`;
-        case AgentExecutionStatus.FAILED:
-          return `Failed ${timeAgo}`;
-        case AgentExecutionStatus.TERMINATED:
-          return `Stopped ${timeAgo}`;
-        case AgentExecutionStatus.INCOMPLETE:
-          return `Incomplete ${timeAgo}`;
-        case AgentExecutionStatus.REVIEW:
-          return `In review ${timeAgo}`;
-        default:
-          return `Ended ${timeAgo}`;
-      }
+    // Handle all other statuses with time display
+    const timeAgo = execution.ended_at
+      ? formatTimeAgo(execution.ended_at.toString())
+      : formatTimeAgo(execution.started_at.toString());
+
+    let statusText = "ended";
+    switch (execution.status) {
+      case AgentExecutionStatus.COMPLETED:
+        statusText = "completed";
+        break;
+      case AgentExecutionStatus.FAILED:
+        statusText = "failed";
+        break;
+      case AgentExecutionStatus.TERMINATED:
+        statusText = "stopped";
+        break;
+      case AgentExecutionStatus.INCOMPLETE:
+        statusText = "incomplete";
+        break;
+      case AgentExecutionStatus.REVIEW:
+        statusText = "awaiting approval";
+        break;
     }
 
-    return "Unknown";
+    return [
+      `${statusText.charAt(0).toUpperCase() + statusText.slice(1)} ${timeAgo}`,
+    ];
   }
 
   // Determine the tab based on execution status
@@ -101,20 +100,22 @@ export function ActivityItem({ execution }: Props) {
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-2">
         {getStatusIcon()}
-        <Text
-          variant="body-medium"
-          className="max-w-[16rem] truncate text-gray-900"
-        >
+        <Text variant="body-medium" className="max-w-44 truncate text-gray-900">
           {execution.agent_name}
         </Text>
       </div>
 
       {/* Agent Message - Indented */}
       <div className="ml-7 pt-1">
-        {/* Time - Indented */}
-        <Text variant="small" className="!text-zinc-500">
-          {getTimeDisplay()}
-        </Text>
+        {getItemDisplay().map((line, index) => (
+          <Text
+            key={index}
+            variant="small"
+            className={index === 0 ? "!text-zinc-600" : "!text-zinc-500"}
+          >
+            {line}
+          </Text>
+        ))}
       </div>
     </>
   );

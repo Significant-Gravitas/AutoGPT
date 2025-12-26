@@ -61,6 +61,12 @@ model User {
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
+
+  // OAuth Provider relations
+  OAuthApplications       OAuthApplication[]
+  OAuthAuthorizationCodes OAuthAuthorizationCode[]
+  OAuthAccessTokens       OAuthAccessToken[]
+  OAuthRefreshTokens      OAuthRefreshToken[]
 }
 
 enum OnboardingStep {
@@ -728,11 +734,13 @@ view StoreAgent {
   description      String
   categories       String[]
   search           Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
-  runs             Int
-  rating           Float
-  versions         String[]
-  is_available     Boolean                  @default(true)
-  useForOnboarding Boolean                  @default(false)
+  runs                Int
+  rating              Float
+  versions            String[]
+  agentGraphVersions  String[]
+  agentGraphId        String
+  is_available        Boolean                  @default(true)
+  useForOnboarding    Boolean                  @default(false)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -924,6 +932,7 @@ enum SubmissionStatus {
 }
 
 enum APIKeyPermission {
+  IDENTITY // Info about the authenticated user
   EXECUTE_GRAPH // Can execute agent graphs
   READ_GRAPH // Can get graph versions and details
   EXECUTE_BLOCK // Can execute individual blocks
@@ -974,4 +983,114 @@ enum APIKeyStatus {
   ACTIVE
   REVOKED
   SUSPENDED
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////////   OAUTH PROVIDER TABLES    //////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+// OAuth2 applications that can access AutoGPT on behalf of users
+model OAuthApplication {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Application metadata
+  name               String
+  description        String?
+  logoUrl            String? // URL to app logo stored in GCS
+  clientId           String @unique
+  clientSecret       String // Hashed with Scrypt (same as API keys)
+  clientSecretSalt   String // Salt for Scrypt hashing
+
+  // OAuth configuration
+  redirectUris String[] // Allowed callback URLs
+  grantTypes   String[] @default(["authorization_code", "refresh_token"])
+  scopes       APIKeyPermission[] // Which permissions the app can request
+
+  // Application management
+  ownerId  String
+  Owner    User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  isActive Boolean @default(true)
+
+  // Relations
+  AuthorizationCodes OAuthAuthorizationCode[]
+  AccessTokens       OAuthAccessToken[]
+  RefreshTokens      OAuthRefreshToken[]
+
+  @@index([clientId])
+  @@index([ownerId])
+}
+
+// Temporary authorization codes (10 min TTL)
+model OAuthAuthorizationCode {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime // Now + 10 minutes
+
+  applicationId String
+  Application   OAuthApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scopes      APIKeyPermission[]
+  redirectUri String // Must match one from application
+
+  // PKCE (Proof Key for Code Exchange) support
+  codeChallenge       String?
+  codeChallengeMethod String? // "S256" or "plain"
+
+  usedAt DateTime? // Set when code is consumed
+
+  @@index([code])
+  @@index([applicationId, userId])
+  @@index([expiresAt]) // For cleanup
+}
+
+// Access tokens (1 hour TTL)
+model OAuthAccessToken {
+  id        String   @id @default(uuid())
+  token     String   @unique // SHA256 hash of plaintext token
+  createdAt DateTime @default(now())
+  expiresAt DateTime // Now + 1 hour
+
+  applicationId String
+  Application   OAuthApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scopes APIKeyPermission[]
+
+  revokedAt DateTime? // Set when token is revoked
+
+  @@index([token]) // For token lookup
+  @@index([userId, applicationId])
+  @@index([expiresAt]) // For cleanup
+}
+
+// Refresh tokens (30 days TTL)
+model OAuthRefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique // SHA256 hash of plaintext token
+  createdAt DateTime @default(now())
+  expiresAt DateTime // Now + 30 days
+
+  applicationId String
+  Application   OAuthApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scopes APIKeyPermission[]
+
+  revokedAt DateTime? // Set when token is revoked
+
+  @@index([token]) // For token lookup
+  @@index([userId, applicationId])
+  @@index([expiresAt]) // For cleanup
 }

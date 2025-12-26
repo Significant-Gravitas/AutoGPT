@@ -25,6 +25,17 @@ export function useThumbnailImages({
   const thumbnailsContainerRef = useRef<HTMLDivElement | null>(null);
   const { toast } = useToast();
 
+  // Memoize the stringified version to detect actual changes
+  const initialImagesKey = JSON.stringify(initialImages);
+
+  // Update images when initialImages prop changes (by value, not reference)
+  useEffect(() => {
+    if (initialImages.length > 0) {
+      setImages(initialImages);
+      setSelectedImage(initialSelectedImage || initialImages[0]);
+    }
+  }, [initialImagesKey, initialSelectedImage]); // Use stringified key instead of array reference
+
   // Notify parent when images change
   useEffect(() => {
     onImagesChange(images);
