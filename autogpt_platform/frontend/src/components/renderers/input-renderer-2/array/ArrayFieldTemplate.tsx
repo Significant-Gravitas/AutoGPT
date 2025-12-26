@@ -52,25 +52,28 @@ export default function ArrayFieldTemplate<
   return (
     <div>
       <div className="m-0 flex p-0">
-        <div className="m-0 w-full p-0">
-          <ArrayFieldTitleTemplate
-            fieldPathId={fieldPathId}
-            title={uiOptions.title || title}
-            schema={schema}
-            uiSchema={uiSchema}
-            required={required}
-            registry={registry}
-            optionalDataControl={
-              showOptionalDataControlInTitle ? optionalDataControl : undefined
-            }
-          />
-          <ArrayFieldDescriptionTemplate
-            fieldPathId={fieldPathId}
-            description={uiOptions.description || schema.description}
-            schema={schema}
-            uiSchema={uiSchema}
-            registry={registry}
-          />
+        <div className="m-0 w-full space-y-4 p-0">
+          <div className="flex items-center">
+            <ArrayFieldTitleTemplate
+              fieldPathId={fieldPathId}
+              title={uiOptions.title || title}
+              schema={schema}
+              uiSchema={uiSchema}
+              required={required}
+              registry={registry}
+              optionalDataControl={
+                showOptionalDataControlInTitle ? optionalDataControl : undefined
+              }
+            />
+            <ArrayFieldDescriptionTemplate
+              fieldPathId={fieldPathId}
+              description={uiOptions.description || schema.description}
+              schema={schema}
+              uiSchema={uiSchema}
+              registry={registry}
+            />
+          </div>
+
           <div
             key={`array-item-list-${fieldPathId.$id}`}
             className="m-0 mb-2 w-full p-0"
@@ -78,7 +81,7 @@ export default function ArrayFieldTemplate<
             {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
             {items}
             {canAdd && (
-              <div className="mt-2 flex justify-end">
+              <div className="mt-4 flex justify-end">
                 <AddButton
                   id={buttonId(fieldPathId, "add")}
                   className="rjsf-array-item-add"

@@ -6,6 +6,7 @@ import {
   RJSFSchema,
   StrictRJSFSchema,
 } from "@rjsf/utils";
+import { isAnyOfSchema } from "../../utils/schema-utils";
 
 /** The `FieldTemplate` component is the template used by `SchemaField` to render any field. It renders the field
  * content, (label, description, children, errors and help) inside a `WrapIfAdditional` component.
@@ -24,27 +25,14 @@ export default function FieldTemplate<
   help,
   description,
   rawDescription,
-  classNames,
-  style,
-  disabled,
   label,
   hidden,
-  onKeyRename,
-  onKeyRenameBlur,
-  onRemoveProperty,
-  readonly,
   required,
   schema,
   uiSchema,
   registry,
 }: FieldTemplateProps<T, S, F>) {
   const uiOptions = getUiOptions(uiSchema);
-  const WrapIfAdditionalTemplate = getTemplate<
-    "WrapIfAdditionalTemplate",
-    T,
-    S,
-    F
-  >("WrapIfAdditionalTemplate", registry, uiOptions);
   if (hidden) {
     return <div className="hidden">{children}</div>;
   }
@@ -54,25 +42,11 @@ export default function FieldTemplate<
     uiOptions,
   );
 
+  const isAnyOf = isAnyOfSchema(schema);
+
   return (
-    <WrapIfAdditionalTemplate
-      classNames={classNames}
-      style={style}
-      disabled={disabled}
-      id={id}
-      label={label}
-      displayLabel={displayLabel}
-      onKeyRename={onKeyRename}
-      onKeyRenameBlur={onKeyRenameBlur}
-      onRemoveProperty={onRemoveProperty}
-      rawDescription={rawDescription}
-      readonly={readonly}
-      required={required}
-      schema={schema}
-      uiSchema={uiSchema}
-      registry={registry}
-    >
-      <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
+      {!isAnyOf && (
         <div className="flex items-center gap-2">
           {displayLabel && (
             <TitleFieldTemplate
@@ -85,12 +59,11 @@ export default function FieldTemplate<
           )}
           {displayLabel && rawDescription && <span>{description}</span>}
         </div>
+      )}
 
-        {children}
-
-        {errors}
-        {help}
-      </div>
-    </WrapIfAdditionalTemplate>
+      {children}
+      {errors}
+      {help}
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { FormContextType, RJSFSchema, StrictRJSFSchema } from "@rjsf/utils";
 import { generateTemplates } from "./templates";
 import { generateWidgets } from "./widgets";
 import { ExtendedFormContextType } from "../types";
+import { generateFields } from "./field";
 
 export function generateTheme<
   T = any,
@@ -13,6 +14,7 @@ export function generateTheme<
   return {
     templates: generateTemplates<T, S, F>(),
     widgets: generateWidgets<T, S, F>(),
+    fields: generateFields<T, S, F>(),
   };
 }
 

@@ -99,7 +99,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             nodeId={nodeId}
             uiType={data.uiType}
             className={cn(
-              "bg-white pr-6",
+              "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}

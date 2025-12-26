@@ -18,10 +18,7 @@ import {
   MultiSelectorTrigger,
 } from "@/components/__legacy__/ui/multiselect";
 import { ExtendedFormContextType } from "../../types";
-import {
-  isAnyOfSchema,
-  isAnyOfSelector,
-} from "@/components/renderers/input-renderer-2/utils/schema-utils";
+import { isAnyOfSelector } from "@/components/renderers/input-renderer-2/utils/schema-utils";
 import { AnyOfSelector } from "../../anyof";
 
 type CustomWidgetProps<
@@ -46,17 +43,13 @@ export const SelectWidget = <
     schema,
     disabled,
     readonly,
+    className,
     id,
     formContext,
   } = props;
   const enumOptions = options.enumOptions || [];
   const type = mapJsonSchemaTypeToInputType(props.schema);
   const { size = "small" } = formContext || {};
-
-  const isAnyOfSelectorValue = isAnyOfSelector(id);
-  if (isAnyOfSelectorValue) {
-    return <AnyOfSelector {...props} />;
-  }
 
   // Determine select size based on context
   const selectSize = size === "large" ? "medium" : "small";
@@ -100,6 +93,7 @@ export const SelectWidget = <
           })) || []
         }
         wrapperClassName="!mb-0 "
+        className={className}
       />
     );
   };

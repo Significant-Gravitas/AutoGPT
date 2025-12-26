@@ -1,6 +1,12 @@
-import { FieldHelpProps, FormContextType, RJSFSchema, StrictRJSFSchema, helpId } from '@rjsf/utils';
-import { RichHelp } from '@rjsf/core';
-import { cn } from '../lib/utils';
+import {
+  FieldHelpProps,
+  FormContextType,
+  RJSFSchema,
+  StrictRJSFSchema,
+  helpId,
+} from "@rjsf/utils";
+import { RichHelp } from "@rjsf/core";
+import { cn } from "@/lib/utils";
 
 /** The `FieldHelpTemplate` component renders any help desired for a field
  *
@@ -18,7 +24,9 @@ export default function FieldHelpTemplate<
 
   return (
     <span
-      className={cn('text-xs font-medium text-muted-foreground', { 'text-destructive': hasErrors })}
+      className={cn("text-xs font-medium text-muted-foreground", {
+        "text-destructive": hasErrors,
+      })}
       id={helpId(fieldPathId)}
     >
       <RichHelp help={help} registry={registry} uiSchema={uiSchema} />

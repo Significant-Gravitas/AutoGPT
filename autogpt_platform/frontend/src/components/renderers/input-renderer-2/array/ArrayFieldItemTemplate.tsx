@@ -35,7 +35,7 @@ export default function ArrayFieldItemTemplate<
   const margin = hasDescription ? -6 : 22;
   return (
     <div>
-      <div className="mb-2 flex flex-row flex-wrap items-center">
+      <div className="mb-2 flex flex-row flex-wrap items-center border-l border-slate-200 pl-2">
         <div className="shrink grow">{children}</div>
         <div className="flex items-end justify-end p-0.5">
           {hasToolbar && (

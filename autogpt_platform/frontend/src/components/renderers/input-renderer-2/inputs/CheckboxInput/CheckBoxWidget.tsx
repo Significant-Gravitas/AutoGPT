@@ -4,7 +4,7 @@ import {
   StrictRJSFSchema,
   WidgetProps,
 } from "@rjsf/utils";
-import { ExtendedFormContextType } from "../../../types";
+import { ExtendedFormContextType } from "@/components/renderers/input-renderer-2/types";
 import { Switch } from "@/components/atoms/Switch/Switch";
 
 export function CheckboxWidget<
