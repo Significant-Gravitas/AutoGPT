@@ -1,8 +1,8 @@
 "use client";
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { useFlags } from "launchdarkly-react-client-sdk";
+import { environment } from "../environment";
 
 export enum Flag {
   BETA_BLOCKS = "beta-blocks",
@@ -16,6 +16,7 @@ export enum Flag {
   AGENT_FAVORITING = "agent-favoriting",
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
+  CHAT = "chat",
 }
 
 export type FlagValues = {
@@ -30,6 +31,7 @@ export type FlagValues = {
   [Flag.AGENT_FAVORITING]: boolean;
   [Flag.MARKETPLACE_SEARCH_TERMS]: string[];
   [Flag.ENABLE_PLATFORM_PAYMENT]: boolean;
+  [Flag.CHAT]: boolean;
 };
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -46,12 +48,13 @@ const mockFlags = {
   [Flag.AGENT_FAVORITING]: false,
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
+  [Flag.CHAT]: true,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const currentFlags = useFlags<FlagValues>();
   const flagValue = currentFlags[flag];
-  const isCloud = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloud = environment.isCloud();
 
   if ((isPwMockEnabled && !isCloud) || flagValue === undefined) {
     return mockFlags[flag];

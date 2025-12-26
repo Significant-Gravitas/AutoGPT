@@ -6,14 +6,14 @@ import fastapi.exceptions
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
-import backend.server.v2.store.model as store
+import backend.api.features.store.model as store
+from backend.api.model import CreateGraph
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.data.block import BlockSchema
+from backend.data.block import BlockSchema, BlockSchemaInput
 from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
-from backend.server.model import CreateGraph
 from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
 
@@ -166,11 +166,13 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
         create_graph, DEFAULT_USER_ID
     )
 
-    class ExpectedInputSchema(BlockSchema):
+    class ExpectedInputSchema(BlockSchemaInput):
         in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
         in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
 
     class ExpectedOutputSchema(BlockSchema):
+        # Note: Graph output schemas are dynamically generated and don't inherit
+        # from BlockSchemaOutput, so we use BlockSchema as the base instead
         out_key: Any = SchemaField(
             description="This is an output key",
             title="out_key",

@@ -18,6 +18,8 @@ export function PublishAgentModal({
   trigger,
   targetState,
   onStateChange,
+  preSelectedAgentId,
+  preSelectedAgentVersion,
 }: Props) {
   const {
     // State
@@ -34,7 +36,12 @@ export function PublishAgentModal({
     handleGoToBuilder,
     handleSuccessFromInfo,
     handleBack,
-  } = usePublishAgentModal({ targetState, onStateChange });
+  } = usePublishAgentModal({
+    targetState,
+    onStateChange,
+    preSelectedAgentId,
+    preSelectedAgentVersion,
+  });
 
   const { user, isUserLoading } = useSupabase();
 
@@ -65,6 +72,7 @@ export function PublishAgentModal({
             selectedAgentId={selectedAgentId}
             selectedAgentVersion={selectedAgentVersion}
             initialData={initialData}
+            isMarketplaceUpdate={!!currentState.submissionData}
           />
         );
       case "review":

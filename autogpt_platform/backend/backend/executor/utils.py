@@ -10,6 +10,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data import user as user_db
 from backend.data.block import (
     Block,
     BlockCostType,
@@ -24,47 +25,31 @@ from backend.data.db import prisma
 # Import dynamic field utilities from centralized location
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
+    ExecutionContext,
     ExecutionStatus,
+    GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
-    UserContext,
+    get_graph_execution,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import get_user_by_id
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
     get_database_manager_async_client,
     get_integration_credentials_store,
 )
-from backend.util.exceptions import GraphValidationError, NotFoundError
-from backend.util.logging import TruncatedLogger
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    GraphValidationError,
+    NotFoundError,
+)
+from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
-
-
-async def get_user_context(user_id: str) -> UserContext:
-    """
-    Get UserContext for a user, always returns a valid context with timezone.
-    Defaults to UTC if user has no timezone set.
-    """
-    user_context = UserContext(timezone="UTC")  # Default to UTC
-    try:
-        user = await get_user_by_id(user_id)
-        if user and user.timezone and user.timezone != "not-set":
-            user_context.timezone = user.timezone
-            logger.debug(f"Retrieved user context: timezone={user.timezone}")
-        else:
-            logger.debug("User has no timezone set, using UTC")
-    except Exception as e:
-        logger.warning(f"Could not fetch user timezone: {e}")
-        # Continue with UTC as default
-
-    return user_context
-
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -93,7 +78,11 @@ class LogMetadata(TruncatedLogger):
             "node_id": node_id,
             "block_name": block_name,
         }
-        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        prefix = (
+            "[ExecutionManager]"
+            if is_structured_logging_enabled()
+            else f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"  # noqa
+        )
         super().__init__(
             logger,
             max_length=max_length,
@@ -466,6 +455,7 @@ async def validate_and_construct_node_execution_input(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    is_sub_graph: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -499,9 +489,21 @@ async def validate_and_construct_node_execution_input(
         user_id=user_id,
         version=graph_version,
         include_subgraphs=True,
+        # Execution/access permission is checked by validate_graph_execution_permissions
+        skip_access_check=True,
     )
     if not graph:
-        raise NotFoundError(f"Graph #{graph_id} not found.")
+        raise GraphNotFoundError(f"Graph #{graph_id} not found.")
+
+    # Validate that the user has permission to execute this graph
+    # This checks both library membership and execution permissions,
+    # raising specific exceptions for appropriate error handling.
+    await gdb.validate_graph_execution_permissions(
+        user_id=user_id,
+        graph_id=graph.id,
+        graph_version=graph.version,
+        is_sub_graph=is_sub_graph,
+    )
 
     nodes_input_masks = _merge_nodes_input_masks(
         (
@@ -602,20 +604,74 @@ class CancelExecutionEvent(BaseModel):
     graph_exec_id: str
 
 
+async def _get_child_executions(parent_exec_id: str) -> list["GraphExecutionMeta"]:
+    """
+    Get all child executions of a parent execution using the execution_db pattern.
+
+    Args:
+        parent_exec_id: Parent graph execution ID
+
+    Returns:
+        List of child graph executions
+    """
+    from backend.data.db import prisma
+
+    if prisma.is_connected():
+        edb = execution_db
+    else:
+        edb = get_database_manager_async_client()
+
+    return await edb.get_child_graph_executions(parent_exec_id)
+
+
 async def stop_graph_execution(
     user_id: str,
     graph_exec_id: str,
     wait_timeout: float = 15.0,
+    cascade: bool = True,
 ):
     """
+    Stop a graph execution and optionally all its child executions.
+
     Mechanism:
-    1. Set the cancel event
-    2. Graph executor's cancel handler thread detects the event, terminates workers,
+    1. Set the cancel event for this execution
+    2. If cascade=True, recursively stop all child executions
+    3. Graph executor's cancel handler thread detects the event, terminates workers,
        reinitializes worker pool, and returns.
-    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+    4. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+
+    Args:
+        user_id: User ID who owns the execution
+        graph_exec_id: Graph execution ID to stop
+        wait_timeout: Maximum time to wait for execution to stop (seconds)
+        cascade: If True, recursively stop all child executions
     """
     queue_client = await get_async_execution_queue()
     db = execution_db if prisma.is_connected() else get_database_manager_async_client()
+
+    # First, find and stop all child executions if cascading
+    if cascade:
+        children = await _get_child_executions(graph_exec_id)
+        logger.info(
+            f"Stopping {len(children)} child executions of execution {graph_exec_id}"
+        )
+
+        # Stop all children in parallel (recursively, with cascading enabled)
+        if children:
+            await asyncio.gather(
+                *[
+                    stop_graph_execution(
+                        user_id=user_id,
+                        graph_exec_id=child.id,
+                        wait_timeout=wait_timeout,
+                        cascade=True,  # Recursively cascade to grandchildren
+                    )
+                    for child in children
+                ],
+                return_exceptions=True,  # Don't fail parent stop if child stop fails
+            )
+
+    # Now stop this execution
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
@@ -679,6 +735,8 @@ async def add_graph_execution(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    execution_context: Optional[ExecutionContext] = None,
+    graph_exec_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -692,31 +750,55 @@ async def add_graph_execution(
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
         nodes_input_masks: Node inputs to use in the execution.
+        parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
+        graph_exec_id: If provided, resume this existing execution instead of creating a new one.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
+        NotFoundError: If graph_exec_id is provided but execution is not found.
     """
     if prisma.is_connected():
         edb = execution_db
+        udb = user_db
+        gdb = graph_db
     else:
-        edb = get_database_manager_async_client()
+        edb = udb = gdb = get_database_manager_async_client()
 
-    graph, starting_nodes_input, compiled_nodes_input_masks = (
-        await validate_and_construct_node_execution_input(
-            graph_id=graph_id,
+    # Get or create the graph execution
+    if graph_exec_id:
+        # Resume existing execution
+        graph_exec = await get_graph_execution(
             user_id=user_id,
-            graph_inputs=inputs or {},
-            graph_version=graph_version,
-            graph_credentials_inputs=graph_credentials_inputs,
-            nodes_input_masks=nodes_input_masks,
+            execution_id=graph_exec_id,
+            include_node_executions=True,
         )
-    )
-    graph_exec = None
 
-    try:
-        # Sanity check: running add_graph_execution with the properties of
-        # the graph_exec created here should create the same execution again.
+        if not graph_exec:
+            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
+
+        # Use existing execution's compiled input masks
+        compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+
+        logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
+    else:
+        parent_exec_id = (
+            execution_context.parent_execution_id if execution_context else None
+        )
+
+        # Create new execution
+        graph, starting_nodes_input, compiled_nodes_input_masks = (
+            await validate_and_construct_node_execution_input(
+                graph_id=graph_id,
+                user_id=user_id,
+                graph_inputs=inputs or {},
+                graph_version=graph_version,
+                graph_credentials_inputs=graph_credentials_inputs,
+                nodes_input_masks=nodes_input_masks,
+                is_sub_graph=parent_exec_id is not None,
+            )
+        )
+
         graph_exec = await edb.create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
@@ -726,17 +808,37 @@ async def add_graph_execution(
             nodes_input_masks=nodes_input_masks,
             starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
+            parent_graph_exec_id=parent_exec_id,
         )
 
-        graph_exec_entry = graph_exec.to_graph_execution_entry(
-            user_context=await get_user_context(user_id),
-            compiled_nodes_input_masks=compiled_nodes_input_masks,
-        )
         logger.info(
             f"Created graph execution #{graph_exec.id} for graph "
-            f"#{graph_id} with {len(starting_nodes_input)} starting nodes. "
-            f"Now publishing to execution queue."
+            f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
+
+    # Generate execution context if it's not provided
+    if execution_context is None:
+        user = await udb.get_user_by_id(user_id)
+        settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+
+        execution_context = ExecutionContext(
+            safe_mode=(
+                settings.human_in_the_loop_safe_mode
+                if settings.human_in_the_loop_safe_mode is not None
+                else True
+            ),
+            user_timezone=(
+                user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+            ),
+            root_execution_id=graph_exec.id,
+        )
+
+    try:
+        graph_exec_entry = graph_exec.to_graph_execution_entry(
+            compiled_nodes_input_masks=compiled_nodes_input_masks,
+            execution_context=execution_context,
+        )
+        logger.info(f"Publishing execution {graph_exec.id} to execution queue")
 
         exec_queue = await get_async_execution_queue()
         await exec_queue.publish_message(

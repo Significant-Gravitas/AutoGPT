@@ -3,20 +3,23 @@ import {
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
-import { isServerSide } from "@/lib/utils/is-server-side";
-import { getAgptServerBaseUrl } from "@/lib/env-config";
 
 import { transformDates } from "./date-transformer";
+import { environment } from "@/services/environment";
+import {
+  IMPERSONATION_HEADER_NAME,
+  IMPERSONATION_STORAGE_KEY,
+} from "@/lib/constants";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
 const getBaseUrl = (): string => {
-  if (!isServerSide()) {
+  if (!environment.isServerSide()) {
     return API_PROXY_BASE_URL;
   } else {
-    return getAgptServerBaseUrl();
+    return environment.getAGPTServerBaseUrl();
   }
 };
 
@@ -54,6 +57,22 @@ export const customMutator = async <
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
 
+  if (environment.isClientSide()) {
+    try {
+      const impersonatedUserId = sessionStorage.getItem(
+        IMPERSONATION_STORAGE_KEY,
+      );
+      if (impersonatedUserId) {
+        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+      }
+    } catch (error) {
+      console.error(
+        "Admin impersonation: Failed to access sessionStorage:",
+        error,
+      );
+    }
+  }
+
   const isFormData = data instanceof FormData;
   const contentType = isFormData ? "multipart/form-data" : "application/json";
 
@@ -77,7 +96,7 @@ export const customMutator = async <
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
   const fullUrl = `${baseUrl}${url}${queryString}`;
 
-  if (isServerSide()) {
+  if (environment.isServerSide()) {
     try {
       const token = await getServerAuthToken();
       const authHeaders = createRequestHeaders(token, !!data, contentType);
@@ -94,23 +113,52 @@ export const customMutator = async <
     body: data,
   });
 
-  if (!response.ok) {
-    const response_data = await getBody<any>(response);
-    const errorMessage =
-      response_data?.detail || response_data?.message || response.statusText;
+  // Check if response is a redirect (3xx) and redirect is allowed
+  const allowRedirect = requestOptions.redirect !== "error";
+  const isRedirect = response.status >= 300 && response.status < 400;
 
-    console.error(
-      `Request failed ${isServerSide() ? "on server" : "on client"}`,
-      { status: response.status, url: fullUrl, data: response_data },
-    );
-
-    throw new ApiError(errorMessage, response.status, response_data);
+  // For redirect responses, return early without trying to parse body
+  if (allowRedirect && isRedirect) {
+    return {
+      status: response.status,
+      data: null,
+      headers: response.headers,
+    } as T;
   }
 
-  const response_data = await getBody<T["data"]>(response);
+  if (!response.ok) {
+    let responseData: any = null;
+    try {
+      responseData = await getBody<any>(response);
+    } catch (error) {
+      console.warn("Failed to parse error response body:", error);
+      responseData = { error: "Failed to parse response" };
+    }
+
+    const errorMessage =
+      responseData?.detail ||
+      responseData?.message ||
+      response.statusText ||
+      `HTTP ${response.status}`;
+
+    console.error(
+      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
+      {
+        status: response.status,
+        method,
+        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+        errorMessage,
+        responseData: responseData || "No response data",
+      },
+    );
+
+    throw new ApiError(errorMessage, response.status, responseData);
+  }
+
+  const responseData = await getBody<T["data"]>(response);
 
   // Transform ISO date strings to Date objects in the response data
-  const transformedData = transformDates(response_data);
+  const transformedData = transformDates(responseData);
 
   return {
     status: response.status,
