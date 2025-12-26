@@ -5,6 +5,7 @@ import {
   getUiOptions,
   RJSFSchema,
   StrictRJSFSchema,
+  titleId,
 } from "@rjsf/utils";
 import { isAnyOfSchema } from "../../utils/schema-utils";
 
@@ -43,13 +44,14 @@ export default function FieldTemplate<
   );
 
   const isAnyOf = isAnyOfSchema(schema);
+  const title_id = titleId(id);
   return (
     <div className="mb-2 flex flex-col gap-2">
       {!isAnyOf && (
         <div className="flex items-center gap-2">
           {displayLabel && (
             <TitleFieldTemplate
-              id={`${id}_title`}
+              id={title_id}
               title={label}
               required={required}
               schema={schema}

@@ -11,7 +11,6 @@ import {
 
 import { InfoIcon } from "@phosphor-icons/react";
 import { useAnyOfField } from "./useAnyOfField";
-import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
@@ -144,13 +143,13 @@ export const AnyOfField = ({
               showHandles && "-ml-2",
             )}
           >
-            {showHandles && (
+            {/* {showHandles && (
               <NodeHandle
                 handleId={handleId}
                 isConnected={isConnected}
                 side="left"
               />
-            )}
+            )} */}
             <Text
               variant={formContext.size === "small" ? "body" : "body-medium"}
             >

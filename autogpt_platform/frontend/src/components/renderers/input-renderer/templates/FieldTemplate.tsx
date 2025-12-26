@@ -22,7 +22,6 @@ import {
 import { cn } from "@/lib/utils";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { BlockUIType } from "@/lib/autogpt-server-api";
-import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { getFieldErrorKey } from "../utils/helpers";
 
 const FieldTemplate: React.FC<FieldTemplateProps> = ({
@@ -120,13 +119,13 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
     >
       {!isAnyOf && !fromAnyOf && label && (
         <label htmlFor={fieldId} className="flex items-center gap-1">
-          {shouldShowHandle && (
+          {/* {shouldShowHandle && (
             <NodeHandle
               handleId={handleId}
               isConnected={isConnected}
               side="left"
             />
-          )}
+          )} */}
           <Text
             variant={formContext.size === "small" ? "body" : "body-medium"}
             className={cn(

@@ -1,26 +1,37 @@
 import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
+import { generateHandleId, HandleIdType } from "./helpers";
+import { useEdgeStore } from "../../../stores/edgeStore";
 
-const NodeHandle = ({
-  handleId,
-  isConnected,
-  side,
+const InputNodeHandle = ({
+  fieldPathId,
+  nodeId,
 }: {
-  handleId: string;
-  isConnected: boolean;
-  side: "left" | "right";
+  fieldPathId: string;
+  nodeId: string;
 }) => {
+  const extracted_id = fieldPathId
+    .split("__")
+    .slice(0, -1)
+    .join("__")
+    .split("_")
+    .slice(1)
+    .join("_"); // here i am removing root prefix from the id
+  const isInputConnected = useEdgeStore((state) =>
+    state.isInputConnected(nodeId, extracted_id),
+  );
+  console.log("extracted_id", extracted_id);
   return (
     <Handle
-      type={side === "left" ? "target" : "source"}
-      position={side === "left" ? Position.Left : Position.Right}
-      id={handleId}
-      className={side === "left" ? "-ml-4 mr-2" : "-mr-2 ml-2"}
+      type={"target"}
+      position={Position.Left}
+      id={extracted_id}
+      className={"-ml-6 mr-2"}
     >
       <div className="pointer-events-none">
         <CircleIcon
           size={16}
-          weight={isConnected ? "fill" : "duotone"}
+          weight={isInputConnected ? "fill" : "duotone"}
           className={"text-gray-400 opacity-100"}
         />
       </div>
@@ -28,4 +39,32 @@ const NodeHandle = ({
   );
 };
 
-export default NodeHandle;
+const OutputNodeHandle = ({
+  field_name,
+  nodeId,
+}: {
+  field_name: string;
+  nodeId: string;
+}) => {
+  const isOutputConnected = useEdgeStore((state) =>
+    state.isInputConnected(nodeId, field_name),
+  );
+  return (
+    <Handle
+      type={"source"}
+      position={Position.Right}
+      id={field_name}
+      className={"-mr-2 ml-2"}
+    >
+      <div className="pointer-events-none">
+        <CircleIcon
+          size={16}
+          weight={isOutputConnected ? "fill" : "duotone"}
+          className={"text-gray-400 opacity-100"}
+        />
+      </div>
+    </Handle>
+  );
+};
+
+export { InputNodeHandle, OutputNodeHandle };

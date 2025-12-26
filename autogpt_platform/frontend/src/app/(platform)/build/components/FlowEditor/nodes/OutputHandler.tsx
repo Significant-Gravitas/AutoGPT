@@ -4,7 +4,7 @@ import { CaretDownIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
 import { useState } from "react";
 
-import NodeHandle from "../handlers/NodeHandle";
+import { OutputNodeHandle } from "../handlers/NodeHandle";
 import {
   Tooltip,
   TooltipContent,
@@ -81,13 +81,7 @@ export const OutputHandler = ({
                   ({displayType})
                 </Text>
 
-                <NodeHandle
-                  handleId={
-                    uiType === BlockUIType.AGENT ? key : generateHandleId(key)
-                  }
-                  isConnected={isConnected}
-                  side="right"
-                />
+                <OutputNodeHandle field_name={key} nodeId={nodeId} />
               </div>
             ) : null;
           })}

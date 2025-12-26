@@ -5,7 +5,6 @@ import { Plus, X } from "lucide-react";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
-import NodeHandle from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import {
   generateHandleId,
@@ -110,13 +109,13 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
           return (
             <div key={idx} className="flex flex-col gap-2">
               <div className="-ml-2 flex items-center gap-1">
-                {showHandles && (
+                {/* {showHandles && (
                   <NodeHandle
                     isConnected={isDynamicPropertyConnected}
                     handleId={handleId}
                     side="left"
                   />
-                )}
+                )} */}
                 <Text variant="small" className="!text-gray-500">
                   #{key.trim() === "" ? "" : key}
                 </Text>

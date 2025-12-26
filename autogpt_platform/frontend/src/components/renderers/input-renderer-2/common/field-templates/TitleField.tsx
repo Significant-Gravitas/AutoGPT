@@ -1,5 +1,5 @@
 import {
-  FormContextType,
+  descriptionId,
   RJSFSchema,
   StrictRJSFSchema,
   TitleFieldProps,
@@ -8,21 +8,28 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { isAnyOfSchema } from "../../utils/schema-utils";
+import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
+import { ExtendedFormContextType } from "../../types";
 
 export default function TitleField<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->({ id, title, required, schema }: TitleFieldProps<T, S, F>) {
+  F extends ExtendedFormContextType = ExtendedFormContextType,
+>({ id, title, required, schema, registry }: TitleFieldProps<T, S, F>) {
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
+  const { nodeId } = registry.formContext;
+
   const isAnyOf = isAnyOfSchema(schema);
+  const description_id = descriptionId(id);
+
   return (
     <div className="flex items-center gap-1">
+      <InputNodeHandle fieldPathId={id} nodeId={nodeId ?? ""} />
       <Text variant="body" id={id} className="line-clamp-1">
         {title}
       </Text>
       {!isAnyOf && (
-        <Text variant="small" className={colorClass}>
+        <Text variant="small" className={colorClass} id={description_id}>
           ({displayType})
         </Text>
       )}
