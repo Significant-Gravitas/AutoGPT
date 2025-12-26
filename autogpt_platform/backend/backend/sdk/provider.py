@@ -81,7 +81,7 @@ class Provider:
         discriminator_values = kwargs.pop("discriminator_values", None)
 
         # Create json_schema_extra with provider information
-        json_schema_extra = {
+        json_schema_extra: dict[str, Any] = {
             "credentials_provider": [self.name],
             "credentials_types": (
                 list(self.supported_auth_types) if self.supported_auth_types else []
@@ -90,10 +90,8 @@ class Provider:
 
         # Merge any existing json_schema_extra
         if "json_schema_extra" in kwargs:
-            json_schema_extra.update(kwargs.pop("json_schema_extra"))
-
-        # Add json_schema_extra to kwargs
-        kwargs["json_schema_extra"] = json_schema_extra
+            extra: dict[str, Any] = kwargs.pop("json_schema_extra")
+            json_schema_extra.update(extra)
 
         return CredentialsField(
             required_scopes=required_scopes,
@@ -102,6 +100,7 @@ class Provider:
             discriminator_values=discriminator_values,
             title=title,
             description=description,
+            json_schema_extra=json_schema_extra,
             **kwargs,
         )
 
