@@ -41,7 +41,7 @@ class MissingConfigError(Exception):
 
 
 class NotFoundError(ValueError):
-    """The requested record was not found, resulting in an error condition"""
+    """The requested resource was not found in the system"""
 
 
 class GraphNotFoundError(ValueError):

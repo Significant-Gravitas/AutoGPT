@@ -659,6 +659,23 @@ export type HostScopedCredentials = BaseCredentials & {
   headers: Record<string, string>;
 };
 
+/* Mirror of backend/data/files.py:File */
+export type FileMeta = {
+  id: string;
+  user_id: string;
+  name: string;
+  size: number;
+  content_type: string;
+  created_at: Date;
+};
+
+/* Mirror of backend/backend/data/_fileio.py:FileMetaIO */
+export type FileMetaIO = {
+  id: string;
+  name: string;
+  content_type: string;
+};
+
 // Mirror of backend/backend/data/notifications.py:NotificationType
 export type NotificationType =
   | "AGENT_RUN"

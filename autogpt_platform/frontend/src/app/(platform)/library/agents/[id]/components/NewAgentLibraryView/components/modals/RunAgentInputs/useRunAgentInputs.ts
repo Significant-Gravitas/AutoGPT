@@ -6,7 +6,7 @@ export function useRunAgentInputs() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   async function handleUploadFile(file: File) {
-    const result = await api.uploadFile(file, "gcs", 24, (progress) =>
+    const result = await api.uploadSignedFile(file, "gcs", 24, (progress) =>
       setUploadProgress(progress),
     );
     return result;
