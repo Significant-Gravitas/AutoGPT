@@ -4,8 +4,8 @@ from typing import AsyncGenerator
 
 from pydantic import BaseModel, field_serializer
 
+from backend.api.model import NotificationPayload
 from backend.data.event_bus import AsyncRedisEventBus
-from backend.server.model import NotificationPayload
 from backend.util.settings import Settings
 
 

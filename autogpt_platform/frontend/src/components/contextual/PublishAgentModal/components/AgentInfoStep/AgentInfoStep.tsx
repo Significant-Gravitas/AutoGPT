@@ -19,6 +19,7 @@ export function AgentInfoStep({
   selectedAgentId,
   selectedAgentVersion,
   initialData,
+  isMarketplaceUpdate,
 }: Props) {
   const {
     form,
@@ -34,6 +35,7 @@ export function AgentInfoStep({
     selectedAgentId,
     selectedAgentVersion,
     initialData,
+    isMarketplaceUpdate,
   });
 
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
@@ -65,6 +67,41 @@ export function AgentInfoStep({
 
       <Form {...form}>
         <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto p-6">
+          {/* Changes summary field - only shown for updates */}
+          {isMarketplaceUpdate && (
+            <FormField
+              control={form.control}
+              name="changesSummary"
+              render={({ field }) => (
+                <div className="mb-6">
+                  <Input
+                    id={field.name}
+                    label="What changed?"
+                    type="textarea"
+                    placeholder="Describe what's new or improved in this version..."
+                    error={form.formState.errors.changesSummary?.message}
+                    required
+                    {...field}
+                  />
+                  <Text variant="small" className="mt-1 text-gray-600">
+                    This is required to help users understand what&apos;s
+                    different in this update.
+                  </Text>
+                </div>
+              )}
+            />
+          )}
+
+          {/* Optional section label for updates */}
+          {isMarketplaceUpdate && (
+            <div className="mb-4">
+              <Text variant="body" className="font-medium text-gray-700">
+                Optional: Update any of the following details (or leave them
+                as-is)
+              </Text>
+            </div>
+          )}
+
           <FormField
             control={form.control}
             name="title"

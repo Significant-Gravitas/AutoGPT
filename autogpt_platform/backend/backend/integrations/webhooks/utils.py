@@ -149,10 +149,10 @@ async def setup_webhook_for_block(
 async def migrate_legacy_triggered_graphs():
     from prisma.models import AgentGraph
 
+    from backend.api.features.library.db import create_preset
+    from backend.api.features.library.model import LibraryAgentPresetCreatable
     from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel, set_node_webhook
     from backend.data.model import is_credentials_field_name
-    from backend.server.v2.library.db import create_preset
-    from backend.server.v2.library.model import LibraryAgentPresetCreatable
 
     triggered_graphs = [
         GraphModel.from_db(_graph)
