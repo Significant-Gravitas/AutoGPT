@@ -116,6 +116,40 @@ utilization_gauge = Gauge(
     "Ratio of active graph runs to max graph workers",
 )
 
+# Redis key prefix for tracking insufficient funds Discord notifications.
+# We only send one notification per user per agent until they top up credits.
+INSUFFICIENT_FUNDS_NOTIFIED_PREFIX = "insufficient_funds_discord_notified"
+# TTL for the notification flag (30 days) - acts as a fallback cleanup
+INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS = 30 * 24 * 60 * 60
+
+
+def clear_insufficient_funds_notifications(user_id: str) -> int:
+    """
+    Clear all insufficient funds notification flags for a user.
+
+    This should be called when a user tops up their credits, allowing
+    Discord notifications to be sent again if they run out of funds.
+
+    Args:
+        user_id: The user ID to clear notifications for.
+
+    Returns:
+        The number of keys that were deleted.
+    """
+    try:
+        redis_client = redis.get_redis()
+        pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
+        keys = list(redis_client.scan_iter(match=pattern))
+        if keys:
+            return redis_client.delete(*keys)
+        return 0
+    except Exception as e:
+        logger.warning(
+            f"Failed to clear insufficient funds notification flags for user "
+            f"{user_id}: {e}"
+        )
+        return 0
+
 
 # Thread-local storage for ExecutionProcessor instances
 _tls = threading.local()
@@ -1275,6 +1309,35 @@ class ExecutionProcessor:
                 ),
             )
         )
+
+        # Check if we've already sent a Discord notification for this user+agent combo.
+        # We only send one notification per user per agent until they top up credits.
+        redis_key = (
+            f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
+        )
+        try:
+            redis_client = redis.get_redis()
+            # SET NX returns True only if the key was newly set (didn't exist)
+            is_new_notification = redis_client.set(
+                redis_key,
+                "1",
+                nx=True,
+                ex=INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS,
+            )
+            if not is_new_notification:
+                # Already notified for this user+agent, skip Discord alert
+                logger.debug(
+                    f"Skipping duplicate insufficient funds Discord alert for "
+                    f"user={user_id}, graph={graph_id}"
+                )
+                return
+        except Exception as redis_error:
+            # If Redis fails, log and continue to send the notification
+            # (better to occasionally duplicate than to never notify)
+            logger.warning(
+                f"Failed to check/set insufficient funds notification flag in Redis: "
+                f"{redis_error}"
+            )
 
         try:
             user_email = db_client.get_user_email_by_id(user_id)
