@@ -1,10 +1,9 @@
-import { BlockUIType } from "@/app/(platform)/build/components/types";
 import { RJSFSchema } from "@rjsf/utils";
 import { preprocessInputSchema } from "./utils/input-schema-pre-processor";
 import { useMemo } from "react";
 import { customValidator } from "./utils/custom-validator";
-import Form from "./shadcn";
-import { ExtendedFormContextType } from "./shadcn/types";
+import Form from "./registry";
+import { ExtendedFormContextType } from "./types";
 
 type FormRendererProps = {
   jsonSchema: RJSFSchema;
