@@ -34,8 +34,8 @@ const statusIconMap: Record<AgentExecutionStatus, React.ReactNode> = {
     </IconWrapper>
   ),
   REVIEW: (
-    <IconWrapper className="border-orange-50 bg-orange-50">
-      <PauseCircleIcon size={16} className="text-orange-700" weight="bold" />
+    <IconWrapper className="border-yellow-50 bg-yellow-50">
+      <PauseCircleIcon size={16} className="text-yellow-700" weight="bold" />
     </IconWrapper>
   ),
   COMPLETED: (

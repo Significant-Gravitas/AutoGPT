@@ -23,16 +23,18 @@ from typing import Any, Dict, List
 
 from faker import Faker
 
+# Import API functions from the backend
+from backend.api.features.library.db import create_library_agent, create_preset
+from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.api.features.store.db import (
+    create_store_submission,
+    review_store_submission,
+)
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
 from backend.data.user import get_or_create_user
-
-# Import API functions from the backend
-from backend.server.v2.library.db import create_library_agent, create_preset
-from backend.server.v2.library.model import LibraryAgentPresetCreatable
-from backend.server.v2.store.db import create_store_submission, review_store_submission
 from backend.util.clients import get_supabase
 
 faker = Faker()

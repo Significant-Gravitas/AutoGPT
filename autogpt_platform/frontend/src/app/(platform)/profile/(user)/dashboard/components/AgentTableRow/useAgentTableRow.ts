@@ -25,6 +25,7 @@ interface useAgentTableRowProps {
   video_url?: string;
   categories?: string[];
   store_listing_version_id?: string;
+  changes_summary?: string;
 }
 
 export const useAgentTableRow = ({
@@ -44,6 +45,7 @@ export const useAgentTableRow = ({
   video_url,
   categories,
   store_listing_version_id,
+  changes_summary,
 }: useAgentTableRowProps) => {
   const handleView = () => {
     onViewSubmission({
@@ -72,7 +74,7 @@ export const useAgentTableRow = ({
       image_urls: imageSrc,
       video_url,
       categories,
-      changes_summary: "Update Submission",
+      changes_summary: changes_summary || "Update Submission",
       store_listing_version_id,
       agent_id,
     });

@@ -40,18 +40,18 @@ function extractReviewData(payload: unknown): {
 interface PendingReviewCardProps {
   review: PendingHumanReviewModel;
   onReviewDataChange: (nodeExecId: string, data: string) => void;
-  reviewMessage: string;
-  onReviewMessageChange: (nodeExecId: string, message: string) => void;
-  isDisabled: boolean;
-  onToggleDisabled: (nodeExecId: string) => void;
+  reviewMessage?: string;
+  onReviewMessageChange?: (nodeExecId: string, message: string) => void;
+  isDisabled?: boolean;
+  onToggleDisabled?: (nodeExecId: string) => void;
 }
 
 export function PendingReviewCard({
   review,
   onReviewDataChange,
-  reviewMessage,
+  reviewMessage = "",
   onReviewMessageChange,
-  isDisabled,
+  isDisabled = false,
   onToggleDisabled,
 }: PendingReviewCardProps) {
   const extractedData = extractReviewData(review.payload);
@@ -65,8 +65,11 @@ export function PendingReviewCard({
   };
 
   const handleMessageChange = (newMessage: string) => {
-    onReviewMessageChange(review.node_exec_id, newMessage);
+    onReviewMessageChange?.(review.node_exec_id, newMessage);
   };
+
+  // Show simplified view when no toggle functionality is provided (Screenshot 1 mode)
+  const showSimplified = !onToggleDisabled;
 
   const renderDataInput = () => {
     const data = currentData;
@@ -134,60 +137,80 @@ export function PendingReviewCard({
     }
   };
 
-  return (
-    <div
-      className={`space-y-4 rounded-lg border p-4 ${isDisabled ? "bg-muted/50 opacity-60" : ""}`}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          {isDisabled && (
-            <Text variant="small" className="text-muted-foreground">
-              This item will be rejected
-            </Text>
-          )}
-        </div>
-        <Button
-          onClick={() => onToggleDisabled(review.node_exec_id)}
-          variant={isDisabled ? "primary" : "secondary"}
-          size="small"
-          leftIcon={
-            isDisabled ? <EyeSlashIcon size={14} /> : <TrashIcon size={14} />
-          }
-        >
-          {isDisabled ? "Include" : "Exclude"}
-        </Button>
-      </div>
+  // Helper function to get proper field label
+  const getFieldLabel = (instructions?: string) => {
+    if (instructions)
+      return instructions.charAt(0).toUpperCase() + instructions.slice(1);
+    return "Data to Review";
+  };
 
-      {instructions && (
-        <div>
-          <Text variant="body" className="mb-2 font-semibold">
-            Instructions:
-          </Text>
-          <Text variant="body">{instructions}</Text>
+  // Use the existing HITL review interface
+  return (
+    <div className="space-y-4">
+      {!showSimplified && (
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            {isDisabled && (
+              <Text variant="small" className="text-muted-foreground">
+                This item will be rejected
+              </Text>
+            )}
+          </div>
+          <Button
+            onClick={() => onToggleDisabled!(review.node_exec_id)}
+            variant={isDisabled ? "primary" : "secondary"}
+            size="small"
+            leftIcon={
+              isDisabled ? <EyeSlashIcon size={14} /> : <TrashIcon size={14} />
+            }
+          >
+            {isDisabled ? "Include" : "Exclude"}
+          </Button>
         </div>
       )}
 
-      <div>
-        <Text variant="body" className="mb-2 font-semibold">
-          Data to Review:
-          {!isDataEditable && (
-            <span className="ml-2 text-xs text-muted-foreground">
-              (Read-only)
-            </span>
+      {/* Show instructions as field label */}
+      {instructions && (
+        <div className="space-y-3">
+          <Text variant="body" className="font-semibold text-gray-900">
+            {getFieldLabel(instructions)}
+          </Text>
+          {isDataEditable && !isDisabled ? (
+            renderDataInput()
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-white p-3">
+              <Text variant="small" className="text-gray-600">
+                {JSON.stringify(currentData, null, 2)}
+              </Text>
+            </div>
           )}
-        </Text>
-        {isDataEditable && !isDisabled ? (
-          renderDataInput()
-        ) : (
-          <div className="rounded border bg-muted p-3">
-            <Text variant="small" className="font-mono text-muted-foreground">
-              {JSON.stringify(currentData, null, 2)}
-            </Text>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {isDisabled && (
+      {/* If no instructions, show data directly */}
+      {!instructions && (
+        <div className="space-y-3">
+          <Text variant="body" className="font-semibold text-gray-900">
+            Data to Review
+            {!isDataEditable && (
+              <span className="ml-2 text-xs text-muted-foreground">
+                (Read-only)
+              </span>
+            )}
+          </Text>
+          {isDataEditable && !isDisabled ? (
+            renderDataInput()
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-white p-3">
+              <Text variant="small" className="text-gray-600">
+                {JSON.stringify(currentData, null, 2)}
+              </Text>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!showSimplified && isDisabled && (
         <div>
           <Text variant="body" className="mb-2 font-semibold">
             Rejection Reason (Optional):

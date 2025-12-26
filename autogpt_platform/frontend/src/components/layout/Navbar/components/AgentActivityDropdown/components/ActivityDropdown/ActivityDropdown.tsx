@@ -130,7 +130,7 @@ export function ActivityDropdown({
         {filteredExecutions.length > 0 ? (
           <List
             height={listHeight}
-            width={300} // Match dropdown width (w-80 = 20rem = 320px)
+            width={320} // Match dropdown width (w-80 = 20rem = 320px)
             itemCount={filteredExecutions.length}
             itemSize={itemHeight}
             itemData={filteredExecutions}

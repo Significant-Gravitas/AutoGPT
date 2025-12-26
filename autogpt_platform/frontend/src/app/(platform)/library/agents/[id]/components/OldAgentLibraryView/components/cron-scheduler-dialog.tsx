@@ -4,8 +4,8 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { InfoIcon } from "lucide-react";
 
 // Base type for cron expression only
@@ -50,11 +50,7 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
   );
 
   // Get user's timezone
-  const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
-  });
+  const userTimezone = useUserTimezone();
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
 
   // Reset state when dialog opens

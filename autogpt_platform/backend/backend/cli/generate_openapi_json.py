@@ -2,7 +2,7 @@
 """
 Script to generate OpenAPI JSON specification for the FastAPI app.
 
-This script imports the FastAPI app from backend.server.rest_api and outputs
+This script imports the FastAPI app from backend.api.rest_api and outputs
 the OpenAPI specification as JSON to stdout or a specified file.
 
 Usage:
@@ -46,7 +46,7 @@ def main(output: Path, pretty: bool):
 
 def get_openapi_schema():
     """Get the OpenAPI schema from the FastAPI app"""
-    from backend.server.rest_api import app
+    from backend.api.rest_api import app
 
     return app.openapi()
 

@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.model import CreateGraph
+from backend.api.rest_api import AgentServer
 from backend.data.execution import ExecutionContext
 from backend.data.model import ProviderName, User
-from backend.server.model import CreateGraph
-from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 

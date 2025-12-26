@@ -16,6 +16,7 @@ from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBala
 from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
 
+from backend.api.features.admin.model import UserHistoryResponse
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
@@ -29,7 +30,6 @@ from backend.data.model import (
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
-from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import SafeJson, dumps

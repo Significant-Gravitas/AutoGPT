@@ -108,7 +108,7 @@ import fastapi.testclient
 import pytest
 from pytest_snapshot.plugin import Snapshot
 
-from backend.server.v2.myroute import router
+from backend.api.features.myroute import router
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -149,7 +149,7 @@ These provide the easiest way to set up authentication mocking in test modules:
 import fastapi
 import fastapi.testclient
 import pytest
-from backend.server.v2.myroute import router
+from backend.api.features.myroute import router
 
 app = fastapi.FastAPI()
 app.include_router(router)

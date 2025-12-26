@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from backend.server.v2.store.exceptions import VirusDetectedError, VirusScanError
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.util.virus_scanner import (
     VirusScannerService,
     VirusScannerSettings,

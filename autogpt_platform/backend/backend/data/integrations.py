@@ -23,7 +23,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
 if TYPE_CHECKING:
-    from backend.server.v2.library.model import LibraryAgentPreset
+    from backend.api.features.library.model import LibraryAgentPreset
 
 from .db import BaseDbModel
 from .graph import NodeModel
@@ -79,7 +79,7 @@ class WebhookWithRelations(Webhook):
         # integrations.py → library/model.py → integrations.py (for Webhook)
         # Runtime import is used in WebhookWithRelations.from_db() method instead
         # Import at runtime to avoid circular dependency
-        from backend.server.v2.library.model import LibraryAgentPreset
+        from backend.api.features.library.model import LibraryAgentPreset
 
         return WebhookWithRelations(
             **Webhook.from_db(webhook).model_dump(),
@@ -285,8 +285,8 @@ async def unlink_webhook_from_graph(
         user_id: The ID of the user (for authorization)
     """
     # Avoid circular imports
+    from backend.api.features.library.db import set_preset_webhook
     from backend.data.graph import set_node_webhook
-    from backend.server.v2.library.db import set_preset_webhook
 
     # Find all nodes in this graph that use this webhook
     nodes = await AgentNode.prisma().find_many(

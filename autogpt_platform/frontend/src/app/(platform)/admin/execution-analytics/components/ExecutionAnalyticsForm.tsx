@@ -41,6 +41,7 @@ interface FormData extends Omit<ExecutionAnalyticsRequest, "created_after"> {
   // All other fields use the generated types as-is
 }
 import { AnalyticsResultsTable } from "./AnalyticsResultsTable";
+import { okData } from "@/app/api/helpers";
 
 export function ExecutionAnalyticsForm() {
   const [results, setResults] = useState<ExecutionAnalyticsResponse | null>(
@@ -178,7 +179,7 @@ export function ExecutionAnalyticsForm() {
     data: config,
     isLoading: configLoading,
     error: configError,
-  } = useGetV2GetExecutionAnalyticsConfiguration();
+  } = useGetV2GetExecutionAnalyticsConfiguration({ query: { select: okData } });
 
   const generateAnalytics = usePostV2GenerateExecutionAnalytics({
     mutation: {
@@ -231,10 +232,10 @@ export function ExecutionAnalyticsForm() {
 
   // Update form defaults when config loads
   useEffect(() => {
-    if (config?.data && config.status === 200 && !formData.model_name) {
+    if (config && !formData.model_name) {
       setFormData((prev) => ({
         ...prev,
-        model_name: config.data.recommended_model,
+        model_name: config.recommended_model,
       }));
     }
   }, [config, formData.model_name]);
@@ -307,15 +308,13 @@ export function ExecutionAnalyticsForm() {
   }
 
   // Show error state if config fails to load
-  if (configError || !config?.data || config.status !== 200) {
+  if (configError || !config) {
     return (
       <div className="flex items-center justify-center py-8">
         <div className="text-red-500">Failed to load configuration</div>
       </div>
     );
   }
-
-  const configData = config.data;
 
   return (
     <div className="space-y-6">
@@ -382,7 +381,7 @@ export function ExecutionAnalyticsForm() {
                 <SelectValue placeholder="Select AI model" />
               </SelectTrigger>
               <SelectContent>
-                {configData.available_models.map((model) => (
+                {config.available_models.map((model) => (
                   <SelectItem key={model.value} value={model.value}>
                     {model.label}
                   </SelectItem>
@@ -442,7 +441,7 @@ export function ExecutionAnalyticsForm() {
                   onChange={(e) =>
                     handleInputChange("system_prompt", e.target.value)
                   }
-                  placeholder={configData.default_system_prompt}
+                  placeholder={config.default_system_prompt}
                   rows={6}
                   className="resize-y"
                 />
@@ -463,7 +462,7 @@ export function ExecutionAnalyticsForm() {
                   onChange={(e) =>
                     handleInputChange("user_prompt", e.target.value)
                   }
-                  placeholder={configData.default_user_prompt}
+                  placeholder={config.default_user_prompt}
                   rows={8}
                   className="resize-y"
                 />
@@ -490,7 +489,7 @@ export function ExecutionAnalyticsForm() {
                   onClick={() => {
                     handleInputChange(
                       "system_prompt",
-                      configData.default_system_prompt,
+                      config.default_system_prompt,
                     );
                   }}
                 >
@@ -503,7 +502,7 @@ export function ExecutionAnalyticsForm() {
                   onClick={() => {
                     handleInputChange(
                       "user_prompt",
-                      configData.default_user_prompt,
+                      config.default_user_prompt,
                     );
                   }}
                 >

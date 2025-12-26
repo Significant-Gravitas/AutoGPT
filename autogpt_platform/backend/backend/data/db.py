@@ -111,7 +111,7 @@ def get_database_schema() -> str:
 async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
     """Execute raw SQL query with proper schema handling."""
     schema = get_database_schema()
-    schema_prefix = f"{schema}." if schema != "public" else ""
+    schema_prefix = f'"{schema}".' if schema != "public" else ""
     formatted_query = query_template.format(schema_prefix=schema_prefix)
 
     import prisma as prisma_module

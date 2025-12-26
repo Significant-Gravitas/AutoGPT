@@ -2,6 +2,7 @@ import { parseAsString, useQueryStates } from "nuqs";
 import { AgentOutputs } from "./components/AgentOutputs/AgentOutputs";
 import { RunGraph } from "./components/RunGraph/RunGraph";
 import { ScheduleGraph } from "./components/ScheduleGraph/ScheduleGraph";
+import { PublishToMarketplace } from "./components/PublishToMarketplace/PublishToMarketplace";
 import { memo } from "react";
 
 export const BuilderActions = memo(() => {
@@ -13,6 +14,7 @@ export const BuilderActions = memo(() => {
       <AgentOutputs flowID={flowID} />
       <RunGraph flowID={flowID} />
       <ScheduleGraph flowID={flowID} />
+      <PublishToMarketplace flowID={flowID} />
     </div>
   );
 });

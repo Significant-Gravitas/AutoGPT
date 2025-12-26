@@ -2,20 +2,18 @@
 
 import { useEffect, useMemo } from "react";
 
+import {
+  okData,
+  getPaginationNextPageNumber,
+  getPaginatedTotalCount,
+  unpaginate,
+} from "@/app/api/helpers";
 import { useGetV1ListGraphExecutionsInfinite } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
-import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
-import type { LibraryAgentPresetResponse } from "@/app/api/__generated__/models/libraryAgentPresetResponse";
-import { okData } from "@/app/api/helpers";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
-import {
-  computeRunsCount,
-  extractRunsFromPages,
-  getNextRunsPageParam,
-} from "./helpers";
 
 function parseTab(
   value: string | null,
@@ -66,7 +64,7 @@ export function useSidebarRunsList({
       query: {
         enabled: !!graphId,
         refetchOnWindowFocus: false,
-        getNextPageParam: getNextRunsPageParam,
+        getNextPageParam: getPaginationNextPageNumber,
       },
     },
   );
@@ -74,7 +72,7 @@ export function useSidebarRunsList({
   const schedulesQuery = useGetV1ListExecutionSchedulesForAGraph(graphId, {
     query: {
       enabled: !!graphId,
-      select: (r) => okData<GraphExecutionJobInfo[]>(r),
+      select: okData,
     },
   });
 
@@ -83,13 +81,13 @@ export function useSidebarRunsList({
     {
       query: {
         enabled: !!graphId,
-        select: (r) => okData<LibraryAgentPresetResponse>(r)?.presets,
+        select: (r) => okData(r)?.presets,
       },
     },
   );
 
   const runs = useMemo(
-    () => extractRunsFromPages(runsQuery.data),
+    () => (runsQuery.data ? unpaginate(runsQuery.data, "executions") : []),
     [runsQuery.data],
   );
 
@@ -104,7 +102,7 @@ export function useSidebarRunsList({
     [allPresets],
   );
 
-  const runsCount = computeRunsCount(runsQuery.data, runs.length);
+  const runsCount = getPaginatedTotalCount(runsQuery.data, runs.length);
   const schedulesCount = schedules.length;
   const templatesCount = templates.length;
   const triggersCount = triggers.length;

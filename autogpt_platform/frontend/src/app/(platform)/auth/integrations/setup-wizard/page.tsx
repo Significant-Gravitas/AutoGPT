@@ -17,7 +17,6 @@ import type {
 import { CheckIcon, CircleIcon } from "@phosphor-icons/react";
 import { useGetOauthGetOauthAppInfo } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import { okData } from "@/app/api/helpers";
-import { OAuthApplicationPublicInfo } from "@/app/api/__generated__/models/oAuthApplicationPublicInfo";
 
 // All credential types - we accept any type of credential
 const ALL_CREDENTIAL_TYPES: CredentialsType[] = [
@@ -107,7 +106,7 @@ export default function IntegrationSetupWizardPage() {
   const state = searchParams.get("state");
 
   const { data: appInfo } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: { enabled: !!clientID, select: okData<OAuthApplicationPublicInfo> },
+    query: { enabled: !!clientID, select: okData },
   });
 
   // Parse providers from base64-encoded JSON
