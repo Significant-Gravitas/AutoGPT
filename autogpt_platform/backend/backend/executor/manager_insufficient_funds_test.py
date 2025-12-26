@@ -88,10 +88,10 @@ async def test_handle_insufficient_funds_sends_discord_alert_first_time(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_handle_insufficient_funds_skips_duplicate_discord_alert(
+async def test_handle_insufficient_funds_skips_duplicate_notifications(
     server: SpinTestServer,
 ):
-    """Test that duplicate insufficient funds notifications skip Discord alerts."""
+    """Test that duplicate insufficient funds notifications skip both email and Discord."""
 
     execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
@@ -137,8 +137,8 @@ async def test_handle_insufficient_funds_skips_duplicate_discord_alert(
             e=error,
         )
 
-        # Verify email notification was still queued
-        mock_queue_notif.assert_called_once()
+        # Verify email notification was NOT queued (deduplication worked)
+        mock_queue_notif.assert_not_called()
 
         # Verify Discord alert was NOT sent (deduplication worked)
         mock_client.discord_system_alert.assert_not_called()
@@ -277,7 +277,7 @@ async def test_clear_insufficient_funds_notifications_no_keys(server: SpinTestSe
 async def test_handle_insufficient_funds_continues_on_redis_error(
     server: SpinTestServer,
 ):
-    """Test that Discord alert is still sent when Redis fails."""
+    """Test that both email and Discord notifications are still sent when Redis fails."""
 
     execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
@@ -291,7 +291,7 @@ async def test_handle_insufficient_funds_continues_on_redis_error(
 
     with patch(
         "backend.executor.manager.queue_notification"
-    ), patch(
+    ) as mock_queue_notif, patch(
         "backend.executor.manager.get_notification_manager_client"
     ) as mock_get_client, patch(
         "backend.executor.manager.settings"
@@ -319,6 +319,9 @@ async def test_handle_insufficient_funds_continues_on_redis_error(
             graph_id=graph_id,
             e=error,
         )
+
+        # Verify email notification was still queued despite Redis error
+        mock_queue_notif.assert_called_once()
 
         # Verify Discord alert was still sent despite Redis error
         mock_client.discord_system_alert.assert_called_once()

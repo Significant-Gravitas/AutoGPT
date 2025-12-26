@@ -1291,12 +1291,40 @@ class ExecutionProcessor:
         graph_id: str,
         e: InsufficientBalanceError,
     ):
+        # Check if we've already sent a notification for this user+agent combo.
+        # We only send one notification per user per agent until they top up credits.
+        redis_key = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
+        try:
+            redis_client = redis.get_redis()
+            # SET NX returns True only if the key was newly set (didn't exist)
+            is_new_notification = redis_client.set(
+                redis_key,
+                "1",
+                nx=True,
+                ex=INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS,
+            )
+            if not is_new_notification:
+                # Already notified for this user+agent, skip all notifications
+                logger.debug(
+                    f"Skipping duplicate insufficient funds notification for "
+                    f"user={user_id}, graph={graph_id}"
+                )
+                return
+        except Exception as redis_error:
+            # If Redis fails, log and continue to send the notification
+            # (better to occasionally duplicate than to never notify)
+            logger.warning(
+                f"Failed to check/set insufficient funds notification flag in Redis: "
+                f"{redis_error}"
+            )
+
         shortfall = abs(e.amount) - e.balance
         metadata = db_client.get_graph_metadata(graph_id)
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
 
+        # Queue user email notification
         queue_notification(
             NotificationEventModel(
                 user_id=user_id,
@@ -1310,35 +1338,7 @@ class ExecutionProcessor:
             )
         )
 
-        # Check if we've already sent a Discord notification for this user+agent combo.
-        # We only send one notification per user per agent until they top up credits.
-        redis_key = (
-            f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
-        )
-        try:
-            redis_client = redis.get_redis()
-            # SET NX returns True only if the key was newly set (didn't exist)
-            is_new_notification = redis_client.set(
-                redis_key,
-                "1",
-                nx=True,
-                ex=INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS,
-            )
-            if not is_new_notification:
-                # Already notified for this user+agent, skip Discord alert
-                logger.debug(
-                    f"Skipping duplicate insufficient funds Discord alert for "
-                    f"user={user_id}, graph={graph_id}"
-                )
-                return
-        except Exception as redis_error:
-            # If Redis fails, log and continue to send the notification
-            # (better to occasionally duplicate than to never notify)
-            logger.warning(
-                f"Failed to check/set insufficient funds notification flag in Redis: "
-                f"{redis_error}"
-            )
-
+        # Send Discord system alert
         try:
             user_email = db_client.get_user_email_by_id(user_id)
 
