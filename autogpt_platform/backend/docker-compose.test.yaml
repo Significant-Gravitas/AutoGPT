@@ -6,6 +6,7 @@ networks:
 
 volumes:
   supabase-config:
+  clamav-data:
 
 x-agpt-services:
   &agpt-services
@@ -18,10 +19,6 @@ x-supabase-services:
   networks:
     - app-network
     - shared-network
-
-
-volumes:
-  clamav-data:
 
 services:
    
@@ -85,6 +82,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-networks:
-     app-network-test:
-       driver: bridge
