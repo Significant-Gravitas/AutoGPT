@@ -1908,24 +1908,20 @@ pyjwt = ">=2.10.1,<3.0.0"
 
 [[package]]
 name = "gravitasml"
-version = "0.1.3"
+version = "0.1.4"
 description = ""
 optional = false
-python-versions = ">=3.10,<4.0"
+python-versions = "<4.0,>=3.10"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "gravitasml-0.1.4-py3-none-any.whl", hash = "sha256:671a18b11d3d8a0e270c6a80c72cd058458b18d5ef7560d00010e962ab1bca74"},
+    {file = "gravitasml-0.1.4.tar.gz", hash = "sha256:35d0d9fec7431817482d53d9c976e375557c3e041d1eb6928e809324a8c866e3"},
+]
 
 [package.dependencies]
-black = "^24.10.0"
-pydantic = "^2.9.2"
-pytest = "^8.2.1"
-
-[package.source]
-type = "git"
-url = "https://github.com/Significant-Gravitas/gravitasml.git"
-reference = "0.1.4"
-resolved_reference = "d17f6ecc76f79923ed36ef95f702d7c3678d1e3e"
+black = ">=24.10.0,<25.0.0"
+pydantic = ">=2.9.2,<3.0.0"
+pytest = ">=8.2.1,<9.0.0"
 
 [[package]]
 name = "greenlet"
@@ -7278,4 +7274,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "9e30095e535ab5ff26154d1c8522de5f89d0a349aa1732204fe41c1c633d3e14"
+content-hash = "e299540948bc5fc1c29aa18b45c79fd0e7a69c3ceb066046fa938110c594bcfa"
