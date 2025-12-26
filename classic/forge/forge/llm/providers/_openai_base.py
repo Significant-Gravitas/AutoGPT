@@ -290,7 +290,18 @@ class BaseOpenAIChatProvider(
         kwargs = cast(CompletionCreateParams, kwargs)
 
         if max_output_tokens:
-            kwargs["max_tokens"] = max_output_tokens
+            # Newer models (o1, o3, o4, gpt-5, gpt-4.1, gpt-4o) use max_completion_tokens
+            if (
+                model.startswith("o1")
+                or model.startswith("o3")
+                or model.startswith("o4")
+                or model.startswith("gpt-5")
+                or model.startswith("gpt-4.1")
+                or model.startswith("gpt-4o")
+            ):
+                kwargs["max_completion_tokens"] = max_output_tokens  # type: ignore
+            else:
+                kwargs["max_tokens"] = max_output_tokens
 
         if functions:
             kwargs["tools"] = [  # pyright: ignore - it fails to infer the dict type
