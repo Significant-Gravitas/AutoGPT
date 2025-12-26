@@ -9,7 +9,7 @@ packages = [{ include = "autogpt_libs" }]
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
 colorama = "^0.4.6"
-cryptography = "^45.0"
+cryptography = "^46.0"
 expiringdict = "^1.2.2"
 fastapi = "^0.116.1"
 google-cloud-logging = "^3.12.1"
