@@ -1,17 +1,11 @@
-import React, { useCallback } from "react";
+import { useCallback } from "react";
 
+import { AgentRunDraftView } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/agent-run-draft-view";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import type {
   CredentialsMetaInput,
   GraphMeta,
 } from "@/lib/autogpt-server-api/types";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/__legacy__/ui/dialog";
-import { AgentRunDraftView } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/agent-run-draft-view";
 
 interface RunInputDialogProps {
   isOpen: boolean;
@@ -70,21 +64,33 @@ export function RunnerInputDialog({
   );
 
   return (
-    <Dialog open={isOpen} onOpenChange={doClose}>
-      <DialogContent className="flex w-[90vw] max-w-4xl flex-col p-10">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Run your agent</DialogTitle>
-          <DialogDescription className="mt-2">{graph.name}</DialogDescription>
-        </DialogHeader>
-        <AgentRunDraftView
-          className="p-0"
-          graph={graph}
-          doRun={doRun ? handleRun : undefined}
-          onRun={doRun ? undefined : doClose}
-          doCreateSchedule={doCreateSchedule ? handleSchedule : undefined}
-          onCreateSchedule={doCreateSchedule ? undefined : doClose}
-        />
-      </DialogContent>
+    <Dialog
+      title="Run your agent"
+      controlled={{
+        isOpen,
+        set: (open) => {
+          if (!open) doClose();
+        },
+      }}
+      onClose={doClose}
+      styling={{
+        maxWidth: "56rem",
+        width: "90vw",
+      }}
+    >
+      <Dialog.Content>
+        <div className="flex flex-col p-10">
+          <p className="mt-2 text-sm text-zinc-600">{graph.name}</p>
+          <AgentRunDraftView
+            className="p-0"
+            graph={graph}
+            doRun={doRun ? handleRun : undefined}
+            onRun={doRun ? undefined : doClose}
+            doCreateSchedule={doCreateSchedule ? handleSchedule : undefined}
+            onCreateSchedule={doCreateSchedule ? undefined : doClose}
+          />
+        </div>
+      </Dialog.Content>
     </Dialog>
   );
 }
