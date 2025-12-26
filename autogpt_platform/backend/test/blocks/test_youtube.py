@@ -37,6 +37,18 @@ class TestTranscribeYoutubeVideoBlock:
         video_id = self.youtube_block.extract_video_id(url)
         assert video_id == "dQw4w9WgXcQ"
 
+    def test_extract_video_id_shorts_url(self):
+        """Test extracting video ID from YouTube Shorts URL."""
+        url = "https://www.youtube.com/shorts/dtUqwMu3e-g"
+        video_id = self.youtube_block.extract_video_id(url)
+        assert video_id == "dtUqwMu3e-g"
+
+    def test_extract_video_id_shorts_url_with_params(self):
+        """Test extracting video ID from YouTube Shorts URL with query parameters."""
+        url = "https://www.youtube.com/shorts/dtUqwMu3e-g?feature=share"
+        video_id = self.youtube_block.extract_video_id(url)
+        assert video_id == "dtUqwMu3e-g"
+
     @patch("backend.blocks.youtube.YouTubeTranscriptApi")
     def test_get_transcript_english_available(self, mock_api_class):
         """Test getting transcript when English is available."""
