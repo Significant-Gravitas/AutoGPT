@@ -43,9 +43,8 @@ export default function FieldTemplate<
   );
 
   const isAnyOf = isAnyOfSchema(schema);
-
   return (
-    <div className="flex flex-col gap-2">
+    <div className="mb-2 flex flex-col gap-2">
       {!isAnyOf && (
         <div className="flex items-center gap-2">
           {displayLabel && (

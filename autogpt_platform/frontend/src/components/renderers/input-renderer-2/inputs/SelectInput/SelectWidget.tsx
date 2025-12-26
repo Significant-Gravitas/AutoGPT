@@ -18,8 +18,6 @@ import {
   MultiSelectorTrigger,
 } from "@/components/__legacy__/ui/multiselect";
 import { ExtendedFormContextType } from "../../types";
-import { isAnyOfSelector } from "@/components/renderers/input-renderer-2/utils/schema-utils";
-import { AnyOfSelector } from "../../anyof";
 
 type CustomWidgetProps<
   T = any,
@@ -40,7 +38,6 @@ export const SelectWidget = <
     options,
     value,
     onChange,
-    schema,
     disabled,
     readonly,
     className,

@@ -63,7 +63,6 @@ export const AnyOfFieldTitle = <
           registry={registry}
         />
       </div>
-
       {selector}
     </div>
   );
