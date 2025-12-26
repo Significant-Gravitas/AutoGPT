@@ -51,7 +51,7 @@ export const TextInputWidget = (props: WidgetProps) => {
       handleChange: (v: string) => (v === "" ? undefined : Number(v)),
     },
     [InputType.INTEGER]: {
-      htmlType: "account",
+      htmlType: "number",
       placeholder: "Enter integer value...",
       handleChange: (v: string) => (v === "" ? undefined : Number(v)),
     },
