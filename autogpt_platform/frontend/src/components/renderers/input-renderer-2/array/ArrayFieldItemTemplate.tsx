@@ -6,11 +6,8 @@ import {
   RJSFSchema,
   StrictRJSFSchema,
 } from "@rjsf/utils";
+import { ArrayItemProvider } from "./context/array-item-context";
 
-/** The `ArrayFieldItemTemplate` component is the template used to render an items of an array.
- *
- * @param props - The `ArrayFieldItemTemplateProps` props for the component
- */
 export default function ArrayFieldItemTemplate<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
@@ -36,7 +33,11 @@ export default function ArrayFieldItemTemplate<
   return (
     <div>
       <div className="mb-2 flex flex-row flex-wrap items-center">
-        <div className="shrink grow">{children}</div>
+        <div className="shrink grow">
+          <ArrayItemProvider>
+            <div className="shrink grow">{children}</div>
+          </ArrayItemProvider>
+        </div>
         <div className="flex items-end justify-end p-0.5">
           {hasToolbar && (
             <div

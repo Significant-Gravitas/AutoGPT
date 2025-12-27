@@ -6,11 +6,6 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import {
-  generateHandleId,
-  HandleIdType,
-  parseKeyValueHandleId,
-} from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 
 export interface ObjectEditorProps {
   id: string;
@@ -82,10 +77,10 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
       handleId.includes("_#_"),
     );
     allKeyValueHandleIdsOfANode.forEach((handleId) => {
-      const key = parseKeyValueHandleId(handleId, HandleIdType.KEY_VALUE);
-      if (!value[key]) {
-        value[key] = null;
-      }
+      // const key = parseKeyValueHandleId(handleId, HandleIdType.KEY_VALUE);
+      // if (!value[key]) {
+      //   value[key] = null;
+      // }
     });
 
     // Note: ObjectEditor is always used in node context, so showHandles is always true
@@ -99,12 +94,12 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
         id={parentFieldId}
       >
         {Object.entries(value).map(([key, propertyValue], idx) => {
-          const handleId = generateHandleId(
-            parentFieldId,
-            [key],
-            HandleIdType.KEY_VALUE,
-          );
-          const isDynamicPropertyConnected = isInputConnected(nodeId, handleId);
+          // const handleId = generateHandleId(
+          //   parentFieldId,
+          //   [key],
+          //   HandleIdType.KEY_VALUE,
+          // );
+          // const isDynamicPropertyConnected = isInputConnected(nodeId, handleId);
 
           return (
             <div key={idx} className="flex flex-col gap-2">
@@ -123,7 +118,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                   (string)
                 </Text>
               </div>
-              {!isDynamicPropertyConnected && (
+              {/* {!isDynamicPropertyConnected && (
                 <div className="flex items-center gap-2">
                   <Input
                     hideLabel={true}
@@ -158,7 +153,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-              )}
+              )} */}
             </div>
           );
         })}

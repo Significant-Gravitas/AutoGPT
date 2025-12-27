@@ -1,7 +1,7 @@
 import React from "react";
 import { FieldProps } from "@rjsf/utils";
 import { getDefaultRegistry } from "@rjsf/core";
-import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
+// import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 import { ObjectEditor } from "../widgets/ObjectEditorWidget/ObjectEditorWidget";
 
 export const ObjectField = (props: FieldProps) => {

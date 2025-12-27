@@ -1,15 +1,15 @@
-import { ArrayFieldTemplateItemType, RJSFSchema } from "@rjsf/utils";
+// import { ArrayFieldTemplateItemType, RJSFSchema } from "@rjsf/utils";
 import { ArrayEditorContext } from "./ArrayEditorContext";
 import { Button } from "@/components/atoms/Button/Button";
 import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import {
-  generateHandleId,
+  // generateHandleId,
   HandleIdType,
 } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 
 export interface ArrayEditorProps {
-  items?: ArrayFieldTemplateItemType<any, RJSFSchema, any>[];
+  // items?: ArrayFieldTemplateItemType<any, RJSFSchema, any>[];
   nodeId: string;
   canAdd: boolean | undefined;
   onAddClick?: () => void;
@@ -31,15 +31,15 @@ export const ArrayEditorWidget = ({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
+      {/* <div className="flex items-center gap-2">
         <div className="max-w-[345px] flex-1">
           {items?.map((element) => {
-            const arrayFieldHandleId = generateHandleId(
-              fieldId,
-              [element.index.toString()],
-              HandleIdType.ARRAY,
-            );
-            const isConnected = isInputConnected(nodeId, arrayFieldHandleId);
+            // const arrayFieldHandleId = generateHandleId(
+            //   fieldId,
+            //   [element.index.toString()],
+            //   HandleIdType.ARRAY,
+            // );
+            // const isConnected = isInputConnected(nodeId, arrayFieldHandleId);
             return (
               <div
                 key={element.key}
@@ -73,7 +73,7 @@ export const ArrayEditorWidget = ({
             );
           })}
         </div>
-      </div>
+      </div> */}
 
       {canAdd && !readonly && !disabled && (
         <Button

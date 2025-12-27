@@ -8,6 +8,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
 import { useRunInputDialog } from "./useRunInputDialog";
 import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog";
+import { FormRenderer2 } from "@/components/renderers/input-renderer-2";
 
 export const RunInputDialog = ({
   isOpen,
@@ -58,7 +59,7 @@ export const RunInputDialog = ({
                   </Text>
                 </div>
                 <div className="px-2">
-                  <FormRenderer
+                  <FormRenderer2
                     jsonSchema={credentialsSchema as RJSFSchema}
                     handleChange={(v) => handleCredentialChange(v.formData)}
                     uiSchema={credentialsUiSchema}
@@ -81,7 +82,7 @@ export const RunInputDialog = ({
                   </Text>
                 </div>
                 <div className="px-2">
-                  <FormRenderer
+                  <FormRenderer2
                     jsonSchema={inputSchema as RJSFSchema}
                     handleChange={(v) => handleInputChange(v.formData)}
                     uiSchema={uiSchema}

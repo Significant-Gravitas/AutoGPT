@@ -11,7 +11,7 @@ import { Text } from "@/components/atoms/Text/Text";
 
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
+// import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { ArrayEditorContext } from "../widgets/ArrayEditorWidget/ArrayEditorContext";
 import {
@@ -64,7 +64,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
       );
       handleId = filtered.join("_") || "";
     } else {
-      handleId = generateHandleId(fieldId);
+      // handleId = generateHandleId(fieldId);
     }
   } else {
     handleId = arrayFieldHandleId;

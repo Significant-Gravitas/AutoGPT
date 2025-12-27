@@ -9,7 +9,7 @@ import {
   RJSFSchema,
   StrictRJSFSchema,
   titleId,
-} from '@rjsf/utils';
+} from "@rjsf/utils";
 
 /** The `ObjectFieldTemplate` is the template to use to render all the inner properties of an object along with the
  * title and description if available. If the object is expandable, then an `AddButton` is also rendered after all
@@ -37,12 +37,17 @@ export default function ObjectFieldTemplate<
   registry,
 }: ObjectFieldTemplateProps<T, S, F>) {
   const uiOptions = getUiOptions<T, S, F>(uiSchema);
-  const TitleFieldTemplate = getTemplate<'TitleFieldTemplate', T, S, F>('TitleFieldTemplate', registry, uiOptions);
-  const DescriptionFieldTemplate = getTemplate<'DescriptionFieldTemplate', T, S, F>(
-    'DescriptionFieldTemplate',
+  const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
+    "TitleFieldTemplate",
     registry,
     uiOptions,
   );
+  const DescriptionFieldTemplate = getTemplate<
+    "DescriptionFieldTemplate",
+    T,
+    S,
+    F
+  >("DescriptionFieldTemplate", registry, uiOptions);
   const showOptionalDataControlInTitle = !readonly && !disabled;
   // Button templates are not overridden in the uiSchema
   const {
@@ -58,7 +63,9 @@ export default function ObjectFieldTemplate<
           schema={schema}
           uiSchema={uiSchema}
           registry={registry}
-          optionalDataControl={showOptionalDataControlInTitle ? optionalDataControl : undefined}
+          optionalDataControl={
+            showOptionalDataControlInTitle ? optionalDataControl : undefined
+          }
         />
       )}
       {description && (
@@ -70,20 +77,20 @@ export default function ObjectFieldTemplate<
           registry={registry}
         />
       )}
-      <div className='flex flex-col gap-2'>
+      <div className="flex flex-col">
         {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
         {properties.map((element: any, index: number) => (
-          <div key={index} className={`${element.hidden ? 'hidden' : ''} flex`}>
-            <div className='w-full'>{element.content}</div>
+          <div key={index} className={`${element.hidden ? "hidden" : ""} flex`}>
+            <div className="w-full">{element.content}</div>
           </div>
         ))}
         {canExpand(schema, uiSchema, formData) ? (
-          <div className='mt-2 flex justify-end'>
+          <div className="mt-2 flex justify-end">
             <AddButton
-              id={buttonId(fieldPathId, 'add')}
+              id={buttonId(fieldPathId, "add")}
               onClick={onAddProperty}
               disabled={disabled || readonly}
-              className='rjsf-object-property-expand'
+              className="rjsf-object-property-expand"
               uiSchema={uiSchema}
               registry={registry}
             />

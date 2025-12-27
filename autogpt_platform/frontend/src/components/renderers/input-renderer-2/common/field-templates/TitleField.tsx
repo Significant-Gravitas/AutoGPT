@@ -24,7 +24,7 @@ export default function TitleField<
 
   return (
     <div className="flex items-center gap-1">
-      <InputNodeHandle fieldPathId={id} nodeId={nodeId ?? ""} />
+      <InputNodeHandle titleId={id} nodeId={nodeId ?? ""} />
       <Text variant="body" id={id} className="line-clamp-1">
         {title}
       </Text>

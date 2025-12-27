@@ -4,7 +4,6 @@ import {
   FormContextType,
   getTemplate,
   getUiOptions,
-  getWidget,
   RJSFSchema,
   StrictRJSFSchema,
   titleId,

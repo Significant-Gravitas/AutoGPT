@@ -25,7 +25,7 @@ export const FormRenderer2 = ({
   }, [jsonSchema]);
 
   return (
-    <div className={"mt-4"}>
+    <div className={"mb-6 mt-4"}>
       <Form
         formContext={formContext}
         schema={preprocessedSchema}

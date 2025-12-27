@@ -12,7 +12,7 @@ import {
 import { InfoIcon } from "@phosphor-icons/react";
 import { useAnyOfField } from "./useAnyOfField";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
-import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
+// import { generateHandleId } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import merge from "lodash/merge";
 import {
@@ -47,13 +47,13 @@ export const AnyOfField = ({
   onBlur,
   onFocus,
 }: FieldProps) => {
-  const handleId =
-    formContext.uiType === BlockUIType.AGENT
-      ? (idSchema.$id ?? "")
-          .split("_")
-          .filter((p) => p !== "root" && p !== "properties" && p.length > 0)
-          .join("_") || ""
-      : generateHandleId(idSchema.$id ?? "");
+  // const handleId =
+  //   formContext.uiType === BlockUIType.AGENT
+  //     ? (idSchema.$id ?? "")
+  //         .split("_")
+  //         .filter((p) => p !== "root" && p !== "properties" && p.length > 0)
+  //         .join("_") || ""
+  //     : generateHandleId(idSchema.$id ?? "");
 
   const updatedFormContexrt = { ...formContext, fromAnyOf: true };
 
@@ -179,13 +179,13 @@ export const AnyOfField = ({
       <div
         className={cn("ml-1 flex items-center gap-1", showHandles && "-ml-2")}
       >
-        {showHandles && (
+        {/* {showHandles && (
           <NodeHandle
             handleId={handleId}
             isConnected={isConnected}
             side="left"
           />
-        )}
+        )} */}
         <Text variant={formContext.size === "small" ? "body" : "body-medium"}>
           {schema.title || name.charAt(0).toUpperCase() + name.slice(1)}
         </Text>

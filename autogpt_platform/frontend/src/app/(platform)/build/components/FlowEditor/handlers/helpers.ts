@@ -1,31 +1,4 @@
-/**
- * Handle ID Types for different input structures
- *
- * Examples:
- * SIMPLE: "message"
- * NESTED: "config.api_key"
- * ARRAY: "items_$_0", "items_$_1"
- * KEY_VALUE: "headers_#_Authorization", "params_#_limit"
- *
- * Note: All handle IDs are sanitized to remove spaces and special characters.
- * Spaces become underscores, and special characters are removed.
- * Example: "user name" becomes "user_name", "email@domain.com" becomes "emaildomaincom"
- */
-export enum HandleIdType {
-  SIMPLE = "SIMPLE",
-  NESTED = "NESTED",
-  ARRAY = "ARRAY",
-  KEY_VALUE = "KEY_VALUE",
-}
-
-const fromRjsfId = (id: string): string => {
-  if (!id) return "";
-  const parts = id.split("_");
-  const filtered = parts.filter(
-    (p) => p !== "root" && p !== "properties" && p.length > 0,
-  );
-  return filtered.join("_") || "";
-};
+// Here we are handling single level of nesting, if need more in future then i will update it
 
 const sanitizeForHandleId = (str: string): string => {
   if (!str) return "";
@@ -38,51 +11,57 @@ const sanitizeForHandleId = (str: string): string => {
     .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
 };
 
-export const generateHandleId = (
+const cleanTitleId = (id: string): string => {
+  if (!id) return "";
+
+  if (id.endsWith("_title")) {
+    id = id.slice(0, -6);
+  }
+  const parts = id.split("_");
+  const filtered = parts.filter(
+    (p) => p !== "root" && p !== "properties" && p.length > 0,
+  );
+  const filtered_id = filtered.join("_") || "";
+  return sanitizeForHandleId(filtered_id);
+};
+
+export const generateHandleIdFromTitleId = (
   fieldKey: string,
-  nestedValues: string[] = [],
-  type: HandleIdType = HandleIdType.SIMPLE,
+  {
+    isArrayItem,
+    isObjectProperty,
+  }: { isArrayItem: boolean; isObjectProperty: boolean } = {
+    isArrayItem: false,
+    isObjectProperty: false,
+  },
 ): string => {
   if (!fieldKey) return "";
 
-  fieldKey = fromRjsfId(fieldKey);
-  fieldKey = sanitizeForHandleId(fieldKey);
+  const cleanedKey = cleanTitleId(fieldKey);
 
-  if (type === HandleIdType.SIMPLE || nestedValues.length === 0) {
-    return fieldKey;
+  if (isArrayItem) {
+    // For array items: convert "items_0" to "items_$_0"
+    // Find the last underscore followed by a number and replace with _$_
+    const match = cleanedKey.match(/^(.+)_(\d+)$/);
+    if (match) {
+      return `${match[1]}_$_${match[2]}`;
+    }
+    return cleanedKey;
   }
 
-  const sanitizedNestedValues = nestedValues.map((value) =>
-    sanitizeForHandleId(value),
-  );
-
-  switch (type) {
-    case HandleIdType.NESTED:
-      return [fieldKey, ...sanitizedNestedValues].join(".");
-
-    case HandleIdType.ARRAY:
-      return [fieldKey, ...sanitizedNestedValues].join("_$_");
-
-    case HandleIdType.KEY_VALUE:
-      return [fieldKey, ...sanitizedNestedValues].join("_#_");
-
-    default:
-      return fieldKey;
+  if (isObjectProperty) {
+    // For object properties: convert "config_api_key" to "config_#_api_key"
+    // or handle nested dot notation
+    // will see it
+    const parts = cleanedKey.split("_");
+    if (parts.length >= 2) {
+      const baseName = parts[0];
+      const propertyName = parts.slice(1).join("_");
+      return `${baseName}_#_${propertyName}`;
+    }
+    return cleanedKey;
   }
-};
 
-export const parseKeyValueHandleId = (
-  handleId: string,
-  type: HandleIdType,
-): string => {
-  if (type === HandleIdType.KEY_VALUE) {
-    return handleId.split("_#_")[1];
-  } else if (type === HandleIdType.ARRAY) {
-    return handleId.split("_$_")[1];
-  } else if (type === HandleIdType.NESTED) {
-    return handleId.split(".")[1];
-  } else if (type === HandleIdType.SIMPLE) {
-    return handleId.split("_")[1];
-  }
-  return "";
+  // For simple fields or nested fields (dot notation handled elsewhere)
+  return cleanedKey;
 };

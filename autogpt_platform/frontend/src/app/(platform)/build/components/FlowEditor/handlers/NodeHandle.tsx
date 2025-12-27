@@ -1,31 +1,32 @@
 import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
-import { generateHandleId, HandleIdType } from "./helpers";
+import { generateHandleIdFromTitleId } from "./helpers";
 import { useEdgeStore } from "../../../stores/edgeStore";
+import { useIsArrayItem } from "@/components/renderers/input-renderer-2/array/context/array-item-context";
 
 const InputNodeHandle = ({
-  fieldPathId,
+  titleId,
   nodeId,
 }: {
-  fieldPathId: string;
+  titleId: string;
   nodeId: string;
 }) => {
-  const extracted_id = fieldPathId
-    .split("__")
-    .slice(0, -1)
-    .join("__")
-    .split("_")
-    .slice(1)
-    .join("_"); // here i am removing root prefix from the id
+  const isArrayItem = useIsArrayItem();
+
+  const handleId = generateHandleIdFromTitleId(titleId, {
+    isArrayItem,
+    isObjectProperty: false,
+  });
+
   const isInputConnected = useEdgeStore((state) =>
-    state.isInputConnected(nodeId, extracted_id),
+    state.isInputConnected(nodeId, handleId),
   );
-  console.log("extracted_id", extracted_id);
+
   return (
     <Handle
       type={"target"}
       position={Position.Left}
-      id={extracted_id}
+      id={handleId}
       className={"-ml-6 mr-2"}
     >
       <div className="pointer-events-none">
