@@ -7,7 +7,7 @@ import {
   StrictRJSFSchema,
   titleId,
 } from "@rjsf/utils";
-import { isAnyOfSchema } from "../../utils/schema-utils";
+import { isAnyOfChild, isAnyOfSchema } from "../../utils/schema-utils";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
 export default function FieldTemplate<
@@ -47,11 +47,15 @@ export default function FieldTemplate<
     getUiOptions(uiSchema),
   );
 
+  const shouldDisplayLabel =
+    displayLabel ||
+    (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
+
   return (
-    <div className="mb-2 flex flex-col gap-4">
+    <div className="mb-4 flex flex-col gap-2">
       {!isAnyOfSchema(schema) && (
         <div className="flex items-center gap-2">
-          {displayLabel && (
+          {shouldDisplayLabel && (
             <TitleFieldTemplate
               id={titleId(id)}
               title={label}
@@ -60,7 +64,7 @@ export default function FieldTemplate<
               registry={registry}
             />
           )}
-          {displayLabel && rawDescription && <span>{description}</span>}
+          {shouldDisplayLabel && rawDescription && <span>{description}</span>}
         </div>
       )}
 
