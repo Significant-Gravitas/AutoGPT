@@ -1,4 +1,5 @@
 import {
+  ADDITIONAL_PROPERTY_FLAG,
   FieldTemplateProps,
   FormContextType,
   getTemplate,
@@ -14,21 +15,29 @@ export default function FieldTemplate<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
->({
-  id,
-  children,
-  displayLabel,
-  errors,
-  help,
-  description,
-  rawDescription,
-  label,
-  hidden,
-  required,
-  schema,
-  uiSchema,
-  registry,
-}: FieldTemplateProps<T, S, F>) {
+>(props: FieldTemplateProps<T, S, F>) {
+  const {
+    id,
+    children,
+    displayLabel,
+    errors,
+    help,
+    description,
+    rawDescription,
+    label,
+    hidden,
+    required,
+    schema,
+    uiSchema,
+    registry,
+    classNames,
+    style,
+    disabled,
+    onKeyRename,
+    onKeyRenameBlur,
+    onRemoveProperty,
+    readonly,
+  } = props;
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[registry.formContext.nodeId ?? ""],
   );
@@ -47,30 +56,57 @@ export default function FieldTemplate<
     getUiOptions(uiSchema),
   );
 
+  const WrapIfAdditionalTemplate = getTemplate<
+    "WrapIfAdditionalTemplate",
+    T,
+    S,
+    F
+  >("WrapIfAdditionalTemplate", registry, getUiOptions(uiSchema));
+
+  const additional = ADDITIONAL_PROPERTY_FLAG in schema;
+
   const shouldDisplayLabel =
     displayLabel ||
     (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
 
   return (
-    <div className="mb-4 flex flex-col gap-2">
-      {!isAnyOfSchema(schema) && (
-        <div className="flex items-center gap-2">
-          {shouldDisplayLabel && (
-            <TitleFieldTemplate
-              id={titleId(id)}
-              title={label}
-              required={required}
-              schema={schema}
-              registry={registry}
-            />
-          )}
-          {shouldDisplayLabel && rawDescription && <span>{description}</span>}
-        </div>
-      )}
+    <WrapIfAdditionalTemplate
+      classNames={classNames}
+      style={style}
+      disabled={disabled}
+      id={id}
+      label={label}
+      displayLabel={displayLabel}
+      onKeyRename={onKeyRename}
+      onKeyRenameBlur={onKeyRenameBlur}
+      onRemoveProperty={onRemoveProperty}
+      rawDescription={rawDescription}
+      readonly={readonly}
+      required={required}
+      schema={schema}
+      uiSchema={uiSchema}
+      registry={registry}
+    >
+      <div className="mb-4 flex flex-col gap-2">
+        {!isAnyOfSchema(schema) && !additional && (
+          <div className="flex items-center gap-2">
+            {shouldDisplayLabel && (
+              <TitleFieldTemplate
+                id={titleId(id)}
+                title={label}
+                required={required}
+                schema={schema}
+                registry={registry}
+              />
+            )}
+            {shouldDisplayLabel && rawDescription && <span>{description}</span>}
+          </div>
+        )}
 
-      {children}
-      {errors}
-      {help}
-    </div>
+        {children}
+        {errors}
+        {help}
+      </div>
+    </WrapIfAdditionalTemplate>
   );
 }

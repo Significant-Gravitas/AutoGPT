@@ -63,9 +63,7 @@ export default function ObjectFieldTemplate<
           schema={schema}
           uiSchema={uiSchema}
           registry={registry}
-          optionalDataControl={
-            showOptionalDataControlInTitle ? optionalDataControl : undefined
-          }
+          optionalDataControl={true ? optionalDataControl : undefined}
         />
       )}
       {description && (

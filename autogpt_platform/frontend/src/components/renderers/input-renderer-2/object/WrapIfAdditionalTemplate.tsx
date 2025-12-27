@@ -2,14 +2,18 @@ import {
   ADDITIONAL_PROPERTY_FLAG,
   buttonId,
   FormContextType,
+  getTemplate,
+  getUiOptions,
   RJSFSchema,
   StrictRJSFSchema,
+  titleId,
   TranslatableString,
   WrapIfAdditionalTemplateProps,
 } from "@rjsf/utils";
 
-import { Input } from "@/components/__legacy__/ui/input";
 import { Separator } from "@/components/__legacy__/ui/separator";
+import { Input } from "@/components/atoms/Input/Input";
+import { Text } from "@/components/atoms/Text/Text";
 
 /** The `WrapIfAdditional` component is used by the `FieldTemplate` to rename, or remove properties that are
  * part of an `additionalProperties` part of a schema.
@@ -40,8 +44,13 @@ export default function WrapIfAdditionalTemplate<
   const { templates, translateString } = registry;
   // Button templates are not overridden in the uiSchema
   const { RemoveButton } = templates.ButtonTemplates;
-  const keyLabel = translateString(TranslatableString.KeyLabel, [label]);
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
+
+  const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
+    "TitleFieldTemplate",
+    registry,
+    getUiOptions(uiSchema),
+  );
 
   if (!additional) {
     return (
@@ -57,56 +66,39 @@ export default function WrapIfAdditionalTemplate<
 
   return (
     <>
-      <div
-        className={`col-span-12 grid grid-cols-12 items-center gap-2 ${classNames}`}
-        style={style}
-      >
-        <div className="col-span-5 grid gap-2">
-          <div className="flex flex-col gap-2">
-            {displayLabel && (
-              <label
-                htmlFor={keyId}
-                className="text-sm font-medium leading-none text-muted-foreground"
-              >
-                {keyLabel}
-              </label>
-            )}
-            <div className="pl-0.5">
-              <Input
-                required={required}
-                defaultValue={label}
-                disabled={disabled || readonly}
-                id={keyId}
-                name={keyId}
-                onBlur={!readonly ? onKeyRenameBlur : undefined}
-                type="text"
-                className="w-full border shadow-sm"
-              />
-            </div>
-            {!!rawDescription && (
-              <span className="text-xs font-medium text-muted-foreground">
-                <div className="text-sm text-muted-foreground">&nbsp;</div>
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="col-span-6 grid gap-2 pr-0.5">{children}</div>
-        <div
-          className="col-span-1 grid gap-2"
-          style={{ marginTop: `${margin}px` }}
-        >
-          <RemoveButton
-            id={buttonId(id, "remove")}
-            iconType="block"
-            className="rjsf-object-property-remove w-full"
+      <div className={`mb-4 flex flex-col gap-1`} style={style}>
+        <TitleFieldTemplate
+          id={titleId(id)}
+          title={label}
+          required={required}
+          schema={schema}
+          registry={registry}
+        />
+        <div className="flex flex-1 items-center gap-2">
+          <Input
+            label={""}
+            hideLabel={true}
+            required={required}
+            defaultValue={label}
             disabled={disabled || readonly}
-            onClick={onRemoveProperty}
-            uiSchema={uiSchema}
-            registry={registry}
+            id={keyId}
+            wrapperClassName="mb-2 w-30"
+            name={keyId}
+            onBlur={!readonly ? onKeyRenameBlur : undefined}
+            type="text"
+            size="small"
           />
+          {children}
         </div>
+
+        <RemoveButton
+          id={buttonId(id, "remove")}
+          disabled={disabled || readonly}
+          onClick={onRemoveProperty}
+          uiSchema={uiSchema}
+          registry={registry}
+        />
       </div>
-      <Separator dir="horizontal" className="mt-2" />
     </>
   );
 }

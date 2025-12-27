@@ -36,7 +36,7 @@ export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
               items: { type: "string" },
               title: "Array",
             },
-            { type: "object", title: "Object" },
+            { type: "object", title: "Object", additionalProperties: true },
             { type: "null", title: "Null" },
           ];
         }

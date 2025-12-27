@@ -2,6 +2,7 @@ import { uiSchema } from "@/app/(platform)/build/components/FlowEditor/nodes/uiS
 import {
   FieldProps,
   FormContextType,
+  getFirstMatchingOption,
   getUiOptions,
   getWidget,
   mergeSchemas,
@@ -9,6 +10,7 @@ import {
   StrictRJSFSchema,
 } from "@rjsf/utils";
 import { useRef, useState } from "react";
+import validator from "@rjsf/validator-ajv8";
 
 export const useAnyOfField = <
   T = any,
@@ -17,10 +19,24 @@ export const useAnyOfField = <
 >(
   props: FieldProps<T, S, F>,
 ) => {
-  const { registry, schema, options, formData, onChange } = props;
+  const { registry, schema, options, onChange, formData } = props;
   const { schemaUtils } = registry;
 
-  const [selectedOption, setSelectedOption] = useState<number>(0);
+  const getInitialOption = () => {
+    if (formData !== undefined && formData !== null) {
+      const option = getFirstMatchingOption(
+        validator,
+        formData,
+        options,
+        schema,
+      );
+      return option ? option : 0;
+    }
+    return 0;
+  };
+
+  const [selectedOption, setSelectedOption] =
+    useState<number>(getInitialOption());
   const retrievedOptions = useRef<any[]>(
     options.map((opt: S) => schemaUtils.retrieveSchema(opt, formData)),
   );
@@ -42,7 +58,6 @@ export const useAnyOfField = <
   const field_id = props.fieldPathId.$id;
 
   const handleOptionChange = (option?: string) => {
-    console.log("calling handleOptionChange");
     const intOption = option !== undefined ? parseInt(option, 10) : -1;
     if (intOption === selectedOption) return;
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { extendedButtonVariants } from "@/components/atoms/Button/helpers";
 import { TrashIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { Text } from "@/components/atoms/Text/Text";
 
 export type AutogptIconButtonProps<
   T = any,
@@ -30,11 +31,15 @@ export default function IconButton<
     <Button
       size="icon"
       variant="secondary"
-      className={cn("border border-zinc-200 p-1.5")}
+      className={cn(className, "w-fit border border-zinc-200 p-1.5 px-4")}
       {...otherProps}
       type="button"
     >
       {icon}
+      <Text variant="body" className="ml-2">
+        {" "}
+        Remove Item{" "}
+      </Text>
     </Button>
   );
 }

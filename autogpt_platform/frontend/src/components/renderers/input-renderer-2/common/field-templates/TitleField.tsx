@@ -1,4 +1,5 @@
 import {
+  ADDITIONAL_PROPERTY_FLAG,
   descriptionId,
   RJSFSchema,
   StrictRJSFSchema,
@@ -15,12 +16,17 @@ export default function TitleField<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends ExtendedFormContextType = ExtendedFormContextType,
->({ id, title, required, schema, registry }: TitleFieldProps<T, S, F>) {
+>(props: TitleFieldProps<T, S, F>) {
+  const { id, title, required, schema, registry } = props;
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
   const { nodeId } = registry.formContext;
 
   const isAnyOf = isAnyOfSchema(schema);
   const description_id = descriptionId(id);
+
+  const additional = ADDITIONAL_PROPERTY_FLAG in schema;
+
+  console.log("title_id", id, additional, props);
 
   return (
     <div className="flex items-center gap-1">
