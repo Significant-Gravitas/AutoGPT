@@ -535,8 +535,25 @@ async def llm_call(
         tool_calls = extract_responses_api_tool_calls(response)
         reasoning = extract_responses_api_reasoning(response)
 
+        # Build a message dict for raw_response that matches the expected format
+        # for conversation history (role, content, and optionally tool_calls)
+        raw_response_dict: dict = {
+            "role": "assistant",
+            "content": response.output_text or "",
+        }
+        # Add tool_calls in OpenAI format if present
+        if tool_calls:
+            raw_response_dict["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in tool_calls
+            ]
+
         return LLMResponse(
-            raw_response=response,
+            raw_response=raw_response_dict,
             prompt=prompt,
             response=response.output_text or "",
             tool_calls=tool_calls,
