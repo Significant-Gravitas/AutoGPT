@@ -522,9 +522,13 @@ async def llm_call(
             responses_params["text"] = {"format": {"type": "json_object"}}
 
         try:
-            response = await oai_client.responses.create(**responses_params, timeout=600)
+            response = await oai_client.responses.create(
+                **responses_params, timeout=600
+            )
         except openai.APIError as e:
-            error_message = f"OpenAI Responses API error for model {llm_model.value}: {str(e)}"
+            error_message = (
+                f"OpenAI Responses API error for model {llm_model.value}: {str(e)}"
+            )
             logger.error(error_message)
             raise ValueError(error_message) from e
         except TimeoutError as e:
@@ -547,7 +551,10 @@ async def llm_call(
                 {
                     "id": tc.id,
                     "type": "function",
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
                 }
                 for tc in tool_calls
             ]
