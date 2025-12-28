@@ -40,8 +40,6 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
         """Test that AIStructuredResponseGeneratorBlock correctly tracks stats."""
-        from unittest.mock import patch
-
         import backend.blocks.llm as llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
@@ -254,8 +252,6 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_text_summarizer_real_llm_call_stats(self):
         """Test AITextSummarizer with real LLM call mocking to verify llm_call_count."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
         import backend.blocks.llm as llm
 
         block = llm.AITextSummarizerBlock()
@@ -297,10 +293,6 @@ class TestLLMStatsTracking:
                     input_data, credentials=llm.TEST_CREDENTIALS
                 ):
                     outputs[output_name] = output_data
-
-            print(f"Actual calls made: {call_count}")
-            print(f"Block stats: {block.execution_stats}")
-            print(f"LLM call count: {block.execution_stats.llm_call_count}")
 
             # Should have made 2 calls: 1 for chunk summary + 1 for final summary
             assert block.execution_stats.llm_call_count >= 1

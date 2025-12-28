@@ -420,7 +420,7 @@ def extract_responses_api_tool_calls(response) -> list[ToolContentBlock] | None:
             if hasattr(item, "type") and item.type == "function_call":
                 tool_calls.append(
                     ToolContentBlock(
-                        id=item.call_id if hasattr(item, "call_id") else item.id,
+                        id=getattr(item, "call_id", getattr(item, "id", "")),
                         type="function",
                         function=ToolCall(
                             name=item.name,
@@ -433,7 +433,7 @@ def extract_responses_api_tool_calls(response) -> list[ToolContentBlock] | None:
 
 def get_parallel_tool_calls_param(
     llm_model: LlmModel, parallel_tool_calls: bool | None
-):
+) -> bool | openai.NotGiven:
     """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
     if llm_model.startswith("o") or parallel_tool_calls is None:
         return openai.NOT_GIVEN
@@ -522,9 +522,13 @@ async def llm_call(
             responses_params["text"] = {"format": {"type": "json_object"}}
 
         try:
-            response = await oai_client.responses.create(**responses_params)
+            response = await oai_client.responses.create(**responses_params, timeout=600)
         except openai.APIError as e:
-            error_message = f"OpenAI Responses API error: {str(e)}"
+            error_message = f"OpenAI Responses API error for model {llm_model.value}: {str(e)}"
+            logger.error(error_message)
+            raise ValueError(error_message) from e
+        except TimeoutError as e:
+            error_message = f"OpenAI Responses API timeout for model {llm_model.value}"
             logger.error(error_message)
             raise ValueError(error_message) from e
 
