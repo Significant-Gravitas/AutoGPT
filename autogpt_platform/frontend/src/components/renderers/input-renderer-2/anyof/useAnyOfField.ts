@@ -30,9 +30,9 @@ export const useAnyOfField = <
         options,
         schema,
       );
-      return option ? option : 0;
+      return option ? option : options.length - 1;
     }
-    return 0;
+    return options.length - 1;
   };
 
   const [selectedOption, setSelectedOption] =
