@@ -31,10 +31,8 @@ export default function WrapIfAdditionalTemplate<
   disabled,
   id,
   label,
-  displayLabel,
   onRemoveProperty,
   onKeyRenameBlur,
-  rawDescription,
   readonly,
   required,
   schema,
@@ -60,9 +58,15 @@ export default function WrapIfAdditionalTemplate<
     );
   }
 
-  const marginDesc = rawDescription ? -28 : 0;
-  const margin = displayLabel ? 22 + marginDesc : 0;
   const keyId = `${id}-key`;
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (e.target.value == "") {
+      onRemoveProperty();
+    } else {
+      onKeyRenameBlur(e);
+    }
+  };
 
   return (
     <>
@@ -84,7 +88,7 @@ export default function WrapIfAdditionalTemplate<
             id={keyId}
             wrapperClassName="mb-2 w-30"
             name={keyId}
-            onBlur={!readonly ? onKeyRenameBlur : undefined}
+            onBlur={!readonly ? handleBlur : undefined}
             type="text"
             size="small"
           />

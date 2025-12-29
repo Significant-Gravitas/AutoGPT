@@ -29,7 +29,7 @@ export default function ArrayFieldItemTemplate<
     S,
     F
   >("ArrayFieldItemButtonsTemplate", registry, uiOptions);
-  const margin = hasDescription ? -6 : 28;
+
   return (
     <div>
       <div className="mb-2 flex flex-row flex-wrap items-center">
@@ -44,7 +44,7 @@ export default function ArrayFieldItemTemplate<
               className="flex gap-2"
               style={{
                 marginLeft: "5px",
-                marginTop: displayLabel ? `${margin}px` : undefined,
+                marginTop: displayLabel ? `-6px` : undefined,
               }}
             >
               <ArrayFieldItemButtonsTemplate {...buttonsProps} />
