@@ -3,14 +3,14 @@ import {
   FieldProps,
   FormContextType,
   getFirstMatchingOption,
-  getUiOptions,
-  getWidget,
   mergeSchemas,
   RJSFSchema,
   StrictRJSFSchema,
 } from "@rjsf/utils";
 import { useRef, useState } from "react";
 import validator from "@rjsf/validator-ajv8";
+import { getDefaultTypeIndex } from "./helpers";
+import { useIsArrayItem } from "../array/context/array-item-context";
 
 export const useAnyOfField = <
   T = any,
@@ -21,6 +21,7 @@ export const useAnyOfField = <
 ) => {
   const { registry, schema, options, onChange, formData } = props;
   const { schemaUtils } = registry;
+  const isArrayItem = useIsArrayItem();
 
   const getInitialOption = () => {
     if (formData !== undefined && formData !== null) {
@@ -30,9 +31,9 @@ export const useAnyOfField = <
         options,
         schema,
       );
-      return option ? option : options.length - 1;
+      return option !== undefined ? option : getDefaultTypeIndex(options);
     }
-    return options.length - 1;
+    return getDefaultTypeIndex(options);
   };
 
   const [selectedOption, setSelectedOption] =

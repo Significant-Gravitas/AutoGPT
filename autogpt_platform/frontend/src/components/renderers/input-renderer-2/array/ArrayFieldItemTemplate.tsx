@@ -6,7 +6,6 @@ import {
   RJSFSchema,
   StrictRJSFSchema,
 } from "@rjsf/utils";
-import { ArrayItemProvider } from "./context/array-item-context";
 
 export default function ArrayFieldItemTemplate<
   T = any,
@@ -21,6 +20,7 @@ export default function ArrayFieldItemTemplate<
     hasToolbar,
     uiSchema,
     registry,
+    index,
   } = props;
   const uiOptions = getUiOptions<T, S, F>(uiSchema);
   const ArrayFieldItemButtonsTemplate = getTemplate<
@@ -34,9 +34,7 @@ export default function ArrayFieldItemTemplate<
     <div>
       <div className="mb-2 flex flex-row flex-wrap items-center">
         <div className="shrink grow">
-          <ArrayItemProvider>
-            <div className="shrink grow">{children}</div>
-          </ArrayItemProvider>
+          <div className="shrink grow">{children}</div>
         </div>
         <div className="flex items-end justify-end p-0.5">
           {hasToolbar && (

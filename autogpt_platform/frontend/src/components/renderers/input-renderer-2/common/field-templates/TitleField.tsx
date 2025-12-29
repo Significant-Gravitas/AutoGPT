@@ -4,6 +4,7 @@ import {
   RJSFSchema,
   StrictRJSFSchema,
   TitleFieldProps,
+  titleId,
 } from "@rjsf/utils";
 
 import { Text } from "@/components/atoms/Text/Text";
@@ -11,6 +12,9 @@ import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor
 import { isAnyOfSchema } from "../../utils/schema-utils";
 import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import { ExtendedFormContextType } from "../../types";
+import { useIsArrayItem } from "../../array/context/array-item-context";
+import { cn } from "@/lib/utils";
+import { getHandleId } from "./helpers";
 
 export default function TitleField<
   T = any,
@@ -22,16 +26,25 @@ export default function TitleField<
   const { nodeId } = registry.formContext;
 
   const isAnyOf = isAnyOfSchema(schema);
+  const isArrayItem = useIsArrayItem();
   const description_id = descriptionId(id);
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
 
-  console.log("title_id", id, additional, props);
-
+  const handleId = getHandleId(registry.rootSchema, id);
+  console.log("handleId", handleId);
   return (
     <div className="flex items-center gap-1">
-      <InputNodeHandle titleId={id} nodeId={nodeId ?? ""} />
-      <Text variant="body" id={id} className="line-clamp-1">
+      <InputNodeHandle
+        titleId={id}
+        additional={additional}
+        nodeId={nodeId ?? ""}
+      />
+      <Text
+        variant={isArrayItem ? "small" : "body"}
+        id={id}
+        className={cn("line-clamp-1", isArrayItem && "text-zinc-700")}
+      >
         {title}
       </Text>
       {!isAnyOf && (

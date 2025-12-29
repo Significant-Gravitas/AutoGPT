@@ -17,7 +17,7 @@ export const AnyOfField = <
 >(
   props: FieldProps<T, S, F>,
 ) => {
-  const { registry, schema } = props;
+  const { registry, schema, id } = props;
   const { fields } = registry;
   const { SchemaField: _SchemaField } = fields;
 

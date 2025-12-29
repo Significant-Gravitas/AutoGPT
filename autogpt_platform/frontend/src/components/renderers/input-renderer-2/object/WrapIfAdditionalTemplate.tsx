@@ -24,21 +24,22 @@ export default function WrapIfAdditionalTemplate<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
->({
-  classNames,
-  style,
-  children,
-  disabled,
-  id,
-  label,
-  onRemoveProperty,
-  onKeyRenameBlur,
-  readonly,
-  required,
-  schema,
-  uiSchema,
-  registry,
-}: WrapIfAdditionalTemplateProps<T, S, F>) {
+>(props: WrapIfAdditionalTemplateProps<T, S, F>) {
+  const {
+    classNames,
+    style,
+    children,
+    disabled,
+    id,
+    label,
+    onRemoveProperty,
+    onKeyRenameBlur,
+    readonly,
+    required,
+    schema,
+    uiSchema,
+    registry,
+  } = props;
   const { templates, translateString } = registry;
   // Button templates are not overridden in the uiSchema
   const { RemoveButton } = templates.ButtonTemplates;
@@ -59,6 +60,10 @@ export default function WrapIfAdditionalTemplate<
   }
 
   const keyId = `${id}-key`;
+  const generateObjectPropertyTitleId = (id: string, label: string) => {
+    return id.replace(`_${label}`, `_#_${label}`);
+  };
+  const title_id = generateObjectPropertyTitleId(id, label);
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     if (e.target.value == "") {
@@ -72,7 +77,7 @@ export default function WrapIfAdditionalTemplate<
     <>
       <div className={`mb-4 flex flex-col gap-1`} style={style}>
         <TitleFieldTemplate
-          id={titleId(id)}
+          id={titleId(title_id)}
           title={label}
           required={required}
           schema={schema}

@@ -5,6 +5,7 @@ import {
   StrictRJSFSchema,
 } from "@rjsf/utils";
 import { AnyOfField } from "../anyof/AnyOfField";
+import { ArraySchemaField } from "../array";
 
 export function generateFields<
   T = any,
@@ -13,6 +14,7 @@ export function generateFields<
 >(): RegistryFieldsType<T, S, F> {
   return {
     AnyOfField,
+    ArraySchemaField,
   };
 }
 

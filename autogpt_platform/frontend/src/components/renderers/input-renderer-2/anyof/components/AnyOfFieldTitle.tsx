@@ -8,6 +8,8 @@ import {
   StrictRJSFSchema,
   titleId,
 } from "@rjsf/utils";
+import { shouldShowTypeSelector } from "../helpers";
+import { useIsArrayItem } from "../../array/context/array-item-context";
 
 interface customFieldProps<
   T = any,
@@ -22,6 +24,7 @@ export const AnyOfFieldTitle = <
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
 >({
+  id,
   uiSchema,
   schema,
   required,
@@ -45,6 +48,10 @@ export const AnyOfFieldTitle = <
 
   const title_id = titleId(fieldPathId ?? "");
   const description_id = descriptionId(fieldPathId ?? "");
+
+  const isArrayItem = useIsArrayItem();
+  const shouldShowSelector = shouldShowTypeSelector(schema) && !isArrayItem;
+
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center">
@@ -62,7 +69,7 @@ export const AnyOfFieldTitle = <
           registry={registry}
         />
       </div>
-      {selector}
+      {shouldShowSelector && selector}
     </div>
   );
 };

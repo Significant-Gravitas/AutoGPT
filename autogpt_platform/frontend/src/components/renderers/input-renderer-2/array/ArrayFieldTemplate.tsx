@@ -49,6 +49,7 @@ export default function ArrayFieldTemplate<
   const {
     ButtonTemplates: { AddButton },
   } = registry.templates;
+
   return (
     <div>
       <div className="m-0 flex p-0">
@@ -58,7 +59,7 @@ export default function ArrayFieldTemplate<
               fieldPathId={fieldPathId}
               title={uiOptions.title || title}
               schema={schema}
-              uiSchema={uiSchema}
+              uiSchema={uiOptions}
               required={required}
               registry={registry}
               optionalDataControl={

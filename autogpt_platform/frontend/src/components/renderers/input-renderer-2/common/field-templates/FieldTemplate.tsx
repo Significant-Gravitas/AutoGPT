@@ -69,6 +69,8 @@ export default function FieldTemplate<
     displayLabel ||
     (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
 
+  console.log("field template props", props);
+
   return (
     <WrapIfAdditionalTemplate
       classNames={classNames}

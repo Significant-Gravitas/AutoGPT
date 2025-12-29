@@ -4,6 +4,7 @@ import { RJSFSchema } from "@rjsf/utils";
  * Pre-processes the input schema to ensure all properties have a type defined.
  * If a property doesn't have a type, it assigns a union of all supported JSON Schema types.
  */
+
 export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
   if (!schema || typeof schema !== "object") {
     return schema;

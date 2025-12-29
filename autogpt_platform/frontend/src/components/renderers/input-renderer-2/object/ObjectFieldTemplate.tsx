@@ -1,4 +1,5 @@
 import {
+  ADDITIONAL_PROPERTY_FLAG,
   buttonId,
   canExpand,
   descriptionId,
@@ -53,9 +54,12 @@ export default function ObjectFieldTemplate<
   const {
     ButtonTemplates: { AddButton },
   } = registry.templates;
+
+  const additional = ADDITIONAL_PROPERTY_FLAG in schema;
+  console.log("fieldPathId", fieldPathId);
   return (
     <>
-      {title && (
+      {title && !additional && (
         <TitleFieldTemplate
           id={titleId(fieldPathId)}
           title={title}

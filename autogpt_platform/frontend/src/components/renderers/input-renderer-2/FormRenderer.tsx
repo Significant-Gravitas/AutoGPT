@@ -1,4 +1,4 @@
-import { RJSFSchema } from "@rjsf/utils";
+import { FieldPathList, RJSFSchema } from "@rjsf/utils";
 import { preprocessInputSchema } from "./utils/input-schema-pre-processor";
 import { useMemo } from "react";
 import { customValidator } from "./utils/custom-validator";
@@ -28,6 +28,8 @@ export const FormRenderer2 = ({
     <div className={"mb-6 mt-4"}>
       <Form
         formContext={formContext}
+        idPrefix="agpt"
+        idSeparator="_%_"
         schema={preprocessedSchema}
         validator={customValidator}
         onChange={handleChange}
