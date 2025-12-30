@@ -1,3 +1,4 @@
+import { memo, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   BaseEdge,
@@ -20,7 +21,6 @@ export type CustomEdgeData = {
 };
 
 export type CustomEdge = XYEdge<CustomEdgeData, "custom">;
-import { memo } from "react";
 
 const CustomEdge = ({
   id,
@@ -35,6 +35,8 @@ const CustomEdge = ({
   selected,
 }: EdgeProps<CustomEdge>) => {
   const removeConnection = useEdgeStore((state) => state.removeEdge);
+  const [isHovered, setIsHovered] = useState(false);
+
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -69,12 +71,17 @@ const CustomEdge = ({
       <EdgeLabelRenderer>
         <Button
           onClick={() => removeConnection(id)}
-          className={`absolute h-fit min-w-0 p-1`}
+          className={cn(
+            "absolute h-fit min-w-0 p-1 transition-opacity",
+            isHovered ? "opacity-100" : "opacity-0",
+          )}
           variant="secondary"
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             pointerEvents: "all",
           }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
         >
           <XIcon className="h-3 w-3" weight="bold" />
         </Button>

@@ -152,10 +152,10 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Check if Tab 2 has been redirected to login or refresh the page to trigger redirect
   try {
     await page2.reload();
-    await hasUrl(page2, "/login");
+    await hasUrl(page2, "/login?next=%2Fbuild");
   } catch {
     // If reload fails, the page might already be redirecting
-    await hasUrl(page2, "/login");
+    await hasUrl(page2, "/login?next=%2Fbuild");
   }
 
   // Verify the profile menu is no longer visible (user is logged out)
