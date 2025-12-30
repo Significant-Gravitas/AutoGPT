@@ -2,7 +2,6 @@
 
 import { DEFAULT_SEARCH_TERMS } from "@/app/(platform)/marketplace/components/HeroSection/helpers";
 import { useFlags } from "launchdarkly-react-client-sdk";
-import { environment } from "../environment";
 
 export enum Flag {
   BETA_BLOCKS = "beta-blocks",
@@ -48,15 +47,18 @@ const mockFlags = {
   [Flag.AGENT_FAVORITING]: false,
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
-  [Flag.CHAT]: true,
+  [Flag.CHAT]: false,
 };
 
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const currentFlags = useFlags<FlagValues>();
   const flagValue = currentFlags[flag];
-  const isCloud = environment.isCloud();
 
-  if ((isPwMockEnabled && !isCloud) || flagValue === undefined) {
+  const isLaunchDarklyConfigured =
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+
+  if (!isLaunchDarklyConfigured || isPwMockEnabled) {
     return mockFlags[flag];
   }
 

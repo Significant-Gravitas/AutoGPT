@@ -1,4 +1,4 @@
-from backend.server.v2.library.model import LibraryAgentPreset
+from backend.api.features.library.model import LibraryAgentPreset
 
 from .graph import NodeModel
 from .integrations import Webhook  # noqa: F401
