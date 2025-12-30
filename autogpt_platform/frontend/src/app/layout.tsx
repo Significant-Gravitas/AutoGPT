@@ -24,13 +24,11 @@ const faviconPath = isDev
     ? "/favicon-local.ico"
     : "/favicon.ico";
 
-const faviconVersion = isDev ? "dev" : isLocal ? "local" : "prod";
-
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
   description: "Your one stop shop to creating AI Agents",
   icons: {
-    icon: `${faviconPath}?v=${faviconVersion}`,
+    icon: faviconPath,
   },
 };
 
