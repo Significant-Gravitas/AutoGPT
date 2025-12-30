@@ -22,7 +22,7 @@ class TextEncoderBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f8f9b5d0-3e4a-4b1c-8e9f-0a1b2c3d4e5f",
+            id="9602dd22-fbf4-4427-879a-2a9b334b82b7",
             description="Encodes a string by adding escape sequences for special characters",
             categories={BlockCategory.TEXT},
             input_schema=TextEncoderBlock.Input,
