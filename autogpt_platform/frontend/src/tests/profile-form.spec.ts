@@ -24,7 +24,7 @@ test.describe("Profile Form", () => {
 
     try {
       await page.goto("/profile");
-      await hasUrl(page, "/login");
+      await hasUrl(page, "/login?next=%2Fprofile");
     } finally {
       await page.close();
       await context.close();
