@@ -15,9 +15,23 @@ import { environment } from "@/services/environment";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 
+const isDev = environment.isDev();
+const isLocal = environment.isLocal();
+
+const faviconPath = isDev
+  ? "/favicon-dev.ico"
+  : isLocal
+    ? "/favicon-local.ico"
+    : "/favicon.ico";
+
+const faviconVersion = isDev ? "dev" : isLocal ? "local" : "prod";
+
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
   description: "Your one stop shop to creating AI Agents",
+  icons: {
+    icon: `${faviconPath}?v=${faviconVersion}`,
+  },
 };
 
 export default async function RootLayout({
@@ -27,8 +41,6 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
-  const isDev = environment.isDev();
-  const isLocal = environment.isLocal();
 
   return (
     <html
@@ -37,16 +49,6 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <link
-          rel="icon"
-          href={
-            isLocal
-              ? "/favicon-local.ico"
-              : isDev
-                ? "/favicon-dev.ico"
-                : "/favicon.ico"
-          }
-        />
         <SetupAnalytics
           host={host}
           ga={{
