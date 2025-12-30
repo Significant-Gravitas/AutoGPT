@@ -39,7 +39,7 @@ const mockFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.NEW_BLOCK_MENU]: false,
   [Flag.NEW_AGENT_RUNS]: false,
-  [Flag.GRAPH_SEARCH]: true,
+  [Flag.GRAPH_SEARCH]: false,
   [Flag.ENABLE_ENHANCED_OUTPUT_HANDLING]: false,
   [Flag.NEW_FLOW_EDITOR]: false,
   [Flag.BUILDER_VIEW_SWITCH]: false,
@@ -54,13 +54,13 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
   const currentFlags = useFlags<FlagValues>();
   const flagValue = currentFlags[flag];
 
-  const isLaunchDarklyConfigured =
-    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
-    process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+  const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
+  const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+  const isLaunchDarklyConfigured = envEnabled && clientId;
 
   if (!isLaunchDarklyConfigured || isPwMockEnabled) {
     return mockFlags[flag];
   }
 
-  return flagValue;
+  return flagValue ?? mockFlags[flag];
 }
