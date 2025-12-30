@@ -121,7 +121,7 @@ INSUFFICIENT_FUNDS_NOTIFIED_PREFIX = "insufficient_funds_discord_notified"
 INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS = 30 * 24 * 60 * 60
 
 
-def clear_insufficient_funds_notifications(user_id: str) -> int:
+async def clear_insufficient_funds_notifications(user_id: str) -> int:
     """
     Clear all insufficient funds notification flags for a user.
 
@@ -135,11 +135,11 @@ def clear_insufficient_funds_notifications(user_id: str) -> int:
         The number of keys that were deleted.
     """
     try:
-        redis_client = redis.get_redis()
+        redis_client = await redis.get_redis_async()
         pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
-        keys = list(redis_client.scan_iter(match=pattern))
+        keys = [key async for key in redis_client.scan_iter(match=pattern)]
         if keys:
-            return redis_client.delete(*keys)
+            return await redis_client.delete(*keys)
         return 0
     except Exception as e:
         logger.warning(

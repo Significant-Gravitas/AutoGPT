@@ -341,6 +341,19 @@ class UserCreditBase(ABC):
 
         if result:
             # UserBalance is already updated by the CTE
+
+            # Clear insufficient funds notification flags when credits are added
+            # so user can receive alerts again if they run out in the future.
+            if transaction.amount > 0 and transaction.type in [
+                CreditTransactionType.GRANT,
+                CreditTransactionType.TOP_UP,
+            ]:
+                from backend.executor.manager import (
+                    clear_insufficient_funds_notifications,
+                )
+
+                await clear_insufficient_funds_notifications(user_id)
+
             return result[0]["balance"]
 
     async def _add_transaction(
@@ -530,6 +543,22 @@ class UserCreditBase(ABC):
         if result:
             new_balance, tx_key = result[0]["balance"], result[0]["transactionKey"]
             # UserBalance is already updated by the CTE
+
+            # Clear insufficient funds notification flags when credits are added
+            # so user can receive alerts again if they run out in the future.
+            if (
+                amount > 0
+                and is_active
+                and transaction_type
+                in [CreditTransactionType.GRANT, CreditTransactionType.TOP_UP]
+            ):
+                # Lazy import to avoid circular dependency with executor.manager
+                from backend.executor.manager import (
+                    clear_insufficient_funds_notifications,
+                )
+
+                await clear_insufficient_funds_notifications(user_id)
+
             return new_balance, tx_key
 
         # If no result, either user doesn't exist or insufficient balance
@@ -910,13 +939,6 @@ class UserCredit(UserCreditBase):
             metadata=successful_transaction,
         )
 
-        # Clear insufficient funds notification flags so user can receive
-        # Discord alerts again if they run out of funds in the future.
-        # Lazy import to avoid circular dependency with executor.manager
-        from backend.executor.manager import clear_insufficient_funds_notifications
-
-        clear_insufficient_funds_notifications(user_id)
-
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         if amount < 500 or amount % 100 != 0:
             raise ValueError(
@@ -1014,13 +1036,6 @@ class UserCredit(UserCreditBase):
                 user_id=credit_transaction.userId,
                 metadata=SafeJson(checkout_session),
             )
-
-            # Clear insufficient funds notification flags so user can receive
-            # Discord alerts again if they run out of funds in the future.
-            # Lazy import to avoid circular dependency with executor.manager
-            from backend.executor.manager import clear_insufficient_funds_notifications
-
-            clear_insufficient_funds_notifications(credit_transaction.userId)
 
     async def get_credits(self, user_id: str) -> int:
         balance, _ = await self._get_credits(user_id)
