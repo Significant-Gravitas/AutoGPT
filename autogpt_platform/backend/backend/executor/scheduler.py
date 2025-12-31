@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
@@ -242,6 +243,12 @@ def cleanup_expired_files():
     run_async(cleanup_expired_files_async())
 
 
+def cleanup_oauth_tokens():
+    """Clean up expired OAuth tokens from the database."""
+    # Wait for completion
+    run_async(cleanup_expired_oauth_tokens())
+
+
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
@@ -446,6 +453,17 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # OAuth Token Cleanup - configurable interval
+            self.scheduler.add_job(
+                cleanup_oauth_tokens,
+                id="cleanup_oauth_tokens",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.oauth_token_cleanup_interval_hours
+                * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
             # Execution Accuracy Monitoring - configurable interval
             self.scheduler.add_job(
                 execution_accuracy_alerts,
@@ -603,6 +621,11 @@ class Scheduler(AppService):
     def execute_cleanup_expired_files(self):
         """Manually trigger cleanup of expired cloud storage files."""
         return cleanup_expired_files()
+
+    @expose
+    def execute_cleanup_oauth_tokens(self):
+        """Manually trigger cleanup of expired OAuth tokens."""
+        return cleanup_oauth_tokens()
 
     @expose
     def execute_report_execution_accuracy_alerts(self):

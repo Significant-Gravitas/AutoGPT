@@ -2,7 +2,6 @@ from enum import Enum
 from typing import Any, Dict, Literal, Optional
 
 from pydantic import SecretStr
-from requests.exceptions import RequestException
 
 from backend.data.block import (
     Block,
@@ -332,8 +331,8 @@ class IdeogramModelBlock(Block):
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
-        except RequestException as e:
-            raise Exception(f"Failed to fetch image with V3 endpoint: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Failed to fetch image with V3 endpoint: {e}") from e
 
     async def _run_model_legacy(
         self,
@@ -385,8 +384,8 @@ class IdeogramModelBlock(Block):
         try:
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
-        except RequestException as e:
-            raise Exception(f"Failed to fetch image with legacy endpoint: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Failed to fetch image with legacy endpoint: {e}") from e
 
     async def upscale_image(self, api_key: SecretStr, image_url: str):
         url = "https://api.ideogram.ai/upscale"
@@ -413,5 +412,5 @@ class IdeogramModelBlock(Block):
 
             return (response.json())["data"][0]["url"]
 
-        except RequestException as e:
-            raise Exception(f"Failed to upscale image: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"Failed to upscale image: {e}") from e
