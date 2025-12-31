@@ -2,6 +2,11 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.library.db import (
+    add_store_agent_to_library,
+    list_library_agents,
+)
+from backend.api.features.store.db import get_store_agent_details, get_store_agents
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -61,8 +66,6 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.server.v2.library.db import add_store_agent_to_library, list_library_agents
-from backend.server.v2.store.db import get_store_agent_details, get_store_agents
 from backend.util.service import (
     AppService,
     AppServiceClient,

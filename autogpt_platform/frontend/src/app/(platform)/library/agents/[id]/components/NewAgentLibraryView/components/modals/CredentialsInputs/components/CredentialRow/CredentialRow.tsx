@@ -62,12 +62,15 @@ export function CredentialRow({
       </div>
       <IconKey className="h-5 w-5 shrink-0 text-zinc-800" />
       <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-4">
-        <Text variant="body" className="tracking-tight">
+        <Text
+          variant="body"
+          className="line-clamp-1 flex-[0_0_50%] text-ellipsis tracking-tight"
+        >
           {getCredentialDisplayName(credential, displayName)}
         </Text>
         <Text
           variant="large"
-          className="relative top-1 font-mono tracking-tight"
+          className="lex-[0_0_40%] relative top-1 hidden overflow-hidden whitespace-nowrap font-mono tracking-tight md:block"
         >
           {"*".repeat(MASKED_KEY_LENGTH)}
         </Text>
