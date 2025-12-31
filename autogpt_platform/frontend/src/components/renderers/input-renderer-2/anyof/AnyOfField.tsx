@@ -9,7 +9,7 @@ import {
 import { AnyOfFieldTitle } from "./components/AnyOfFieldTitle";
 import { isEmpty } from "lodash";
 import { useAnyOfField } from "./useAnyOfField";
-import { getHandleId, updateUiOption } from "../helpers";
+import { ANY_OF_FLAG, getHandleId, updateUiOption } from "../helpers";
 
 export const AnyOfField = <
   T = any,
@@ -41,9 +41,13 @@ export const AnyOfField = <
     field_id,
   } = useAnyOfField(props);
 
-  const handleId = getHandleId(uiOptions, field_id);
+  const handleId = getHandleId({
+    uiOptions,
+    id: field_id,
+    schema: schema,
+  });
   const updatedUiSchema = updateUiOption(props.uiSchema, {
-    handleId: handleId,
+    handleId: handleId + ANY_OF_FLAG,
     label: false,
     fromAnyOf: true,
   });

@@ -1,6 +1,7 @@
 import {
   ADDITIONAL_PROPERTY_FLAG,
   descriptionId,
+  getUiOptions,
   RJSFSchema,
   StrictRJSFSchema,
   TitleFieldProps,
@@ -12,6 +13,7 @@ import { isAnyOfSchema } from "../../utils/schema-utils";
 import { ExtendedFormContextType } from "../../types";
 import { useIsArrayItem } from "../../array/context/array-item-context";
 import { cn } from "@/lib/utils";
+import { cleanUpHandleId } from "../../helpers";
 
 export default function TitleField<
   T = any,
@@ -29,6 +31,9 @@ export default function TitleField<
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
   const smallText = isArrayItem || additional;
 
+  const uiOptions = getUiOptions(uiSchema);
+  const handleId = cleanUpHandleId(uiOptions.handleId);
+  console.log("handleId", handleId);
   return (
     <div className="flex items-center gap-1">
       <Text

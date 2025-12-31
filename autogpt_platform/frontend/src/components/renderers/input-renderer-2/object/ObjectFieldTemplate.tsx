@@ -11,7 +11,17 @@ import {
   StrictRJSFSchema,
   titleId,
 } from "@rjsf/utils";
-import { getHandleId, OBJECT_FLAG, updateUiOption } from "../helpers";
+import {
+  getHandleId,
+  isCredentialFieldSchema,
+  KEY_PAIR_FLAG,
+  OBJECT_FLAG,
+  updateUiOption,
+} from "../helpers";
+import React from "react";
+import { CredentialsField } from "../credentials/CredentialField";
+import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 
 /** The `ObjectFieldTemplate` is the template to use to render all the inner properties of an object along with the
  * title and description if available. If the object is expandable, then an `AddButton` is also rendered after all
@@ -39,7 +49,7 @@ export default function ObjectFieldTemplate<
     readonly,
     registry,
   } = props;
-  const uiOptions = getUiOptions<T, S, F>(uiSchema);
+  const uiOptions = getUiOptions(uiSchema);
   const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
     "TitleFieldTemplate",
     registry,
@@ -52,14 +62,19 @@ export default function ObjectFieldTemplate<
     F
   >("DescriptionFieldTemplate", registry, uiOptions);
   const showOptionalDataControlInTitle = !readonly && !disabled;
-  // Button templates are not overridden in the uiSchema
+
   const {
     ButtonTemplates: { AddButton },
   } = registry.templates;
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
 
-  const handleId = getHandleId(uiOptions, fieldPathId.$id);
+  const handleId = getHandleId({
+    uiOptions,
+    id: fieldPathId.$id,
+    schema,
+  });
+
   const updatedUiSchema = updateUiOption(uiSchema, {
     handleId: handleId,
   });
@@ -90,11 +105,25 @@ export default function ObjectFieldTemplate<
       </div>
       <div className="flex flex-col">
         {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
-        {properties.map((element: any, index: number) => (
-          <div key={index} className={`${element.hidden ? "hidden" : ""} flex`}>
-            <div className="w-full">{element.content}</div>
-          </div>
-        ))}
+
+        {/* I have cloned it - so i could pass parentHandleId to the nested children */}
+        {properties.map((element: any, index: number) => {
+          const clonedContent = React.cloneElement(element.content, {
+            ...element.content.props,
+            uiSchema: updateUiOption(element.content.props.uiSchema, {
+              handleId: handleId,
+            }),
+          });
+
+          return (
+            <div
+              key={index}
+              className={`${element.hidden ? "hidden" : ""} flex`}
+            >
+              <div className="w-full">{clonedContent}</div>
+            </div>
+          );
+        })}
         {canExpand(schema, uiSchema, formData) ? (
           <div className="mt-2 flex justify-end">
             <AddButton

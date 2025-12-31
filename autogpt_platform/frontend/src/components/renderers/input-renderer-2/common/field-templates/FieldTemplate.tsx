@@ -10,9 +10,15 @@ import {
 } from "@rjsf/utils";
 
 import { isAnyOfChild, isAnyOfSchema } from "../../utils/schema-utils";
-import { getHandleId, updateUiOption } from "../../helpers";
+import {
+  ANY_OF_FLAG,
+  ARRAY_ITEM_FLAG,
+  getHandleId,
+  updateUiOption,
+} from "../../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { useIsArrayItem } from "../../array/context/array-item-context";
 
 export default function FieldTemplate<
   T = any,
@@ -69,7 +75,11 @@ export default function FieldTemplate<
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
 
-  const handleId = getHandleId(uiOptions, id);
+  const handleId = getHandleId({
+    uiOptions,
+    id: id,
+    schema: schema,
+  });
   const updatedUiSchema = updateUiOption(uiSchema, {
     handleId: handleId,
   });

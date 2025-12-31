@@ -17,11 +17,9 @@ export default function ArrayFieldItemTemplate<
     children,
     buttonsProps,
     displayLabel,
-    hasDescription,
     hasToolbar,
     uiSchema,
     registry,
-    index,
   } = props;
   const uiOptions = getUiOptions<T, S, F>(uiSchema);
   const ArrayFieldItemButtonsTemplate = getTemplate<

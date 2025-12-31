@@ -54,9 +54,13 @@ export default function ArrayFieldTemplate<
 
   const { fromAnyOf } = uiOptions;
 
-  const handleId = getHandleId(uiOptions, fieldPathId.$id);
+  const handleId = getHandleId({
+    uiOptions,
+    id: fieldPathId.$id,
+    schema: schema,
+  });
   const updatedUiSchema = updateUiOption(uiSchema, {
-    handleId: handleId + ARRAY_FLAG,
+    handleId: handleId,
   });
 
   return (

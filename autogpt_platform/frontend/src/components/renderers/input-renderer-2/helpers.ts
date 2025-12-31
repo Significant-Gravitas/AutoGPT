@@ -3,6 +3,7 @@ import {
   UIOptionsType,
   StrictRJSFSchema,
   FormContextType,
+  ADDITIONAL_PROPERTY_FLAG,
 } from "@rjsf/utils";
 
 export const ANY_OF_FLAG = "__anyOf";
@@ -11,9 +12,8 @@ export const OBJECT_FLAG = "__object";
 export const KEY_PAIR_FLAG = "__keyPair";
 export const TITLE_FLAG = "__title";
 export const ARRAY_ITEM_FLAG = "__arrayItem";
-export const ID_PREFIX = "agpt_%_";
-
-const FLAG_LIST = [OBJECT_FLAG, KEY_PAIR_FLAG, ARRAY_ITEM_FLAG];
+export const ID_PREFIX = "agpt_@_";
+export const ID_PREFIX_ARRAY = "agpt_%_";
 
 export function updateUiOption<T extends Record<string, any>>(
   uiSchema: T | undefined,
@@ -29,64 +29,138 @@ export function updateUiOption<T extends Record<string, any>>(
 }
 
 export const cleanUpHandleId = (handleId: string) => {
+  let newHandleId = handleId;
   if (handleId.includes(ANY_OF_FLAG)) {
-    return handleId.replace(ANY_OF_FLAG, "");
+    newHandleId = newHandleId.replace(ANY_OF_FLAG, "");
   }
-  if (handleId.includes(ARRAY_FLAG)) {
-    return handleId.replace(ARRAY_FLAG, "_$_");
+  if (handleId.includes(ARRAY_ITEM_FLAG)) {
+    newHandleId = newHandleId.replace(ARRAY_ITEM_FLAG, "");
   }
-  if (handleId.includes(OBJECT_FLAG)) {
-    return handleId.replace(OBJECT_FLAG, ".");
-  }
-  if (handleId.includes(KEY_PAIR_FLAG)) {
-    return handleId.replace(KEY_PAIR_FLAG, "_#_");
-  }
-  if (handleId.includes(TITLE_FLAG)) {
-    return handleId.replace(TITLE_FLAG, "");
+  if (handleId.includes(ID_PREFIX_ARRAY)) {
+    newHandleId = newHandleId.replace(ID_PREFIX_ARRAY, "");
   }
   if (handleId.includes(ID_PREFIX)) {
-    return handleId.replace(ID_PREFIX, "");
+    newHandleId = newHandleId.replace(ID_PREFIX, "");
   }
-  return handleId;
+  return newHandleId;
 };
 
-export const delimitterForFlag = (flag: string) => {
-  if (flag === ARRAY_FLAG) {
-    return "_$_";
-  }
-  if (flag === OBJECT_FLAG) {
-    return ".";
-  }
-  if (flag === KEY_PAIR_FLAG) {
-    return "_#_";
-  }
-  return "";
+export const isArrayItem = <
+  T = any,
+  S extends StrictRJSFSchema = RJSFSchema,
+  F extends FormContextType = any,
+>({
+  uiOptions,
+}: {
+  uiOptions: UIOptionsType<T, S, F>;
+}) => {
+  return uiOptions.handleId?.endsWith(ARRAY_ITEM_FLAG);
+};
+
+export const isKeyValuePair = <
+  T = any,
+  S extends StrictRJSFSchema = RJSFSchema,
+  F extends FormContextType = any,
+>({
+  schema,
+}: {
+  schema: RJSFSchema;
+}) => {
+  return ADDITIONAL_PROPERTY_FLAG in schema;
+};
+
+export const isNormal = <
+  T = any,
+  S extends StrictRJSFSchema = RJSFSchema,
+  F extends FormContextType = any,
+>({
+  uiOptions,
+}: {
+  uiOptions: UIOptionsType<T, S, F>;
+}) => {
+  return uiOptions.handleId === undefined;
+};
+
+export const isPartOfAnyOf = <
+  T = any,
+  S extends StrictRJSFSchema = RJSFSchema,
+  F extends FormContextType = any,
+>({
+  uiOptions,
+}: {
+  uiOptions: UIOptionsType<T, S, F>;
+}) => {
+  return uiOptions.handleId?.endsWith(ANY_OF_FLAG);
+};
+export const isObjectProperty = <
+  T = any,
+  S extends StrictRJSFSchema = RJSFSchema,
+  F extends FormContextType = any,
+>({
+  uiOptions,
+  schema,
+}: {
+  uiOptions: UIOptionsType<T, S, F>;
+  schema: RJSFSchema;
+}) => {
+  return (
+    !isArrayItem({ uiOptions }) &&
+    !isKeyValuePair({ schema }) &&
+    !isNormal({ uiOptions }) &&
+    !isPartOfAnyOf({ uiOptions })
+  );
 };
 
 export const getHandleId = <
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
->(
-  uiOptions: UIOptionsType<T, S, F>,
-  id: string,
-) => {
-  const parentHandleId = uiOptions.handleId as string;
+>({
+  id,
+  schema,
+  uiOptions,
+}: {
+  id: string;
+  schema: RJSFSchema;
+  uiOptions: UIOptionsType<T, S, F>;
+}) => {
+  const parentHandleId = uiOptions.handleId;
 
-  if (!parentHandleId) {
+  if (isNormal({ uiOptions })) {
     return cleanUpHandleId(id);
   }
 
-  const prefixToAdd = id.split("_%_").pop();
-  const flag = parentHandleId.split("_%_").pop();
-
-  if (!flag) {
-    return cleanUpHandleId(id);
+  if (isPartOfAnyOf({ uiOptions })) {
+    return cleanUpHandleId(parentHandleId);
   }
 
-  if (FLAG_LIST.includes(flag)) {
-    return parentHandleId + delimitterForFlag(flag) + prefixToAdd;
+  if (isKeyValuePair({ schema })) {
+    const key = id.split("_%_").at(-1);
+    const prefix = id.split("_%_").slice(0, -1).join("_%_");
+
+    const handleId = `${prefix}_#_${key}`;
+    return cleanUpHandleId(handleId);
   }
 
-  return parentHandleId;
+  if (isArrayItem({ uiOptions })) {
+    const index = id.split("_%_").at(-1);
+    const prefix = id.split("_%_").slice(0, -1).join("_%_");
+    const handleId = `${prefix}_$_${index}`;
+    return cleanUpHandleId(handleId);
+  }
+
+  if (isObjectProperty({ uiOptions, schema })) {
+    const key = id.split("_%_").at(-1);
+    const prefix = id.split("_%_").slice(0, -1).join("_%_");
+    const handleId = `${prefix}_@_${key}`;
+    return cleanUpHandleId(handleId);
+  }
 };
+
+export function isCredentialFieldSchema(schema: any): boolean {
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    "credentials_provider" in schema
+  );
+}
