@@ -31,7 +31,9 @@ def test_format_text_parses_shorthand_hex_color():
     # Verify request body contains correct rgbColor for white.
     _, kwargs = service.documents.return_value.batchUpdate.call_args
     requests = kwargs["body"]["requests"]
-    rgb = requests[0]["updateTextStyle"]["textStyle"]["foregroundColor"]["color"]["rgbColor"]
+    rgb = requests[0]["updateTextStyle"]["textStyle"]["foregroundColor"]["color"][
+        "rgbColor"
+    ]
     assert rgb == {"red": 1.0, "green": 1.0, "blue": 1.0}
 
 
@@ -55,7 +57,9 @@ def test_format_text_parses_full_hex_color():
 
     _, kwargs = service.documents.return_value.batchUpdate.call_args
     requests = kwargs["body"]["requests"]
-    rgb = requests[0]["updateTextStyle"]["textStyle"]["foregroundColor"]["color"]["rgbColor"]
+    rgb = requests[0]["updateTextStyle"]["textStyle"]["foregroundColor"]["color"][
+        "rgbColor"
+    ]
     assert rgb == {"red": 1.0, "green": 0.0, "blue": 0.0}
 
 
@@ -107,4 +111,3 @@ def test_format_text_invalid_color_only_does_not_call_api():
     assert result["success"] is False
     assert "Invalid foreground_color" in result["message"]
     service.documents.return_value.batchUpdate.assert_not_called()
-
