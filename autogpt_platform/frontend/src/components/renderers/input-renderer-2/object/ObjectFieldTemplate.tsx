@@ -11,6 +11,7 @@ import {
   StrictRJSFSchema,
   titleId,
 } from "@rjsf/utils";
+import { getHandleId, OBJECT_FLAG, updateUiOption } from "../helpers";
 
 /** The `ObjectFieldTemplate` is the template to use to render all the inner properties of an object along with the
  * title and description if available. If the object is expandable, then an `AddButton` is also rendered after all
@@ -22,21 +23,22 @@ export default function ObjectFieldTemplate<
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
->({
-  description,
-  title,
-  properties,
-  required,
-  uiSchema,
-  fieldPathId,
-  schema,
-  formData,
-  optionalDataControl,
-  onAddProperty,
-  disabled,
-  readonly,
-  registry,
-}: ObjectFieldTemplateProps<T, S, F>) {
+>(props: ObjectFieldTemplateProps<T, S, F>) {
+  const {
+    description,
+    title,
+    properties,
+    required,
+    uiSchema,
+    fieldPathId,
+    schema,
+    formData,
+    optionalDataControl,
+    onAddProperty,
+    disabled,
+    readonly,
+    registry,
+  } = props;
   const uiOptions = getUiOptions<T, S, F>(uiSchema);
   const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
     "TitleFieldTemplate",
@@ -56,29 +58,36 @@ export default function ObjectFieldTemplate<
   } = registry.templates;
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
-  console.log("fieldPathId", fieldPathId);
+
+  const handleId = getHandleId(uiOptions, fieldPathId.$id);
+  const updatedUiSchema = updateUiOption(uiSchema, {
+    handleId: handleId,
+  });
+
   return (
     <>
-      {title && !additional && (
-        <TitleFieldTemplate
-          id={titleId(fieldPathId)}
-          title={title}
-          required={required}
-          schema={schema}
-          uiSchema={uiSchema}
-          registry={registry}
-          optionalDataControl={true ? optionalDataControl : undefined}
-        />
-      )}
-      {description && (
-        <DescriptionFieldTemplate
-          id={descriptionId(fieldPathId)}
-          description={description}
-          schema={schema}
-          uiSchema={uiSchema}
-          registry={registry}
-        />
-      )}
+      <div className="flex items-center gap-2">
+        {title && !additional && (
+          <TitleFieldTemplate
+            id={titleId(fieldPathId)}
+            title={title}
+            required={required}
+            schema={schema}
+            uiSchema={updatedUiSchema}
+            registry={registry}
+            optionalDataControl={true ? optionalDataControl : undefined}
+          />
+        )}
+        {description && (
+          <DescriptionFieldTemplate
+            id={descriptionId(fieldPathId)}
+            description={description}
+            schema={schema}
+            uiSchema={updatedUiSchema}
+            registry={registry}
+          />
+        )}
+      </div>
       <div className="flex flex-col">
         {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
         {properties.map((element: any, index: number) => (
@@ -93,7 +102,7 @@ export default function ObjectFieldTemplate<
               onClick={onAddProperty}
               disabled={disabled || readonly}
               className="rjsf-object-property-expand"
-              uiSchema={uiSchema}
+              uiSchema={updatedUiSchema}
               registry={registry}
             />
           </div>

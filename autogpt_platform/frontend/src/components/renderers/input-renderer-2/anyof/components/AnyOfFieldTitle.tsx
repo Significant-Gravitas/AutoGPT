@@ -10,6 +10,7 @@ import {
 } from "@rjsf/utils";
 import { shouldShowTypeSelector } from "../helpers";
 import { useIsArrayItem } from "../../array/context/array-item-context";
+import { getHandleId } from "../../common/field-templates/helpers";
 
 interface customFieldProps<
   T = any,
@@ -23,16 +24,12 @@ export const AnyOfFieldTitle = <
   T = any,
   S extends StrictRJSFSchema = RJSFSchema,
   F extends FormContextType = any,
->({
-  id,
-  uiSchema,
-  schema,
-  required,
-  name,
-  registry,
-  fieldPathId,
-  selector,
-}: customFieldProps<T, S, F>) => {
+>(
+  props: customFieldProps<T, S, F>,
+) => {
+  const { uiSchema, schema, required, name, registry, fieldPathId, selector } =
+    props;
+
   const uiOptions = getUiOptions(uiSchema);
   const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
     "TitleFieldTemplate",
@@ -61,6 +58,7 @@ export const AnyOfFieldTitle = <
           required={required}
           schema={schema}
           registry={registry}
+          uiSchema={uiSchema}
         />
         <DescriptionFieldTemplate
           id={description_id}

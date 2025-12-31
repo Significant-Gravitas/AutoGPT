@@ -9,6 +9,7 @@ import {
 import { AnyOfFieldTitle } from "./components/AnyOfFieldTitle";
 import { isEmpty } from "lodash";
 import { useAnyOfField } from "./useAnyOfField";
+import { getHandleId, updateUiOption } from "../helpers";
 
 export const AnyOfField = <
   T = any,
@@ -17,18 +18,18 @@ export const AnyOfField = <
 >(
   props: FieldProps<T, S, F>,
 ) => {
-  const { registry, schema, id } = props;
+  const { registry, schema, id, fieldPathId } = props;
   const { fields } = registry;
   const { SchemaField: _SchemaField } = fields;
 
-  const { widget = "select" } = getUiOptions<T, S, F>(
+  const uiOptions = getUiOptions<T, S, F>(
     props.uiSchema,
     props.globalUiOptions,
   );
 
   const Widget = getWidget<T, S, F>(
     { type: "string" },
-    widget,
+    (uiOptions.widget = "select"),
     props.registry.widgets,
   );
 
@@ -40,18 +41,19 @@ export const AnyOfField = <
     field_id,
   } = useAnyOfField(props);
 
+  const handleId = getHandleId(uiOptions, field_id);
+  const updatedUiSchema = updateUiOption(props.uiSchema, {
+    handleId: handleId,
+    label: false,
+    fromAnyOf: true,
+  });
+
   const optionsSchemaField =
     (optionSchema && optionSchema.type !== "null" && (
       <_SchemaField
         {...props}
         schema={optionSchema}
-        uiSchema={{
-          ...props.uiSchema,
-          "ui:options": {
-            ...props.uiSchema?.["ui:options"],
-            label: false,
-          },
-        }}
+        uiSchema={updatedUiSchema}
       />
     )) ||
     null;
@@ -81,7 +83,11 @@ export const AnyOfField = <
 
   return (
     <div>
-      <AnyOfFieldTitle {...props} selector={selector} />
+      <AnyOfFieldTitle
+        {...props}
+        selector={selector}
+        uiSchema={updatedUiSchema}
+      />
       {optionsSchemaField}
     </div>
   );

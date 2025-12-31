@@ -1,3 +1,4 @@
+import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import {
   ArrayFieldItemTemplateProps,
   FormContextType,

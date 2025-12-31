@@ -14,6 +14,12 @@ import {
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  getHandleId,
+  KEY_PAIR_FLAG,
+  OBJECT_FLAG,
+  updateUiOption,
+} from "../helpers";
 
 /** The `WrapIfAdditional` component is used by the `FieldTemplate` to rename, or remove properties that are
  * part of an `additionalProperties` part of a schema.
@@ -41,14 +47,16 @@ export default function WrapIfAdditionalTemplate<
     registry,
   } = props;
   const { templates, translateString } = registry;
+  const uiOptions = getUiOptions(uiSchema);
   // Button templates are not overridden in the uiSchema
   const { RemoveButton } = templates.ButtonTemplates;
+
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
 
   const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
     "TitleFieldTemplate",
     registry,
-    getUiOptions(uiSchema),
+    uiOptions,
   );
 
   if (!additional) {
@@ -73,6 +81,11 @@ export default function WrapIfAdditionalTemplate<
     }
   };
 
+  const handleId = getHandleId(uiOptions);
+  const updatedUiSchema = updateUiOption(uiSchema, {
+    handleId: handleId + KEY_PAIR_FLAG,
+  });
+
   return (
     <>
       <div className={`mb-4 flex flex-col gap-1`} style={style}>
@@ -82,6 +95,7 @@ export default function WrapIfAdditionalTemplate<
           required={required}
           schema={schema}
           registry={registry}
+          uiSchema={updatedUiSchema}
         />
         <div className="flex flex-1 items-center gap-2">
           <Input
@@ -104,7 +118,7 @@ export default function WrapIfAdditionalTemplate<
           id={buttonId(id, "remove")}
           disabled={disabled || readonly}
           onClick={onRemoveProperty}
-          uiSchema={uiSchema}
+          uiSchema={updatedUiSchema}
           registry={registry}
         />
       </div>

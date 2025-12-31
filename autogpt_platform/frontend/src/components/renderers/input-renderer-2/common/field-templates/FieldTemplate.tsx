@@ -8,7 +8,10 @@ import {
   StrictRJSFSchema,
   titleId,
 } from "@rjsf/utils";
+
 import { isAnyOfChild, isAnyOfSchema } from "../../utils/schema-utils";
+import { getHandleId, updateUiOption } from "../../helpers";
+
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 
 export default function FieldTemplate<
@@ -38,10 +41,11 @@ export default function FieldTemplate<
     onRemoveProperty,
     readonly,
   } = props;
+
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[registry.formContext.nodeId ?? ""],
   );
-  const isAdvancedField = (schema as any).advanced === true; // using any because standard jsonSchema does not have advanced field
+  const isAdvancedField = (schema as any).advanced === true;
   if (!showAdvanced && isAdvancedField) {
     return null;
   }
@@ -50,26 +54,30 @@ export default function FieldTemplate<
     return <div className="hidden">{children}</div>;
   }
 
+  const uiOptions = getUiOptions(uiSchema);
   const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
     "TitleFieldTemplate",
     registry,
-    getUiOptions(uiSchema),
+    uiOptions,
   );
-
   const WrapIfAdditionalTemplate = getTemplate<
     "WrapIfAdditionalTemplate",
     T,
     S,
     F
-  >("WrapIfAdditionalTemplate", registry, getUiOptions(uiSchema));
+  >("WrapIfAdditionalTemplate", registry, uiOptions);
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
+
+  const handleId = getHandleId(uiOptions, id);
+  const updatedUiSchema = updateUiOption(uiSchema, {
+    handleId: handleId,
+  });
 
   const shouldDisplayLabel =
     displayLabel ||
     (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
-
-  console.log("field template props", props);
+  const shouldShowTitleSection = !isAnyOfSchema(schema) && !additional;
 
   return (
     <WrapIfAdditionalTemplate
@@ -86,11 +94,11 @@ export default function FieldTemplate<
       readonly={readonly}
       required={required}
       schema={schema}
-      uiSchema={uiSchema}
+      uiSchema={updatedUiSchema}
       registry={registry}
     >
       <div className="mb-4 flex flex-col gap-2">
-        {!isAnyOfSchema(schema) && !additional && (
+        {shouldShowTitleSection && (
           <div className="flex items-center gap-2">
             {shouldDisplayLabel && (
               <TitleFieldTemplate
@@ -98,6 +106,7 @@ export default function FieldTemplate<
                 title={label}
                 required={required}
                 schema={schema}
+                uiSchema={updatedUiSchema}
                 registry={registry}
               />
             )}

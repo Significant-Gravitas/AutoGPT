@@ -1,10 +1,12 @@
 import {
   FieldProps,
   FormContextType,
+  getUiOptions,
   RJSFSchema,
   StrictRJSFSchema,
 } from "@rjsf/utils";
 import { ArrayItemProvider } from "./context/array-item-context";
+import { ARRAY_ITEM_FLAG, getHandleId, updateUiOption } from "../helpers";
 
 const ArraySchemaField = <
   T = any,
@@ -13,12 +15,18 @@ const ArraySchemaField = <
 >(
   props: FieldProps<T, S, F>,
 ) => {
-  const { index, registry, name, uiSchema } = props;
+  const { index, registry, name, fieldPathId } = props;
   const { SchemaField } = registry.fields;
+
+  const uiOptions = getUiOptions<T, S, F>(props.uiSchema);
+  const handleId = getHandleId(uiOptions, fieldPathId.$id);
+  const updatedUiSchema = updateUiOption(props.uiSchema, {
+    handleId: handleId + ARRAY_ITEM_FLAG,
+  });
 
   return (
     <ArrayItemProvider arrayItemHandleId={`${name.slice(0, -2)}_$_${index}`}>
-      <SchemaField {...props} />
+      <SchemaField {...props} uiSchema={updatedUiSchema} />
     </ArrayItemProvider>
   );
 };

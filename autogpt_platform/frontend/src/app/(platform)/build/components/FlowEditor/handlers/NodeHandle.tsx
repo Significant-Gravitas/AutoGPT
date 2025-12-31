@@ -1,34 +1,19 @@
 import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
 import { useEdgeStore } from "../../../stores/edgeStore";
-import {
-  useArrayItemHandleId,
-  useIsArrayItem,
-} from "@/components/renderers/input-renderer-2/array/context/array-item-context";
-import { generateHandleIdFromTitleId } from "./helpers";
 
 const InputNodeHandle = ({
-  titleId,
-  additional,
+  handleId,
   nodeId,
 }: {
-  titleId: string;
-  additional: boolean;
+  handleId: string;
   nodeId: string;
 }) => {
-  let handleId = "";
-  const arrayItemHandleId = useArrayItemHandleId();
-  if (arrayItemHandleId) {
-    handleId = arrayItemHandleId;
-  } else {
-    handleId = generateHandleIdFromTitleId(titleId, {
-      isAdditionalProperty: additional,
-    });
-  }
-
   const isInputConnected = useEdgeStore((state) =>
     state.isInputConnected(nodeId ?? "", handleId),
   );
+
+  console.log("handleId", handleId);
 
   return (
     <Handle
