@@ -1,12 +1,19 @@
-import { db, BuilderDraft, DRAFT_EXPIRY_MS, cleanupExpiredDrafts } from "./db";
+import {
+  db,
+  BuilderDraft,
+  DRAFT_EXPIRY_MS,
+  cleanupExpiredDrafts,
+} from "../../lib/dexie/db";
 import type { CustomNode } from "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/CustomNode";
 import type { CustomEdge } from "@/app/(platform)/build/components/FlowEditor/edges/CustomEdge";
+import { cleanNodes, cleanEdges } from "../../lib/dexie/draft-utils";
 import isEqual from "lodash/isEqual";
+import { environment } from "@/services/environment";
 
 const SESSION_TEMP_ID_KEY = "builder_temp_flow_id";
 
 export function getOrCreateTempFlowId(): string {
-  if (typeof window === "undefined") {
+  if (environment.isServerSide()) {
     return `temp_${crypto.randomUUID()}`;
   }
 
@@ -19,13 +26,13 @@ export function getOrCreateTempFlowId(): string {
 }
 
 export function clearTempFlowId(): void {
-  if (typeof window !== "undefined") {
+  if (environment.isClientSide()) {
     sessionStorage.removeItem(SESSION_TEMP_ID_KEY);
   }
 }
 
 export function getTempFlowId(): string | null {
-  if (typeof window === "undefined") {
+  if (environment.isServerSide()) {
     return null;
   }
   return sessionStorage.getItem(SESSION_TEMP_ID_KEY);
@@ -96,27 +103,6 @@ export const draftService = {
     currentNodes: CustomNode[],
     currentEdges: CustomEdge[],
   ): boolean {
-    const cleanNodes = (nodes: CustomNode[]) =>
-      nodes.map((node) => ({
-        id: node.id,
-        position: node.position,
-        data: {
-          hardcodedValues: node.data.hardcodedValues,
-          title: node.data.title,
-          block_id: node.data.block_id,
-          metadata: node.data.metadata,
-        },
-      }));
-
-    const cleanEdges = (edges: CustomEdge[]) =>
-      edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      }));
-
     const draftNodesClean = cleanNodes(draft.nodes);
     const currentNodesClean = cleanNodes(currentNodes);
     const draftEdgesClean = cleanEdges(draft.edges);

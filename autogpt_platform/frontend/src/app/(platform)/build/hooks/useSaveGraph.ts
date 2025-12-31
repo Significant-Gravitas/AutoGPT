@@ -19,7 +19,7 @@ import {
   draftService,
   clearTempFlowId,
   getTempFlowId,
-} from "@/lib/dexie/draft-service";
+} from "@/services/builder-draft/draft-service";
 
 export type SaveGraphOptions = {
   showToast?: boolean;

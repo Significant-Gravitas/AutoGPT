@@ -5,8 +5,9 @@ import {
   getTempFlowId,
   getOrCreateTempFlowId,
   DraftData,
-} from "@/lib/dexie/draft-service";
+} from "@/services/builder-draft/draft-service";
 import { BuilderDraft } from "@/lib/dexie/db";
+import { cleanNodes, cleanEdges } from "@/lib/dexie/draft-utils";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { useGraphStore } from "../../../stores/graphStore";
@@ -67,23 +68,8 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
 
   const cleanStateForComparison = useCallback((stateData: DraftData) => {
     return {
-      nodes: stateData.nodes.map((node) => ({
-        id: node.id,
-        position: node.position,
-        data: {
-          hardcodedValues: node.data.hardcodedValues,
-          title: node.data.title,
-          block_id: node.data.block_id,
-          metadata: node.data.metadata,
-        },
-      })),
-      edges: stateData.edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-      })),
+      nodes: cleanNodes(stateData.nodes),
+      edges: cleanEdges(stateData.edges),
     };
   }, []);
 

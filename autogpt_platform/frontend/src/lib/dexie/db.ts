@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import type { CustomNode } from "@/app/(platform)/build/components/FlowEditor/nodes/CustomNode/CustomNode";
 import type { CustomEdge } from "@/app/(platform)/build/components/FlowEditor/edges/CustomEdge";
 
-// 25 hrs expiry
+// 24 hrs expiry
 export const DRAFT_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 export interface BuilderDraft {
