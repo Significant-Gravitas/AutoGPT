@@ -6,6 +6,8 @@ import {
 } from "@rjsf/utils";
 import { AnyOfField } from "../anyof/AnyOfField";
 import { ArraySchemaField } from "../array";
+import { CredentialField } from "../credentials/CredentialField";
+import { getCustomFieldComponents } from "./custom-field";
 
 export function generateFields<
   T = any,
@@ -15,6 +17,9 @@ export function generateFields<
   return {
     AnyOfField,
     ArraySchemaField,
+
+    // My custom fields
+    ...getCustomFieldComponents(),
   };
 }
 

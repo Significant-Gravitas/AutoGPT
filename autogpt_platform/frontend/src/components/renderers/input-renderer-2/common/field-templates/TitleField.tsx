@@ -33,9 +33,9 @@ export default function TitleField<
 
   const uiOptions = getUiOptions(uiSchema);
   const handleId = cleanUpHandleId(uiOptions.handleId);
-  console.log("handleId", handleId);
   return (
     <div className="flex items-center gap-1">
+      {/* Add node handle here */}
       <Text
         variant={isArrayItem ? "small" : "body"}
         id={id}
