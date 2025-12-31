@@ -4,7 +4,7 @@ import CustomEdge from "../edges/CustomEdge";
 import { useFlow } from "./useFlow";
 import { useShallow } from "zustand/react/shallow";
 import { useNodeStore } from "../../../stores/nodeStore";
-import { useMemo, useEffect, useCallback } from "react";
+import { useMemo, useCallback } from "react";
 import { CustomNode } from "../nodes/CustomNode/CustomNode";
 import { useCustomEdge } from "../edges/useCustomEdge";
 import { useFlowRealtime } from "./useFlowRealtime";
@@ -21,6 +21,7 @@ import { okData } from "@/app/api/helpers";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 import { resolveCollisions } from "./helpers/resolve-collision";
 import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
+import { DraftRecoveryPopup } from "../../DraftRecoveryDialog/DraftRecoveryPopup";
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -60,26 +61,22 @@ export const Flow = () => {
   }, [setNodes, nodes]);
   const { edges, onConnect, onEdgesChange } = useCustomEdge();
 
-  // We use this hook to load the graph and convert them into custom nodes and edges.
-  const { onDragOver, onDrop, isFlowContentLoading, isLocked, setIsLocked } =
-    useFlow();
+  // for loading purpose
+  const {
+    onDragOver,
+    onDrop,
+    isFlowContentLoading,
+    isInitialLoadComplete,
+    isLocked,
+    setIsLocked,
+  } = useFlow();
 
   // This hook is used for websocket realtime updates.
   useFlowRealtime();
 
   // Copy/paste functionality
-  const handleCopyPaste = useCopyPaste();
+  useCopyPaste();
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      handleCopyPaste(event);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [handleCopyPaste]);
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
   );
@@ -115,6 +112,7 @@ export const Flow = () => {
               className="right-2 top-32 p-2"
             />
           )}
+          <DraftRecoveryPopup isInitialLoadComplete={isInitialLoadComplete} />
         </ReactFlow>
       </div>
       {/* TODO: Need to update it in future - also do not send executionId as prop - rather use useQueryState inside the component */}
