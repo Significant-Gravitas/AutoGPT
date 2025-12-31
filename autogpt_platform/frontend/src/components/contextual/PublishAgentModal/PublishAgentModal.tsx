@@ -20,6 +20,7 @@ export function PublishAgentModal({
   onStateChange,
   preSelectedAgentId,
   preSelectedAgentVersion,
+  showTrigger = true,
 }: Props) {
   const {
     // State
@@ -121,9 +122,11 @@ export function PublishAgentModal({
           },
         }}
       >
-        <Dialog.Trigger>
-          {trigger || <Button size="small">Publish Agent</Button>}
-        </Dialog.Trigger>
+        {showTrigger && (
+          <Dialog.Trigger>
+            {trigger || <Button size="small">Publish Agent</Button>}
+          </Dialog.Trigger>
+        )}
         <Dialog.Content>
           <div data-testid="publish-agent-modal">{renderContent()}</div>
         </Dialog.Content>

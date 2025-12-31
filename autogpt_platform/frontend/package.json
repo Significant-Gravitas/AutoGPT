@@ -69,6 +69,7 @@
     "cmdk": "1.1.1",
     "cookie": "1.0.2",
     "date-fns": "4.1.0",
+    "dexie": "4.2.1",
     "dotenv": "17.2.3",
     "elliptic": "6.6.1",
     "embla-carousel-react": "8.6.0",
