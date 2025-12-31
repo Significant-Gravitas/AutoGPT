@@ -1,4 +1,5 @@
 import asyncio
+import re
 from enum import Enum
 from typing import Any
 
@@ -96,6 +97,35 @@ def _validate_document_file(file: GoogleDriveFile) -> str | None:
     if file.mime_type and file.mime_type != "application/vnd.google-apps.document":
         return f"File is not a Google Doc (type: {file.mime_type})"
     return None
+
+
+def _parse_hex_color_to_rgb_floats(value: str) -> tuple[float, float, float] | None:
+    """
+    Parse a CSS-like hex color string into normalized RGB floats.
+
+    Supports:
+    - #RGB / RGB (shorthand)
+    - #RRGGBB / RRGGBB
+
+    Returns None for malformed inputs.
+    """
+    if not value:
+        return None
+
+    raw = value.strip()
+    if raw.startswith("#"):
+        raw = raw[1:]
+
+    if not re.fullmatch(r"[0-9a-fA-F]{3}([0-9a-fA-F]{3})?", raw):
+        return None
+
+    if len(raw) == 3:
+        raw = "".join(ch * 2 for ch in raw)
+
+    r = int(raw[0:2], 16) / 255.0
+    g = int(raw[2:4], 16) / 255.0
+    b = int(raw[4:6], 16) / 255.0
+    return (r, g, b)
 
 
 def _get_document_end_index(service, document_id: str) -> int:
@@ -1558,15 +1588,31 @@ class GoogleDocsFormatTextBlock(Block):
             text_style["fontSize"] = {"magnitude": font_size, "unit": "PT"}
             fields.append("fontSize")
         if foreground_color:
-            # Parse hex color
-            color = foreground_color.lstrip("#")
-            r = int(color[0:2], 16) / 255.0
-            g = int(color[2:4], 16) / 255.0
-            b = int(color[4:6], 16) / 255.0
-            text_style["foregroundColor"] = {
-                "color": {"rgbColor": {"red": r, "green": g, "blue": b}}
-            }
-            fields.append("foregroundColor")
+            rgb = _parse_hex_color_to_rgb_floats(foreground_color)
+            if rgb is None:
+                if not fields:
+                    return {
+                        "success": False,
+                        "message": (
+                            f"Invalid foreground_color: {foreground_color!r}. "
+                            "Expected hex like #RGB or #RRGGBB."
+                        ),
+                    }
+                # Ignore invalid color, but still apply other formatting.
+                # This avoids failing the whole operation due to a single bad value.
+                warning = (
+                    f"Ignored invalid foreground_color: {foreground_color!r}. "
+                    "Expected hex like #RGB or #RRGGBB."
+                )
+            else:
+                r, g, b = rgb
+                text_style["foregroundColor"] = {
+                    "color": {"rgbColor": {"red": r, "green": g, "blue": b}}
+                }
+                fields.append("foregroundColor")
+                warning = None
+        else:
+            warning = None
 
         if not fields:
             return {"success": True, "message": "No formatting options specified"}
@@ -1585,6 +1631,8 @@ class GoogleDocsFormatTextBlock(Block):
             documentId=document_id, body={"requests": requests}
         ).execute()
 
+        if warning:
+            return {"success": True, "warning": warning}
         return {"success": True}
 
 
