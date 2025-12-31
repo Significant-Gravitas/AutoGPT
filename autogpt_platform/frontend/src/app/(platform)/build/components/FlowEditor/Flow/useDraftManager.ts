@@ -228,6 +228,10 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
 
   useEffect(() => {
     hasCheckedForDraft.current = false;
+    setState({
+      isOpen: false,
+      draft: null,
+    });
   }, [flowID]);
 
   const loadDraft = useCallback(async () => {
