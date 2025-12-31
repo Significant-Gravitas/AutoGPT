@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Iterator, Literal
 
 import praw
+from praw.models import MoreComments
 from pydantic import BaseModel, SecretStr
 
 from backend.data.block import (
@@ -214,7 +215,12 @@ class GetRedditPostsBlock(Block):
 class PostRedditCommentBlock(Block):
     class Input(BlockSchemaInput):
         credentials: RedditCredentialsInput = RedditCredentialsField()
-        data: RedditComment = SchemaField(description="Reddit comment")
+        post_id: str = SchemaField(
+            description="The ID of the post to comment on",
+        )
+        comment: str = SchemaField(
+            description="The content of the comment to post",
+        )
 
     class Output(BlockSchemaOutput):
         comment_id: str = SchemaField(description="Posted comment ID")
@@ -240,10 +246,10 @@ class PostRedditCommentBlock(Block):
         )
 
     @staticmethod
-    def reply_post(creds: RedditCredentials, comment: RedditComment) -> str:
+    def reply_post(creds: RedditCredentials, post_id: str, comment: str) -> str:
         client = get_praw(creds)
-        submission = client.submission(id=comment.post_id)
-        new_comment = submission.reply(comment.comment)
+        submission = client.submission(id=post_id)
+        new_comment = submission.reply(comment)
         if not new_comment:
             raise ValueError("Failed to post comment.")
         return new_comment.id
@@ -251,7 +257,11 @@ class PostRedditCommentBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
-        yield "comment_id", self.reply_post(credentials, input_data.data)
+        yield "comment_id", self.reply_post(
+            credentials,
+            post_id=input_data.post_id,
+            comment=input_data.comment,
+        )
 
 
 class CreateRedditPostBlock(Block):
@@ -878,7 +888,13 @@ class EditRedditPostBlock(Block):
             yield "success", success
             yield "post_url", post_url
         except Exception as e:
-            yield "error", str(e)
+            error_msg = str(e)
+            if "403" in error_msg:
+                error_msg = (
+                    "Permission denied (403): You can only edit your own posts. "
+                    "Make sure the post belongs to the authenticated Reddit account."
+                )
+            yield "error", error_msg
 
 
 class SubredditInfo(BaseModel):
@@ -970,7 +986,7 @@ class GetSubredditInfoBlock(Block):
             public_description=sub.public_description,
             subscribers=sub.subscribers,
             created_utc=sub.created_utc,
-            over_18=sub.over_18,
+            over_18=sub.over18,
             url=sub.url,
         )
 
@@ -980,5 +996,480 @@ class GetSubredditInfoBlock(Block):
         try:
             info = self.get_subreddit_info(credentials, input_data.subreddit)
             yield "info", info
+        except Exception as e:
+            yield "error", str(e)
+
+
+class RedditCommentData(BaseModel):
+    """Data about a Reddit comment."""
+
+    id: str
+    post_id: str
+    parent_id: str
+    author: str
+    body: str
+    score: int
+    created_utc: float
+    edited: bool
+    is_submitter: bool
+    permalink: str
+    depth: int
+
+
+class GetPostCommentsBlock(Block):
+    """Get comments on a Reddit post."""
+
+    class Input(BlockSchemaInput):
+        credentials: RedditCredentialsInput = RedditCredentialsField()
+        post_id: str = SchemaField(
+            description="The ID of the post to get comments from",
+        )
+        limit: int = SchemaField(
+            description="Maximum number of top-level comments to fetch (max 100)",
+            default=25,
+        )
+        sort: str = SchemaField(
+            description="Sort order: 'best', 'top', 'new', 'controversial', 'old', 'q&a'",
+            default="best",
+        )
+
+    class Output(BlockSchemaOutput):
+        comment: RedditCommentData = SchemaField(description="A comment on the post")
+        comments: list[RedditCommentData] = SchemaField(
+            description="All fetched comments"
+        )
+        error: str = SchemaField(description="Error message if comments couldn't be fetched")
+
+    def __init__(self):
+        super().__init__(
+            id="98422b2c-c3b0-4d70-871f-56bd966f46da",
+            description="Get top-level comments on a Reddit post.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=GetPostCommentsBlock.Input,
+            output_schema=GetPostCommentsBlock.Output,
+            disabled=(
+                not settings.secrets.reddit_client_id
+                or not settings.secrets.reddit_client_secret
+            ),
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "post_id": "abc123",
+                "limit": 2,
+            },
+            test_output=[
+                (
+                    "comment",
+                    RedditCommentData(
+                        id="comment1",
+                        post_id="abc123",
+                        parent_id="t3_abc123",
+                        author="user1",
+                        body="Comment body 1",
+                        score=10,
+                        created_utc=1234567890.0,
+                        edited=False,
+                        is_submitter=False,
+                        permalink="/r/test/comments/abc123/test/comment1/",
+                        depth=0,
+                    ),
+                ),
+                (
+                    "comment",
+                    RedditCommentData(
+                        id="comment2",
+                        post_id="abc123",
+                        parent_id="t3_abc123",
+                        author="user2",
+                        body="Comment body 2",
+                        score=5,
+                        created_utc=1234567891.0,
+                        edited=False,
+                        is_submitter=True,
+                        permalink="/r/test/comments/abc123/test/comment2/",
+                        depth=0,
+                    ),
+                ),
+                (
+                    "comments",
+                    [
+                        RedditCommentData(
+                            id="comment1",
+                            post_id="abc123",
+                            parent_id="t3_abc123",
+                            author="user1",
+                            body="Comment body 1",
+                            score=10,
+                            created_utc=1234567890.0,
+                            edited=False,
+                            is_submitter=False,
+                            permalink="/r/test/comments/abc123/test/comment1/",
+                            depth=0,
+                        ),
+                        RedditCommentData(
+                            id="comment2",
+                            post_id="abc123",
+                            parent_id="t3_abc123",
+                            author="user2",
+                            body="Comment body 2",
+                            score=5,
+                            created_utc=1234567891.0,
+                            edited=False,
+                            is_submitter=True,
+                            permalink="/r/test/comments/abc123/test/comment2/",
+                            depth=0,
+                        ),
+                    ],
+                ),
+            ],
+            test_mock={
+                "get_comments": lambda creds, post_id, limit, sort: [
+                    MockObject(
+                        id="comment1",
+                        link_id="t3_abc123",
+                        parent_id="t3_abc123",
+                        author="user1",
+                        body="Comment body 1",
+                        score=10,
+                        created_utc=1234567890.0,
+                        edited=False,
+                        is_submitter=False,
+                        permalink="/r/test/comments/abc123/test/comment1/",
+                        depth=0,
+                    ),
+                    MockObject(
+                        id="comment2",
+                        link_id="t3_abc123",
+                        parent_id="t3_abc123",
+                        author="user2",
+                        body="Comment body 2",
+                        score=5,
+                        created_utc=1234567891.0,
+                        edited=False,
+                        is_submitter=True,
+                        permalink="/r/test/comments/abc123/test/comment2/",
+                        depth=0,
+                    ),
+                ]
+            },
+        )
+
+    @staticmethod
+    def get_comments(
+        creds: RedditCredentials, post_id: str, limit: int, sort: str
+    ) -> list:
+        client = get_praw(creds)
+        if post_id.startswith("t3_"):
+            post_id = post_id[3:]
+        submission = client.submission(id=post_id)
+        submission.comment_sort = sort
+        # Replace MoreComments with actual comments up to limit
+        submission.comments.replace_more(limit=0)
+        # Return only top-level comments (depth=0), limited
+        # CommentForest supports indexing, so use slicing directly
+        max_comments = min(limit, 100)
+        return [submission.comments[i] for i in range(min(len(submission.comments), max_comments))]
+
+    async def run(
+        self, input_data: Input, *, credentials: RedditCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            comments = self.get_comments(
+                credentials,
+                input_data.post_id,
+                input_data.limit,
+                input_data.sort,
+            )
+            all_comments = []
+            for comment in comments:
+                # Extract post_id from link_id (format: t3_xxxxx)
+                post_id = comment.link_id
+                if post_id.startswith("t3_"):
+                    post_id = post_id[3:]
+
+                comment_data = RedditCommentData(
+                    id=comment.id,
+                    post_id=post_id,
+                    parent_id=comment.parent_id,
+                    author=str(comment.author) if comment.author else "[deleted]",
+                    body=comment.body,
+                    score=comment.score,
+                    created_utc=comment.created_utc,
+                    edited=bool(comment.edited),
+                    is_submitter=comment.is_submitter,
+                    permalink=comment.permalink,
+                    depth=comment.depth,
+                )
+                all_comments.append(comment_data)
+                yield "comment", comment_data
+            yield "comments", all_comments
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GetCommentRepliesBlock(Block):
+    """Get replies to a specific Reddit comment."""
+
+    class Input(BlockSchemaInput):
+        credentials: RedditCredentialsInput = RedditCredentialsField()
+        comment_id: str = SchemaField(
+            description="The ID of the comment to get replies from",
+        )
+        post_id: str = SchemaField(
+            description="The ID of the post containing the comment",
+        )
+        limit: int = SchemaField(
+            description="Maximum number of replies to fetch (max 50)",
+            default=10,
+        )
+
+    class Output(BlockSchemaOutput):
+        reply: RedditCommentData = SchemaField(description="A reply to the comment")
+        replies: list[RedditCommentData] = SchemaField(description="All replies")
+        error: str = SchemaField(description="Error message if replies couldn't be fetched")
+
+    def __init__(self):
+        super().__init__(
+            id="7fa83965-7289-432f-98a9-1575f5bcc8f1",
+            description="Get replies to a specific Reddit comment.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=GetCommentRepliesBlock.Input,
+            output_schema=GetCommentRepliesBlock.Output,
+            disabled=(
+                not settings.secrets.reddit_client_id
+                or not settings.secrets.reddit_client_secret
+            ),
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "comment_id": "comment1",
+                "post_id": "abc123",
+                "limit": 2,
+            },
+            test_output=[
+                (
+                    "reply",
+                    RedditCommentData(
+                        id="reply1",
+                        post_id="abc123",
+                        parent_id="t1_comment1",
+                        author="replier1",
+                        body="Reply body 1",
+                        score=3,
+                        created_utc=1234567892.0,
+                        edited=False,
+                        is_submitter=False,
+                        permalink="/r/test/comments/abc123/test/reply1/",
+                        depth=1,
+                    ),
+                ),
+                (
+                    "replies",
+                    [
+                        RedditCommentData(
+                            id="reply1",
+                            post_id="abc123",
+                            parent_id="t1_comment1",
+                            author="replier1",
+                            body="Reply body 1",
+                            score=3,
+                            created_utc=1234567892.0,
+                            edited=False,
+                            is_submitter=False,
+                            permalink="/r/test/comments/abc123/test/reply1/",
+                            depth=1,
+                        ),
+                    ],
+                ),
+            ],
+            test_mock={
+                "get_replies": lambda creds, comment_id, post_id, limit: [
+                    MockObject(
+                        id="reply1",
+                        link_id="t3_abc123",
+                        parent_id="t1_comment1",
+                        author="replier1",
+                        body="Reply body 1",
+                        score=3,
+                        created_utc=1234567892.0,
+                        edited=False,
+                        is_submitter=False,
+                        permalink="/r/test/comments/abc123/test/reply1/",
+                        depth=1,
+                    ),
+                ]
+            },
+        )
+
+    @staticmethod
+    def get_replies(
+        creds: RedditCredentials, comment_id: str, post_id: str, limit: int
+    ) -> list:
+        client = get_praw(creds)
+        if post_id.startswith("t3_"):
+            post_id = post_id[3:]
+        if comment_id.startswith("t1_"):
+            comment_id = comment_id[3:]
+
+        # Get the submission and find the comment
+        submission = client.submission(id=post_id)
+        submission.comments.replace_more(limit=0)
+
+        # Find the target comment - filter out MoreComments which don't have .id
+        comment = None
+        for c in submission.comments.list():
+            if isinstance(c, MoreComments):
+                continue
+            if c.id == comment_id:
+                comment = c
+                break
+
+        if not comment:
+            return []
+
+        # Get direct replies - filter out MoreComments objects
+        replies = []
+        # CommentForest supports indexing
+        for i in range(len(comment.replies)):
+            reply = comment.replies[i]
+            if isinstance(reply, MoreComments):
+                continue
+            replies.append(reply)
+            if len(replies) >= min(limit, 50):
+                break
+
+        return replies
+
+    async def run(
+        self, input_data: Input, *, credentials: RedditCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            replies = self.get_replies(
+                credentials,
+                input_data.comment_id,
+                input_data.post_id,
+                input_data.limit,
+            )
+            all_replies = []
+            for reply in replies:
+                post_id = reply.link_id
+                if post_id.startswith("t3_"):
+                    post_id = post_id[3:]
+
+                reply_data = RedditCommentData(
+                    id=reply.id,
+                    post_id=post_id,
+                    parent_id=reply.parent_id,
+                    author=str(reply.author) if reply.author else "[deleted]",
+                    body=reply.body,
+                    score=reply.score,
+                    created_utc=reply.created_utc,
+                    edited=bool(reply.edited),
+                    is_submitter=reply.is_submitter,
+                    permalink=reply.permalink,
+                    depth=reply.depth,
+                )
+                all_replies.append(reply_data)
+                yield "reply", reply_data
+            yield "replies", all_replies
+        except Exception as e:
+            yield "error", str(e)
+
+
+class GetCommentBlock(Block):
+    """Get details about a specific Reddit comment."""
+
+    class Input(BlockSchemaInput):
+        credentials: RedditCredentialsInput = RedditCredentialsField()
+        comment_id: str = SchemaField(
+            description="The ID of the comment to fetch",
+        )
+
+    class Output(BlockSchemaOutput):
+        comment: RedditCommentData = SchemaField(description="The comment details")
+        error: str = SchemaField(description="Error message if comment couldn't be fetched")
+
+    def __init__(self):
+        super().__init__(
+            id="72cb311a-5998-4e0a-9bc4-f1b67a97284e",
+            description="Get details about a specific Reddit comment by its ID.",
+            categories={BlockCategory.SOCIAL},
+            input_schema=GetCommentBlock.Input,
+            output_schema=GetCommentBlock.Output,
+            disabled=(
+                not settings.secrets.reddit_client_id
+                or not settings.secrets.reddit_client_secret
+            ),
+            test_credentials=TEST_CREDENTIALS,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "comment_id": "comment1",
+            },
+            test_output=[
+                (
+                    "comment",
+                    RedditCommentData(
+                        id="comment1",
+                        post_id="abc123",
+                        parent_id="t3_abc123",
+                        author="user1",
+                        body="Comment body",
+                        score=10,
+                        created_utc=1234567890.0,
+                        edited=False,
+                        is_submitter=False,
+                        permalink="/r/test/comments/abc123/test/comment1/",
+                        depth=0,
+                    ),
+                ),
+            ],
+            test_mock={
+                "get_comment": lambda creds, comment_id: MockObject(
+                    id="comment1",
+                    link_id="t3_abc123",
+                    parent_id="t3_abc123",
+                    author="user1",
+                    body="Comment body",
+                    score=10,
+                    created_utc=1234567890.0,
+                    edited=False,
+                    is_submitter=False,
+                    permalink="/r/test/comments/abc123/test/comment1/",
+                    depth=0,
+                )
+            },
+        )
+
+    @staticmethod
+    def get_comment(creds: RedditCredentials, comment_id: str):
+        client = get_praw(creds)
+        if comment_id.startswith("t1_"):
+            comment_id = comment_id[3:]
+        return client.comment(id=comment_id)
+
+    async def run(
+        self, input_data: Input, *, credentials: RedditCredentials, **kwargs
+    ) -> BlockOutput:
+        try:
+            comment = self.get_comment(credentials, input_data.comment_id)
+
+            post_id = comment.link_id
+            if post_id.startswith("t3_"):
+                post_id = post_id[3:]
+
+            comment_data = RedditCommentData(
+                id=comment.id,
+                post_id=post_id,
+                parent_id=comment.parent_id,
+                author=str(comment.author) if comment.author else "[deleted]",
+                body=comment.body,
+                score=comment.score,
+                created_utc=comment.created_utc,
+                edited=bool(comment.edited),
+                is_submitter=comment.is_submitter,
+                permalink=comment.permalink,
+                depth=comment.depth,
+            )
+            yield "comment", comment_data
         except Exception as e:
             yield "error", str(e)

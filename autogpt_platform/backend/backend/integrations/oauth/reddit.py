@@ -29,6 +29,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
         "identity",  # Get username, verify auth
         "read",  # Access posts and comments
         "submit",  # Submit new posts and comments
+        "edit",  # Edit own posts and comments
         "history",  # Access user's post history
     ]
 
