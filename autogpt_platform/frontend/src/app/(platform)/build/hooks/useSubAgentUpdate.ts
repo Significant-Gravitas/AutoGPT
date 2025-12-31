@@ -1,11 +1,56 @@
 import { useMemo } from "react";
 import {
-  GraphMeta,
+  GraphMeta as LegacyGraphMeta,
   GraphInputSchema,
   GraphOutputSchema,
 } from "@/lib/autogpt-server-api";
+import { GraphMeta as GeneratedGraphMeta } from "@/app/api/__generated__/models/graphMeta";
 import { getEffectiveType } from "@/lib/utils";
 import { ConnectionData } from "../components/legacy-builder/CustomNode/CustomNode";
+
+// Union type for GraphMeta that works with both legacy and new builder
+export type GraphMetaLike = LegacyGraphMeta | GeneratedGraphMeta;
+
+// Generic edge type that works with both builders
+// Legacy builder uses ConnectionData with `edge_id`, new builder uses CustomEdge with `id`
+export type EdgeLike = {
+  id?: string;
+  edge_id?: string;
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+};
+
+// Helper type for schema properties - the generated types are too loose
+type SchemaProperties = Record<string, GraphInputSchema["properties"][string]>;
+type SchemaRequired = string[];
+
+// Helper to safely extract schema properties
+function getSchemaProperties(schema: unknown): SchemaProperties {
+  if (
+    schema &&
+    typeof schema === "object" &&
+    "properties" in schema &&
+    typeof schema.properties === "object" &&
+    schema.properties !== null
+  ) {
+    return schema.properties as SchemaProperties;
+  }
+  return {};
+}
+
+function getSchemaRequired(schema: unknown): SchemaRequired {
+  if (
+    schema &&
+    typeof schema === "object" &&
+    "required" in schema &&
+    Array.isArray(schema.required)
+  ) {
+    return schema.required as SchemaRequired;
+  }
+  return [];
+}
 
 export type IncompatibilityInfo = {
   missingInputs: string[]; // Connected inputs that no longer exist
@@ -20,11 +65,11 @@ export type IncompatibilityInfo = {
   }>; // Connected inputs where the type has changed
 };
 
-export type SubAgentUpdateInfo = {
+export type SubAgentUpdateInfo<T extends GraphMetaLike = GraphMetaLike> = {
   hasUpdate: boolean;
   currentVersion: number;
   latestVersion: number;
-  latestFlow: GraphMeta | null;
+  latestFlow: T | null;
   isCompatible: boolean;
   incompatibilities: IncompatibilityInfo | null;
 };
@@ -32,15 +77,15 @@ export type SubAgentUpdateInfo = {
 /**
  * Checks if a newer version of a sub-agent is available and determines compatibility
  */
-export function useSubAgentUpdate(
+export function useSubAgentUpdate<T extends GraphMetaLike>(
   nodeId: string,
   graphID: string | undefined,
   graphVersion: number | undefined,
   currentInputSchema: GraphInputSchema | undefined,
   currentOutputSchema: GraphOutputSchema | undefined,
-  connections: ConnectionData,
-  availableFlows: GraphMeta[],
-): SubAgentUpdateInfo {
+  connections: ConnectionData | EdgeLike[],
+  availableFlows: T[],
+): SubAgentUpdateInfo<T> {
   // Find the latest version of the same graph
   const latestFlow = useMemo(() => {
     if (!graphID) return null;
@@ -50,7 +95,7 @@ export function useSubAgentUpdate(
   // Check if there's an update available
   const hasUpdate = useMemo(() => {
     if (!latestFlow || graphVersion === undefined) return false;
-    return latestFlow.version > graphVersion;
+    return latestFlow.version! > graphVersion;
   }, [latestFlow, graphVersion]);
 
   // Get connected input and output handles for this specific node
@@ -81,15 +126,13 @@ export function useSubAgentUpdate(
       return { isCompatible: true, incompatibilities: null };
     }
 
-    const newInputSchema = latestFlow.input_schema;
-    const newOutputSchema = latestFlow.output_schema;
-    const newInputProps = newInputSchema?.properties || {};
-    const newOutputProps = newOutputSchema?.properties || {};
-    const newRequiredInputs = newInputSchema?.required || [];
+    const newInputProps = getSchemaProperties(latestFlow.input_schema);
+    const newOutputProps = getSchemaProperties(latestFlow.output_schema);
+    const newRequiredInputs = getSchemaRequired(latestFlow.input_schema);
 
-    const currentInputProps = currentInputSchema?.properties || {};
-    const currentOutputProps = currentOutputSchema?.properties || {};
-    const currentRequiredInputs = currentInputSchema?.required || [];
+    const currentInputProps = getSchemaProperties(currentInputSchema);
+    const currentOutputProps = getSchemaProperties(currentOutputSchema);
+    const currentRequiredInputs = getSchemaRequired(currentInputSchema);
 
     const incompatibilities: IncompatibilityInfo = {
       missingInputs: [],
@@ -187,7 +230,7 @@ export function useSubAgentUpdate(
  */
 export function createUpdatedHardcodedValues(
   currentHardcodedValues: Record<string, unknown>,
-  latestFlow: GraphMeta,
+  latestFlow: GraphMetaLike,
 ): Record<string, unknown> {
   return {
     ...currentHardcodedValues,
@@ -198,10 +241,11 @@ export function createUpdatedHardcodedValues(
 }
 
 /**
- * Determines which edges are broken after an incompatible update
+ * Determines which edges are broken after an incompatible update.
+ * Works with both legacy ConnectionData (edge_id) and new CustomEdge (id).
  */
 export function getBrokenEdgeIDs(
-  connections: ConnectionData,
+  connections: ConnectionData | EdgeLike[],
   incompatibilities: IncompatibilityInfo,
   nodeID: string,
 ): string[] {
@@ -211,13 +255,17 @@ export function getBrokenEdgeIDs(
   );
 
   connections.forEach((conn) => {
+    // Get edge ID - new builder uses `id`, legacy uses `edge_id`
+    const edgeID = "id" in conn ? conn.id : conn.edge_id;
+    if (!edgeID) return;
+
     // Check if this connection uses a missing input (node is target)
     if (
       conn.target === nodeID &&
       conn.targetHandle &&
       incompatibilities.missingInputs.includes(conn.targetHandle)
     ) {
-      brokenEdgeIds.push(conn.edge_id);
+      brokenEdgeIds.push(edgeID);
     }
 
     // Check if this connection uses an input with a type mismatch (node is target)
@@ -226,7 +274,7 @@ export function getBrokenEdgeIDs(
       conn.targetHandle &&
       typeMismatchInputNames.has(conn.targetHandle)
     ) {
-      brokenEdgeIds.push(conn.edge_id);
+      brokenEdgeIds.push(edgeID);
     }
 
     // Check if this connection uses a missing output (node is source)
@@ -235,7 +283,7 @@ export function getBrokenEdgeIDs(
       conn.sourceHandle &&
       incompatibilities.missingOutputs.includes(conn.sourceHandle)
     ) {
-      brokenEdgeIds.push(conn.edge_id);
+      brokenEdgeIds.push(edgeID);
     }
   });
 

@@ -20,6 +20,7 @@ export const FormRenderer = ({
   uiSchema,
   initialValues,
   formContext,
+  className,
 }: FormRendererProps) => {
   const preprocessedSchema = useMemo(() => {
     return preprocessInputSchema(jsonSchema);

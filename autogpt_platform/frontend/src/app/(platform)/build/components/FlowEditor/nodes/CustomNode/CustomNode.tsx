@@ -21,6 +21,53 @@ import { NodeRightClickMenu } from "./components/NodeRightClickMenu";
 import { StickyNoteBlock } from "./components/StickyNoteBlock";
 import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
 
+type SchemaProperties = Record<string, unknown>;
+
+/**
+ * Merges schemas during resolution mode to include removed inputs/outputs
+ * that still have connections, so users can see and delete them.
+ */
+function mergeSchemaForResolution(
+  currentSchema: Record<string, unknown>,
+  newSchema: Record<string, unknown>,
+  resolutionData: NodeResolutionData,
+  type: "input" | "output",
+): Record<string, unknown> {
+  const newProps = (newSchema.properties as SchemaProperties) || {};
+  const currentProps = (currentSchema.properties as SchemaProperties) || {};
+  const mergedProps = { ...newProps };
+  const incomp = resolutionData.incompatibilities;
+
+  if (type === "input") {
+    // Add back missing inputs that have connections
+    incomp.missingInputs.forEach((inputName: string) => {
+      if (currentProps[inputName]) {
+        mergedProps[inputName] = currentProps[inputName];
+      }
+    });
+    // Add back inputs with type mismatches (keep old type so connection works visually)
+    incomp.inputTypeMismatches.forEach(
+      (mismatch: { name: string; oldType: string; newType: string }) => {
+        if (currentProps[mismatch.name]) {
+          mergedProps[mismatch.name] = currentProps[mismatch.name];
+        }
+      },
+    );
+  } else {
+    // Add back missing outputs that have connections
+    incomp.missingOutputs.forEach((outputName: string) => {
+      if (currentProps[outputName]) {
+        mergedProps[outputName] = currentProps[outputName];
+      }
+    });
+  }
+
+  return {
+    ...newSchema,
+    properties: mergedProps,
+  };
+}
+
 export type CustomNodeData = {
   hardcodedValues: {
     [key: string]: any;
@@ -45,6 +92,53 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
+    // Subscribe to the actual resolution mode state for this node
+    const isInResolutionMode = useNodeStore((state) =>
+      state.nodesInResolutionMode.has(nodeId),
+    );
+    const resolutionData = useNodeStore((state) =>
+      state.nodeResolutionData.get(nodeId),
+    );
+
+    const isAgent = data.uiType === BlockUIType.AGENT;
+
+    // Get base schemas for agent nodes
+    const currentInputSchema = isAgent
+      ? (data.hardcodedValues.input_schema ?? {})
+      : data.inputSchema;
+    const currentOutputSchema = isAgent
+      ? (data.hardcodedValues.output_schema ?? {})
+      : data.outputSchema;
+
+    // During resolution mode, merge old connected inputs/outputs with new schema
+    // so users can see and delete the broken connections
+    const inputSchema = useMemo(() => {
+      if (isAgent && isInResolutionMode && resolutionData) {
+        // Use the stored old schema from resolution data for merging
+        return mergeSchemaForResolution(
+          resolutionData.currentSchema.input_schema,
+          resolutionData.pendingUpdate.input_schema,
+          resolutionData,
+          "input",
+        );
+      }
+      return currentInputSchema;
+    }, [isAgent, isInResolutionMode, resolutionData, currentInputSchema]);
+
+    const outputSchema = useMemo(() => {
+      if (isAgent && isInResolutionMode && resolutionData) {
+        // Use the stored old schema from resolution data for merging
+        return mergeSchemaForResolution(
+          resolutionData.currentSchema.output_schema,
+          resolutionData.pendingUpdate.output_schema,
+          resolutionData,
+          "output",
+        );
+      }
+      return currentOutputSchema;
+    }, [isAgent, isInResolutionMode, resolutionData, currentOutputSchema]);
+
+    // Handle sticky note separately
     if (data.uiType === BlockUIType.NOTE) {
       return (
         <StickyNoteBlock data={data} selected={selected} nodeId={nodeId} />
@@ -62,16 +156,6 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
     ].includes(data.uiType);
 
     const isAyrshare = data.uiType === BlockUIType.AYRSHARE;
-
-    const inputSchema =
-      data.uiType === BlockUIType.AGENT
-        ? (data.hardcodedValues.input_schema ?? {})
-        : data.inputSchema;
-
-    const outputSchema =
-      data.uiType === BlockUIType.AGENT
-        ? (data.hardcodedValues.output_schema ?? {})
-        : data.outputSchema;
 
     const hasConfigErrors =
       data.errors &&
@@ -93,6 +177,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
         <div className="rounded-xlarge bg-white">
           <NodeHeader data={data} nodeId={nodeId} />
+          {isAgent && <SubAgentUpdateFeature nodeID={nodeId} nodeData={data} />}
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
           {isAyrshare && <AyrshareConnectButton />}
           <FormCreator

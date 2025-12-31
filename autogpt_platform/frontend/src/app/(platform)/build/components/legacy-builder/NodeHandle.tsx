@@ -6,7 +6,7 @@ import {
   getTypeTextColor,
   getEffectiveType,
 } from "@/lib/utils";
-import { FC, memo, useCallback, useMemo } from "react";
+import { FC, memo, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
