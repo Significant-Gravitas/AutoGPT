@@ -1,6 +1,6 @@
 import { RJSFSchema } from "@rjsf/utils";
 import { isCredentialFieldSchema } from "../helpers";
-import { findCustomFieldId } from "../registry/custom-field";
+import { findCustomFieldId } from "../custom/custom-registry";
 
 /**
  * Pre-processes the input schema to ensure all properties have a type defined.

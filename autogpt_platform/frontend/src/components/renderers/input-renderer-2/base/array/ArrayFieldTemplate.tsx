@@ -4,7 +4,7 @@ import {
   getTemplate,
   getUiOptions,
 } from "@rjsf/utils";
-import { getHandleId, updateUiOption } from "../helpers";
+import { getHandleId, updateUiOption } from "../../helpers";
 
 export default function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
   const {

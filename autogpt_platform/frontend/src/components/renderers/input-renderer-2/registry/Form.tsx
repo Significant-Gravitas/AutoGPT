@@ -1,9 +1,23 @@
 import { ComponentType } from "react";
-import { FormProps, withTheme } from "@rjsf/core";
-import { generateTheme } from "./Theme";
+import { FormProps, withTheme, ThemeProps } from "@rjsf/core";
+import {
+  generateBaseFields,
+  generateBaseTemplates,
+  generateBaseWidgets,
+} from "../base/base-registry";
+import { generateCustomFields } from "../custom/custom-registry";
 
 export function generateForm(): ComponentType<FormProps> {
-  return withTheme(generateTheme());
+  const theme: ThemeProps = {
+    templates: generateBaseTemplates(),
+    widgets: generateBaseWidgets(),
+    fields: {
+      ...generateBaseFields(),
+      ...generateCustomFields(),
+    },
+  };
+
+  return withTheme(theme);
 }
 
 export default generateForm();

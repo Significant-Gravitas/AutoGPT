@@ -1,5 +1,5 @@
-import { FieldProps, RJSFSchema } from "@rjsf/utils";
-import { CredentialField } from "../credentials/CredentialField";
+import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
+import { CredentialField } from ".";
 
 export interface CustomFieldDefinition {
   id: string;
@@ -30,7 +30,7 @@ export function findCustomFieldId(schema: any): string | null {
   return null;
 }
 
-export function getCustomFieldComponents() {
+export function generateCustomFields(): RegistryFieldsType {
   return CUSTOM_FIELDS.reduce(
     (acc, field) => {
       acc[field.id] = field.component;

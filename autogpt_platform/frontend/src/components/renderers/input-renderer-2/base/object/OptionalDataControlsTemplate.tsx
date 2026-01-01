@@ -1,10 +1,7 @@
 import { OptionalDataControlsTemplateProps } from "@rjsf/utils";
 import { PlusCircle } from "lucide-react";
 
-import {
-  IconButton,
-  RemoveButton,
-} from "@/components/renderers/input-renderer-2/common/buttons";
+import { IconButton, RemoveButton } from "../standard/buttons";
 
 export default function OptionalDataControlsTemplate(
   props: OptionalDataControlsTemplateProps,

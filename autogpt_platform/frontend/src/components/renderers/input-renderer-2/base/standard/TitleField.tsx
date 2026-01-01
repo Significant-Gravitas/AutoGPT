@@ -8,7 +8,7 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { isAnyOfSchema } from "../../utils/schema-utils";
-import { useIsArrayItem } from "../../array/context/array-item-context";
+import { useIsArrayItem } from "../array/context/array-item-context";
 import { cn } from "@/lib/utils";
 import { cleanUpHandleId } from "../../helpers";
 

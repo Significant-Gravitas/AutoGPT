@@ -1,7 +1,7 @@
 import { FieldProps, getUiOptions } from "@rjsf/utils";
 import { ArrayItemProvider } from "./context/array-item-context";
-import { getHandleId, updateUiOption } from "../helpers";
-import { ARRAY_ITEM_FLAG } from "../constants";
+import { getHandleId, updateUiOption } from "../../helpers";
+import { ARRAY_ITEM_FLAG } from "../../constants";
 
 const ArraySchemaField = (props: FieldProps) => {
   const { index, registry, name, fieldPathId } = props;

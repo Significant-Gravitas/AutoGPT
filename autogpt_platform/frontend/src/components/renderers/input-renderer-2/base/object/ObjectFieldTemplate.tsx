@@ -8,7 +8,7 @@ import {
   ObjectFieldTemplateProps,
   titleId,
 } from "@rjsf/utils";
-import { getHandleId, updateUiOption } from "../helpers";
+import { getHandleId, updateUiOption } from "../../helpers";
 import React from "react";
 
 export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {

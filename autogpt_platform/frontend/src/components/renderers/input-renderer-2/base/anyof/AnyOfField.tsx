@@ -2,8 +2,8 @@ import { FieldProps, getUiOptions, getWidget } from "@rjsf/utils";
 import { AnyOfFieldTitle } from "./components/AnyOfFieldTitle";
 import { isEmpty } from "lodash";
 import { useAnyOfField } from "./useAnyOfField";
-import { getHandleId, updateUiOption } from "../helpers";
-import { ANY_OF_FLAG } from "../constants";
+import { getHandleId, updateUiOption } from "../../helpers";
+import { ANY_OF_FLAG } from "../../constants";
 
 export const AnyOfField = (props: FieldProps) => {
   const { registry, schema } = props;
