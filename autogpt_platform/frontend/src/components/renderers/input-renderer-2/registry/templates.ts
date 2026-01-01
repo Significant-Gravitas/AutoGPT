@@ -1,9 +1,4 @@
-import {
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-  TemplatesType,
-} from "@rjsf/utils";
+import { TemplatesType } from "@rjsf/utils";
 import { AddButton, CopyButton, RemoveButton } from "../common/buttons";
 import { ArrayFieldItemTemplate, ArrayFieldTemplate } from "../array";
 import {
@@ -13,7 +8,6 @@ import {
   FieldTemplate,
   TitleField,
 } from "../common/field-templates";
-import { ErrorList } from "../common/errors";
 import {
   ObjectFieldTemplate,
   OptionalDataControlsTemplate,
@@ -22,11 +16,7 @@ import {
 
 const NoButton = () => null;
 
-export function generateTemplates<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(): Partial<TemplatesType<T, S, F>> {
+export function generateTemplates(): Partial<TemplatesType> {
   return {
     ArrayFieldItemTemplate,
     ArrayFieldTemplate,

@@ -1,24 +1,12 @@
-import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import {
   ArrayFieldTemplateProps,
   buttonId,
-  FormContextType,
   getTemplate,
   getUiOptions,
-  RJSFSchema,
-  StrictRJSFSchema,
 } from "@rjsf/utils";
-import { ARRAY_FLAG, getHandleId, updateUiOption } from "../helpers";
+import { getHandleId, updateUiOption } from "../helpers";
 
-/** The `ArrayFieldTemplate` component is the template used to render all items in an array.
- *
- * @param props - The `ArrayFieldTemplateProps` props for the component
- */
-export default function ArrayFieldTemplate<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: ArrayFieldTemplateProps<T, S, F>) {
+export default function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
   const {
     canAdd,
     disabled,
@@ -33,21 +21,21 @@ export default function ArrayFieldTemplate<
     schema,
     title,
   } = props;
-  const uiOptions = getUiOptions<T, S, F>(uiSchema);
-  const ArrayFieldDescriptionTemplate = getTemplate<
+
+  const uiOptions = getUiOptions(uiSchema);
+
+  const ArrayFieldDescriptionTemplate = getTemplate(
     "ArrayFieldDescriptionTemplate",
-    T,
-    S,
-    F
-  >("ArrayFieldDescriptionTemplate", registry, uiOptions);
-  const ArrayFieldTitleTemplate = getTemplate<
+    registry,
+    uiOptions,
+  );
+  const ArrayFieldTitleTemplate = getTemplate(
     "ArrayFieldTitleTemplate",
-    T,
-    S,
-    F
-  >("ArrayFieldTitleTemplate", registry, uiOptions);
+    registry,
+    uiOptions,
+  );
   const showOptionalDataControlInTitle = !readonly && !disabled;
-  // Button templates are not overridden in the uiSchema
+
   const {
     ButtonTemplates: { AddButton },
   } = registry.templates;

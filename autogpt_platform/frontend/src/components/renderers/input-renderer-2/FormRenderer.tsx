@@ -24,7 +24,6 @@ export const FormRenderer2 = ({
     return preprocessInputSchema(jsonSchema);
   }, [jsonSchema]);
 
-  console.log("preprocessedSchema", preprocessedSchema);
   return (
     <div className={"mb-6 mt-4"}>
       <Form

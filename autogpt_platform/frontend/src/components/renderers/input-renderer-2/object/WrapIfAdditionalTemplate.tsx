@@ -1,27 +1,17 @@
 import {
   ADDITIONAL_PROPERTY_FLAG,
   buttonId,
-  FormContextType,
   getTemplate,
   getUiOptions,
-  RJSFSchema,
-  StrictRJSFSchema,
   titleId,
   WrapIfAdditionalTemplateProps,
 } from "@rjsf/utils";
 
 import { Input } from "@/components/atoms/Input/Input";
 
-/** The `WrapIfAdditional` component is used by the `FieldTemplate` to rename, or remove properties that are
- * part of an `additionalProperties` part of a schema.
- *
- * @param props - The `WrapIfAdditionalProps` for this component
- */
-export default function WrapIfAdditionalTemplate<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: WrapIfAdditionalTemplateProps<T, S, F>) {
+export default function WrapIfAdditionalTemplate(
+  props: WrapIfAdditionalTemplateProps,
+) {
   const {
     classNames,
     style,
@@ -44,7 +34,7 @@ export default function WrapIfAdditionalTemplate<
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
 
-  const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
+  const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
     registry,
     uiOptions,

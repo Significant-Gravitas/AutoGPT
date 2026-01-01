@@ -1,26 +1,7 @@
-import * as React from "react";
-import {
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-  WidgetProps,
-} from "@rjsf/utils";
+import { WidgetProps } from "@rjsf/utils";
 import { DateInput } from "@/components/atoms/DateInput/DateInput";
 
-type CustomWidgetProps<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
-> = WidgetProps<T, S, F> & {
-  options: any;
-};
-export const DateWidget = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: CustomWidgetProps<T, S, F>,
-) => {
+export const DateWidget = (props: WidgetProps) => {
   const {
     value,
     onChange,

@@ -1,16 +1,5 @@
-import {
-  FieldProps,
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-} from "@rjsf/utils";
+import { FieldProps } from "@rjsf/utils";
 
-export const CredentialField = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: FieldProps<T, S, F>,
-) => {
+export const CredentialField = (props: FieldProps) => {
   return <div>CredentialField</div>;
 };

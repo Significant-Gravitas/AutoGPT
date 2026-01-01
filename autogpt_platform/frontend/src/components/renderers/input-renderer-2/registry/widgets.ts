@@ -1,10 +1,4 @@
-import {
-  FormContextType,
-  RegistryWidgetsType,
-  RJSFSchema,
-  StrictRJSFSchema,
-} from "@rjsf/utils";
-import { ExtendedFormContextType } from "../types";
+import { RegistryWidgetsType } from "@rjsf/utils";
 import {
   TextWidget,
   SelectWidget,
@@ -15,11 +9,7 @@ import {
   DateTimeWidget,
 } from "../inputs";
 
-export function generateWidgets<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = ExtendedFormContextType,
->(): RegistryWidgetsType<T, S, F> {
+export function generateWidgets(): RegistryWidgetsType {
   return {
     TextWidget,
     SelectWidget,

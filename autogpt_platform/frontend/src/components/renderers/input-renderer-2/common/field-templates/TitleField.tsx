@@ -2,24 +2,17 @@ import {
   ADDITIONAL_PROPERTY_FLAG,
   descriptionId,
   getUiOptions,
-  RJSFSchema,
-  StrictRJSFSchema,
   TitleFieldProps,
 } from "@rjsf/utils";
 
 import { Text } from "@/components/atoms/Text/Text";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { isAnyOfSchema } from "../../utils/schema-utils";
-import { ExtendedFormContextType } from "../../types";
 import { useIsArrayItem } from "../../array/context/array-item-context";
 import { cn } from "@/lib/utils";
 import { cleanUpHandleId } from "../../helpers";
 
-export default function TitleField<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends ExtendedFormContextType = ExtendedFormContextType,
->(props: TitleFieldProps<T, S, F>) {
+export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
   const { nodeId } = registry.formContext;

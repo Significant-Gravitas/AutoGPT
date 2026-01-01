@@ -1,30 +1,17 @@
 import {
   ADDITIONAL_PROPERTY_FLAG,
   FieldTemplateProps,
-  FormContextType,
   getTemplate,
   getUiOptions,
-  RJSFSchema,
-  StrictRJSFSchema,
   titleId,
 } from "@rjsf/utils";
 
 import { isAnyOfChild, isAnyOfSchema } from "../../utils/schema-utils";
-import {
-  ANY_OF_FLAG,
-  ARRAY_ITEM_FLAG,
-  getHandleId,
-  updateUiOption,
-} from "../../helpers";
+import { getHandleId, updateUiOption } from "../../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { useIsArrayItem } from "../../array/context/array-item-context";
 
-export default function FieldTemplate<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: FieldTemplateProps<T, S, F>) {
+export default function FieldTemplate(props: FieldTemplateProps) {
   const {
     id,
     children,
@@ -61,17 +48,16 @@ export default function FieldTemplate<
   }
 
   const uiOptions = getUiOptions(uiSchema);
-  const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
+  const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
     registry,
     uiOptions,
   );
-  const WrapIfAdditionalTemplate = getTemplate<
+  const WrapIfAdditionalTemplate = getTemplate(
     "WrapIfAdditionalTemplate",
-    T,
-    S,
-    F
-  >("WrapIfAdditionalTemplate", registry, uiOptions);
+    registry,
+    uiOptions,
+  );
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
 

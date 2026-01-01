@@ -1,12 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-  WidgetProps,
-} from "@rjsf/utils";
+import { WidgetProps } from "@rjsf/utils";
 import {
   InputType,
   mapJsonSchemaTypeToInputType,
@@ -21,19 +16,8 @@ import {
 import { BlockUIType } from "@/lib/autogpt-server-api/types";
 import { ArrowsOutIcon } from "@phosphor-icons/react";
 import { InputExpanderModal } from "./TextInputExpanderModal";
-import { ExtendedFormContextType } from "../../types";
 
-type CustomWidgetProps<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
-> = WidgetProps<T, S, F>;
-
-export default function TextWidget<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = ExtendedFormContextType,
->(props: CustomWidgetProps<T, S, F>) {
+export default function TextWidget(props: WidgetProps) {
   const { schema, placeholder, registry } = props;
   const { size, uiType } = registry.formContext;
 

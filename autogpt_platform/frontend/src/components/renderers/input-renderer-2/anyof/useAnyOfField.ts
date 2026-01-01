@@ -1,27 +1,11 @@
-import { uiSchema } from "@/app/(platform)/build/components/FlowEditor/nodes/uiSchema";
-import {
-  FieldProps,
-  FormContextType,
-  getFirstMatchingOption,
-  mergeSchemas,
-  RJSFSchema,
-  StrictRJSFSchema,
-} from "@rjsf/utils";
+import { FieldProps, getFirstMatchingOption, mergeSchemas } from "@rjsf/utils";
 import { useRef, useState } from "react";
 import validator from "@rjsf/validator-ajv8";
 import { getDefaultTypeIndex } from "./helpers";
-import { useIsArrayItem } from "../array/context/array-item-context";
 
-export const useAnyOfField = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: FieldProps<T, S, F>,
-) => {
+export const useAnyOfField = (props: FieldProps) => {
   const { registry, schema, options, onChange, formData } = props;
   const { schemaUtils } = registry;
-  const isArrayItem = useIsArrayItem();
 
   const getInitialOption = () => {
     if (formData !== undefined && formData !== null) {
@@ -39,20 +23,20 @@ export const useAnyOfField = <
   const [selectedOption, setSelectedOption] =
     useState<number>(getInitialOption());
   const retrievedOptions = useRef<any[]>(
-    options.map((opt: S) => schemaUtils.retrieveSchema(opt, formData)),
+    options.map((opt: any) => schemaUtils.retrieveSchema(opt, formData)),
   );
 
   const option =
     selectedOption >= 0
       ? retrievedOptions.current[selectedOption] || null
       : null;
-  let optionSchema: S | undefined | null;
+  let optionSchema: any | undefined | null;
 
   // adding top level required to each option schema
   if (option) {
     const { required } = schema;
     optionSchema = required
-      ? (mergeSchemas({ required }, option) as S)
+      ? (mergeSchemas({ required }, option) as any)
       : option;
   }
 
@@ -82,7 +66,7 @@ export const useAnyOfField = <
         newOption,
         newFormData,
         "excludeObjectChildren",
-      ) as T;
+      ) as any;
     }
 
     setSelectedOption(intOption);

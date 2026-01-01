@@ -1,24 +1,7 @@
-import {
-  RJSFSchema,
-  FormContextType,
-  StrictRJSFSchema,
-  WidgetProps,
-} from "@rjsf/utils";
+import { WidgetProps } from "@rjsf/utils";
 import { FileInput } from "@/components/atoms/FileInput/FileInput";
-type CustomWidgetProps<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
-> = WidgetProps<T, S, F> & {
-  options: any;
-};
-export const FileWidget = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: CustomWidgetProps<T, S, F>,
-) => {
+
+export const FileWidget = (props: WidgetProps) => {
   const { onChange, disabled, readonly, value, schema, formContext } = props;
 
   const { size } = formContext || {};

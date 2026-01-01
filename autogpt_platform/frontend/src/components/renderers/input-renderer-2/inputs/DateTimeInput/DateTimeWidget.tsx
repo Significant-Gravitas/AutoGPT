@@ -1,26 +1,7 @@
-import {
-  RJSFSchema,
-  StrictRJSFSchema,
-  FormContextType,
-  WidgetProps,
-} from "@rjsf/utils";
+import { WidgetProps } from "@rjsf/utils";
 import { DateTimeInput } from "@/components/atoms/DateTimeInput/DateTimeInput";
 
-type CustomWidgetProps<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
-> = WidgetProps<T, S, F> & {
-  options: any;
-};
-
-export const DateTimeWidget = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: CustomWidgetProps<T, S, F>,
-) => {
+export const DateTimeWidget = (props: WidgetProps) => {
   const {
     value,
     onChange,

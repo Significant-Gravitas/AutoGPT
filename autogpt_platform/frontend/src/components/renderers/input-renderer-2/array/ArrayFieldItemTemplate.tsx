@@ -1,18 +1,12 @@
-import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 import {
   ArrayFieldItemTemplateProps,
-  FormContextType,
   getTemplate,
   getUiOptions,
-  RJSFSchema,
-  StrictRJSFSchema,
 } from "@rjsf/utils";
 
-export default function ArrayFieldItemTemplate<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: ArrayFieldItemTemplateProps<T, S, F>) {
+export default function ArrayFieldItemTemplate(
+  props: ArrayFieldItemTemplateProps,
+) {
   const {
     children,
     buttonsProps,
@@ -21,13 +15,12 @@ export default function ArrayFieldItemTemplate<
     uiSchema,
     registry,
   } = props;
-  const uiOptions = getUiOptions<T, S, F>(uiSchema);
-  const ArrayFieldItemButtonsTemplate = getTemplate<
+  const uiOptions = getUiOptions(uiSchema);
+  const ArrayFieldItemButtonsTemplate = getTemplate(
     "ArrayFieldItemButtonsTemplate",
-    T,
-    S,
-    F
-  >("ArrayFieldItemButtonsTemplate", registry, uiOptions);
+    registry,
+    uiOptions,
+  );
 
   return (
     <div>

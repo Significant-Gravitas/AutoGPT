@@ -1,37 +1,18 @@
-import {
-  FieldProps,
-  FormContextType,
-  getUiOptions,
-  getWidget,
-  RJSFSchema,
-  StrictRJSFSchema,
-} from "@rjsf/utils";
+import { FieldProps, getUiOptions, getWidget } from "@rjsf/utils";
 import { AnyOfFieldTitle } from "./components/AnyOfFieldTitle";
 import { isEmpty } from "lodash";
 import { useAnyOfField } from "./useAnyOfField";
-import { ANY_OF_FLAG, getHandleId, updateUiOption } from "../helpers";
+import { getHandleId, updateUiOption } from "../helpers";
+import { ANY_OF_FLAG } from "../constants";
 
-export const AnyOfField = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: FieldProps<T, S, F>,
-) => {
-  const { registry, schema, id, fieldPathId } = props;
+export const AnyOfField = (props: FieldProps) => {
+  const { registry, schema } = props;
   const { fields } = registry;
   const { SchemaField: _SchemaField } = fields;
 
-  const uiOptions = getUiOptions<T, S, F>(
-    props.uiSchema,
-    props.globalUiOptions,
-  );
+  const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
 
-  const Widget = getWidget<T, S, F>(
-    { type: "string" },
-    (uiOptions.widget = "select"),
-    props.registry.widgets,
-  );
+  const Widget = getWidget({ type: "string" }, "select", registry.widgets);
 
   const {
     handleOptionChange,
@@ -66,7 +47,7 @@ export const AnyOfField = <
     <Widget
       id={field_id}
       name={`${props.name}${schema.oneOf ? "__oneof_select" : "__anyof_select"}`}
-      schema={{ type: "number", default: 0 } as S}
+      schema={{ type: "number", default: 0 }}
       onChange={handleOptionChange}
       onBlur={props.onBlur}
       onFocus={props.onFocus}

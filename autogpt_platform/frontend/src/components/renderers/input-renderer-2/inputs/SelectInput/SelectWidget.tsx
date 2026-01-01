@@ -1,9 +1,4 @@
-import {
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-  WidgetProps,
-} from "@rjsf/utils";
+import { WidgetProps } from "@rjsf/utils";
 import {
   InputType,
   mapJsonSchemaTypeToInputType,
@@ -17,23 +12,8 @@ import {
   MultiSelectorList,
   MultiSelectorTrigger,
 } from "@/components/__legacy__/ui/multiselect";
-import { ExtendedFormContextType } from "../../types";
 
-type CustomWidgetProps<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = ExtendedFormContextType,
-> = WidgetProps<T, S, F> & {
-  options: any;
-};
-
-export const SelectWidget = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = ExtendedFormContextType,
->(
-  props: CustomWidgetProps<T, S, F>,
-) => {
+export const SelectWidget = (props: WidgetProps) => {
   const {
     options,
     value,

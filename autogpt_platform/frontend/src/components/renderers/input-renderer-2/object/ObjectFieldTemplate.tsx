@@ -3,37 +3,15 @@ import {
   buttonId,
   canExpand,
   descriptionId,
-  FormContextType,
   getTemplate,
   getUiOptions,
   ObjectFieldTemplateProps,
-  RJSFSchema,
-  StrictRJSFSchema,
   titleId,
 } from "@rjsf/utils";
-import {
-  getHandleId,
-  isCredentialFieldSchema,
-  KEY_PAIR_FLAG,
-  OBJECT_FLAG,
-  updateUiOption,
-} from "../helpers";
+import { getHandleId, updateUiOption } from "../helpers";
 import React from "react";
-import { CredentialsField } from "../credentials/CredentialField";
-import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 
-/** The `ObjectFieldTemplate` is the template to use to render all the inner properties of an object along with the
- * title and description if available. If the object is expandable, then an `AddButton` is also rendered after all
- * the properties.
- *
- * @param props - The `ObjectFieldTemplateProps` for this component
- */
-export default function ObjectFieldTemplate<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: ObjectFieldTemplateProps<T, S, F>) {
+export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
   const {
     description,
     title,
@@ -50,17 +28,18 @@ export default function ObjectFieldTemplate<
     registry,
   } = props;
   const uiOptions = getUiOptions(uiSchema);
-  const TitleFieldTemplate = getTemplate<"TitleFieldTemplate", T, S, F>(
+
+  const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
     registry,
     uiOptions,
   );
-  const DescriptionFieldTemplate = getTemplate<
+
+  const DescriptionFieldTemplate = getTemplate(
     "DescriptionFieldTemplate",
-    T,
-    S,
-    F
-  >("DescriptionFieldTemplate", registry, uiOptions);
+    registry,
+    uiOptions,
+  );
   const showOptionalDataControlInTitle = !readonly && !disabled;
 
   const {
@@ -106,7 +85,7 @@ export default function ObjectFieldTemplate<
       <div className="flex flex-col">
         {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
 
-        {/* I have cloned it - so i could pass parentHandleId to the nested children */}
+        {/* I have cloned it - so i could pass updated uiSchema to the nested children */}
         {properties.map((element: any, index: number) => {
           const clonedContent = React.cloneElement(element.content, {
             ...element.content.props,

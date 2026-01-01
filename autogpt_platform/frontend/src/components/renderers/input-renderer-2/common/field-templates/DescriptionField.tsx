@@ -1,23 +1,14 @@
-import {
-  DescriptionFieldProps,
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-} from "@rjsf/utils";
+import { DescriptionFieldProps } from "@rjsf/utils";
 import { RichDescription } from "@rjsf/core";
 import { InfoIcon } from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
-export default function DescriptionField<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->({ id, description, registry, uiSchema }: DescriptionFieldProps<T, S, F>) {
+export default function DescriptionField(props: DescriptionFieldProps) {
+  const { id, description, registry, uiSchema } = props;
   if (!description) {
     return null;
   }

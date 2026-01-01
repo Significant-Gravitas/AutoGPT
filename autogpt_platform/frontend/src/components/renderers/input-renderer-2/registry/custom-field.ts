@@ -1,21 +1,10 @@
-import {
-  FieldProps,
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-} from "@rjsf/utils";
+import { FieldProps, RJSFSchema } from "@rjsf/utils";
 import { CredentialField } from "../credentials/CredentialField";
 
 export interface CustomFieldDefinition {
   id: string;
   matcher: (schema: any) => boolean;
-  component: <
-    T = any,
-    S extends StrictRJSFSchema = RJSFSchema,
-    F extends FormContextType = any,
-  >(
-    props: FieldProps<T, S, F>,
-  ) => JSX.Element;
+  component: (props: FieldProps<any, RJSFSchema, any>) => JSX.Element;
 }
 
 export const CUSTOM_FIELDS: CustomFieldDefinition[] = [

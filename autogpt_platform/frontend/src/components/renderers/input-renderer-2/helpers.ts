@@ -6,14 +6,12 @@ import {
   ADDITIONAL_PROPERTY_FLAG,
 } from "@rjsf/utils";
 
-export const ANY_OF_FLAG = "__anyOf";
-export const ARRAY_FLAG = "__array";
-export const OBJECT_FLAG = "__object";
-export const KEY_PAIR_FLAG = "__keyPair";
-export const TITLE_FLAG = "__title";
-export const ARRAY_ITEM_FLAG = "__arrayItem";
-export const ID_PREFIX = "agpt_@_";
-export const ID_PREFIX_ARRAY = "agpt_%_";
+import {
+  ANY_OF_FLAG,
+  ARRAY_ITEM_FLAG,
+  ID_PREFIX,
+  ID_PREFIX_ARRAY,
+} from "./constants";
 
 export function updateUiOption<T extends Record<string, any>>(
   uiSchema: T | undefined,

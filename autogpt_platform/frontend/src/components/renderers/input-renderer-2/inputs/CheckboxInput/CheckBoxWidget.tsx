@@ -1,17 +1,7 @@
-import {
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-  WidgetProps,
-} from "@rjsf/utils";
-import { ExtendedFormContextType } from "@/components/renderers/input-renderer-2/types";
+import { WidgetProps } from "@rjsf/utils";
 import { Switch } from "@/components/atoms/Switch/Switch";
 
-export function CheckboxWidget<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = ExtendedFormContextType,
->(props: WidgetProps<T, S, F>) {
+export function CheckboxWidget(props: WidgetProps) {
   const { value = false, onChange, disabled, readonly, autofocus, id } = props;
 
   return (

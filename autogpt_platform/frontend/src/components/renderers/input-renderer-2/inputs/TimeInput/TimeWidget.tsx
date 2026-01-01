@@ -1,25 +1,7 @@
-import {
-  RJSFSchema,
-  StrictRJSFSchema,
-  FormContextType,
-  WidgetProps,
-} from "@rjsf/utils";
+import { WidgetProps } from "@rjsf/utils";
 import { TimeInput } from "@/components/atoms/TimeInput/TimeInput";
 
-type CustomWidgetProps<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
-> = WidgetProps<T, S, F> & {
-  options: any;
-};
-export const TimeWidget = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: CustomWidgetProps<T, S, F>,
-) => {
+export const TimeWidget = (props: WidgetProps) => {
   const { value, onChange, disabled, readonly, placeholder, id, formContext } =
     props;
   const { size = "small" } = formContext || {};

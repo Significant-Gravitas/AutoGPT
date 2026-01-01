@@ -1,24 +1,14 @@
-import {
-  FieldProps,
-  FormContextType,
-  getUiOptions,
-  RJSFSchema,
-  StrictRJSFSchema,
-} from "@rjsf/utils";
+import { FieldProps, getUiOptions } from "@rjsf/utils";
 import { ArrayItemProvider } from "./context/array-item-context";
-import { ARRAY_ITEM_FLAG, getHandleId, updateUiOption } from "../helpers";
+import { getHandleId, updateUiOption } from "../helpers";
+import { ARRAY_ITEM_FLAG } from "../constants";
 
-const ArraySchemaField = <
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(
-  props: FieldProps<T, S, F>,
-) => {
+const ArraySchemaField = (props: FieldProps) => {
   const { index, registry, name, fieldPathId } = props;
   const { SchemaField } = registry.fields;
 
-  const uiOptions = getUiOptions<T, S, F>(props.uiSchema);
+  const uiOptions = getUiOptions(props.uiSchema);
+
   const handleId = getHandleId({
     uiOptions,
     id: fieldPathId.$id,

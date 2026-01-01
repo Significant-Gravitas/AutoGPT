@@ -5,7 +5,7 @@ import {
   StrictRJSFSchema,
   TranslatableString,
 } from "@rjsf/utils";
-import { ChevronDown, ChevronUp, Copy, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy } from "lucide-react";
 import type { VariantProps } from "class-variance-authority";
 
 import { Button } from "@/components/atoms/Button/Button";
@@ -20,11 +20,7 @@ export type AutogptIconButtonProps<
   F extends FormContextType = any,
 > = IconButtonProps<T, S, F> & VariantProps<typeof extendedButtonVariants>;
 
-export default function IconButton<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: AutogptIconButtonProps<T, S, F>) {
+export default function IconButton(props: AutogptIconButtonProps) {
   const { icon, iconType, className, uiSchema, registry, ...otherProps } =
     props;
   return (
@@ -44,11 +40,7 @@ export default function IconButton<
   );
 }
 
-export function CopyButton<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: AutogptIconButtonProps<T, S, F>) {
+export function CopyButton(props: AutogptIconButtonProps) {
   const {
     registry: { translateString },
   } = props;
@@ -61,11 +53,7 @@ export function CopyButton<
   );
 }
 
-export function MoveDownButton<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: AutogptIconButtonProps<T, S, F>) {
+export function MoveDownButton(props: AutogptIconButtonProps) {
   const {
     registry: { translateString },
   } = props;
@@ -78,11 +66,7 @@ export function MoveDownButton<
   );
 }
 
-export function MoveUpButton<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: AutogptIconButtonProps<T, S, F>) {
+export function MoveUpButton(props: AutogptIconButtonProps) {
   const {
     registry: { translateString },
   } = props;
@@ -95,11 +79,7 @@ export function MoveUpButton<
   );
 }
 
-export function RemoveButton<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->(props: AutogptIconButtonProps<T, S, F>) {
+export function RemoveButton(props: AutogptIconButtonProps) {
   const {
     registry: { translateString },
   } = props;

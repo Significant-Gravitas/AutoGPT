@@ -1,10 +1,4 @@
-import {
-  ErrorListProps,
-  FormContextType,
-  RJSFSchema,
-  StrictRJSFSchema,
-  TranslatableString,
-} from "@rjsf/utils";
+import { ErrorListProps, TranslatableString } from "@rjsf/utils";
 import { AlertCircle } from "lucide-react";
 
 import {
@@ -13,15 +7,8 @@ import {
   AlertTitle,
 } from "@/components/molecules/Alert/Alert";
 
-/** The `ErrorList` component is the template that renders the all the errors associated with the fields in the `Form`
- *
- * @param props - The `ErrorListProps` for this component
- */
-export default function ErrorList<
-  T = any,
-  S extends StrictRJSFSchema = RJSFSchema,
-  F extends FormContextType = any,
->({ errors, registry }: ErrorListProps<T, S, F>) {
+export default function ErrorList(props: ErrorListProps) {
+  const { errors, registry } = props;
   const { translateString } = registry;
   return (
     <Alert variant="error" className="mb-2">
