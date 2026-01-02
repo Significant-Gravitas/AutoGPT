@@ -1,25 +1,28 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
-import { Heart } from "@phosphor-icons/react";
-import { useState, useEffect } from "react";
+import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
+import { Text } from "@/components/atoms/Text/Text";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { HeartIcon } from "@phosphor-icons/react";
 import { InfiniteData } from "@tanstack/react-query";
+import Image from "next/image";
+import NextLink from "next/link";
+import { useEffect, useState } from "react";
 
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import {
-  getV2ListLibraryAgentsResponse,
   getV2ListFavoriteLibraryAgentsResponse,
+  getV2ListLibraryAgentsResponse,
 } from "@/app/api/__generated__/endpoints/library/library";
-import BackendAPI, { LibraryAgentID } from "@/lib/autogpt-server-api";
-import { cn } from "@/lib/utils";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { Link } from "@/components/atoms/Link/Link";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import BackendAPI, { LibraryAgentID } from "@/lib/autogpt-server-api";
+import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 interface LibraryAgentCardProps {
   agent: LibraryAgent;
@@ -227,11 +230,11 @@ export default function LibraryAgentCard({
     <div
       data-testid="library-agent-card"
       data-agent-id={id}
-      className="group inline-flex w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
+      className="group inline-flex h-[275px] w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
     >
-      <Link
+      <NextLink
         href={`/library/agents/${id}`}
-        className="relative h-[200px] w-full overflow-hidden rounded-[20px]"
+        className="relative h-[123px] w-full flex-shrink-0 overflow-hidden rounded-t-[20px] no-underline"
       >
         {!image_url ? (
           <div
@@ -272,7 +275,7 @@ export default function LibraryAgentCard({
               isFavorite ? "Remove from favorites" : "Add to favorites"
             }
           >
-            <Heart
+            <HeartIcon
               size={20}
               weight={isFavorite ? "fill" : "regular"}
               className={cn(
@@ -285,7 +288,7 @@ export default function LibraryAgentCard({
           </button>
         )}
         <div className="absolute bottom-4 left-4">
-          <Avatar className="h-16 w-16">
+          <Avatar className="h-12 w-12">
             <AvatarImage
               src={
                 creator_image_url
@@ -294,40 +297,35 @@ export default function LibraryAgentCard({
               }
               alt={`${name} creator avatar`}
             />
-            <AvatarFallback size={64}>{name.charAt(0)}</AvatarFallback>
+            <AvatarFallback size={48}>{name.charAt(0)}</AvatarFallback>
           </Avatar>
         </div>
-      </Link>
+      </NextLink>
 
-      <div className="flex w-full flex-1 flex-col px-4 py-4">
+      <div className="flex w-full flex-1 flex-col px-4 pb-4 pt-1">
         <Link href={`/library/agents/${id}`}>
-          <h3 className="mb-2 line-clamp-2 font-poppins text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
-            {name}
-          </h3>
+          <OverflowText
+            value={name}
+            variant="body"
+            className="mb-4 font-sans text-[1.125rem] tracking-normal"
+          />
 
-          <p className="line-clamp-3 flex-1 text-sm text-gray-600 dark:text-gray-400">
+          <Text
+            variant="body"
+            className="line-clamp-2 text-ellipsis text-zinc-500"
+          >
             {description}
-          </p>
+          </Text>
         </Link>
 
         <div className="flex-grow" />
         {/* Spacer */}
 
         <div className="items-between mt-4 flex w-full justify-between gap-3">
-          <Link
-            href={`/library/agents/${id}`}
-            className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
-          >
-            See runs
-          </Link>
+          <Link href={`/library/agents/${id}`}>See runs</Link>
 
           {can_access_graph && (
-            <Link
-              href={`/build?flowID=${graph_id}`}
-              className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
-            >
-              Open in builder
-            </Link>
+            <Link href={`/build?flowID=${graph_id}`}>Open in builder</Link>
           )}
         </div>
       </div>
