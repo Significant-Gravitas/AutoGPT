@@ -8,33 +8,33 @@ import {
 import { Text } from "@/components/atoms/Text/Text";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { isAnyOfSchema } from "../../utils/schema-utils";
-import { useIsArrayItem } from "../array/context/array-item-context";
 import { cn } from "@/lib/utils";
-import { cleanUpHandleId } from "../../helpers";
+import { cleanUpHandleId, isArrayItem } from "../../helpers";
+import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
 
 export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
   const { displayType, colorClass } = getTypeDisplayInfo(schema);
   const { nodeId } = registry.formContext;
+  const uiOptions = getUiOptions(uiSchema);
 
   const isAnyOf = isAnyOfSchema(schema);
   const description_id = descriptionId(id);
 
-  const isArrayItem = useIsArrayItem();
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
-  const smallText = isArrayItem || additional;
+  const isArrayItemFlag = isArrayItem({ uiOptions });
+  const smallText = isArrayItemFlag || additional;
 
-  const uiOptions = getUiOptions(uiSchema);
   const handleId = cleanUpHandleId(uiOptions.handleId);
   return (
     <div className="flex items-center gap-1">
-      {/* Add node handle here */}
+      <InputNodeHandle handleId={handleId} nodeId={nodeId} />
       <Text
-        variant={isArrayItem ? "small" : "body"}
+        variant={isArrayItemFlag ? "small" : "body"}
         id={id}
         className={cn("line-clamp-1", smallText && "text-zinc-700")}
       >
-        {title}
+        {handleId}
       </Text>
       {!isAnyOf && (
         <Text variant="small" className={colorClass} id={description_id}>

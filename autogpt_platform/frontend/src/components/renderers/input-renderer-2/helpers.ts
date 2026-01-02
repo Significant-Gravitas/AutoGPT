@@ -11,6 +11,8 @@ import {
   ARRAY_ITEM_FLAG,
   ID_PREFIX,
   ID_PREFIX_ARRAY,
+  KEY_PAIR_FLAG,
+  OBJECT_FLAG,
 } from "./constants";
 
 export function updateUiOption<T extends Record<string, any>>(
@@ -34,6 +36,12 @@ export const cleanUpHandleId = (handleId: string) => {
   if (handleId.includes(ARRAY_ITEM_FLAG)) {
     newHandleId = newHandleId.replace(ARRAY_ITEM_FLAG, "");
   }
+  if (handleId.includes(KEY_PAIR_FLAG)) {
+    newHandleId = newHandleId.replace(KEY_PAIR_FLAG, "");
+  }
+  if (handleId.includes(OBJECT_FLAG)) {
+    newHandleId = newHandleId.replace(OBJECT_FLAG, "");
+  }
   if (handleId.includes(ID_PREFIX_ARRAY)) {
     newHandleId = newHandleId.replace(ID_PREFIX_ARRAY, "");
   }
@@ -52,6 +60,7 @@ export const isArrayItem = <
 }: {
   uiOptions: UIOptionsType<T, S, F>;
 }) => {
+  console.log("uiOptions inside isArrayItem", uiOptions);
   return uiOptions.handleId?.endsWith(ARRAY_ITEM_FLAG);
 };
 
@@ -125,33 +134,38 @@ export const getHandleId = <
   const parentHandleId = uiOptions.handleId;
 
   if (isNormal({ uiOptions })) {
-    return cleanUpHandleId(id);
+    return id;
   }
 
   if (isPartOfAnyOf({ uiOptions })) {
-    return cleanUpHandleId(parentHandleId);
+    return parentHandleId;
   }
 
   if (isKeyValuePair({ schema })) {
     const key = id.split("_%_").at(-1);
-    const prefix = id.split("_%_").slice(0, -1).join("_%_");
+    let prefix = "";
+    if (parentHandleId) {
+      prefix = parentHandleId;
+    } else {
+      prefix = id.split("_%_").slice(0, -1).join("_%_");
+    }
 
     const handleId = `${prefix}_#_${key}`;
-    return cleanUpHandleId(handleId);
+    return handleId + KEY_PAIR_FLAG;
   }
 
   if (isArrayItem({ uiOptions })) {
     const index = id.split("_%_").at(-1);
     const prefix = id.split("_%_").slice(0, -1).join("_%_");
     const handleId = `${prefix}_$_${index}`;
-    return cleanUpHandleId(handleId);
+    return handleId + ARRAY_ITEM_FLAG;
   }
 
   if (isObjectProperty({ uiOptions, schema })) {
     const key = id.split("_%_").at(-1);
     const prefix = id.split("_%_").slice(0, -1).join("_%_");
     const handleId = `${prefix}_@_${key}`;
-    return cleanUpHandleId(handleId);
+    return handleId + OBJECT_FLAG;
   }
 };
 
