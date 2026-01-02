@@ -4,6 +4,7 @@ import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 import { customEdgeToLink, linkToCustomEdge } from "../components/helper";
 import { MarkerType } from "@xyflow/react";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
+import { cleanUpHandleId } from "@/components/renderers/input-renderer-2/helpers";
 
 type EdgeStore = {
   edges: CustomEdge[];
@@ -12,6 +13,8 @@ type EdgeStore = {
   addEdge: (edge: Omit<CustomEdge, "id"> & { id?: string }) => CustomEdge;
   removeEdge: (edgeId: string) => void;
   upsertMany: (edges: CustomEdge[]) => void;
+
+  removeEdgesByHandlePrefix: (nodeId: string, handlePrefix: string) => void;
 
   getNodeEdges: (nodeId: string) => CustomEdge[];
   isInputConnected: (nodeId: string, handle: string) => boolean;
@@ -79,11 +82,27 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
       return { edges: Array.from(byKey.values()) };
     }),
 
+  removeEdgesByHandlePrefix: (nodeId, handlePrefix) =>
+    set((state) => ({
+      edges: state.edges.filter(
+        (e) =>
+          !(
+            e.target === nodeId &&
+            e.targetHandle &&
+            e.targetHandle.startsWith(handlePrefix)
+          ),
+      ),
+    })),
+
   getNodeEdges: (nodeId) =>
     get().edges.filter((e) => e.source === nodeId || e.target === nodeId),
 
-  isInputConnected: (nodeId, handle) =>
-    get().edges.some((e) => e.target === nodeId && e.targetHandle === handle),
+  isInputConnected: (nodeId, handle) => {
+    const cleanedHandle = cleanUpHandleId(handle);
+    return get().edges.some(
+      (e) => e.target === nodeId && e.targetHandle === cleanedHandle,
+    );
+  },
 
   isOutputConnected: (nodeId, handle) =>
     get().edges.some((e) => e.source === nodeId && e.sourceHandle === handle),

@@ -2,6 +2,8 @@ import { FieldProps, getFirstMatchingOption, mergeSchemas } from "@rjsf/utils";
 import { useRef, useState } from "react";
 import validator from "@rjsf/validator-ajv8";
 import { getDefaultTypeIndex } from "./helpers";
+import { cleanUpHandleId } from "../../helpers";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export const useAnyOfField = (props: FieldProps) => {
   const { registry, schema, options, onChange, formData } = props;
@@ -59,6 +61,12 @@ export const useAnyOfField = (props: FieldProps) => {
       oldOption,
       formData,
     );
+
+    const handlePrefix = cleanUpHandleId(field_id);
+    console.log("handlePrefix", handlePrefix);
+    useEdgeStore
+      .getState()
+      .removeEdgesByHandlePrefix(registry.formContext.nodeId, handlePrefix);
 
     // We have cleaned the form data, now we need to get the default form state of new selected option
     if (newOption) {

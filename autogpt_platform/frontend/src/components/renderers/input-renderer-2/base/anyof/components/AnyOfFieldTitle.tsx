@@ -7,6 +7,9 @@ import {
 } from "@rjsf/utils";
 import { shouldShowTypeSelector } from "../helpers";
 import { useIsArrayItem } from "../../array/context/array-item-context";
+import { cleanUpHandleId } from "../../../helpers";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface customFieldProps extends FieldProps {
   selector: JSX.Element;
@@ -15,6 +18,8 @@ interface customFieldProps extends FieldProps {
 export const AnyOfFieldTitle = (props: customFieldProps) => {
   const { uiSchema, schema, required, name, registry, fieldPathId, selector } =
     props;
+  const { isInputConnected } = useEdgeStore();
+  const { nodeId } = registry.formContext;
 
   const uiOptions = getUiOptions(uiSchema);
   const TitleFieldTemplate = getTemplate(
@@ -32,7 +37,12 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
   const description_id = descriptionId(fieldPathId ?? "");
 
   const isArrayItem = useIsArrayItem();
-  const shouldShowSelector = shouldShowTypeSelector(schema) && !isArrayItem;
+
+  const handleId = cleanUpHandleId(uiOptions.handleId);
+  const isHandleConnected = isInputConnected(nodeId, handleId);
+
+  const shouldShowSelector =
+    shouldShowTypeSelector(schema) && !isArrayItem && !isHandleConnected;
 
   return (
     <div className="flex items-center justify-between gap-2">
@@ -45,6 +55,11 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
           registry={registry}
           uiSchema={uiSchema}
         />
+        {isHandleConnected && (
+          <Text variant="small" className="mr-2 text-zinc-700">
+            (any)
+          </Text>
+        )}
         <DescriptionFieldTemplate
           id={description_id}
           description={schema.description || ""}

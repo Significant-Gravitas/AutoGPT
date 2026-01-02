@@ -7,9 +7,10 @@ import {
 } from "@rjsf/utils";
 
 import { isAnyOfChild, isAnyOfSchema } from "../../utils/schema-utils";
-import { getHandleId, updateUiOption } from "../../helpers";
+import { cleanUpHandleId, getHandleId, updateUiOption } from "../../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function FieldTemplate(props: FieldTemplateProps) {
   const {
@@ -34,7 +35,9 @@ export default function FieldTemplate(props: FieldTemplateProps) {
     onRemoveProperty,
     readonly,
   } = props;
+  const { nodeId } = registry.formContext;
 
+  const { isInputConnected } = useEdgeStore();
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[registry.formContext.nodeId ?? ""],
   );
@@ -69,11 +72,13 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   const updatedUiSchema = updateUiOption(uiSchema, {
     handleId: handleId,
   });
+  const isHandleConnected = isInputConnected(nodeId, cleanUpHandleId(handleId));
 
   const shouldDisplayLabel =
     displayLabel ||
     (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
   const shouldShowTitleSection = !isAnyOfSchema(schema) && !additional;
+  const shouldShowChildren = isAnyOfSchema(schema) || !isHandleConnected;
 
   return (
     <WrapIfAdditionalTemplate
@@ -110,7 +115,7 @@ export default function FieldTemplate(props: FieldTemplateProps) {
           </div>
         )}
 
-        {children}
+        {shouldShowChildren && children}
         {errors}
         {help}
       </div>

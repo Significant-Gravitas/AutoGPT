@@ -11,14 +11,15 @@ import { isAnyOfSchema } from "../../utils/schema-utils";
 import { cn } from "@/lib/utils";
 import { cleanUpHandleId, isArrayItem } from "../../helpers";
 import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
-  const { displayType, colorClass } = getTypeDisplayInfo(schema);
   const { nodeId } = registry.formContext;
   const uiOptions = getUiOptions(uiSchema);
 
   const isAnyOf = isAnyOfSchema(schema);
+  const { displayType, colorClass } = getTypeDisplayInfo(schema);
   const description_id = descriptionId(id);
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;

@@ -10,6 +10,7 @@ import {
 } from "@rjsf/utils";
 import { getHandleId, updateUiOption } from "../../helpers";
 import React from "react";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
   const {
@@ -28,7 +29,8 @@ export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
     registry,
   } = props;
   const uiOptions = getUiOptions(uiSchema);
-
+  const { isInputConnected } = useEdgeStore();
+  const { nodeId } = registry.formContext;
   const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
     registry,
@@ -82,6 +84,7 @@ export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
           />
         )}
       </div>
+
       <div className="flex flex-col">
         {!showOptionalDataControlInTitle ? optionalDataControl : undefined}
 

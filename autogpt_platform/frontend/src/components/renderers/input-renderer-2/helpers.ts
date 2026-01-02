@@ -60,7 +60,6 @@ export const isArrayItem = <
 }: {
   uiOptions: UIOptionsType<T, S, F>;
 }) => {
-  console.log("uiOptions inside isArrayItem", uiOptions);
   return uiOptions.handleId?.endsWith(ARRAY_ITEM_FLAG);
 };
 
@@ -138,7 +137,7 @@ export const getHandleId = <
   }
 
   if (isPartOfAnyOf({ uiOptions })) {
-    return parentHandleId;
+    return parentHandleId + ANY_OF_FLAG;
   }
 
   if (isKeyValuePair({ schema })) {
@@ -167,6 +166,7 @@ export const getHandleId = <
     const handleId = `${prefix}_@_${key}`;
     return handleId + OBJECT_FLAG;
   }
+  return parentHandleId;
 };
 
 export function isCredentialFieldSchema(schema: any): boolean {

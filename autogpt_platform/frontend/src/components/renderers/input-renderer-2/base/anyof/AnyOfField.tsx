@@ -3,12 +3,16 @@ import { AnyOfFieldTitle } from "./components/AnyOfFieldTitle";
 import { isEmpty } from "lodash";
 import { useAnyOfField } from "./useAnyOfField";
 import { getHandleId, updateUiOption } from "../../helpers";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { ANY_OF_FLAG } from "../../constants";
 
 export const AnyOfField = (props: FieldProps) => {
   const { registry, schema } = props;
   const { fields } = registry;
   const { SchemaField: _SchemaField } = fields;
+  const { nodeId } = registry.formContext;
+
+  const { isInputConnected } = useEdgeStore();
 
   const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
 
@@ -24,14 +28,16 @@ export const AnyOfField = (props: FieldProps) => {
 
   const handleId = getHandleId({
     uiOptions,
-    id: field_id,
+    id: field_id + ANY_OF_FLAG,
     schema: schema,
   });
   const updatedUiSchema = updateUiOption(props.uiSchema, {
-    handleId: handleId + ANY_OF_FLAG,
+    handleId: handleId,
     label: false,
     fromAnyOf: true,
   });
+
+  const isHandleConnected = isInputConnected(nodeId, handleId);
 
   const optionsSchemaField =
     (optionSchema && optionSchema.type !== "null" && (
@@ -73,7 +79,7 @@ export const AnyOfField = (props: FieldProps) => {
         selector={selector}
         uiSchema={updatedUiSchema}
       />
-      {optionsSchemaField}
+      {!isHandleConnected && optionsSchemaField}
     </div>
   );
 };

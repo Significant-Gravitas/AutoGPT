@@ -8,6 +8,7 @@ import {
 } from "@rjsf/utils";
 
 import { Input } from "@/components/atoms/Input/Input";
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function WrapIfAdditionalTemplate(
   props: WrapIfAdditionalTemplateProps,
@@ -27,12 +28,15 @@ export default function WrapIfAdditionalTemplate(
     uiSchema,
     registry,
   } = props;
-  const { templates, translateString } = registry;
+  const { templates, formContext } = registry;
   const uiOptions = getUiOptions(uiSchema);
   // Button templates are not overridden in the uiSchema
   const { RemoveButton } = templates.ButtonTemplates;
+  const { isInputConnected } = useEdgeStore();
 
   const additional = ADDITIONAL_PROPERTY_FLAG in schema;
+  const { nodeId } = formContext;
+  const handleId = uiOptions.handleId;
 
   const TitleFieldTemplate = getTemplate(
     "TitleFieldTemplate",
@@ -62,6 +66,8 @@ export default function WrapIfAdditionalTemplate(
     }
   };
 
+  const isHandleConnected = isInputConnected(nodeId, handleId);
+
   return (
     <>
       <div className={`mb-4 flex flex-col gap-1`} style={style}>
@@ -73,30 +79,33 @@ export default function WrapIfAdditionalTemplate(
           registry={registry}
           uiSchema={uiSchema}
         />
-        <div className="flex flex-1 items-center gap-2">
-          <Input
-            label={""}
-            hideLabel={true}
-            required={required}
-            defaultValue={label}
+        {!isHandleConnected && (
+          <div className="flex flex-1 items-center gap-2">
+            <Input
+              label={""}
+              hideLabel={true}
+              required={required}
+              defaultValue={label}
+              disabled={disabled || readonly}
+              id={keyId}
+              wrapperClassName="mb-2 w-30"
+              name={keyId}
+              onBlur={!readonly ? handleBlur : undefined}
+              type="text"
+              size="small"
+            />
+            {children}
+          </div>
+        )}
+        {!isHandleConnected && (
+          <RemoveButton
+            id={buttonId(id, "remove")}
             disabled={disabled || readonly}
-            id={keyId}
-            wrapperClassName="mb-2 w-30"
-            name={keyId}
-            onBlur={!readonly ? handleBlur : undefined}
-            type="text"
-            size="small"
+            onClick={onRemoveProperty}
+            uiSchema={uiSchema}
+            registry={registry}
           />
-          {children}
-        </div>
-
-        <RemoveButton
-          id={buttonId(id, "remove")}
-          disabled={disabled || readonly}
-          onClick={onRemoveProperty}
-          uiSchema={uiSchema}
-          registry={registry}
-        />
+        )}
       </div>
     </>
   );
