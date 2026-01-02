@@ -1,10 +1,7 @@
-import { useRef, useState } from "react";
-import { useLibraryPageContext } from "../state-provider";
 import { debounce } from "lodash";
+import { useLibraryPageContext } from "../state-provider";
 
 export const useLibrarySearchbar = () => {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isFocused, setIsFocused] = useState(false);
   const { setSearchTerm } = useLibraryPageContext();
 
   const debouncedSearch = debounce((value: string) => {
@@ -16,21 +13,7 @@ export const useLibrarySearchbar = () => {
     debouncedSearch(searchTerm);
   };
 
-  const handleClear = (e: React.MouseEvent) => {
-    if (inputRef.current) {
-      inputRef.current.value = "";
-      inputRef.current.blur();
-      setSearchTerm("");
-      e.preventDefault();
-    }
-    setIsFocused(false);
-  };
-
   return {
-    handleClear,
     handleSearchInput,
-    isFocused,
-    inputRef,
-    setIsFocused,
   };
 };

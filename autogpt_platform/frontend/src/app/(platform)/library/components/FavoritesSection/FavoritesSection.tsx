@@ -1,15 +1,14 @@
 "use client";
 
-import React from "react";
-import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
-import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
-import { useGetFlag, Flag } from "@/services/feature-flags/use-get-flag";
-import { Heart } from "lucide-react";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Heart } from "lucide-react";
+import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
+import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
 
-export default function FavoritesSection() {
+export function FavoritesSection() {
   const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
   const {
     allAgents: favoriteAgents,

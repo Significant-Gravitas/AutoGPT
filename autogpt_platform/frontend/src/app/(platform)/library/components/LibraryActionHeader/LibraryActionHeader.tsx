@@ -1,17 +1,10 @@
-// import LibraryNotificationDropdown from "./library-notification-dropdown";
-import LibraryUploadAgentDialog from "../LibraryUploadAgentDialog/LibraryUploadAgentDialog";
 import LibrarySearchBar from "../LibrarySearchBar/LibrarySearchBar";
+import LibraryUploadAgentDialog from "../LibraryUploadAgentDialog/LibraryUploadAgentDialog";
 
-type LibraryActionHeaderProps = Record<string, never>;
-
-/**
- * LibraryActionHeader component - Renders a header with search, notifications and filters
- */
-const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({}) => {
+export function LibraryActionHeader() {
   return (
     <>
-      <div className="mb-[32px] hidden items-start justify-between md:flex">
-        {/* <LibraryNotificationDropdown /> */}
+      <div className="mb-[32px] hidden items-center justify-center gap-4 md:flex">
         <LibrarySearchBar />
         <LibraryUploadAgentDialog />
       </div>
@@ -19,7 +12,6 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({}) => {
       {/* Mobile and tablet */}
       <div className="flex flex-col gap-4 p-4 pt-[52px] md:hidden">
         <div className="flex w-full justify-between">
-          {/* <LibraryNotificationDropdown /> */}
           <LibraryUploadAgentDialog />
         </div>
 
@@ -29,6 +21,4 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({}) => {
       </div>
     </>
   );
-};
-
-export default LibraryActionHeader;
+}
