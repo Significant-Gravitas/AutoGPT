@@ -11,14 +11,13 @@ import { cleanUpHandleId, getHandleId, updateUiOption } from "../../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
+import { FieldError } from "./FieldError";
 
 export default function FieldTemplate(props: FieldTemplateProps) {
   const {
     id,
     children,
     displayLabel,
-    errors,
-    help,
     description,
     rawDescription,
     label,
@@ -114,10 +113,9 @@ export default function FieldTemplate(props: FieldTemplateProps) {
             {shouldDisplayLabel && rawDescription && <span>{description}</span>}
           </div>
         )}
-
         {shouldShowChildren && children}
-        {errors}
-        {help}
+
+        <FieldError nodeId={nodeId} fieldId={cleanUpHandleId(id)} />
       </div>
     </WrapIfAdditionalTemplate>
   );

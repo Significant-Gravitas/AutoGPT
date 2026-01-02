@@ -15,13 +15,7 @@ import {
   OptionalDataControlsTemplate,
   WrapIfAdditionalTemplate,
 } from "./object";
-import {
-  DescriptionField,
-  FieldErrorTemplate,
-  FieldHelpTemplate,
-  FieldTemplate,
-  TitleField,
-} from "./standard";
+import { DescriptionField, FieldTemplate, TitleField } from "./standard";
 import {
   TextWidget,
   SelectWidget,
@@ -54,8 +48,6 @@ export function generateBaseTemplates(): Partial<TemplatesType> {
       SubmitButton: NoButton,
     },
     DescriptionFieldTemplate: DescriptionField,
-    FieldErrorTemplate,
-    FieldHelpTemplate,
     FieldTemplate,
     ObjectFieldTemplate,
     OptionalDataControlsTemplate,
