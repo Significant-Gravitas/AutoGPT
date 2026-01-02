@@ -23,7 +23,9 @@ export const NodeHeader = ({
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
   const title = (data.metadata?.customized_name as string) || data.title;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editedTitle, setEditedTitle] = useState(title);
+  const [editedTitle, setEditedTitle] = useState(
+    beautifyString(title).replace("Block", "").trim(),
+  );
 
   const handleTitleEdit = () => {
     updateNodeData(nodeId, {
@@ -68,12 +70,12 @@ export const NodeHeader = ({
                   <TooltipTrigger asChild>
                     <div>
                       <Text variant="large-semibold" className="line-clamp-1">
-                        {beautifyString(title)}
+                        {beautifyString(title).replace("Block", "").trim()}
                       </Text>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{beautifyString(title)}</p>
+                    <p>{beautifyString(title).replace("Block", "").trim()}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

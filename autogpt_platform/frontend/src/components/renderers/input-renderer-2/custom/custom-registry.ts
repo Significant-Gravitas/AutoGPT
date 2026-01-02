@@ -1,10 +1,11 @@
 import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
-import { CredentialField } from ".";
+import { CredentialsField } from "./CredentialField/CredentialField";
+import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
 
 export interface CustomFieldDefinition {
   id: string;
   matcher: (schema: any) => boolean;
-  component: (props: FieldProps<any, RJSFSchema, any>) => JSX.Element;
+  component: (props: FieldProps<any, RJSFSchema, any>) => JSX.Element | null;
 }
 
 export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
@@ -17,7 +18,17 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
         "credentials_provider" in schema
       );
     },
-    component: CredentialField,
+    component: CredentialsField,
+  },
+  {
+    id: "custom/google_drive_picker_field",
+    matcher: (schema: any) => {
+      return (
+        "google_drive_picker_config" in schema ||
+        ("format" in schema && schema.format === "google-drive-picker")
+      );
+    },
+    component: GoogleDrivePickerField,
   },
 ];
 

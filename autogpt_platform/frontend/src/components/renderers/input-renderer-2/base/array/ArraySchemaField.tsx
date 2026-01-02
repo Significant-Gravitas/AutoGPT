@@ -1,5 +1,4 @@
 import { FieldProps, getUiOptions } from "@rjsf/utils";
-import { ArrayItemProvider } from "./context/array-item-context";
 import { getHandleId, updateUiOption } from "../../helpers";
 import { ARRAY_ITEM_FLAG } from "../../constants";
 
@@ -19,9 +18,11 @@ const ArraySchemaField = (props: FieldProps) => {
   });
 
   return (
-    <ArrayItemProvider arrayItemHandleId={`${name.slice(0, -2)}_$_${index}`}>
-      <SchemaField {...props} uiSchema={updatedUiSchema} />
-    </ArrayItemProvider>
+    <SchemaField
+      {...props}
+      uiSchema={updatedUiSchema}
+      title={"item-" + index.toString()}
+    />
   );
 };
 

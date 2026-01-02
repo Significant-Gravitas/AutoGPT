@@ -15,7 +15,7 @@ import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
-  const { nodeId } = registry.formContext;
+  const { nodeId, showHandles } = registry.formContext;
   const uiOptions = getUiOptions(uiSchema);
 
   const isAnyOf = isAnyOfSchema(schema);
@@ -26,16 +26,18 @@ export default function TitleField(props: TitleFieldProps) {
   const isArrayItemFlag = isArrayItem({ uiOptions });
   const smallText = isArrayItemFlag || additional;
 
-  const handleId = cleanUpHandleId(uiOptions.handleId);
+  const showHandle = uiOptions.showHandles ?? showHandles;
   return (
     <div className="flex items-center gap-1">
-      <InputNodeHandle handleId={handleId} nodeId={nodeId} />
+      {showHandle !== false && (
+        <InputNodeHandle handleId={uiOptions.handleId} nodeId={nodeId} />
+      )}
       <Text
         variant={isArrayItemFlag ? "small" : "body"}
         id={id}
         className={cn("line-clamp-1", smallText && "text-zinc-700")}
       >
-        {handleId}
+        {title}
       </Text>
       {!isAnyOf && (
         <Text variant="small" className={colorClass} id={description_id}>

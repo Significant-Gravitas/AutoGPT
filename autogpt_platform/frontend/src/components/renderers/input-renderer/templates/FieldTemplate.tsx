@@ -18,7 +18,7 @@ import {
   isCredentialFieldSchema,
   toDisplayName,
   getCredentialProviderFromSchema,
-} from "../fields/CredentialField/helpers";
+} from "../../input-renderer-2/custom/CredentialField/helpers";
 import { cn } from "@/lib/utils";
 import { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import { BlockUIType } from "@/lib/autogpt-server-api";

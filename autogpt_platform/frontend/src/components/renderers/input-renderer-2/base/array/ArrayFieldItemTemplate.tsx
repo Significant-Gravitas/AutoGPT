@@ -1,3 +1,4 @@
+import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import {
   ArrayFieldItemTemplateProps,
   getTemplate,

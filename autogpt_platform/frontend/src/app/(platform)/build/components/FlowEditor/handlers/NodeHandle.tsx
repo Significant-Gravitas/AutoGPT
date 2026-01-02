@@ -1,6 +1,7 @@
 import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
 import { useEdgeStore } from "../../../stores/edgeStore";
+import { cleanUpHandleId } from "@/components/renderers/input-renderer-2/helpers";
 
 const InputNodeHandle = ({
   handleId,
@@ -9,17 +10,16 @@ const InputNodeHandle = ({
   handleId: string;
   nodeId: string;
 }) => {
+  const cleanedHandleId = cleanUpHandleId(handleId);
   const isInputConnected = useEdgeStore((state) =>
-    state.isInputConnected(nodeId ?? "", handleId),
+    state.isInputConnected(nodeId ?? "", cleanedHandleId),
   );
-
-  console.log("handleId", handleId);
 
   return (
     <Handle
       type={"target"}
       position={Position.Left}
-      id={handleId}
+      id={cleanedHandleId}
       className={"-ml-6 mr-2"}
     >
       <div className="pointer-events-none">
