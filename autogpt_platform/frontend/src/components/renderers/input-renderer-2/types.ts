@@ -7,3 +7,9 @@ export interface ExtendedFormContextType extends FormContextType {
   showHandles?: boolean;
   size?: "small" | "medium" | "large";
 }
+
+export type PathSegment = {
+  key: string;
+  type: "property" | "item" | "additional" | "normal";
+  index?: number;
+};

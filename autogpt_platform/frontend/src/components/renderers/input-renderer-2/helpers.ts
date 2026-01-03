@@ -14,6 +14,7 @@ import {
   KEY_PAIR_FLAG,
   OBJECT_FLAG,
 } from "./constants";
+import { PathSegment } from "./types";
 
 export function updateUiOption<T extends Record<string, any>>(
   uiSchema: T | undefined,
@@ -175,4 +176,109 @@ export function isCredentialFieldSchema(schema: any): boolean {
     schema !== null &&
     "credentials_provider" in schema
   );
+}
+
+export function parseHandleIdToPath(handleId: string): PathSegment[] {
+  let cleanedId = cleanUpHandleId(handleId);
+  const segments: PathSegment[] = [];
+  const parts = cleanedId.split(/(_#_|_@_|_\$_|\.)/);
+
+  let currentType: "property" | "item" | "additional" | "normal" = "normal";
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+
+    if (part === "_#_") {
+      currentType = "additional";
+    } else if (part === "_@_") {
+      currentType = "property";
+    } else if (part === "_$_") {
+      currentType = "item";
+    } else if (part === ".") {
+      currentType = "normal";
+    } else if (part) {
+      const isNumeric = /^\d+$/.test(part);
+      if (currentType === "item" && isNumeric) {
+        segments.push({
+          key: part,
+          type: "item",
+          index: parseInt(part, 10),
+        });
+      } else {
+        segments.push({
+          key: part,
+          type: currentType,
+        });
+      }
+      currentType = "normal";
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * Ensure a path exists in an object, creating intermediate objects/arrays as needed
+ * Returns true if any modifications were made
+ */
+export function ensurePathExists(
+  obj: Record<string, any>,
+  segments: PathSegment[],
+): boolean {
+  if (segments.length === 0) return false;
+
+  let current = obj;
+  let modified = false;
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const isLast = i === segments.length - 1;
+    const nextSegment = segments[i + 1];
+
+    const getDefaultValue = () => {
+      if (isLast) {
+        return "";
+      }
+      if (nextSegment?.type === "item") {
+        return [];
+      }
+      return {};
+    };
+
+    if (segment.type === "item" && segment.index !== undefined) {
+      if (!Array.isArray(current)) {
+        return modified;
+      }
+
+      while (current.length <= segment.index) {
+        current.push(isLast ? "" : {});
+        modified = true;
+      }
+
+      if (!isLast) {
+        if (
+          current[segment.index] === undefined ||
+          current[segment.index] === null
+        ) {
+          current[segment.index] = getDefaultValue();
+          modified = true;
+        }
+        current = current[segment.index];
+      }
+    } else {
+      if (!(segment.key in current)) {
+        current[segment.key] = getDefaultValue();
+        modified = true;
+      } else if (!isLast && current[segment.key] === undefined) {
+        current[segment.key] = getDefaultValue();
+        modified = true;
+      }
+
+      if (!isLast) {
+        current = current[segment.key];
+      }
+    }
+  }
+
+  return modified;
 }
