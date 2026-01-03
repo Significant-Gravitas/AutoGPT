@@ -45,29 +45,27 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
     shouldShowTypeSelector(schema) && !isArrayItem && !isHandleConnected;
 
   return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center">
-        <TitleFieldTemplate
-          id={title_id}
-          title={schema.title || name || ""}
-          required={required}
-          schema={schema}
-          registry={registry}
-          uiSchema={uiSchema}
-        />
-        {isHandleConnected && (
-          <Text variant="small" className="mr-2 text-zinc-700">
-            (any)
-          </Text>
-        )}
-        <DescriptionFieldTemplate
-          id={description_id}
-          description={schema.description || ""}
-          schema={schema}
-          registry={registry}
-        />
-      </div>
+    <div className="flex items-center gap-2">
+      <TitleFieldTemplate
+        id={title_id}
+        title={schema.title || name || ""}
+        required={required}
+        schema={schema}
+        registry={registry}
+        uiSchema={uiSchema}
+      />
+      {isHandleConnected && (
+        <Text variant="small" className="mr-2 text-zinc-700">
+          (any)
+        </Text>
+      )}
       {shouldShowSelector && selector}
+      <DescriptionFieldTemplate
+        id={description_id}
+        description={schema.description || ""}
+        schema={schema}
+        registry={registry}
+      />
     </div>
   );
 };

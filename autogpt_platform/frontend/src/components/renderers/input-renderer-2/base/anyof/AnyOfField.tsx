@@ -64,7 +64,7 @@ export const AnyOfField = (props: FieldProps) => {
       registry={registry}
       placeholder={props.placeholder}
       autocomplete={props.autocomplete}
-      className="h-[22px] w-fit gap-1 border-none bg-zinc-100 px-1 pl-3 text-xs font-medium"
+      className="-ml-1 h-[22px] w-fit gap-1 px-1 pl-2 text-xs font-medium"
       autofocus={props.autofocus}
       label=""
       hideLabel={true}
