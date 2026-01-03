@@ -40,10 +40,6 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   const showAdvanced = useNodeStore(
     (state) => state.nodeAdvancedStates[registry.formContext.nodeId ?? ""],
   );
-  const isAdvancedField = (schema as any).advanced === true;
-  if (!showAdvanced && isAdvancedField) {
-    return null;
-  }
 
   if (hidden) {
     return <div className="hidden">{children}</div>;
@@ -79,6 +75,10 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   const shouldShowTitleSection = !isAnyOfSchema(schema) && !additional;
   const shouldShowChildren = isAnyOfSchema(schema) || !isHandleConnected;
 
+  const isAdvancedField = (schema as any).advanced === true;
+  if (!showAdvanced && isAdvancedField && !isHandleConnected) {
+    return null;
+  }
   return (
     <WrapIfAdditionalTemplate
       classNames={classNames}

@@ -1,4 +1,4 @@
-import { FieldPathList, RJSFSchema } from "@rjsf/utils";
+import { RJSFSchema } from "@rjsf/utils";
 import { preprocessInputSchema } from "./utils/input-schema-pre-processor";
 import { useMemo } from "react";
 import { customValidator } from "./utils/custom-validator";
@@ -35,7 +35,6 @@ export const FormRenderer2 = ({
         onChange={handleChange}
         uiSchema={uiSchema}
         formData={initialValues}
-        noValidate={true}
         liveValidate={false}
       />
     </div>

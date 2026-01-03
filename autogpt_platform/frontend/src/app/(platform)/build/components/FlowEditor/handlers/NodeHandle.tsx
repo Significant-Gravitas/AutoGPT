@@ -46,7 +46,6 @@ const OutputNodeHandle = ({
   const isOutputConnected = useEdgeStore((state) =>
     state.isOutputConnected(nodeId, field_name),
   );
-  console.log(field_name, isOutputConnected);
   return (
     <Handle
       type={"source"}
