@@ -81,7 +81,13 @@ export const useAnyOfField = (
     }
   };
 
-  const handleValueChange = (value: any) => onChange(value);
+  const handleValueChange = (value: any) => {
+    if (isNullableType && value === null) {
+      onChange(undefined);
+      return;
+    }
+    onChange(value);
+  };
 
   const currentTypeOption = typeOptions.find((o) => o.type === selectedType);
 
