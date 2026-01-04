@@ -222,3 +222,61 @@ class ReverseListOrderBlock(Block):
         reversed_list = list(input_data.input_list)
         reversed_list.reverse()
         yield "reversed_list", reversed_list
+
+
+class ConcatenateListsBlock(Block):
+    """
+    A block that concatenates two or more lists into a single list.
+    """
+
+    class Input(BlockSchemaInput):
+        list1: list[Any] = SchemaField(description="The first list to concatenate")
+        list2: list[Any] = SchemaField(description="The second list to concatenate")
+        list3: list[Any] = SchemaField(
+            description="Optional third list to concatenate",
+            default=[],
+            advanced=True,
+        )
+        list4: list[Any] = SchemaField(
+            description="Optional fourth list to concatenate",
+            default=[],
+            advanced=True,
+        )
+        list5: list[Any] = SchemaField(
+            description="Optional fifth list to concatenate",
+            default=[],
+            advanced=True,
+        )
+
+    class Output(BlockSchemaOutput):
+        concatenated_list: list[Any] = SchemaField(
+            description="The concatenated list containing all input list elements"
+        )
+        total_length: int = SchemaField(
+            description="The total number of elements in the concatenated list"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+            description="Concatenates two or more lists into a single list, preserving element order",
+            categories={BlockCategory.BASIC},
+            input_schema=ConcatenateListsBlock.Input,
+            output_schema=ConcatenateListsBlock.Output,
+            test_input={"list1": [1, 2, 3], "list2": [4, 5, 6]},
+            test_output=[
+                ("concatenated_list", [1, 2, 3, 4, 5, 6]),
+                ("total_length", 6),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        result = (
+            list(input_data.list1)
+            + list(input_data.list2)
+            + list(input_data.list3)
+            + list(input_data.list4)
+            + list(input_data.list5)
+        )
+        yield "concatenated_list", result
+        yield "total_length", len(result)
