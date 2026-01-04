@@ -1,27 +1,27 @@
-import { ReactFlow, Background } from "@xyflow/react";
-import NewControlPanel from "../../NewControlPanel/NewControlPanel";
-import CustomEdge from "../edges/CustomEdge";
-import { useFlow } from "./useFlow";
-import { useShallow } from "zustand/react/shallow";
-import { useNodeStore } from "../../../stores/nodeStore";
-import { useMemo, useCallback } from "react";
-import { CustomNode } from "../nodes/CustomNode/CustomNode";
-import { useCustomEdge } from "../edges/useCustomEdge";
-import { useFlowRealtime } from "./useFlowRealtime";
-import { GraphLoadingBox } from "./components/GraphLoadingBox";
-import { BuilderActions } from "../../BuilderActions/BuilderActions";
-import { RunningBackground } from "./components/RunningBackground";
-import { useGraphStore } from "../../../stores/graphStore";
-import { useCopyPaste } from "./useCopyPaste";
-import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
-import { parseAsString, useQueryStates } from "nuqs";
-import { CustomControls } from "./components/CustomControl";
 import { useGetV1GetSpecificGraph } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { okData } from "@/app/api/helpers";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { Background, ReactFlow } from "@xyflow/react";
+import { parseAsString, useQueryStates } from "nuqs";
+import { useCallback, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useGraphStore } from "../../../stores/graphStore";
+import { useNodeStore } from "../../../stores/nodeStore";
+import { BuilderActions } from "../../BuilderActions/BuilderActions";
+import { DraftRecoveryPopup } from "../../DraftRecoveryDialog/DraftRecoveryPopup";
+import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
+import NewControlPanel from "../../NewControlPanel/NewControlPanel";
+import CustomEdge from "../edges/CustomEdge";
+import { useCustomEdge } from "../edges/useCustomEdge";
+import { CustomNode } from "../nodes/CustomNode/CustomNode";
+import { CustomControls } from "./components/CustomControl";
+import { GraphLoadingBox } from "./components/GraphLoadingBox";
+import { RunningBackground } from "./components/RunningBackground";
 import { TriggerAgentBanner } from "./components/TriggerAgentBanner";
 import { resolveCollisions } from "./helpers/resolve-collision";
-import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
-import { DraftRecoveryPopup } from "../../DraftRecoveryDialog/DraftRecoveryPopup";
+import { useCopyPaste } from "./useCopyPaste";
+import { useFlow } from "./useFlow";
+import { useFlowRealtime } from "./useFlowRealtime";
 
 export const Flow = () => {
   const [{ flowID, flowExecutionID }] = useQueryStates({
@@ -42,14 +42,18 @@ export const Flow = () => {
 
   const nodes = useNodeStore(useShallow((state) => state.nodes));
   const setNodes = useNodeStore(useShallow((state) => state.setNodes));
+
   const onNodesChange = useNodeStore(
     useShallow((state) => state.onNodesChange),
   );
+
   const hasWebhookNodes = useNodeStore(
     useShallow((state) => state.hasWebhookNodes()),
   );
+
   const nodeTypes = useMemo(() => ({ custom: CustomNode }), []);
   const edgeTypes = useMemo(() => ({ custom: CustomEdge }), []);
+
   const onNodeDragStop = useCallback(() => {
     setNodes(
       resolveCollisions(nodes, {
@@ -80,6 +84,7 @@ export const Flow = () => {
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
   );
+
   return (
     <div className="flex h-full w-full dark:bg-slate-900">
       <div className="relative flex-1">
