@@ -82,6 +82,7 @@ firecrawl-py = "^4.3.6"
 exa-py = "^1.14.20"
 croniter = "^6.0.0"
 stagehand = "^0.5.1"
+gravitas-md2gdocs = "^0.1.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

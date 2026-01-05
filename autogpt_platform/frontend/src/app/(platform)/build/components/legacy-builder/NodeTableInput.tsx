@@ -1,15 +1,15 @@
-import React, { FC, useCallback, useEffect, useState } from "react";
+import { FC, useCallback, useEffect, useState } from "react";
 
-import { PlusIcon, XIcon } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
 import NodeHandle from "@/app/(platform)/build/components/legacy-builder/NodeHandle";
 import {
   BlockIOTableSubSchema,
-  TableRow,
   TableCellValue,
+  TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { Input } from "./atoms/Input/Input";
-import { Button } from "./atoms/Button/Button";
+import { cn } from "@/lib/utils";
+import { PlusIcon, XIcon } from "@phosphor-icons/react";
+import { Button } from "../../../../../components/atoms/Button/Button";
+import { Input } from "../../../../../components/atoms/Input/Input";
 
 interface NodeTableInputProps {
   /** Unique identifier for the node in the builder graph */

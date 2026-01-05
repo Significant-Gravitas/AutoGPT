@@ -1,12 +1,12 @@
-import { ShareIcon } from "@phosphor-icons/react";
-import { BuilderActionButton } from "../BuilderActionButton";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { usePublishToMarketplace } from "./usePublishToMarketplace";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import { ShareIcon } from "@phosphor-icons/react";
+import { usePublishToMarketplace } from "./usePublishToMarketplace";
 
 export const PublishToMarketplace = ({ flowID }: { flowID: string | null }) => {
   const { handlePublishToMarketplace, publishState, handleStateChange } =
@@ -16,12 +16,14 @@ export const PublishToMarketplace = ({ flowID }: { flowID: string | null }) => {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <BuilderActionButton
+          <Button
+            variant="outline"
+            size="icon"
             onClick={handlePublishToMarketplace}
             disabled={!flowID}
           >
-            <ShareIcon className="size-6 drop-shadow-sm" />
-          </BuilderActionButton>
+            <ShareIcon className="size-4" />
+          </Button>
         </TooltipTrigger>
         <TooltipContent>Publish to Marketplace</TooltipContent>
       </Tooltip>
@@ -30,6 +32,7 @@ export const PublishToMarketplace = ({ flowID }: { flowID: string | null }) => {
         targetState={publishState}
         onStateChange={handleStateChange}
         preSelectedAgentId={flowID || undefined}
+        showTrigger={false}
       />
     </>
   );

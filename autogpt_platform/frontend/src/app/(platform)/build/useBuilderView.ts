@@ -1,7 +1,7 @@
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
-import { BuilderView } from "./BuilderViewTabs";
+import { BuilderView } from "./components/BuilderViewTabs/BuilderViewTabs";
 
 export function useBuilderView() {
   const isNewFlowEditorEnabled = useGetFlag(Flag.NEW_FLOW_EDITOR);
