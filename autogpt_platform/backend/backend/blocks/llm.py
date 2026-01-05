@@ -654,7 +654,7 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "aiml_api":
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://api.aimlapi.com/v2",
             api_key=credentials.api_key.get_secret_value(),
             default_headers={
@@ -664,7 +664,7 @@ async def llm_call(
             },
         )
 
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             model=model_to_use,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,

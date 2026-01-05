@@ -306,26 +306,44 @@ async def get_llm_migration(migration_id: str):
     summary="Revert a model migration",
     response_model=llm_model.RevertMigrationResponse,
 )
-async def revert_llm_migration(migration_id: str):
+async def revert_llm_migration(
+    migration_id: str,
+    request: llm_model.RevertMigrationRequest | None = None,
+):
     """
     Revert a model migration, restoring affected workflows to their original model.
 
     This only reverts the specific nodes that were part of the migration.
-    The source model must exist and be enabled for the revert to succeed.
+    The source model must exist for the revert to succeed.
+
+    Options:
+    - `re_enable_source_model`: Whether to re-enable the source model if disabled (default: True)
+
+    Response includes:
+    - `nodes_reverted`: Number of nodes successfully reverted
+    - `nodes_already_changed`: Number of nodes that were modified since migration (not reverted)
+    - `source_model_re_enabled`: Whether the source model was re-enabled
 
     Requirements:
     - Migration must not already be reverted
-    - Source model must exist and be enabled
+    - Source model must exist
     """
     try:
-        result = await llm_db.revert_migration(migration_id)
+        re_enable = request.re_enable_source_model if request else True
+        result = await llm_db.revert_migration(
+            migration_id,
+            re_enable_source_model=re_enable,
+        )
         await _refresh_runtime_state()
         logger.info(
-            "Reverted migration '%s': %d nodes restored from '%s' to '%s'",
+            "Reverted migration '%s': %d nodes restored from '%s' to '%s' "
+            "(%d already changed, source re-enabled=%s)",
             migration_id,
             result.nodes_reverted,
             result.target_model_slug,
             result.source_model_slug,
+            result.nodes_already_changed,
+            result.source_model_re_enabled,
         )
         return result
     except ValueError as exc:

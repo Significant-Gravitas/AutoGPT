@@ -177,9 +177,15 @@ class LlmMigrationsResponse(pydantic.BaseModel):
     migrations: list[LlmModelMigration]
 
 
+class RevertMigrationRequest(pydantic.BaseModel):
+    re_enable_source_model: bool = True  # Whether to re-enable the source model if disabled
+
+
 class RevertMigrationResponse(pydantic.BaseModel):
     migration_id: str
     source_model_slug: str
     target_model_slug: str
     nodes_reverted: int
+    nodes_already_changed: int = 0  # Nodes that were modified since migration (not reverted)
+    source_model_re_enabled: bool = False  # Whether the source model was re-enabled
     message: str

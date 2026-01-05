@@ -275,8 +275,6 @@ async def toggle_model(
     """
     import json
 
-    import prisma as prisma_module
-
     # Get the model being toggled
     model = await prisma.models.LlmModel.prisma().find_unique(
         where={"id": model_id}, include={"Costs": True}
@@ -301,21 +299,27 @@ async def toggle_model(
                 f"Please enable it before using it as a replacement."
             )
 
-        # Get the IDs of nodes that will be migrated (for revert capability)
-        node_ids_result = await prisma_module.get_client().query_raw(
-            """
-            SELECT id
-            FROM "AgentNode"
-            WHERE "constantInput"::jsonb->>'model' = $1
-            """,
-            model.slug,
-        )
-        migrated_node_ids = [row["id"] for row in node_ids_result] if node_ids_result else []
-        nodes_migrated = len(migrated_node_ids)
-
-        # Perform migration and toggle atomically
+        # Perform all operations atomically within a single transaction
+        # This ensures no nodes are missed between query and update
         async with transaction() as tx:
+            # Get the IDs of nodes that will be migrated (inside transaction for consistency)
+            node_ids_result = await tx.query_raw(
+                """
+                SELECT id
+                FROM "AgentNode"
+                WHERE "constantInput"::jsonb->>'model' = $1
+                FOR UPDATE
+                """,
+                model.slug,
+            )
+            migrated_node_ids = (
+                [row["id"] for row in node_ids_result] if node_ids_result else []
+            )
+            nodes_migrated = len(migrated_node_ids)
+
             if nodes_migrated > 0:
+                # Update by IDs to ensure we only update the exact nodes we queried
+                node_ids_pg_array = "{" + ",".join(migrated_node_ids) + "}"
                 await tx.execute_raw(
                     """
                     UPDATE "AgentNode"
@@ -324,10 +328,10 @@ async def toggle_model(
                         '{model}',
                         to_jsonb($1::text)
                     )
-                    WHERE "constantInput"::jsonb->>'model' = $2
+                    WHERE id::text = ANY($2::text[])
                     """,
                     migrate_to_slug,
-                    model.slug,
+                    node_ids_pg_array,
                 )
 
             record = await tx.llmmodel.update(
@@ -431,21 +435,20 @@ async def delete_model(
             f"Please enable it before using it as a replacement."
         )
 
-    # 3. Count affected nodes (read - outside transaction)
-    import prisma as prisma_module
-
-    count_result = await prisma_module.get_client().query_raw(
-        """
-        SELECT COUNT(*) as count
-        FROM "AgentNode"
-        WHERE "constantInput"::jsonb->>'model' = $1
-        """,
-        deleted_slug,
-    )
-    nodes_affected = int(count_result[0]["count"]) if count_result else 0
-
-    # 4 & 5. Perform migration and deletion atomically within a transaction
+    # 3 & 4. Perform count, migration and deletion atomically within a transaction
+    nodes_affected = 0
     async with transaction() as tx:
+        # Count affected nodes (inside transaction for consistency)
+        count_result = await tx.query_raw(
+            """
+            SELECT COUNT(*) as count
+            FROM "AgentNode"
+            WHERE "constantInput"::jsonb->>'model' = $1
+            """,
+            deleted_slug,
+        )
+        nodes_affected = int(count_result[0]["count"]) if count_result else 0
+
         # Migrate all AgentNode.constantInput->model to replacement
         if nodes_affected > 0:
             await tx.execute_raw(
@@ -519,7 +522,10 @@ async def get_migration(migration_id: str) -> llm_model.LlmModelMigration | None
     return _map_migration(record) if record else None
 
 
-async def revert_migration(migration_id: str) -> llm_model.RevertMigrationResponse:
+async def revert_migration(
+    migration_id: str,
+    re_enable_source_model: bool = True,
+) -> llm_model.RevertMigrationResponse:
     """
     Revert a model migration, restoring affected nodes to their original model.
 
@@ -528,6 +534,7 @@ async def revert_migration(migration_id: str) -> llm_model.RevertMigrationRespon
 
     Args:
         migration_id: UUID of the migration to revert
+        re_enable_source_model: Whether to re-enable the source model if it's disabled
 
     Returns:
         RevertMigrationResponse with revert stats
@@ -572,15 +579,18 @@ async def revert_migration(migration_id: str) -> llm_model.RevertMigrationRespon
 
     # Track if we need to re-enable the source model
     source_model_was_disabled = not source_model.isEnabled
+    should_re_enable = source_model_was_disabled and re_enable_source_model
+    source_model_re_enabled = False
 
     # Perform revert atomically
     async with transaction() as tx:
-        # Re-enable the source model if it was disabled
-        if source_model_was_disabled:
+        # Re-enable the source model if requested and it was disabled
+        if should_re_enable:
             await tx.llmmodel.update(
                 where={"id": source_model.id},
                 data={"isEnabled": True},
             )
+            source_model_re_enabled = True
 
         # Update only the specific nodes that were migrated
         # We need to check that they still have the target model (haven't been changed since)
@@ -613,17 +623,21 @@ async def revert_migration(migration_id: str) -> llm_model.RevertMigrationRespon
             },
         )
 
+    # Calculate nodes that were already changed since migration
+    nodes_already_changed = len(migrated_node_ids) - nodes_reverted
+
     # Build appropriate message
-    if source_model_was_disabled:
-        message = (
-            f"Successfully reverted migration: {nodes_reverted} node(s) restored "
-            f"from '{migration.targetModelSlug}' to '{migration.sourceModelSlug}'. "
-            f"Model '{migration.sourceModelSlug}' has been re-enabled."
+    message_parts = [
+        f"Successfully reverted migration: {nodes_reverted} node(s) restored "
+        f"from '{migration.targetModelSlug}' to '{migration.sourceModelSlug}'."
+    ]
+    if nodes_already_changed > 0:
+        message_parts.append(
+            f" {nodes_already_changed} node(s) were already changed and not reverted."
         )
-    else:
-        message = (
-            f"Successfully reverted migration: {nodes_reverted} node(s) restored "
-            f"from '{migration.targetModelSlug}' to '{migration.sourceModelSlug}'."
+    if source_model_re_enabled:
+        message_parts.append(
+            f" Model '{migration.sourceModelSlug}' has been re-enabled."
         )
 
     return llm_model.RevertMigrationResponse(
@@ -631,7 +645,9 @@ async def revert_migration(migration_id: str) -> llm_model.RevertMigrationRespon
         source_model_slug=migration.sourceModelSlug,
         target_model_slug=migration.targetModelSlug,
         nodes_reverted=nodes_reverted,
-        message=message,
+        nodes_already_changed=nodes_already_changed,
+        source_model_re_enabled=source_model_re_enabled,
+        message="".join(message_parts),
     )
 
 
