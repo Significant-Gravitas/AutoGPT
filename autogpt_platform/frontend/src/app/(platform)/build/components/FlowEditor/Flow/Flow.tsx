@@ -99,6 +99,7 @@ export const Flow = () => {
           nodesDraggable={!isLocked}
           nodesConnectable={!isLocked}
           elementsSelectable={!isLocked}
+          deleteKeyCode={["Backspace", "Delete"]}
         >
           <Background />
           <CustomControls setIsLocked={setIsLocked} isLocked={isLocked} />
