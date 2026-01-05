@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Sequence
 
-import prisma.models
+import prisma, prisma.models
 
 from backend.data.db import transaction
 from backend.server.v2.llm import model as llm_model
@@ -173,20 +173,26 @@ async def list_models(
 def _cost_create_payload(
     costs: Sequence[llm_model.LlmModelCostInput],
 ) -> dict[str, Iterable[dict[str, Any]]]:
-    return {
-        "create": [
-            {
-                "unit": cost.unit,
-                "creditCost": cost.credit_cost,
-                "credentialProvider": cost.credential_provider,
-                "credentialId": cost.credential_id,
-                "credentialType": cost.credential_type,
-                "currency": cost.currency,
-                "metadata": cost.metadata,
-            }
-            for cost in costs
-        ]
-    }
+
+    create_items = []
+    for cost in costs:
+        item: dict[str, Any] = {
+            "unit": cost.unit,
+            "creditCost": cost.credit_cost,
+            "credentialProvider": cost.credential_provider,
+        }
+        # Only include optional fields if they have values
+        if cost.credential_id:
+            item["credentialId"] = cost.credential_id
+        if cost.credential_type:
+            item["credentialType"] = cost.credential_type
+        if cost.currency:
+            item["currency"] = cost.currency
+        # Handle metadata - use Prisma Json type
+        if cost.metadata is not None and cost.metadata != {}:
+            item["metadata"] = prisma.Json(cost.metadata)
+        create_items.append(item)
+    return {"create": create_items}
 
 
 async def create_model(
@@ -218,37 +224,62 @@ async def update_model(
     model_id: str,
     request: llm_model.UpdateLlmModelRequest,
 ) -> llm_model.LlmModel:
-    data: dict[str, Any] = {}
+    # Build scalar field updates (non-relation fields)
+    scalar_data: dict[str, Any] = {}
     if request.display_name is not None:
-        data["displayName"] = request.display_name
+        scalar_data["displayName"] = request.display_name
     if request.description is not None:
-        data["description"] = request.description
+        scalar_data["description"] = request.description
     if request.context_window is not None:
-        data["contextWindow"] = request.context_window
+        scalar_data["contextWindow"] = request.context_window
     if request.max_output_tokens is not None:
-        data["maxOutputTokens"] = request.max_output_tokens
+        scalar_data["maxOutputTokens"] = request.max_output_tokens
     if request.is_enabled is not None:
-        data["isEnabled"] = request.is_enabled
+        scalar_data["isEnabled"] = request.is_enabled
     if request.capabilities is not None:
-        data["capabilities"] = request.capabilities
+        scalar_data["capabilities"] = request.capabilities
     if request.metadata is not None:
-        data["metadata"] = request.metadata
+        scalar_data["metadata"] = request.metadata
+    # Foreign keys can be updated directly as scalar fields
     if request.provider_id is not None:
-        data["providerId"] = request.provider_id
+        scalar_data["providerId"] = request.provider_id
     if request.creator_id is not None:
-        # Allow setting to None to remove creator association
-        data["creatorId"] = request.creator_id if request.creator_id else None
-    if request.costs is not None:
-        data["Costs"] = {
-            "deleteMany": {"llmModelId": model_id},
-            **_cost_create_payload(request.costs),
-        }
+        # Empty string means remove the creator
+        scalar_data["creatorId"] = request.creator_id if request.creator_id else None
 
-    record = await prisma.models.LlmModel.prisma().update(
-        where={"id": model_id},
-        data=data,
-        include={"Costs": True, "Creator": True},
-    )
+    # If we have costs to update, we need to handle them separately
+    # because nested writes have different constraints
+    if request.costs is not None:
+        # First update scalar fields
+        if scalar_data:
+            await prisma.models.LlmModel.prisma().update(
+                where={"id": model_id},
+                data=scalar_data,
+            )
+        # Then handle costs: delete existing and create new
+        await prisma.models.LlmModelCost.prisma().delete_many(
+            where={"llmModelId": model_id}
+        )
+        if request.costs:
+            cost_payload = _cost_create_payload(request.costs)
+            for cost_item in cost_payload["create"]:
+                cost_item["llmModelId"] = model_id
+                await prisma.models.LlmModelCost.prisma().create(data=cost_item)
+        # Fetch the updated record
+        record = await prisma.models.LlmModel.prisma().find_unique(
+            where={"id": model_id},
+            include={"Costs": True, "Creator": True},
+        )
+    else:
+        # No costs update - simple update
+        record = await prisma.models.LlmModel.prisma().update(
+            where={"id": model_id},
+            data=scalar_data,
+            include={"Costs": True, "Creator": True},
+        )
+
+    if not record:
+        raise ValueError(f"Model with id '{model_id}' not found")
     return _map_model(record)
 
 

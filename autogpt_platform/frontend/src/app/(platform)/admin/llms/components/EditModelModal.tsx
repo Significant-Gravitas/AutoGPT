@@ -173,16 +173,6 @@ export function EditModelModal({
             </label>
           </div>
 
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <input type="hidden" name="is_enabled" value="off" />
-            <input
-              type="checkbox"
-              name="is_enabled"
-              defaultChecked={model.is_enabled}
-            />
-            Enabled
-          </label>
-
           <Dialog.Footer>
             <Button
               variant="ghost"
