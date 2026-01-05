@@ -18,6 +18,7 @@ import type {
   CreateAPIKeyResponse,
   CreatorDetails,
   CreatorsResponse,
+  FileMeta,
   Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
@@ -408,6 +409,26 @@ export default class BackendAPI {
     });
   }
 
+  ////////////////////////////////////////
+  ///////////////// FILES ////////////////
+  ////////////////////////////////////////
+
+  listFiles(): Promise<FileMeta[]> {
+    return this._get("/files");
+  }
+
+  getFileMeta(fileID: string): Promise<FileMeta> {
+    return this._get(`/files/${fileID}`);
+  }
+
+  downloadFile(fileID: string): Promise<unknown> {
+    return this._get(`/files/${fileID}/download`);
+  }
+
+  uploadFile(file: File): Promise<FileMeta> {
+    return this._uploadFile("/files", file);
+  }
+
   /**
    * @returns `true` if a ping event was received, `false` if provider doesn't support pinging but the webhook exists.
    * @throws  `Error` if the webhook does not exist.
@@ -501,7 +522,7 @@ export default class BackendAPI {
     return this._uploadFile("/store/submissions/media", file);
   }
 
-  uploadFile(
+  uploadSignedFile(
     file: File,
     provider: string = "gcs",
     expiration_hours: number = 24,
@@ -809,7 +830,7 @@ export default class BackendAPI {
     return session?.access_token || "no-token-found";
   }
 
-  private async _uploadFile(path: string, file: File): Promise<string> {
+  private async _uploadFile(path: string, file: File): Promise<any> {
     const formData = new FormData();
     formData.append("file", file);
 
@@ -844,7 +865,7 @@ export default class BackendAPI {
   private async _makeClientFileUpload(
     path: string,
     formData: FormData,
-  ): Promise<string> {
+  ): Promise<any> {
     // Dynamic import is required even for client-only functions because helpers.ts
     // has server-only imports (like getServerSupabase) at the top level. Static imports
     // would bundle server-only code into the client bundle, causing runtime errors.
@@ -868,7 +889,7 @@ export default class BackendAPI {
   private async _makeServerFileUpload(
     path: string,
     formData: FormData,
-  ): Promise<string> {
+  ): Promise<any> {
     const { makeAuthenticatedFileUpload, buildServerUrl } = await import(
       "./helpers"
     );
