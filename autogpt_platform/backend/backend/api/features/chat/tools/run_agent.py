@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from backend.api.features.chat.config import ChatConfig
 from backend.api.features.chat.model import ChatSession
+from backend.api.features.library import db as library_db
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.data.user import get_user_by_id
@@ -37,8 +38,6 @@ from .utils import (
     get_or_create_library_agent,
     match_user_credentials_to_graph,
 )
-
-from backend.api.features.library import db as library_db
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()

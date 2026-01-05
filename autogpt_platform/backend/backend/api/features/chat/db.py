@@ -6,11 +6,7 @@ from typing import Any
 
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from prisma.types import (
-    ChatMessageCreateInput,
-    ChatSessionCreateInput,
-    ChatSessionUpdateInput,
-)
+from prisma.types import ChatSessionUpdateInput
 
 from backend.util.json import SafeJson
 
@@ -34,7 +30,7 @@ async def create_chat_session(
     user_id: str | None,
 ) -> PrismaChatSession:
     """Create a new chat session in the database."""
-    data: ChatSessionCreateInput = {
+    data = {
         "id": session_id,
         "userId": user_id,
         "credentials": SafeJson({}),
@@ -94,7 +90,7 @@ async def add_chat_message(
     function_call: dict[str, Any] | None = None,
 ) -> PrismaChatMessage:
     """Add a message to a chat session."""
-    data: ChatMessageCreateInput = {
+    data: dict[str, Any] = {
         "Session": {"connect": {"id": session_id}},
         "role": role,
         "sequence": sequence,
@@ -133,7 +129,7 @@ async def add_chat_messages_batch(
 
     created_messages = []
     for i, msg in enumerate(messages):
-        data: ChatMessageCreateInput = {
+        data: dict[str, Any] = {
             "Session": {"connect": {"id": session_id}},
             "role": msg["role"],
             "sequence": start_sequence + i,
