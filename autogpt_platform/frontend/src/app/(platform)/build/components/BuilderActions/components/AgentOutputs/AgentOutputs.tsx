@@ -16,6 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/__legacy__/ui/sheet";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
@@ -25,7 +26,6 @@ import {
 import { BookOpenIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { BuilderActionButton } from "../BuilderActionButton";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
@@ -76,9 +76,13 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         <Tooltip>
           <TooltipTrigger asChild>
             <SheetTrigger asChild>
-              <BuilderActionButton disabled={!flowID || !hasOutputs()}>
-                <BookOpenIcon className="size-6" />
-              </BuilderActionButton>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={!flowID || !hasOutputs()}
+              >
+                <BookOpenIcon className="size-4" />
+              </Button>
             </SheetTrigger>
           </TooltipTrigger>
           <TooltipContent>
