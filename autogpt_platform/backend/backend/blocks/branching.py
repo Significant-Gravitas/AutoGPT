@@ -106,7 +106,10 @@ class ConditionBlock(Block):
             ComparisonOperator.LESS_THAN_OR_EQUAL: lambda a, b: a <= b,
         }
 
-        result = comparison_funcs[operator](value1, value2)
+        try:
+            result = comparison_funcs[operator](value1, value2)
+        except Exception as e:
+            raise ValueError(f"Comparison failed: {e}") from e
 
         yield "result", result
 

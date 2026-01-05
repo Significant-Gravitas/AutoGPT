@@ -7,6 +7,7 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
+import { okData } from "@/app/api/helpers";
 import { Key, storage } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -71,6 +72,7 @@ export function useChatSession({
   } = useGetV2GetSession(sessionId || "", {
     query: {
       enabled: !!sessionId,
+      select: okData,
       staleTime: Infinity, // Never mark as stale
       refetchOnMount: false, // Don't refetch on component mount
       refetchOnWindowFocus: false, // Don't refetch when window regains focus
@@ -82,9 +84,8 @@ export function useChatSession({
   const { mutateAsync: claimSessionMutation } = usePatchV2SessionAssignUser();
 
   const session = useMemo(() => {
-    if (sessionData?.status === 200) {
-      return sessionData.data;
-    }
+    if (sessionData) return sessionData;
+
     if (sessionId && justCreatedSessionIdRef.current === sessionId) {
       return {
         id: sessionId,
