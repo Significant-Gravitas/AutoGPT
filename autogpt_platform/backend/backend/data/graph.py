@@ -764,9 +764,7 @@ class GraphModel(Graph):
         )
 
 
-class GraphMeta(Graph):
-    user_id: str
-
+class GraphMeta(GraphModel):
     # Easy work-around to prevent exposing nodes and links in the API response
     nodes: list[NodeModel] = Field(default=[], exclude=True)  # type: ignore
     links: list[Link] = Field(default=[], exclude=True)
@@ -774,13 +772,6 @@ class GraphMeta(Graph):
     @staticmethod
     def from_graph(graph: GraphModel) -> "GraphMeta":
         return GraphMeta(**graph.model_dump())
-
-
-class GraphsPaginated(BaseModel):
-    """Response schema for paginated graphs."""
-
-    graphs: list[GraphMeta]
-    pagination: Pagination
 
 
 # --------------------- CRUD functions --------------------- #
@@ -816,7 +807,7 @@ async def list_graphs_paginated(
     page: int = 1,
     page_size: int = 25,
     filter_by: Literal["active"] | None = "active",
-) -> GraphsPaginated:
+) -> tuple[list[GraphMeta], Pagination]:
     """
     Retrieves paginated graph metadata objects.
 
@@ -827,7 +818,8 @@ async def list_graphs_paginated(
         filter_by: An optional filter to either select graphs.
 
     Returns:
-        GraphsPaginated: Paginated list of graph metadata.
+        list[GraphMeta]: List of graph info objects.
+        Pagination: Pagination information.
     """
     where_clause: AgentGraphWhereInput = {"userId": user_id}
 
@@ -860,14 +852,11 @@ async def list_graphs_paginated(
             logger.error(f"Error processing graph {graph.id}: {e}")
             continue
 
-    return GraphsPaginated(
-        graphs=graph_models,
-        pagination=Pagination(
-            total_items=total_count,
-            total_pages=total_pages,
-            current_page=page,
-            page_size=page_size,
-        ),
+    return graph_models, Pagination(
+        total_items=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        page_size=page_size,
     )
 
 

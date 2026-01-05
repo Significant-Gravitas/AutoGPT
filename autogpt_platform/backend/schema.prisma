@@ -932,16 +932,31 @@ enum SubmissionStatus {
 }
 
 enum APIKeyPermission {
+  // Legacy v1 permissions (kept for backward compatibility)
   IDENTITY // Info about the authenticated user
-  EXECUTE_GRAPH // Can execute agent graphs
+  EXECUTE_GRAPH // Can execute agent graphs (v1 only)
   READ_GRAPH // Can get graph versions and details
-  EXECUTE_BLOCK // Can execute individual blocks
+  EXECUTE_BLOCK // Can execute individual blocks (v1 only)
   READ_BLOCK // Can get block information
-  READ_STORE // Can read store agents and creators
-  USE_TOOLS // Can use chat tools via external API
-  MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them
+  READ_STORE // Can read store/marketplace agents and creators
+  USE_TOOLS // Can use chat tools via external API (v1 only)
+  MANAGE_INTEGRATIONS // Can initiate OAuth flows and complete them (v1 only)
   READ_INTEGRATIONS // Can list credentials and providers
-  DELETE_INTEGRATIONS // Can delete credentials
+  DELETE_INTEGRATIONS // Can delete credentials (v1 only)
+
+  // V2 permissions
+  WRITE_GRAPH // Can create, update, delete graphs
+  READ_SCHEDULE // Can list schedules
+  WRITE_SCHEDULE // Can create and delete schedules
+  WRITE_STORE // Can create, update, delete marketplace submissions
+  READ_LIBRARY // Can list library agents and runs
+  RUN_AGENT // Can run agents from library
+  READ_RUN // Can list and get run details
+  WRITE_RUN // Can stop and delete runs
+  READ_RUN_REVIEW // Can list pending human-in-the-loop reviews
+  WRITE_RUN_REVIEW // Can submit human-in-the-loop review responses
+  READ_CREDITS // Can get credit balance and transactions
+  UPLOAD_FILES // Can upload files for agent input
 }
 
 model APIKey {
