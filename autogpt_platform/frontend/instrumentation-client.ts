@@ -30,15 +30,7 @@ Sentry.init({
     Sentry.httpClientIntegration(),
     Sentry.launchDarklyIntegration(),
     Sentry.replayIntegration({
-      unmask: [
-        ".sentry-unmask, [data-sentry-unmask]",
-        // Unmask ReactFlow edges (lines between blocks) in the builder
-        ".react-flow__edges",
-        ".react-flow__edge",
-        ".react-flow__edge path",
-        ".react-flow__edge circle",
-        ".react-flow__connection-line",
-      ],
+      unmask: [".sentry-unmask, [data-sentry-unmask]"],
     }),
     Sentry.replayCanvasIntegration(),
     Sentry.reportingObserverIntegration(),
