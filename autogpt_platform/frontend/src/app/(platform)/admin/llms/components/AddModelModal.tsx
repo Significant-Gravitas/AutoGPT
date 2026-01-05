@@ -14,7 +14,23 @@ interface Props {
 
 export function AddModelModal({ providers, creators }: Props) {
   const [open, setOpen] = useState(false);
+  const [selectedCreatorId, setSelectedCreatorId] = useState("");
   const router = useRouter();
+
+  // When provider changes, auto-select matching creator if one exists
+  function handleProviderChange(providerId: string) {
+    const provider = providers.find((p) => p.id === providerId);
+    if (provider) {
+      // Find creator with same name as provider (e.g., "openai" -> "openai")
+      const matchingCreator = creators.find((c) => c.name === provider.name);
+      if (matchingCreator) {
+        setSelectedCreatorId(matchingCreator.id);
+      } else {
+        // No matching creator (e.g., OpenRouter hosts other creators' models)
+        setSelectedCreatorId("");
+      }
+    }
+  }
 
   return (
     <Dialog
@@ -121,6 +137,7 @@ export function AddModelModal({ providers, creators }: Props) {
                   name="provider_id"
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   defaultValue=""
+                  onChange={(e) => handleProviderChange(e.target.value)}
                 >
                   <option value="" disabled>
                     Select provider
@@ -146,7 +163,8 @@ export function AddModelModal({ providers, creators }: Props) {
                   id="creator_id"
                   name="creator_id"
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  defaultValue=""
+                  value={selectedCreatorId}
+                  onChange={(e) => setSelectedCreatorId(e.target.value)}
                 >
                   <option value="">No creator selected</option>
                   {creators.map((creator) => (

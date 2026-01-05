@@ -133,7 +133,7 @@ export function EditModelModal({
             </label>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <label className="text-sm font-medium">
               Credit Cost
               <input
@@ -144,34 +144,32 @@ export function EditModelModal({
                 className="mt-1 w-full rounded border border-input bg-background p-2 text-sm"
                 min={0}
               />
+              <span className="text-xs text-muted-foreground">
+                Credits charged per run
+              </span>
             </label>
             <label className="text-sm font-medium">
               Credential Provider
-              <input
+              <select
                 required
                 name="credential_provider"
-                defaultValue={cost?.credential_provider ?? ""}
+                defaultValue={cost?.credential_provider ?? provider?.name ?? ""}
                 className="mt-1 w-full rounded border border-input bg-background p-2 text-sm"
-              />
-            </label>
-            <label className="text-sm font-medium">
-              Credential ID
-              <input
-                name="credential_id"
-                defaultValue={cost?.credential_id ?? ""}
-                className="mt-1 w-full rounded border border-input bg-background p-2 text-sm"
-                placeholder="cred-id"
-              />
-            </label>
-            <label className="text-sm font-medium">
-              Credential Type
-              <input
-                name="credential_type"
-                defaultValue={cost?.credential_type ?? "api_key"}
-                className="mt-1 w-full rounded border border-input bg-background p-2 text-sm"
-              />
+              >
+                <option value="" disabled>Select provider</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.name}>
+                    {p.display_name} ({p.name})
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                Must match a key in PROVIDER_CREDENTIALS
+              </span>
             </label>
           </div>
+          {/* Hidden defaults for credential_type */}
+          <input type="hidden" name="credential_type" value="api_key" />
 
           <Dialog.Footer>
             <Button
