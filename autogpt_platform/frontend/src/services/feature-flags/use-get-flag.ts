@@ -56,7 +56,7 @@ export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] | null {
 
   const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
   const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-  const isLaunchDarklyConfigured = envEnabled && clientId;
+  const isLaunchDarklyConfigured = envEnabled && Boolean(clientId);
 
   if (!isLaunchDarklyConfigured || isPwMockEnabled) {
     return mockFlags[flag];
