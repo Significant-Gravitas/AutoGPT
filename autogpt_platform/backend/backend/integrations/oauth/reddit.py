@@ -31,6 +31,8 @@ class RedditOAuthHandler(BaseOAuthHandler):
         "submit",  # Submit new posts and comments
         "edit",  # Edit own posts and comments
         "history",  # Access user's post history
+        "privatemessages",  # Access inbox and send private messages
+        "flair",  # Access and set flair on posts/subreddits
     ]
 
     AUTHORIZE_URL = "https://www.reddit.com/api/v1/authorize"
