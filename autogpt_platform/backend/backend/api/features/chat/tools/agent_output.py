@@ -9,18 +9,19 @@ from pydantic import BaseModel, field_validator
 
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
-from backend.server.v2.chat.model import ChatSession
-from backend.server.v2.chat.tools.base import BaseTool
-from backend.server.v2.chat.tools.models import (
+from backend.api.features.chat.model import ChatSession
+from backend.api.features.library import db as library_db
+from backend.api.features.library.model import LibraryAgent
+
+from .base import BaseTool
+from .models import (
     AgentOutputResponse,
     ErrorResponse,
     ExecutionOutputInfo,
     NoResultsResponse,
     ToolResponseBase,
 )
-from backend.server.v2.chat.tools.utils import fetch_graph_from_store_slug
-from backend.server.v2.library import db as library_db
-from backend.server.v2.library.model import LibraryAgent
+from .utils import fetch_graph_from_store_slug
 
 logger = logging.getLogger(__name__)
 

@@ -7,9 +7,10 @@ import re
 from pathlib import Path
 from typing import Any
 
-from backend.server.v2.chat.model import ChatSession
-from backend.server.v2.chat.tools.base import BaseTool
-from backend.server.v2.chat.tools.models import (
+from backend.api.features.chat.model import ChatSession
+
+from .base import BaseTool
+from .models import (
     DocSearchResult,
     DocSearchResultsResponse,
     ErrorResponse,

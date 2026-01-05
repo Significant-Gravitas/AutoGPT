@@ -4,12 +4,14 @@ import logging
 from collections import defaultdict
 from typing import Any
 
+from backend.api.features.chat.model import ChatSession
 from backend.data.block import get_block
 from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.server.v2.chat.model import ChatSession
-from backend.server.v2.chat.tools.base import BaseTool
-from backend.server.v2.chat.tools.models import (
+from backend.util.exceptions import BlockError
+
+from .base import BaseTool
+from .models import (
     BlockOutputResponse,
     ErrorResponse,
     SetupInfo,
@@ -17,7 +19,6 @@ from backend.server.v2.chat.tools.models import (
     ToolResponseBase,
     UserReadiness,
 )
-from backend.util.exceptions import BlockError
 
 logger = logging.getLogger(__name__)
 

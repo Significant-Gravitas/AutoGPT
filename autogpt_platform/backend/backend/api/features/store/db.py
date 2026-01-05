@@ -9,7 +9,7 @@ import prisma.errors
 import prisma.models
 import prisma.types
 
-from backend.data.db import query_raw_with_schema, transaction
+from backend.data.db import transaction
 from backend.data.graph import (
     GraphMeta,
     GraphModel,
@@ -58,7 +58,7 @@ async def get_store_agents(
     try:
         # If search_query is provided, use hybrid search (embeddings + tsvector)
         if search_query:
-            from backend.server.v2.store.hybrid_search import hybrid_search
+            from backend.api.features.store.hybrid_search import hybrid_search
 
             # Use hybrid search combining semantic and lexical signals
             agents, total = await hybrid_search(
@@ -1491,7 +1491,7 @@ async def review_store_submission(
 
             # Generate embedding for approved listing (non-blocking)
             try:
-                from backend.server.v2.store.embeddings import ensure_embedding
+                from backend.api.features.store.embeddings import ensure_embedding
 
                 await ensure_embedding(
                     version_id=store_listing_version_id,

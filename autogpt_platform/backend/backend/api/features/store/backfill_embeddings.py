@@ -21,7 +21,7 @@ async def main(batch_size: int = 100) -> int:
     prisma.register(client)
 
     try:
-        from backend.server.v2.store.embeddings import (
+        from backend.api.features.store.embeddings import (
             backfill_missing_embeddings,
             get_embedding_stats,
         )

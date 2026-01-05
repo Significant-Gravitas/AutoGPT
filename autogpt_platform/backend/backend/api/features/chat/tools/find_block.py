@@ -3,17 +3,18 @@
 import logging
 from typing import Any
 
+from backend.api.features.chat.model import ChatSession
 from backend.blocks import load_all_blocks
-from backend.server.v2.chat.model import ChatSession
-from backend.server.v2.chat.tools.base import BaseTool
-from backend.server.v2.chat.tools.models import (
+
+from .base import BaseTool
+from .models import (
     BlockInfoSummary,
     BlockListResponse,
     ErrorResponse,
     NoResultsResponse,
     ToolResponseBase,
 )
-from backend.server.v2.chat.tools.search_blocks import get_block_search_index
+from .search_blocks import get_block_search_index
 
 logger = logging.getLogger(__name__)
 

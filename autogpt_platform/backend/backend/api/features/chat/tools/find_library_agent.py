@@ -3,17 +3,18 @@
 import logging
 from typing import Any
 
-from backend.server.v2.chat.model import ChatSession
-from backend.server.v2.chat.tools.base import BaseTool
-from backend.server.v2.chat.tools.models import (
+from backend.api.features.chat.model import ChatSession
+from backend.api.features.library import db as library_db
+from backend.util.exceptions import DatabaseError
+
+from .base import BaseTool
+from .models import (
     AgentCarouselResponse,
     AgentInfo,
     ErrorResponse,
     NoResultsResponse,
     ToolResponseBase,
 )
-from backend.server.v2.library import db as library_db
-from backend.util.exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
 

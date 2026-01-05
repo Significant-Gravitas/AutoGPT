@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 import prisma
 
-from backend.server.v2.store.embeddings import embed_query, embedding_to_vector_string
+from backend.api.features.store.embeddings import embed_query, embedding_to_vector_string
 
 logger = logging.getLogger(__name__)
 

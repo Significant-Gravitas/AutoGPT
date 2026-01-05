@@ -3,8 +3,9 @@
 import logging
 from typing import Any
 
-from backend.server.v2.chat.model import ChatSession
-from backend.server.v2.chat.tools.agent_generator import (
+from backend.api.features.chat.model import ChatSession
+
+from .agent_generator import (
     apply_all_fixes,
     decompose_goal,
     generate_agent,
@@ -12,8 +13,8 @@ from backend.server.v2.chat.tools.agent_generator import (
     save_agent_to_library,
     validate_agent,
 )
-from backend.server.v2.chat.tools.base import BaseTool
-from backend.server.v2.chat.tools.models import (
+from .base import BaseTool
+from .models import (
     AgentPreviewResponse,
     AgentSavedResponse,
     ClarificationNeededResponse,
