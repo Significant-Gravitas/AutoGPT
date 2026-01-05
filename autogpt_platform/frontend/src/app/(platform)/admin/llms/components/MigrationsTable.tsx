@@ -3,6 +3,14 @@
 import { useState } from "react";
 import type { LlmModelMigration } from "@/lib/autogpt-server-api/types";
 import { Button } from "@/components/atoms/Button/Button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/atoms/Table/Table";
 import { revertLlmMigrationAction } from "../actions";
 
 export function MigrationsTable({
@@ -21,31 +29,23 @@ export function MigrationsTable({
 
   return (
     <div className="rounded-lg border">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="px-4 py-3 text-left text-sm font-medium">
-              Migration
-            </th>
-            <th className="px-4 py-3 text-left text-sm font-medium">Reason</th>
-            <th className="px-4 py-3 text-left text-sm font-medium">
-              Nodes Affected
-            </th>
-            <th className="px-4 py-3 text-left text-sm font-medium">
-              Custom Cost
-            </th>
-            <th className="px-4 py-3 text-left text-sm font-medium">Created</th>
-            <th className="px-4 py-3 text-right text-sm font-medium">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Migration</TableHead>
+            <TableHead>Reason</TableHead>
+            <TableHead>Nodes Affected</TableHead>
+            <TableHead>Custom Cost</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {migrations.map((migration) => (
             <MigrationRow key={migration.id} migration={migration} />
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -72,30 +72,30 @@ function MigrationRow({ migration }: { migration: LlmModelMigration }) {
 
   return (
     <>
-      <tr className="border-b last:border-0">
-        <td className="px-4 py-3">
+      <TableRow>
+        <TableCell>
           <div className="text-sm">
             <span className="font-medium">{migration.source_model_slug}</span>
             <span className="mx-2 text-muted-foreground">→</span>
             <span className="font-medium">{migration.target_model_slug}</span>
           </div>
-        </td>
-        <td className="px-4 py-3">
+        </TableCell>
+        <TableCell>
           <div className="text-sm text-muted-foreground">
             {migration.reason || "—"}
           </div>
-        </td>
-        <td className="px-4 py-3">
+        </TableCell>
+        <TableCell>
           <div className="text-sm">{migration.node_count}</div>
-        </td>
-        <td className="px-4 py-3">
+        </TableCell>
+        <TableCell>
           <div className="text-sm">
             {migration.custom_credit_cost !== null
               ? `${migration.custom_credit_cost} credits`
               : "—"}
           </div>
-        </td>
-        <td className="px-4 py-3">
+        </TableCell>
+        <TableCell>
           <div className="text-sm text-muted-foreground">
             {createdDate.toLocaleDateString()}{" "}
             {createdDate.toLocaleTimeString([], {
@@ -103,8 +103,8 @@ function MigrationRow({ migration }: { migration: LlmModelMigration }) {
               minute: "2-digit",
             })}
           </div>
-        </td>
-        <td className="px-4 py-3 text-right">
+        </TableCell>
+        <TableCell className="text-right">
           <form action={handleRevert} className="inline">
             <input type="hidden" name="migration_id" value={migration.id} />
             <Button
@@ -116,16 +116,16 @@ function MigrationRow({ migration }: { migration: LlmModelMigration }) {
               {isReverting ? "Reverting..." : "Revert"}
             </Button>
           </form>
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
       {error && (
-        <tr>
-          <td colSpan={6} className="px-4 py-2">
-            <div className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+        <TableRow>
+          <TableCell colSpan={6}>
+            <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
               {error}
             </div>
-          </td>
-        </tr>
+          </TableCell>
+        </TableRow>
       )}
     </>
   );

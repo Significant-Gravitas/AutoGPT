@@ -64,12 +64,14 @@ export function DeleteModelModal({
       styling={{ maxWidth: "600px" }}
     >
       <Dialog.Trigger>
-        <button
+        <Button
           type="button"
-          className="inline-flex items-center rounded border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+          variant="outline"
+          size="small"
+          className="min-w-0 text-destructive hover:bg-destructive/10"
         >
           Delete
-        </button>
+        </Button>
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="mb-4 text-sm text-muted-foreground">
@@ -78,21 +80,21 @@ export function DeleteModelModal({
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 dark:border-amber-400/30 dark:bg-amber-400/10">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 text-yellow-600">⚠️</div>
-              <div className="text-sm text-yellow-800">
+              <div className="flex-shrink-0 text-amber-600 dark:text-amber-400">⚠️</div>
+              <div className="text-sm text-foreground">
                 <p className="font-semibold">You are about to delete:</p>
                 <p className="mt-1">
                   <span className="font-medium">{model.display_name}</span>{" "}
-                  <span className="text-yellow-600">({model.slug})</span>
+                  <span className="text-muted-foreground">({model.slug})</span>
                 </p>
                 {usageCount !== null && (
                   <p className="mt-2 font-semibold">
-                    📊 Impact: {usageCount} block{usageCount !== 1 ? "s" : ""} currently use this model
+                    Impact: {usageCount} block{usageCount !== 1 ? "s" : ""} currently use this model
                   </p>
                 )}
-                <p className="mt-2">
+                <p className="mt-2 text-muted-foreground">
                   All workflows currently using this model will be automatically
                   updated to use the replacement model you choose below.
                 </p>
@@ -110,7 +112,7 @@ export function DeleteModelModal({
 
             <label className="text-sm font-medium">
               <span className="block mb-2">
-                Select Replacement Model <span className="text-red-500">*</span>
+                Select Replacement Model <span className="text-destructive">*</span>
               </span>
               <select
                 required
@@ -126,7 +128,7 @@ export function DeleteModelModal({
                 ))}
               </select>
               {replacementOptions.length === 0 && (
-                <p className="mt-2 text-xs text-red-600">
+                <p className="mt-2 text-xs text-destructive">
                   No replacement models available. You must have at least one
                   other enabled model before deleting this one.
                 </p>
@@ -134,7 +136,7 @@ export function DeleteModelModal({
             </label>
 
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
@@ -152,17 +154,19 @@ export function DeleteModelModal({
               >
                 Cancel
               </Button>
-              <button
+              <Button
                 type="submit"
+                variant="primary"
+                size="small"
                 disabled={
                   !selectedReplacement ||
                   isDeleting ||
                   replacementOptions.length === 0
                 }
-                className="inline-flex items-center rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {isDeleting ? "Deleting..." : "Delete and Migrate"}
-              </button>
+              </Button>
             </Dialog.Footer>
           </form>
         </div>

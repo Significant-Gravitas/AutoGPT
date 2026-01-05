@@ -1,29 +1,29 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import BackendApi from "@/lib/autogpt-server-api";
 import type {
-  CreateLlmModelRequest,
+  LlmProvider,
+  LlmModel,
   LlmCreatorsResponse,
   LlmMigrationsResponse,
-  LlmModelsResponse,
-  LlmProvidersResponse,
-  ToggleLlmModelRequest,
-  UpdateLlmModelRequest,
-  UpsertLlmCreatorRequest,
   UpsertLlmProviderRequest,
+  CreateLlmModelRequest,
+  UpdateLlmModelRequest,
+  ToggleLlmModelRequest,
+  UpsertLlmCreatorRequest,
 } from "@/lib/autogpt-server-api/types";
-import { revalidatePath } from "next/cache";
 
 const ADMIN_LLM_PATH = "/admin/llms";
 
-export async function fetchLlmProviders(): Promise<LlmProvidersResponse> {
+// =============================================================================
+// Provider Actions
+// =============================================================================
+
+export async function fetchLlmProviders(): Promise<{ providers: LlmProvider[] }> {
   const api = new BackendApi();
   return await api.listAdminLlmProviders(true);
-}
-
-export async function fetchLlmModels(): Promise<LlmModelsResponse> {
-  const api = new BackendApi();
-  return await api.listAdminLlmModels();
 }
 
 export async function createLlmProviderAction(formData: FormData) {
@@ -36,8 +36,8 @@ export async function createLlmProviderAction(formData: FormData) {
     default_credential_provider: formData.get("default_credential_provider")
       ? String(formData.get("default_credential_provider")).trim()
       : undefined,
-    default_credential_id: undefined, // Not needed - system uses credential_provider to lookup
-    default_credential_type: "api_key", // Default to api_key
+    default_credential_id: undefined,
+    default_credential_type: "api_key",
     supports_tools: formData.get("supports_tools") === "on",
     supports_json_output: formData.get("supports_json_output") !== "off",
     supports_reasoning: formData.get("supports_reasoning") === "on",
@@ -48,6 +48,15 @@ export async function createLlmProviderAction(formData: FormData) {
   const api = new BackendApi();
   await api.createAdminLlmProvider(payload);
   revalidatePath(ADMIN_LLM_PATH);
+}
+
+// =============================================================================
+// Model Actions
+// =============================================================================
+
+export async function fetchLlmModels(): Promise<{ models: LlmModel[] }> {
+  const api = new BackendApi();
+  return await api.listAdminLlmModels();
 }
 
 export async function createLlmModelAction(formData: FormData) {
@@ -155,6 +164,7 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
     migration_reason: migrationReason ? String(migrationReason) : undefined,
     custom_credit_cost: customCreditCost ? Number(customCreditCost) : undefined,
   };
+
   const api = new BackendApi();
   await api.toggleAdminLlmModel(modelId, payload);
   revalidatePath(ADMIN_LLM_PATH);
@@ -179,7 +189,10 @@ export async function deleteLlmModelAction(formData: FormData) {
   }
 }
 
-// Migration management actions
+// =============================================================================
+// Migration Actions
+// =============================================================================
+
 export async function fetchLlmMigrations(
   includeReverted: boolean = false
 ): Promise<LlmMigrationsResponse> {
@@ -203,7 +216,10 @@ export async function revertLlmMigrationAction(
   }
 }
 
-// Creator management actions
+// =============================================================================
+// Creator Actions
+// =============================================================================
+
 export async function fetchLlmCreators(): Promise<LlmCreatorsResponse> {
   const api = new BackendApi();
   return await api.listAdminLlmCreators();
@@ -263,4 +279,3 @@ export async function deleteLlmCreatorAction(formData: FormData): Promise<void> 
     throw error instanceof Error ? error : new Error("Failed to delete creator");
   }
 }
-

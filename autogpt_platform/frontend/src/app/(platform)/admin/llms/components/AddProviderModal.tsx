@@ -27,37 +27,37 @@ export function AddProviderModal() {
         </div>
 
         {/* Setup Instructions */}
-        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div className="mb-6 rounded-lg border border-primary/30 bg-primary/5 p-4">
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-blue-900">
+            <h4 className="text-sm font-semibold text-foreground">
               Before Adding a Provider
             </h4>
-            <p className="text-xs text-blue-800">
+            <p className="text-xs text-muted-foreground">
               To use a new provider, you must first configure its credentials in the
               backend:
             </p>
-            <ol className="list-inside list-decimal space-y-1 text-xs text-blue-800">
+            <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
               <li>
                 Add the credential to{" "}
-                <code className="rounded bg-blue-100 px-1 py-0.5 font-mono">
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
                   backend/integrations/credentials_store.py
                 </code>{" "}
                 with a UUID, provider name, and settings secret reference
               </li>
               <li>
                 Add it to the{" "}
-                <code className="rounded bg-blue-100 px-1 py-0.5 font-mono">
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
                   PROVIDER_CREDENTIALS
                 </code>{" "}
                 dictionary in{" "}
-                <code className="rounded bg-blue-100 px-1 py-0.5 font-mono">
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
                   backend/data/block_cost_config.py
                 </code>
               </li>
               <li>
-                Use the <strong>same provider name</strong> in the "Credential Provider"
+                Use the <strong>same provider name</strong> in the &quot;Credential Provider&quot;
                 field below that matches the key in{" "}
-                <code className="rounded bg-blue-100 px-1 py-0.5 font-mono">
+                <code className="rounded bg-muted px-1 py-0.5 font-mono">
                   PROVIDER_CREDENTIALS
                 </code>
               </li>

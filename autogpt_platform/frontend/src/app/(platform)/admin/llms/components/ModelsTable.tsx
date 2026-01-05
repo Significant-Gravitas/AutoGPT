@@ -116,7 +116,7 @@ export function ModelsTable({
                   <span
                     className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                       model.is_enabled
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        ? "bg-primary/10 text-primary"
                         : "bg-muted text-muted-foreground"
                     }`}
                   >

@@ -33,14 +33,14 @@ export function LlmRegistryDashboard({
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold">LLM Registry</h1>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             Manage providers, creators, models, and credit pricing
           </p>
         </div>
 
         {/* Active Migrations Section - Only show if there are migrations */}
         {migrations.length > 0 && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-6 shadow-sm dark:border-blue-900 dark:bg-blue-950">
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-6 shadow-sm">
             <div className="mb-4">
               <h2 className="text-xl font-semibold">Active Migrations</h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -55,11 +55,11 @@ export function LlmRegistryDashboard({
         {/* Providers & Creators Section - Side by Side */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Providers */}
-          <div className="rounded-lg border bg-white p-6 shadow-sm dark:bg-background">
+          <div className="rounded-lg border bg-card p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold">Providers</h2>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                <p className="mt-1 text-sm text-muted-foreground">
                   Who hosts/serves the models
                 </p>
               </div>
@@ -69,11 +69,11 @@ export function LlmRegistryDashboard({
           </div>
 
           {/* Creators */}
-          <div className="rounded-lg border bg-white p-6 shadow-sm dark:bg-background">
+          <div className="rounded-lg border bg-card p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold">Creators</h2>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                <p className="mt-1 text-sm text-muted-foreground">
                   Who made/trained the models
                 </p>
               </div>
@@ -84,11 +84,11 @@ export function LlmRegistryDashboard({
         </div>
 
         {/* Models Section */}
-        <div className="rounded-lg border bg-white p-6 shadow-sm dark:bg-background">
+        <div className="rounded-lg border bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold">Models</h2>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Toggle availability, adjust context windows, and update credit
                 pricing
               </p>

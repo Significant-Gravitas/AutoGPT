@@ -88,29 +88,29 @@ export function DisableModelModal({
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900 dark:bg-yellow-950">
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 dark:border-amber-400/30 dark:bg-amber-400/10">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 text-yellow-600">⚠️</div>
-              <div className="text-sm text-yellow-800 dark:text-yellow-200">
+              <div className="flex-shrink-0 text-amber-600 dark:text-amber-400">⚠️</div>
+              <div className="text-sm text-foreground">
                 <p className="font-semibold">You are about to disable:</p>
                 <p className="mt-1">
                   <span className="font-medium">{model.display_name}</span>{" "}
-                  <span className="text-yellow-600 dark:text-yellow-400">
+                  <span className="text-muted-foreground">
                     ({model.slug})
                   </span>
                 </p>
                 {usageCount === null ? (
-                  <p className="mt-2 text-yellow-600 dark:text-yellow-400">
+                  <p className="mt-2 text-muted-foreground">
                     Loading usage data...
                   </p>
                 ) : usageCount > 0 ? (
                   <p className="mt-2 font-semibold">
-                    📊 Impact: {usageCount} block{usageCount !== 1 ? "s" : ""}{" "}
+                    Impact: {usageCount} block{usageCount !== 1 ? "s" : ""}{" "}
                     currently use this model
                   </p>
                 ) : (
-                  <p className="mt-2">
-                    ✓ No workflows are currently using this model.
+                  <p className="mt-2 text-muted-foreground">
+                    No workflows are currently using this model.
                   </p>
                 )}
               </div>
@@ -147,7 +147,7 @@ export function DisableModelModal({
                 <div className="space-y-4 border-t border-border pt-4">
                   <label className="text-sm font-medium block">
                     <span className="mb-2 block">
-                      Replacement Model <span className="text-red-500">*</span>
+                      Replacement Model <span className="text-destructive">*</span>
                     </span>
                     <select
                       required
@@ -163,7 +163,7 @@ export function DisableModelModal({
                       ))}
                     </select>
                     {migrationOptions.length === 0 && (
-                      <p className="mt-2 text-xs text-red-600">
+                      <p className="mt-2 text-xs text-destructive">
                         No other enabled models available for migration.
                       </p>
                     )}
@@ -241,7 +241,7 @@ export function DisableModelModal({
             )}
 
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
               </div>
             )}
