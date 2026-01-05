@@ -115,10 +115,11 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
           edge.data?.beadData ??
           new Map<string, NodeExecutionResult["status"]>();
 
-        if (
-          edge.targetHandle &&
-          edge.targetHandle in executionResult.input_data
-        ) {
+        const inputValue = edge.targetHandle
+          ? executionResult.input_data[edge.targetHandle]
+          : undefined;
+
+        if (inputValue !== undefined && inputValue !== null) {
           beadData.set(executionResult.node_exec_id, executionResult.status);
         }
 

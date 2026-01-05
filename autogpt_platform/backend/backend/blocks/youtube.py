@@ -111,6 +111,8 @@ class TranscribeYoutubeVideoBlock(Block):
                 return parsed_url.path.split("/")[2]
             if parsed_url.path[:3] == "/v/":
                 return parsed_url.path.split("/")[2]
+            if parsed_url.path.startswith("/shorts/"):
+                return parsed_url.path.split("/")[2]
         raise ValueError(f"Invalid YouTube URL: {url}")
 
     def get_transcript(

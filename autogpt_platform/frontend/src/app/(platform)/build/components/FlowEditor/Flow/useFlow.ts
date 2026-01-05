@@ -20,6 +20,8 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 
 export const useFlow = () => {
   const [isLocked, setIsLocked] = useState(false);
+  const [hasAutoFramed, setHasAutoFramed] = useState(false);
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
   const updateNodeStatus = useNodeStore(
@@ -42,11 +44,12 @@ export const useFlow = () => {
   const setBlockMenuOpen = useControlPanelStore(
     useShallow((state) => state.setBlockMenuOpen),
   );
-  const [{ flowID, flowVersion, flowExecutionID }] = useQueryStates({
-    flowID: parseAsString,
-    flowVersion: parseAsInteger,
-    flowExecutionID: parseAsString,
-  });
+  const [{ flowID, flowVersion, flowExecutionID }, setQueryStates] =
+    useQueryStates({
+      flowID: parseAsString,
+      flowVersion: parseAsInteger,
+      flowExecutionID: parseAsString,
+    });
 
   const { data: executionDetails } = useGetV1GetExecutionDetails(
     flowID || "",
@@ -102,6 +105,9 @@ export const useFlow = () => {
   // load graph schemas
   useEffect(() => {
     if (graph) {
+      setQueryStates({
+        flowVersion: graph.version ?? 1,
+      });
       setGraphSchemas(
         graph.input_schema as Record<string, any> | null,
         graph.credentials_input_schema as Record<string, any> | null,
@@ -169,10 +175,22 @@ export const useFlow = () => {
     if (customNodes.length > 0 && graph?.links) {
       const timer = setTimeout(() => {
         useHistoryStore.getState().initializeHistory();
+        // Mark initial load as complete after history is initialized
+        setIsInitialLoadComplete(true);
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [customNodes, graph?.links]);
+
+  // Also mark as complete for new flows (no flowID) after a short delay
+  useEffect(() => {
+    if (!flowID && !isGraphLoading && !isBlocksLoading) {
+      const timer = setTimeout(() => {
+        setIsInitialLoadComplete(true);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [flowID, isGraphLoading, isBlocksLoading]);
 
   useEffect(() => {
     return () => {
@@ -183,9 +201,37 @@ export const useFlow = () => {
     };
   }, []);
 
+  const linkCount = graph?.links?.length ?? 0;
+
   useEffect(() => {
-    fitView({ padding: 0.2, duration: 800, maxZoom: 2 });
-  }, [fitView]);
+    if (isGraphLoading || isBlocksLoading) {
+      setHasAutoFramed(false);
+      return;
+    }
+
+    if (hasAutoFramed) {
+      return;
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+      setHasAutoFramed(true);
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    fitView,
+    hasAutoFramed,
+    customNodes.length,
+    isBlocksLoading,
+    isGraphLoading,
+    linkCount,
+  ]);
+
+  useEffect(() => {
+    setHasAutoFramed(false);
+    setIsInitialLoadComplete(false);
+  }, [flowID, flowVersion]);
 
   // Drag and drop block from block menu
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -221,6 +267,7 @@ export const useFlow = () => {
 
   return {
     isFlowContentLoading: isGraphLoading || isBlocksLoading,
+    isInitialLoadComplete,
     onDragOver,
     onDrop,
     isLocked,

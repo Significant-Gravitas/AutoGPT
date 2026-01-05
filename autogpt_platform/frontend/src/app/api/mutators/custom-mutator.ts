@@ -113,6 +113,19 @@ export const customMutator = async <
     body: data,
   });
 
+  // Check if response is a redirect (3xx) and redirect is allowed
+  const allowRedirect = requestOptions.redirect !== "error";
+  const isRedirect = response.status >= 300 && response.status < 400;
+
+  // For redirect responses, return early without trying to parse body
+  if (allowRedirect && isRedirect) {
+    return {
+      status: response.status,
+      data: null,
+      headers: response.headers,
+    } as T;
+  }
+
   if (!response.ok) {
     let responseData: any = null;
     try {
