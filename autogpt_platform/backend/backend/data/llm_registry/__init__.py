@@ -11,6 +11,7 @@ from backend.data.llm_registry import schema_utils
 from backend.data.llm_registry.registry import (
     RegistryModel,
     RegistryModelCost,
+    RegistryModelCreator,
     get_all_model_slugs_for_validation,
     get_default_model_slug,
     get_dynamic_model_slugs,
@@ -45,6 +46,7 @@ __all__ = [
     "ModelMetadata",
     "RegistryModel",
     "RegistryModelCost",
+    "RegistryModelCreator",
     # Registry functions
     "get_all_model_slugs_for_validation",
     "get_default_model_slug",

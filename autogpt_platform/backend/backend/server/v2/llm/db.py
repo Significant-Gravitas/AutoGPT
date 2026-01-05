@@ -29,10 +29,28 @@ def _map_cost(record: prisma.models.LlmModelCost) -> llm_model.LlmModelCost:
     )
 
 
+def _map_creator(
+    record: prisma.models.LlmModelCreator,
+) -> llm_model.LlmModelCreator:
+    return llm_model.LlmModelCreator(
+        id=record.id,
+        name=record.name,
+        display_name=record.displayName,
+        description=record.description,
+        website_url=record.websiteUrl,
+        logo_url=record.logoUrl,
+        metadata=_json_dict(record.metadata),
+    )
+
+
 def _map_model(record: prisma.models.LlmModel) -> llm_model.LlmModel:
     costs = []
     if record.Costs:
         costs = [_map_cost(cost) for cost in record.Costs]
+
+    creator = None
+    if hasattr(record, "Creator") and record.Creator:
+        creator = _map_creator(record.Creator)
 
     return llm_model.LlmModel(
         id=record.id,
@@ -40,6 +58,8 @@ def _map_model(record: prisma.models.LlmModel) -> llm_model.LlmModel:
         display_name=record.displayName,
         description=record.description,
         provider_id=record.providerId,
+        creator_id=record.creatorId,
+        creator=creator,
         context_window=record.contextWindow,
         max_output_tokens=record.maxOutputTokens,
         is_enabled=record.isEnabled,
@@ -83,7 +103,12 @@ async def list_providers(
     """
     if include_models:
         model_where = {"isEnabled": True} if enabled_only else None
-        include = {"Models": {"include": {"Costs": True}, "where": model_where}}
+        include = {
+            "Models": {
+                "include": {"Costs": True, "Creator": True},
+                "where": model_where,
+            }
+        }
     else:
         include = None
     records = await prisma.models.LlmProvider.prisma().find_many(include=include)
@@ -107,16 +132,17 @@ async def upsert_provider(
         "supportsParallelTool": request.supports_parallel_tool,
         "metadata": request.metadata,
     }
+    include = {"Models": {"include": {"Costs": True, "Creator": True}}}
     if provider_id:
         record = await prisma.models.LlmProvider.prisma().update(
             where={"id": provider_id},
             data=data,
-            include={"Models": {"include": {"Costs": True}}},
+            include=include,
         )
     else:
         record = await prisma.models.LlmProvider.prisma().create(
             data=data,
-            include={"Models": {"include": {"Costs": True}}},
+            include=include,
         )
     return _map_provider(record)
 
@@ -139,7 +165,7 @@ async def list_models(
 
     records = await prisma.models.LlmModel.prisma().find_many(
         where=where if where else None,
-        include={"Costs": True},
+        include={"Costs": True, "Creator": True},
     )
     return [_map_model(record) for record in records]
 
@@ -166,20 +192,24 @@ def _cost_create_payload(
 async def create_model(
     request: llm_model.CreateLlmModelRequest,
 ) -> llm_model.LlmModel:
+    data: dict[str, Any] = {
+        "slug": request.slug,
+        "displayName": request.display_name,
+        "description": request.description,
+        "providerId": request.provider_id,
+        "contextWindow": request.context_window,
+        "maxOutputTokens": request.max_output_tokens,
+        "isEnabled": request.is_enabled,
+        "capabilities": request.capabilities,
+        "metadata": request.metadata,
+        "Costs": _cost_create_payload(request.costs),
+    }
+    if request.creator_id:
+        data["creatorId"] = request.creator_id
+
     record = await prisma.models.LlmModel.prisma().create(
-        data={
-            "slug": request.slug,
-            "displayName": request.display_name,
-            "description": request.description,
-            "providerId": request.provider_id,
-            "contextWindow": request.context_window,
-            "maxOutputTokens": request.max_output_tokens,
-            "isEnabled": request.is_enabled,
-            "capabilities": request.capabilities,
-            "metadata": request.metadata,
-            "Costs": _cost_create_payload(request.costs),
-        },
-        include={"Costs": True},
+        data=data,
+        include={"Costs": True, "Creator": True},
     )
     return _map_model(record)
 
@@ -205,6 +235,9 @@ async def update_model(
         data["metadata"] = request.metadata
     if request.provider_id is not None:
         data["providerId"] = request.provider_id
+    if request.creator_id is not None:
+        # Allow setting to None to remove creator association
+        data["creatorId"] = request.creator_id if request.creator_id else None
     if request.costs is not None:
         data["Costs"] = {
             "deleteMany": {"llmModelId": model_id},
@@ -214,7 +247,7 @@ async def update_model(
     record = await prisma.models.LlmModel.prisma().update(
         where={"id": model_id},
         data=data,
-        include={"Costs": True},
+        include={"Costs": True, "Creator": True},
     )
     return _map_model(record)
 
@@ -600,3 +633,72 @@ async def revert_migration(migration_id: str) -> llm_model.RevertMigrationRespon
         nodes_reverted=nodes_reverted,
         message=message,
     )
+
+
+# ============================================================================
+# Creator CRUD operations
+# ============================================================================
+
+
+async def list_creators() -> list[llm_model.LlmModelCreator]:
+    """List all LLM model creators."""
+    records = await prisma.models.LlmModelCreator.prisma().find_many(
+        order={"displayName": "asc"}
+    )
+    return [_map_creator(record) for record in records]
+
+
+async def get_creator(creator_id: str) -> llm_model.LlmModelCreator | None:
+    """Get a specific creator by ID."""
+    record = await prisma.models.LlmModelCreator.prisma().find_unique(
+        where={"id": creator_id}
+    )
+    return _map_creator(record) if record else None
+
+
+async def upsert_creator(
+    request: llm_model.UpsertLlmCreatorRequest,
+    creator_id: str | None = None,
+) -> llm_model.LlmModelCreator:
+    """Create or update a model creator."""
+    data = {
+        "name": request.name,
+        "displayName": request.display_name,
+        "description": request.description,
+        "websiteUrl": request.website_url,
+        "logoUrl": request.logo_url,
+        "metadata": request.metadata,
+    }
+    if creator_id:
+        record = await prisma.models.LlmModelCreator.prisma().update(
+            where={"id": creator_id},
+            data=data,
+        )
+    else:
+        record = await prisma.models.LlmModelCreator.prisma().create(data=data)
+    return _map_creator(record)
+
+
+async def delete_creator(creator_id: str) -> bool:
+    """
+    Delete a model creator.
+
+    This will set creatorId to NULL on all associated models (due to onDelete: SetNull).
+
+    Args:
+        creator_id: UUID of the creator to delete
+
+    Returns:
+        True if deleted successfully
+
+    Raises:
+        ValueError: If creator not found
+    """
+    creator = await prisma.models.LlmModelCreator.prisma().find_unique(
+        where={"id": creator_id}
+    )
+    if not creator:
+        raise ValueError(f"Creator with id '{creator_id}' not found")
+
+    await prisma.models.LlmModelCreator.prisma().delete(where={"id": creator_id})
+    return True

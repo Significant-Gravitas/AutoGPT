@@ -3,15 +3,21 @@
 import { useState } from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
+import type {
+  LlmModel,
+  LlmModelCreator,
+  LlmProvider,
+} from "@/lib/autogpt-server-api/types";
 import { updateLlmModelAction } from "../actions";
 
 export function EditModelModal({
   model,
   providers,
+  creators,
 }: {
   model: LlmModel;
   providers: LlmProvider[];
+  creators: LlmModelCreator[];
 }) {
   const [open, setOpen] = useState(false);
   const cost = model.costs[0];
@@ -65,6 +71,30 @@ export function EditModelModal({
                   </option>
                 ))}
               </select>
+              <span className="text-xs text-muted-foreground">
+                Who hosts/serves the model
+              </span>
+            </label>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="text-sm font-medium">
+              Creator
+              <select
+                name="creator_id"
+                className="mt-1 w-full rounded border border-input bg-background p-2 text-sm"
+                defaultValue={model.creator_id ?? ""}
+              >
+                <option value="">No creator selected</option>
+                {creators.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.display_name} ({c.name})
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                Who made/trained the model (e.g., OpenAI, Meta)
+              </span>
             </label>
           </div>
 

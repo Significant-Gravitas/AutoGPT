@@ -8,6 +8,7 @@ from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
 from backend.data.db import query_raw_with_schema
+from backend.data.llm_registry import get_all_model_slugs_for_validation
 from backend.integrations.providers import ProviderName
 from backend.server.v2.builder.model import (
     BlockCategoryResponse,
@@ -22,7 +23,6 @@ from backend.util.cache import cached
 from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
-llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
 _static_counts_cache: dict | None = None
 _suggested_blocks: list[BlockInfo] | None = None
 

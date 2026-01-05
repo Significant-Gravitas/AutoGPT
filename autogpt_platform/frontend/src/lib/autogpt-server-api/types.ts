@@ -168,9 +168,17 @@ export type BlockIOTableSubSchema = BlockIOSubSchemaMeta & {
   secret?: boolean;
 };
 
+export type BlockIOStringSubSchemaOption = {
+  label: string;
+  value: string;
+  group?: string;
+  description?: string;
+};
+
 export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   type: "string";
   enum?: string[];
+  options?: BlockIOStringSubSchemaOption[];
   secret?: true;
   const?: string;
   default?: string;
@@ -270,12 +278,26 @@ export type LlmModelCost = LlmModelCostInput & {
   id: string;
 };
 
+// Creator represents the organization that created/trained the model (e.g., OpenAI, Meta)
+// This is distinct from Provider who hosts/serves the model (e.g., OpenRouter)
+export type LlmModelCreator = {
+  id: string;
+  name: string;
+  display_name: string;
+  description?: string | null;
+  website_url?: string | null;
+  logo_url?: string | null;
+  metadata: Record<string, any>;
+};
+
 export type LlmModel = {
   id: string;
   slug: string;
   display_name: string;
   description?: string | null;
   provider_id: string;
+  creator_id?: string | null;
+  creator?: LlmModelCreator | null;
   context_window: number;
   max_output_tokens?: number | null;
   is_enabled: boolean;
@@ -308,6 +330,19 @@ export type LlmModelsResponse = {
   models: LlmModel[];
 };
 
+export type LlmCreatorsResponse = {
+  creators: LlmModelCreator[];
+};
+
+export type UpsertLlmCreatorRequest = {
+  name: string;
+  display_name: string;
+  description?: string | null;
+  website_url?: string | null;
+  logo_url?: string | null;
+  metadata?: Record<string, any>;
+};
+
 export type UpsertLlmProviderRequest = {
   name: string;
   display_name: string;
@@ -327,6 +362,7 @@ export type CreateLlmModelRequest = {
   display_name: string;
   description?: string | null;
   provider_id: string;
+  creator_id?: string | null;
   context_window: number;
   max_output_tokens?: number | null;
   is_enabled?: boolean;
@@ -339,6 +375,7 @@ export type UpdateLlmModelRequest = {
   display_name?: string;
   description?: string | null;
   provider_id?: string;
+  creator_id?: string | null;
   context_window?: number;
   max_output_tokens?: number | null;
   is_enabled?: boolean;

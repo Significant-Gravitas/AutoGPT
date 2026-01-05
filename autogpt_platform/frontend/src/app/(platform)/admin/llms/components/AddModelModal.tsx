@@ -3,15 +3,16 @@
 import { useState } from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmProvider } from "@/lib/autogpt-server-api/types";
+import type { LlmProvider, LlmModelCreator } from "@/lib/autogpt-server-api/types";
 import { createLlmModelAction } from "../actions";
 import { useRouter } from "next/navigation";
 
 interface Props {
   providers: LlmProvider[];
+  creators: LlmModelCreator[];
 }
 
-export function AddModelModal({ providers }: Props) {
+export function AddModelModal({ providers, creators }: Props) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -106,7 +107,7 @@ export function AddModelModal({ providers }: Props) {
                 Model capabilities and limits
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label
                   htmlFor="provider_id"
@@ -130,7 +131,36 @@ export function AddModelModal({ providers }: Props) {
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-muted-foreground">
+                  Who hosts/serves the model
+                </p>
               </div>
+              <div className="space-y-2">
+                <label
+                  htmlFor="creator_id"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Creator
+                </label>
+                <select
+                  id="creator_id"
+                  name="creator_id"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  defaultValue=""
+                >
+                  <option value="">No creator selected</option>
+                  {creators.map((creator) => (
+                    <option key={creator.id} value={creator.id}>
+                      {creator.display_name} ({creator.name})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Who made/trained the model (e.g., OpenAI, Meta)
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label
                   htmlFor="context_window"

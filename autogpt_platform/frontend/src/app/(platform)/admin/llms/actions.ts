@@ -3,11 +3,13 @@
 import BackendApi from "@/lib/autogpt-server-api";
 import type {
   CreateLlmModelRequest,
+  LlmCreatorsResponse,
   LlmMigrationsResponse,
   LlmModelsResponse,
   LlmProvidersResponse,
   ToggleLlmModelRequest,
   UpdateLlmModelRequest,
+  UpsertLlmCreatorRequest,
   UpsertLlmProviderRequest,
 } from "@/lib/autogpt-server-api/types";
 import { revalidatePath } from "next/cache";
@@ -50,12 +52,13 @@ export async function createLlmProviderAction(formData: FormData) {
 
 export async function createLlmModelAction(formData: FormData) {
   const providerId = String(formData.get("provider_id"));
-  
+  const creatorId = formData.get("creator_id");
+
   // Fetch provider to get default credentials
   const api = new BackendApi();
   const providersResponse = await api.listAdminLlmProviders(false);
   const provider = providersResponse.providers.find((p) => p.id === providerId);
-  
+
   if (!provider) {
     throw new Error("Provider not found");
   }
@@ -67,6 +70,7 @@ export async function createLlmModelAction(formData: FormData) {
       ? String(formData.get("description"))
       : undefined,
     provider_id: providerId,
+    creator_id: creatorId ? String(creatorId) : undefined,
     context_window: Number(formData.get("context_window") || 0),
     max_output_tokens: formData.get("max_output_tokens")
       ? Number(formData.get("max_output_tokens"))
@@ -92,6 +96,8 @@ export async function createLlmModelAction(formData: FormData) {
 
 export async function updateLlmModelAction(formData: FormData) {
   const modelId = String(formData.get("model_id"));
+  const creatorId = formData.get("creator_id");
+
   const payload: UpdateLlmModelRequest = {
     display_name: formData.get("display_name")
       ? String(formData.get("display_name"))
@@ -102,6 +108,7 @@ export async function updateLlmModelAction(formData: FormData) {
     provider_id: formData.get("provider_id")
       ? String(formData.get("provider_id"))
       : undefined,
+    creator_id: creatorId ? String(creatorId) : undefined,
     context_window: formData.get("context_window")
       ? Number(formData.get("context_window"))
       : undefined,
@@ -193,6 +200,67 @@ export async function revertLlmMigrationAction(
     throw error instanceof Error
       ? error
       : new Error("Failed to revert migration");
+  }
+}
+
+// Creator management actions
+export async function fetchLlmCreators(): Promise<LlmCreatorsResponse> {
+  const api = new BackendApi();
+  return await api.listAdminLlmCreators();
+}
+
+export async function createLlmCreatorAction(formData: FormData): Promise<void> {
+  const payload: UpsertLlmCreatorRequest = {
+    name: String(formData.get("name") || "").trim(),
+    display_name: String(formData.get("display_name") || "").trim(),
+    description: formData.get("description")
+      ? String(formData.get("description"))
+      : undefined,
+    website_url: formData.get("website_url")
+      ? String(formData.get("website_url")).trim()
+      : undefined,
+    logo_url: formData.get("logo_url")
+      ? String(formData.get("logo_url")).trim()
+      : undefined,
+    metadata: {},
+  };
+
+  const api = new BackendApi();
+  await api.createAdminLlmCreator(payload);
+  revalidatePath(ADMIN_LLM_PATH);
+}
+
+export async function updateLlmCreatorAction(formData: FormData): Promise<void> {
+  const creatorId = String(formData.get("creator_id"));
+  const payload: UpsertLlmCreatorRequest = {
+    name: String(formData.get("name") || "").trim(),
+    display_name: String(formData.get("display_name") || "").trim(),
+    description: formData.get("description")
+      ? String(formData.get("description"))
+      : undefined,
+    website_url: formData.get("website_url")
+      ? String(formData.get("website_url")).trim()
+      : undefined,
+    logo_url: formData.get("logo_url")
+      ? String(formData.get("logo_url")).trim()
+      : undefined,
+    metadata: {},
+  };
+
+  const api = new BackendApi();
+  await api.updateAdminLlmCreator(creatorId, payload);
+  revalidatePath(ADMIN_LLM_PATH);
+}
+
+export async function deleteLlmCreatorAction(formData: FormData): Promise<void> {
+  try {
+    const creatorId = String(formData.get("creator_id"));
+    const api = new BackendApi();
+    await api.deleteAdminLlmCreator(creatorId);
+    revalidatePath(ADMIN_LLM_PATH);
+  } catch (error) {
+    console.error("Delete creator error:", error);
+    throw error instanceof Error ? error : new Error("Failed to delete creator");
   }
 }
 

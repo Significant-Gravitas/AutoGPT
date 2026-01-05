@@ -1,4 +1,8 @@
-import type { LlmModel, LlmProvider } from "@/lib/autogpt-server-api/types";
+import type {
+  LlmModel,
+  LlmModelCreator,
+  LlmProvider,
+} from "@/lib/autogpt-server-api/types";
 import {
   Table,
   TableBody,
@@ -16,9 +20,11 @@ import { EditModelModal } from "./EditModelModal";
 export function ModelsTable({
   models,
   providers,
+  creators,
 }: {
   models: LlmModel[];
   providers: LlmProvider[];
+  creators: LlmModelCreator[];
 }) {
   if (!models.length) {
     return (
@@ -39,6 +45,7 @@ export function ModelsTable({
           <TableRow>
             <TableHead>Model</TableHead>
             <TableHead>Provider</TableHead>
+            <TableHead>Creator</TableHead>
             <TableHead>Context Window</TableHead>
             <TableHead>Max Output</TableHead>
             <TableHead>Cost</TableHead>
@@ -71,6 +78,18 @@ export function ModelsTable({
                     </>
                   ) : (
                     model.provider_id
+                  )}
+                </TableCell>
+                <TableCell>
+                  {model.creator ? (
+                    <>
+                      <div>{model.creator.display_name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {model.creator.name}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
                 <TableCell>{model.context_window.toLocaleString()}</TableCell>
@@ -114,7 +133,11 @@ export function ModelsTable({
                     ) : (
                       <EnableModelButton modelId={model.id} />
                     )}
-                    <EditModelModal model={model} providers={providers} />
+                    <EditModelModal
+                      model={model}
+                      providers={providers}
+                      creators={creators}
+                    />
                     <DeleteModelModal
                       model={model}
                       availableModels={models}

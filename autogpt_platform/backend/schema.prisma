@@ -966,6 +966,22 @@ enum LlmCostUnit {
   TOKENS
 }
 
+model LlmModelCreator {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String  @unique // e.g., "openai", "anthropic", "meta"
+  displayName String // e.g., "OpenAI", "Anthropic", "Meta"
+  description String?
+  websiteUrl  String? // Link to creator's website
+  logoUrl     String? // URL to creator's logo
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+}
+
 model LlmProvider {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -1001,6 +1017,11 @@ model LlmModel {
   providerId String
   Provider   LlmProvider @relation(fields: [providerId], references: [id], onDelete: Restrict)
 
+  // Creator is the organization that created/trained the model (e.g., OpenAI, Meta)
+  // This is distinct from the provider who hosts/serves the model (e.g., OpenRouter)
+  creatorId String?
+  Creator   LlmModelCreator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
   contextWindow   Int
   maxOutputTokens Int?
   isEnabled       Boolean @default(true)
@@ -1011,6 +1032,7 @@ model LlmModel {
   Costs LlmModelCost[]
 
   @@index([providerId, isEnabled])
+  @@index([creatorId])
   @@index([slug])
 }
 

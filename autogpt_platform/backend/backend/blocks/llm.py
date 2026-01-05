@@ -4,7 +4,7 @@ import logging
 import re
 import secrets
 from abc import ABC
-from enum import Enum, EnumMeta
+from enum import Enum
 from json import JSONDecodeError
 from typing import Any, Iterable, List, Literal, Optional
 
@@ -13,7 +13,8 @@ import ollama
 import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, GetCoreSchemaHandler, SecretStr
+from pydantic_core import CoreSchema, core_schema
 
 from backend.data import llm_registry
 from backend.data.block import (
@@ -88,46 +89,81 @@ def llm_model_schema_extra() -> dict[str, Any]:
     return {"options": llm_registry.get_llm_model_schema_options()}
 
 
-class LlmModelMeta(EnumMeta):
-    pass
+class LlmModelMeta(type):
+    """
+    Metaclass for LlmModel that enables attribute-style access to dynamic models.
+
+    This allows code like `LlmModel.GPT4O` to work by converting the attribute
+    name to a slug format:
+    - GPT4O -> gpt-4o
+    - GPT4O_MINI -> gpt-4o-mini
+    - CLAUDE_3_5_SONNET -> claude-3-5-sonnet
+    """
+
+    def __getattr__(cls, name: str):
+        # Don't intercept private/dunder attributes
+        if name.startswith("_"):
+            raise AttributeError(f"type object 'LlmModel' has no attribute '{name}'")
+
+        # Convert attribute name to slug format:
+        # 1. Lowercase: GPT4O -> gpt4o
+        # 2. Underscores to hyphens: GPT4O_MINI -> gpt4o-mini
+        # 3. Insert hyphen between letter and digit: gpt4o -> gpt-4o
+        slug = name.lower().replace("_", "-")
+        slug = re.sub(r"([a-z])(\d)", r"\1-\2", slug)
+
+        return cls(slug)
 
 
-class LlmModel(str, Enum, metaclass=LlmModelMeta):
+class LlmModel(str, metaclass=LlmModelMeta):
     """
-    Dynamic LLM model enum that accepts any model slug from the registry.
-    
-    This enum no longer contains hardcoded model values. All models are now
-    managed via the LLM Registry in the database. The _missing_() method allows
-    any string value to be used, making it fully dynamic.
-    
-    For backwards compatibility and type hints, you can still use this enum,
-    but model slugs should come from the registry, not hardcoded enum members.
+    Dynamic LLM model type that accepts any model slug from the registry.
+
+    This is a string subclass (not an Enum) that allows any model slug value.
+    All models are managed via the LLM Registry in the database.
+
+    Usage:
+        model = LlmModel("gpt-4o")  # Direct construction
+        model = LlmModel.GPT4O      # Attribute access (converted to "gpt-4o")
+        model.value                  # Returns the slug string
+        model.provider               # Returns the provider from registry
     """
+
+    def __new__(cls, value: str):
+        if isinstance(value, LlmModel):
+            return value
+        return str.__new__(cls, value)
 
     @classmethod
-    def _missing_(cls, value):
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
         """
-        Allow any string value to be used as an LlmModel enum member.
-        
-        This makes the enum fully dynamic - it accepts any model slug from
-        the database registry, not just hardcoded values.
+        Tell Pydantic how to validate LlmModel.
+
+        Accepts strings and converts them to LlmModel instances.
         """
-        if isinstance(value, str):
-            pseudo_member = str.__new__(cls, value)
-            pseudo_member._name_ = value.upper().replace("-", "_").replace("/", "_").replace(".", "_")
-            pseudo_member._value_ = value
-            return pseudo_member
-        return super()._missing_(value)
-    
+        return core_schema.no_info_after_validator_function(
+            cls,  # The validator function (LlmModel constructor)
+            core_schema.str_schema(),  # Accept string input
+            serialization=core_schema.to_string_ser_schema(),  # Serialize as string
+        )
+
+    @property
+    def value(self) -> str:
+        """Return the model slug (for compatibility with enum-style access)."""
+        return str(self)
+
     @classmethod
     def default(cls) -> "LlmModel":
         """
         Get the default model from the registry.
-        
+
         Returns the preferred default model (gpt-4o if available and enabled,
         otherwise the first enabled model from the registry).
         """
         from backend.data.llm_registry import get_default_model_slug
+
         return cls(get_default_model_slug())
 
     @property

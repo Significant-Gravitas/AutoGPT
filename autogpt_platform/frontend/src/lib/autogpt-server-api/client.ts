@@ -44,6 +44,7 @@ import type {
   LibraryAgentResponse,
   LibraryAgentSortEnum,
   LlmModel,
+  LlmModelCreator,
   MyAgentsResponse,
   NodeExecutionResult,
   NotificationPreference,
@@ -61,7 +62,9 @@ import type {
   LlmMigrationsResponse,
   RevertMigrationResponse,
   UpsertLlmProviderRequest,
+  UpsertLlmCreatorRequest,
   LlmModelsResponse,
+  LlmCreatorsResponse,
   LlmProvider,
   LlmProvidersResponse,
   Schedule,
@@ -513,6 +516,34 @@ export default class BackendAPI {
 
   revertAdminLlmMigration(migrationId: string): Promise<RevertMigrationResponse> {
     return this._request("POST", `/llm/admin/llm/migrations/${migrationId}/revert`);
+  }
+
+  // Creator management
+  listAdminLlmCreators(): Promise<LlmCreatorsResponse> {
+    return this._get("/llm/admin/llm/creators");
+  }
+
+  getAdminLlmCreator(creatorId: string): Promise<LlmModelCreator> {
+    return this._get(`/llm/admin/llm/creators/${creatorId}`);
+  }
+
+  createAdminLlmCreator(
+    payload: UpsertLlmCreatorRequest,
+  ): Promise<LlmModelCreator> {
+    return this._request("POST", "/llm/admin/llm/creators", payload);
+  }
+
+  updateAdminLlmCreator(
+    creatorId: string,
+    payload: UpsertLlmCreatorRequest,
+  ): Promise<LlmModelCreator> {
+    return this._request("PATCH", `/llm/admin/llm/creators/${creatorId}`, payload);
+  }
+
+  deleteAdminLlmCreator(
+    creatorId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    return this._request("DELETE", `/llm/admin/llm/creators/${creatorId}`);
   }
 
   // API Key related requests

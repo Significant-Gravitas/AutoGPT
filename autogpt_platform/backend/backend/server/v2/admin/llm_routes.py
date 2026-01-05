@@ -337,3 +337,131 @@ async def revert_llm_migration(migration_id: str):
             status_code=500,
             detail="Failed to revert migration",
         ) from exc
+
+
+# ============================================================================
+# Creator Management Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/creators",
+    summary="List model creators",
+    response_model=llm_model.LlmCreatorsResponse,
+)
+async def list_llm_creators():
+    """
+    List all model creators.
+
+    Creators are organizations that create/train models (e.g., OpenAI, Meta, Anthropic).
+    This is distinct from providers who host/serve the models (e.g., OpenRouter).
+    """
+    try:
+        creators = await llm_db.list_creators()
+        return llm_model.LlmCreatorsResponse(creators=creators)
+    except Exception as exc:
+        logger.exception("Failed to list creators: %s", exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to list creators",
+        ) from exc
+
+
+@router.get(
+    "/creators/{creator_id}",
+    summary="Get creator details",
+    response_model=llm_model.LlmModelCreator,
+)
+async def get_llm_creator(creator_id: str):
+    """Get details of a specific model creator."""
+    try:
+        creator = await llm_db.get_creator(creator_id)
+        if not creator:
+            raise fastapi.HTTPException(
+                status_code=404, detail=f"Creator '{creator_id}' not found"
+            )
+        return creator
+    except fastapi.HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to get creator %s: %s", creator_id, exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to get creator",
+        ) from exc
+
+
+@router.post(
+    "/creators",
+    summary="Create model creator",
+    response_model=llm_model.LlmModelCreator,
+)
+async def create_llm_creator(request: llm_model.UpsertLlmCreatorRequest):
+    """
+    Create a new model creator.
+
+    A creator represents an organization that creates/trains AI models,
+    such as OpenAI, Anthropic, Meta, or Google.
+    """
+    try:
+        creator = await llm_db.upsert_creator(request=request)
+        await _refresh_runtime_state()
+        logger.info("Created model creator '%s' (%s)", creator.display_name, creator.id)
+        return creator
+    except Exception as exc:
+        logger.exception("Failed to create creator: %s", exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to create creator",
+        ) from exc
+
+
+@router.patch(
+    "/creators/{creator_id}",
+    summary="Update model creator",
+    response_model=llm_model.LlmModelCreator,
+)
+async def update_llm_creator(
+    creator_id: str,
+    request: llm_model.UpsertLlmCreatorRequest,
+):
+    """Update an existing model creator."""
+    try:
+        creator = await llm_db.upsert_creator(request=request, creator_id=creator_id)
+        await _refresh_runtime_state()
+        logger.info("Updated model creator '%s' (%s)", creator.display_name, creator_id)
+        return creator
+    except Exception as exc:
+        logger.exception("Failed to update creator %s: %s", creator_id, exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to update creator",
+        ) from exc
+
+
+@router.delete(
+    "/creators/{creator_id}",
+    summary="Delete model creator",
+    response_model=dict,
+)
+async def delete_llm_creator(creator_id: str):
+    """
+    Delete a model creator.
+
+    This will remove the creator association from all models that reference it
+    (sets creatorId to NULL), but will not delete the models themselves.
+    """
+    try:
+        await llm_db.delete_creator(creator_id)
+        await _refresh_runtime_state()
+        logger.info("Deleted model creator '%s'", creator_id)
+        return {"success": True, "message": f"Creator '{creator_id}' deleted"}
+    except ValueError as exc:
+        logger.warning("Creator deletion validation failed: %s", exc)
+        raise fastapi.HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to delete creator %s: %s", creator_id, exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to delete creator",
+        ) from exc

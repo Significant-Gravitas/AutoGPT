@@ -10,6 +10,7 @@ from typing import Any
 
 from backend.data.llm_registry.registry import (
     get_all_model_slugs_for_validation,
+    get_default_model_slug,
     get_llm_discriminator_mapping,
     get_llm_model_schema_options,
 )
@@ -61,6 +62,12 @@ def refresh_llm_model_options(field_schema: dict[str, Any]) -> None:
         existing_enum = set(field_schema.get("enum", []))
         combined_enum = existing_enum | all_known_slugs
         field_schema["enum"] = sorted(combined_enum)
+
+    # Set the default value from the registry (gpt-4o if available, else first enabled)
+    # This ensures new blocks have a sensible default pre-selected
+    default_slug = get_default_model_slug()
+    if default_slug:
+        field_schema["default"] = default_slug
 
 
 def refresh_llm_discriminator_mapping(field_schema: dict[str, Any]) -> None:

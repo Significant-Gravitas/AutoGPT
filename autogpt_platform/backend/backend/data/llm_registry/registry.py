@@ -27,6 +27,18 @@ class RegistryModelCost:
 
 
 @dataclass(frozen=True)
+class RegistryModelCreator:
+    """Creator information for an LLM model."""
+
+    id: str
+    name: str
+    display_name: str
+    description: str | None
+    website_url: str | None
+    logo_url: str | None
+
+
+@dataclass(frozen=True)
 class RegistryModel:
     """Represents a model in the LLM registry."""
 
@@ -39,6 +51,7 @@ class RegistryModel:
     provider_display_name: str
     is_enabled: bool
     costs: tuple[RegistryModelCost, ...] = field(default_factory=tuple)
+    creator: RegistryModelCreator | None = None
 
 
 _static_metadata: dict[str, ModelMetadata] = {}
@@ -97,6 +110,7 @@ async def refresh_llm_registry() -> None:
                 include={
                     "Provider": True,
                     "Costs": True,
+                    "Creator": True,
                 }
             )
             logger.debug("Found %d LLM model records in database", len(records))
@@ -128,6 +142,18 @@ async def refresh_llm_registry() -> None:
                 for cost in (record.Costs or [])
             )
 
+            # Map creator if present
+            creator = None
+            if record.Creator:
+                creator = RegistryModelCreator(
+                    id=record.Creator.id,
+                    name=record.Creator.name,
+                    display_name=record.Creator.displayName,
+                    description=record.Creator.description,
+                    website_url=record.Creator.websiteUrl,
+                    logo_url=record.Creator.logoUrl,
+                )
+
             dynamic[record.slug] = RegistryModel(
                 slug=record.slug,
                 display_name=record.displayName,
@@ -142,6 +168,7 @@ async def refresh_llm_registry() -> None:
                 ),
                 is_enabled=record.isEnabled,
                 costs=costs,
+                creator=creator,
             )
 
         _dynamic_models.clear()

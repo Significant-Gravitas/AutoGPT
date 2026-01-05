@@ -17,12 +17,26 @@ class LlmModelCost(pydantic.BaseModel):
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
 
 
+class LlmModelCreator(pydantic.BaseModel):
+    """Represents the organization that created/trained the model (e.g., OpenAI, Meta)."""
+
+    id: str
+    name: str
+    display_name: str
+    description: Optional[str] = None
+    website_url: Optional[str] = None
+    logo_url: Optional[str] = None
+    metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
+
+
 class LlmModel(pydantic.BaseModel):
     id: str
     slug: str
     display_name: str
     description: Optional[str] = None
     provider_id: str
+    creator_id: Optional[str] = None
+    creator: Optional[LlmModelCreator] = None
     context_window: int
     max_output_tokens: Optional[int] = None
     is_enabled: bool = True
@@ -55,6 +69,10 @@ class LlmModelsResponse(pydantic.BaseModel):
     models: list[LlmModel]
 
 
+class LlmCreatorsResponse(pydantic.BaseModel):
+    creators: list[LlmModelCreator]
+
+
 class UpsertLlmProviderRequest(pydantic.BaseModel):
     name: str
     display_name: str
@@ -66,6 +84,15 @@ class UpsertLlmProviderRequest(pydantic.BaseModel):
     supports_json_output: bool = True
     supports_reasoning: bool = False
     supports_parallel_tool: bool = False
+    metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
+
+
+class UpsertLlmCreatorRequest(pydantic.BaseModel):
+    name: str
+    display_name: str
+    description: Optional[str] = None
+    website_url: Optional[str] = None
+    logo_url: Optional[str] = None
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
 
 
@@ -84,6 +111,7 @@ class CreateLlmModelRequest(pydantic.BaseModel):
     display_name: str
     description: Optional[str] = None
     provider_id: str
+    creator_id: Optional[str] = None
     context_window: int
     max_output_tokens: Optional[int] = None
     is_enabled: bool = True
@@ -101,6 +129,7 @@ class UpdateLlmModelRequest(pydantic.BaseModel):
     capabilities: Optional[dict[str, Any]] = None
     metadata: Optional[dict[str, Any]] = None
     provider_id: Optional[str] = None
+    creator_id: Optional[str] = None
     costs: Optional[list[LlmModelCostInput]] = None
 
 
