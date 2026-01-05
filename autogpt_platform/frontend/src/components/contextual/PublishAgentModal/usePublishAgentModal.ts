@@ -30,6 +30,7 @@ export interface Props {
   onStateChange?: (state: PublishState) => void;
   preSelectedAgentId?: string;
   preSelectedAgentVersion?: number;
+  showTrigger?: boolean;
 }
 
 export function usePublishAgentModal({
