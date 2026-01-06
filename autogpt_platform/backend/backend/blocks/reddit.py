@@ -104,6 +104,30 @@ def get_praw(creds: RedditCredentials) -> praw.Reddit:
     return client
 
 
+def strip_reddit_prefix(id_str: str) -> str:
+    """
+    Strip Reddit type prefix (t1_, t3_, etc.) from an ID if present.
+
+    Reddit uses type prefixes like t1_ for comments, t3_ for posts, etc.
+    This helper normalizes IDs by removing these prefixes when present,
+    allowing blocks to accept both 'abc123' and 't3_abc123' formats.
+
+    Args:
+        id_str: The ID string that may have a Reddit type prefix.
+
+    Returns:
+        The ID without the type prefix.
+    """
+    if (
+        len(id_str) > 3
+        and id_str[0] == "t"
+        and id_str[1].isdigit()
+        and id_str[2] == "_"
+    ):
+        return id_str[3:]
+    return id_str
+
+
 class GetRedditPostsBlock(Block):
     class Input(BlockSchemaInput):
         subreddit: str = SchemaField(
@@ -503,9 +527,7 @@ class GetRedditPostBlock(Block):
     @staticmethod
     def get_post(creds: RedditCredentials, post_id: str) -> RedditPostDetails:
         client = get_praw(creds)
-        # Handle both 'abc123' and 't3_abc123' formats
-        if post_id.startswith("t3_"):
-            post_id = post_id[3:]
+        post_id = strip_reddit_prefix(post_id)
         submission = client.submission(id=post_id)
 
         return RedditPostDetails(
@@ -1057,9 +1079,7 @@ class EditRedditPostBlock(Block):
         creds: RedditCredentials, post_id: str, new_content: str
     ) -> tuple[bool, str]:
         client = get_praw(creds)
-        # Handle both 'abc123' and 't3_abc123' formats
-        if post_id.startswith("t3_"):
-            post_id = post_id[3:]
+        post_id = strip_reddit_prefix(post_id)
         submission = client.submission(id=post_id)
         submission.edit(new_content)
         return True, f"https://reddit.com{submission.permalink}"
@@ -1355,8 +1375,7 @@ class GetRedditPostCommentsBlock(Block):
         creds: RedditCredentials, post_id: str, limit: int, sort: CommentSort
     ) -> list[Comment]:
         client = get_praw(creds)
-        if post_id.startswith("t3_"):
-            post_id = post_id[3:]
+        post_id = strip_reddit_prefix(post_id)
         submission = client.submission(id=post_id)
         submission.comment_sort = sort
         # Replace MoreComments with actual comments up to limit
@@ -1382,15 +1401,13 @@ class GetRedditPostCommentsBlock(Block):
             all_comments = []
             for comment in comments:
                 # Extract post_id from link_id (format: t3_xxxxx)
-                comment_post_id = comment.link_id
-                if comment_post_id.startswith("t3_"):
-                    comment_post_id = comment_post_id[3:]
+                comment_post_id = strip_reddit_prefix(comment.link_id)
 
                 # parent_comment_id is None for top-level comments (parent is a post: t3_)
                 # For replies, extract the comment ID from t1_xxxxx
                 parent_comment_id = None
                 if comment.parent_id.startswith("t1_"):
-                    parent_comment_id = comment.parent_id[3:]
+                    parent_comment_id = strip_reddit_prefix(comment.parent_id)
 
                 comment_data = RedditComment(
                     comment_id=comment.id,
@@ -1522,10 +1539,8 @@ class GetRedditCommentRepliesBlock(Block):
         creds: RedditCredentials, comment_id: str, post_id: str, limit: int
     ) -> list[Comment]:
         client = get_praw(creds)
-        if post_id.startswith("t3_"):
-            post_id = post_id[3:]
-        if comment_id.startswith("t1_"):
-            comment_id = comment_id[3:]
+        post_id = strip_reddit_prefix(post_id)
+        comment_id = strip_reddit_prefix(comment_id)
 
         # Get the submission and find the comment
         submission = client.submission(id=post_id)
@@ -1568,14 +1583,12 @@ class GetRedditCommentRepliesBlock(Block):
             )
             all_replies = []
             for reply in replies:
-                reply_post_id = reply.link_id
-                if reply_post_id.startswith("t3_"):
-                    reply_post_id = reply_post_id[3:]
+                reply_post_id = strip_reddit_prefix(reply.link_id)
 
                 # parent_comment_id is the parent comment (always present for replies)
                 parent_comment_id = None
                 if reply.parent_id.startswith("t1_"):
-                    parent_comment_id = reply.parent_id[3:]
+                    parent_comment_id = strip_reddit_prefix(reply.parent_id)
 
                 reply_data = RedditComment(
                     comment_id=reply.id,
@@ -1668,8 +1681,7 @@ class GetRedditCommentBlock(Block):
     @staticmethod
     def get_comment(creds: RedditCredentials, comment_id: str):
         client = get_praw(creds)
-        if comment_id.startswith("t1_"):
-            comment_id = comment_id[3:]
+        comment_id = strip_reddit_prefix(comment_id)
         return client.comment(id=comment_id)
 
     async def run(
@@ -1678,14 +1690,12 @@ class GetRedditCommentBlock(Block):
         try:
             comment = self.get_comment(credentials, input_data.comment_id)
 
-            post_id = comment.link_id
-            if post_id.startswith("t3_"):
-                post_id = post_id[3:]
+            post_id = strip_reddit_prefix(comment.link_id)
 
             # parent_comment_id is None for top-level comments (parent is a post: t3_)
             parent_comment_id = None
             if comment.parent_id.startswith("t1_"):
-                parent_comment_id = comment.parent_id[3:]
+                parent_comment_id = strip_reddit_prefix(comment.parent_id)
 
             comment_data = RedditComment(
                 comment_id=comment.id,
@@ -1757,8 +1767,7 @@ class ReplyToRedditCommentBlock(Block):
         creds: RedditCredentials, comment_id: str, reply_text: str
     ) -> str:
         client = get_praw(creds)
-        if comment_id.startswith("t1_"):
-            comment_id = comment_id[3:]
+        comment_id = strip_reddit_prefix(comment_id)
         comment = client.comment(id=comment_id)
         reply = comment.reply(reply_text)
         if not reply:
@@ -2227,8 +2236,7 @@ class DeleteRedditPostBlock(Block):
     @staticmethod
     def delete_post(creds: RedditCredentials, post_id: str) -> bool:
         client = get_praw(creds)
-        if post_id.startswith("t3_"):
-            post_id = post_id[3:]
+        post_id = strip_reddit_prefix(post_id)
         submission = client.submission(id=post_id)
         submission.delete()
         return True
@@ -2286,8 +2294,7 @@ class DeleteRedditCommentBlock(Block):
     @staticmethod
     def delete_comment(creds: RedditCredentials, comment_id: str) -> bool:
         client = get_praw(creds)
-        if comment_id.startswith("t1_"):
-            comment_id = comment_id[3:]
+        comment_id = strip_reddit_prefix(comment_id)
         comment = client.comment(id=comment_id)
         comment.delete()
         return True
