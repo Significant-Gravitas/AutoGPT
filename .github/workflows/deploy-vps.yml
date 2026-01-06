@@ -37,6 +37,33 @@ jobs:
             cd autogpt_platform
 
             # 4. Setup Environment Files (Use defaults if no custom env exists)
+            # Create/Update .env file with custom ports if provided
+            touch .env
+            
+            # Helper function to update/add env vars
+            update_env() {
+              if [ ! -z "$2" ]; then
+                if grep -q "^$1=" .env; then
+                  sed -i "s/^$1=.*/$1=$2/" .env
+                else
+                  echo "$1=$2" >> .env
+                fi
+              fi
+            }
+
+            # Set ports from secrets or defaults (Safe Ports)
+            APP_PORT="${{ secrets.FRONTEND_PORT || '3030' }}"
+            API_PORT="${{ secrets.BACKEND_PORT || '8090' }}"
+            DB_PORT="${{ secrets.DB_PORT || '5433' }}"
+            REDIS_PORT="${{ secrets.REDIS_PORT || '6380' }}"
+            SERVER_IP="${{ secrets.SERVER_HOST }}"
+
+            update_env "FRONTEND_PORT" "$APP_PORT"
+            update_env "BACKEND_PORT" "$API_PORT"
+            update_env "DB_PORT" "$DB_PORT"
+            update_env "REDIS_PORT" "$REDIS_PORT"
+            
+            # Copy other config defaults if missing
             if [ ! -f backend/.env ]; then
               echo "Creating backend/.env from default..."
               cp backend/.env.default backend/.env
@@ -45,6 +72,12 @@ jobs:
               echo "Creating frontend/.env from default..."
               cp frontend/.env.default frontend/.env
             fi
+            
+            # Update Frontend Environment to point to the correct public IP/Port
+            echo "Updating Frontend configuration..."
+            sed -i "s|NEXT_PUBLIC_AGPT_SERVER_URL=.*|NEXT_PUBLIC_AGPT_SERVER_URL=http://$SERVER_IP:$API_PORT/api|" frontend/.env
+            sed -i "s|NEXT_PUBLIC_SUPABASE_URL=.*|NEXT_PUBLIC_SUPABASE_URL=http://$SERVER_IP:8000|" frontend/.env
+
 
             # 5. Start Application with Docker Compose
             echo "Starting Docker services..."

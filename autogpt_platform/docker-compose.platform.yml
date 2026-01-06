@@ -66,7 +66,7 @@ services:
   redis:
     image: redis:latest
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     networks:
       - app-network
     healthcheck:
@@ -87,8 +87,8 @@ services:
     environment:
       <<: *backend-env
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_UI_PORT:-15672}:15672"
 
   rest_server:
     build:
@@ -114,7 +114,7 @@ services:
     environment:
       <<: *backend-env
     ports:
-      - "8006:8006"
+      - "${BACKEND_PORT:-8006}:8006"
     networks:
       - app-network
     logging:
@@ -313,7 +313,7 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     networks:
       - app-network
     logging:
