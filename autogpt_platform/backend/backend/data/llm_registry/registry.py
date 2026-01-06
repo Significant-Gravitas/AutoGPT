@@ -14,6 +14,16 @@ from backend.data.llm_registry.model_types import ModelMetadata
 logger = logging.getLogger(__name__)
 
 
+def _json_to_dict(value: Any) -> dict[str, Any]:
+    """Convert Prisma Json type to dict, with fallback to empty dict."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    # Prisma Json type should always be a dict at runtime
+    return dict(value) if value else {}
+
+
 @dataclass(frozen=True)
 class RegistryModelCost:
     """Cost configuration for an LLM model."""
@@ -137,7 +147,7 @@ async def refresh_llm_registry() -> None:
                     credential_id=cost.credentialId,
                     credential_type=cost.credentialType,
                     currency=cost.currency,
-                    metadata=cost.metadata or {},
+                    metadata=_json_to_dict(cost.metadata),
                 )
                 for cost in (record.Costs or [])
             )
@@ -159,8 +169,8 @@ async def refresh_llm_registry() -> None:
                 display_name=record.displayName,
                 description=record.description,
                 metadata=metadata,
-                capabilities=record.capabilities or {},
-                extra_metadata=record.metadata or {},
+                capabilities=_json_to_dict(record.capabilities),
+                extra_metadata=_json_to_dict(record.metadata),
                 provider_display_name=(
                     record.Provider.displayName
                     if record.Provider
