@@ -28,6 +28,8 @@ export const OutputHandler = ({
   const properties = outputSchema?.properties || {};
   const [isOutputVisible, setIsOutputVisible] = useState(true);
 
+  const showHandles = uiType !== BlockUIType.OUTPUT;
+
   const renderOutputHandles = (
     schema: RJSFSchema,
     keyPrefix: string = "",
@@ -69,11 +71,13 @@ export const OutputHandler = ({
                 ({displayType})
               </Text>
 
-              <OutputNodeHandle
-                field_name={fullKey}
-                nodeId={nodeId}
-                hexColor={hexColor}
-              />
+              {showHandles && (
+                <OutputNodeHandle
+                  field_name={fullKey}
+                  nodeId={nodeId}
+                  hexColor={hexColor}
+                />
+              )}
             </div>
 
             {/* Recursively render nested properties */}

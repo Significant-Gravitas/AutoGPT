@@ -3,7 +3,7 @@ import React from "react";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockUIType } from "../../types";
-import { FormRenderer2 } from "@/components/renderers/input-renderer-2/FormRenderer";
+import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 
 export const FormCreator = React.memo(
   ({
@@ -49,7 +49,7 @@ export const FormCreator = React.memo(
 
     return (
       <div className={className}>
-        <FormRenderer2
+        <FormRenderer
           jsonSchema={jsonSchema}
           handleChange={handleChange}
           uiSchema={uiSchema}

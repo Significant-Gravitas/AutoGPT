@@ -30,7 +30,9 @@ function formatDiffSummary(diff: DraftDiff | null): string {
   if (diff.nodes.modified > 0) nodeChanges.push(`~${diff.nodes.modified}`);
 
   if (nodeChanges.length > 0) {
-    parts.push(`${nodeChanges.join("/")} block${diff.nodes.added + diff.nodes.removed + diff.nodes.modified !== 1 ? "s" : ""}`);
+    parts.push(
+      `${nodeChanges.join("/")} block${diff.nodes.added + diff.nodes.removed + diff.nodes.modified !== 1 ? "s" : ""}`,
+    );
   }
 
   // Edge changes
@@ -40,7 +42,9 @@ function formatDiffSummary(diff: DraftDiff | null): string {
   if (diff.edges.modified > 0) edgeChanges.push(`~${diff.edges.modified}`);
 
   if (edgeChanges.length > 0) {
-    parts.push(`${edgeChanges.join("/")} connection${diff.edges.added + diff.edges.removed + diff.edges.modified !== 1 ? "s" : ""}`);
+    parts.push(
+      `${edgeChanges.join("/")} connection${diff.edges.added + diff.edges.removed + diff.edges.modified !== 1 ? "s" : ""}`,
+    );
   }
 
   return parts.join(", ");
@@ -111,7 +115,8 @@ export function DraftRecoveryPopup({
                 variant="small"
                 className="text-amber-700 dark:text-amber-400"
               >
-                {diffSummary || `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
+                {diffSummary ||
+                  `${nodeCount} block${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`}{" "}
                 • {formatTimeAgo(new Date(savedAt).toISOString())}
               </Text>
             </div>

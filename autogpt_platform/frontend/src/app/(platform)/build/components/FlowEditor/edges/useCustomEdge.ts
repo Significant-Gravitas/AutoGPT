@@ -11,7 +11,6 @@ import { CustomEdge } from "./CustomEdge";
 export const useCustomEdge = () => {
   const edges = useEdgeStore((s) => s.edges);
   const addEdge = useEdgeStore((s) => s.addEdge);
-  const removeEdge = useEdgeStore((s) => s.removeEdge);
   const setEdges = useEdgeStore((s) => s.setEdges);
 
   const onConnect = useCallback(

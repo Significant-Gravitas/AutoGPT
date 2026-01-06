@@ -10,7 +10,7 @@ import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutio
 import { NodeContainer } from "./components/NodeContainer";
 import { NodeHeader } from "./components/NodeHeader";
 import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
+import { preprocessInputSchema } from "@/components/renderers/InputRenderer/utils/input-schema-pre-processor";
 import { OutputHandler } from "../OutputHandler";
 import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
 import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";

@@ -16,7 +16,7 @@ import { pruneEmptyValues } from "@/lib/utils";
 import {
   ensurePathExists,
   parseHandleIdToPath,
-} from "@/components/renderers/input-renderer-2/helpers";
+} from "@/components/renderers/InputRenderer/helpers";
 
 // Minimum movement (in pixels) required before logging position change to history
 // Prevents spamming history with small movements when clicking on inputs inside blocks

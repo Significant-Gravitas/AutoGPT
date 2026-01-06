@@ -1,7 +1,7 @@
 import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
 import { useEdgeStore } from "../../../stores/edgeStore";
-import { cleanUpHandleId } from "@/components/renderers/input-renderer-2/helpers";
+import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
 import { cn } from "@/lib/utils";
 
 const InputNodeHandle = ({

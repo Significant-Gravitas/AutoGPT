@@ -4,7 +4,7 @@ import { CustomEdge } from "../components/FlowEditor/edges/CustomEdge";
 import { customEdgeToLink, linkToCustomEdge } from "../components/helper";
 import { MarkerType } from "@xyflow/react";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
-import { cleanUpHandleId } from "@/components/renderers/input-renderer-2/helpers";
+import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
 
 type EdgeStore = {
   edges: CustomEdge[];
