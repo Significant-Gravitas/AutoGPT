@@ -105,7 +105,9 @@ export default function useAgentGraph(
           notification?.type === "LLM_REGISTRY_REFRESH" ||
           notification?.event === "registry_updated"
         ) {
-          console.log("Received LLM registry refresh notification, reloading blocks...");
+          console.log(
+            "Received LLM registry refresh notification, reloading blocks...",
+          );
           loadBlocks();
         }
       },

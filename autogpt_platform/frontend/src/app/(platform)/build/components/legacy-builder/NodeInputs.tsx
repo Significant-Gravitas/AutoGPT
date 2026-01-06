@@ -1176,8 +1176,8 @@ const NodeStringInput: FC<{
             <SelectValue placeholder={schema.placeholder || displayName} />
           </SelectTrigger>
           <SelectContent className="nodrag">
-            {schema.enum!
-              .filter((option) => option)
+            {schema
+              .enum!.filter((option) => option)
               .map((option, index) => (
                 <SelectItem key={index} value={option}>
                   {beautifyString(option)}

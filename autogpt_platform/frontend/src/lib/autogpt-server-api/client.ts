@@ -406,9 +406,7 @@ export default class BackendAPI {
     return this._get("/llm/providers", query);
   }
 
-  listAdminLlmProviders(
-    includeModels = true,
-  ): Promise<LlmProvidersResponse> {
+  listAdminLlmProviders(includeModels = true): Promise<LlmProvidersResponse> {
     const query = includeModels ? { include_models: true } : undefined;
     return this._get("/llm/admin/llm/providers", query);
   }
@@ -443,11 +441,7 @@ export default class BackendAPI {
     modelId: string,
     payload: UpdateLlmModelRequest,
   ): Promise<LlmModel> {
-    return this._request(
-      "PATCH",
-      `/llm/admin/llm/models/${modelId}`,
-      payload,
-    );
+    return this._request("PATCH", `/llm/admin/llm/models/${modelId}`, payload);
   }
 
   toggleAdminLlmModel(
@@ -477,11 +471,9 @@ export default class BackendAPI {
     nodes_migrated: number;
     message: string;
   }> {
-    return this._request(
-      "DELETE",
-      `/llm/admin/llm/models/${modelId}`,
-      { replacement_model_slug: replacementModelSlug },
-    );
+    return this._request("DELETE", `/llm/admin/llm/models/${modelId}`, {
+      replacement_model_slug: replacementModelSlug,
+    });
   }
 
   // Migration management
@@ -497,8 +489,13 @@ export default class BackendAPI {
     return this._get(`/llm/admin/llm/migrations/${migrationId}`);
   }
 
-  revertAdminLlmMigration(migrationId: string): Promise<RevertMigrationResponse> {
-    return this._request("POST", `/llm/admin/llm/migrations/${migrationId}/revert`);
+  revertAdminLlmMigration(
+    migrationId: string,
+  ): Promise<RevertMigrationResponse> {
+    return this._request(
+      "POST",
+      `/llm/admin/llm/migrations/${migrationId}/revert`,
+    );
   }
 
   // Creator management
@@ -520,7 +517,11 @@ export default class BackendAPI {
     creatorId: string,
     payload: UpsertLlmCreatorRequest,
   ): Promise<LlmModelCreator> {
-    return this._request("PATCH", `/llm/admin/llm/creators/${creatorId}`, payload);
+    return this._request(
+      "PATCH",
+      `/llm/admin/llm/creators/${creatorId}`,
+      payload,
+    );
   }
 
   deleteAdminLlmCreator(

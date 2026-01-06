@@ -110,7 +110,10 @@ export const useAllBlockContent = () => {
       }
     };
 
-    const unsubscribe = api.onWebSocketMessage("notification", handleNotification);
+    const unsubscribe = api.onWebSocketMessage(
+      "notification",
+      handleNotification,
+    );
 
     return () => {
       unsubscribe();
