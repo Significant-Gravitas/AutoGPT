@@ -92,6 +92,16 @@ export function useAgentInfoStep({
       return;
     }
 
+    // Validate that an agent is selected before submission
+    if (!selectedAgentId || !selectedAgentVersion) {
+      toast({
+        title: "Agent Selection Required",
+        description: "Please select an agent before submitting to the store.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const categories = data.category ? [data.category] : [];
     const filteredCategories = categories.filter(Boolean);
 
@@ -106,8 +116,8 @@ export function useAgentInfoStep({
         image_urls: images,
         video_url: data.youtubeLink || "",
         agent_output_demo_url: data.agentOutputDemo || "",
-        agent_id: selectedAgentId || "",
-        agent_version: selectedAgentVersion || 0,
+        agent_id: selectedAgentId,
+        agent_version: selectedAgentVersion,
         slug: (data.slug || "").replace(/\s+/g, "-"),
         categories: filteredCategories,
         recommended_schedule_cron: data.recommendedScheduleCron || null,

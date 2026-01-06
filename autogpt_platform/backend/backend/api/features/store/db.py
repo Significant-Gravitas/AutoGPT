@@ -759,9 +759,15 @@ async def create_store_submission(
             logger.warning(
                 f"Agent not found for user {user_id}: {agent_id} v{agent_version}"
             )
-            raise store_exceptions.AgentNotFoundError(
-                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
-            )
+            # Provide more user-friendly error message when agent_id is empty
+            if not agent_id or agent_id.strip() == "":
+                raise store_exceptions.AgentNotFoundError(
+                    "No agent selected. Please select an agent before submitting to the store."
+                )
+            else:
+                raise store_exceptions.AgentNotFoundError(
+                    f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
+                )
 
         # Check if listing already exists for this agent
         existing_listing = await prisma.models.StoreListing.prisma().find_first(
