@@ -51,9 +51,13 @@ export function NodeRightClickMenu({
   );
 
   return (
-    <ContextMenu.Root>
-      <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
-      <ContextMenuContent />
-    </ContextMenu.Root>
+    <div onContextMenu={(e) => e.stopPropagation()}>
+      <ContextMenu.Root>
+        <ContextMenu.Trigger asChild>
+          <div style={{ width: "100%", height: "100%" }}>{children}</div>
+        </ContextMenu.Trigger>
+        <ContextMenuContent />
+      </ContextMenu.Root>
+    </div>
   );
 }
