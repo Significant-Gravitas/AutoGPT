@@ -12,8 +12,9 @@ import {
 } from "@/components/atoms/Table/Table";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { deleteLlmCreatorAction, updateLlmCreatorAction } from "../actions";
+import { updateLlmCreatorAction } from "../actions";
 import { useRouter } from "next/navigation";
+import { DeleteCreatorModal } from "./DeleteCreatorModal";
 
 export function CreatorsTable({ creators }: { creators: LlmModelCreator[] }) {
   if (!creators.length) {
@@ -66,7 +67,7 @@ export function CreatorsTable({ creators }: { creators: LlmModelCreator[] }) {
               <TableCell>
                 <div className="flex items-center justify-end gap-2">
                   <EditCreatorModal creator={creator} />
-                  <DeleteCreatorButton creatorId={creator.id} />
+                  <DeleteCreatorModal creator={creator} />
                 </div>
               </TableCell>
             </TableRow>
@@ -160,34 +161,5 @@ function EditCreatorModal({ creator }: { creator: LlmModelCreator }) {
         </form>
       </Dialog.Content>
     </Dialog>
-  );
-}
-
-function DeleteCreatorButton({ creatorId }: { creatorId: string }) {
-  const router = useRouter();
-
-  return (
-    <form
-      action={async (formData) => {
-        if (
-          confirm(
-            "Delete this creator? Models using this creator will have their creator set to none.",
-          )
-        ) {
-          await deleteLlmCreatorAction(formData);
-          router.refresh();
-        }
-      }}
-    >
-      <input type="hidden" name="creator_id" value={creatorId} />
-      <Button
-        type="submit"
-        variant="outline"
-        size="small"
-        className="min-w-0 text-destructive hover:bg-destructive/10"
-      >
-        Delete
-      </Button>
-    </form>
   );
 }
