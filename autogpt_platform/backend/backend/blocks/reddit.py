@@ -1886,7 +1886,7 @@ class GetRedditUserInfoBlock(Block):
                         title="testuser's profile",
                         public_description="A test user",
                         subscribers=100,
-                        over_18=False,
+                        over18=False,
                     ),
                 ),
                 "get_moderated_subreddits": lambda creds, username: [
