@@ -124,15 +124,15 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
     targetNodeId: string,
     executionResult: NodeExecutionResult,
   ) => {
-    set((state) => ({
-      edges: state.edges.map((edge) => {
+    set((state) => {
+      let hasChanges = false;
+
+      const newEdges = state.edges.map((edge) => {
         if (edge.target !== targetNodeId) {
           return edge;
         }
 
-        const beadData =
-          edge.data?.beadData ??
-          new Map<string, NodeExecutionResult["status"]>();
+        const beadData = new Map(edge.data?.beadData ?? new Map());
 
         const inputValue = edge.targetHandle
           ? executionResult.input_data[edge.targetHandle]
@@ -156,6 +156,11 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
           beadUp = beadDown + 1;
         }
 
+        if (edge.data?.beadUp === beadUp && edge.data?.beadDown === beadDown) {
+          return edge;
+        }
+
+        hasChanges = true;
         return {
           ...edge,
           data: {
@@ -165,8 +170,10 @@ export const useEdgeStore = create<EdgeStore>((set, get) => ({
             beadData,
           },
         };
-      }),
-    }));
+      });
+
+      return hasChanges ? { edges: newEdges } : state;
+    });
   },
 
   resetEdgeBeads: () => {
