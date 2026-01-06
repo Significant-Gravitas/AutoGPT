@@ -299,6 +299,7 @@ class PostRedditCommentBlock(Block):
     @staticmethod
     def reply_post(creds: RedditCredentials, post_id: str, comment: str) -> str:
         client = get_praw(creds)
+        post_id = strip_reddit_prefix(post_id)
         submission = client.submission(id=post_id)
         new_comment = submission.reply(comment)
         if not new_comment:
@@ -691,7 +692,7 @@ class GetUserPostsBlock(Block):
             yield "error", str(e)
 
 
-class GetMyPostsBlock(Block):
+class RedditGetMyPostsBlock(Block):
     """Get posts by the authenticated Reddit user."""
 
     class Input(BlockSchemaInput):
@@ -717,8 +718,8 @@ class GetMyPostsBlock(Block):
             id="4ab3381b-0c07-4201-89b3-fa2ec264f154",
             description="Fetch posts created by the authenticated Reddit user (you).",
             categories={BlockCategory.SOCIAL},
-            input_schema=GetMyPostsBlock.Input,
-            output_schema=GetMyPostsBlock.Output,
+            input_schema=RedditGetMyPostsBlock.Input,
+            output_schema=RedditGetMyPostsBlock.Output,
             disabled=(
                 not settings.secrets.reddit_client_id
                 or not settings.secrets.reddit_client_secret
