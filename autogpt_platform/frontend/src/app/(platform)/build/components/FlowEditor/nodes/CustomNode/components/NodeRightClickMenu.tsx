@@ -5,8 +5,8 @@ import {
   SecondaryMenuItem,
   SecondaryMenuSeparator,
 } from "@/components/molecules/SecondaryMenu/SecondaryMenu";
+import { CopyIcon, TrashIcon } from "@phosphor-icons/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { CopyIcon, TrashIcon } from "@radix-ui/react-icons";
 import { useReactFlow } from "@xyflow/react";
 import { CustomNode } from "../CustomNode";
 
@@ -42,12 +42,15 @@ export function NodeRightClickMenu({
       </ContextMenu.Trigger>
       <SecondaryMenuContent>
         <SecondaryMenuItem onSelect={copyNode}>
-          <CopyIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+          <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
           <span className="dark:text-gray-100">Copy</span>
         </SecondaryMenuItem>
         <SecondaryMenuSeparator />
         <SecondaryMenuItem variant="destructive" onSelect={deleteNode}>
-          <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+          <TrashIcon
+            size={20}
+            className="mr-2 text-red-500 dark:text-red-400"
+          />
           <span className="dark:text-red-400">Delete</span>
         </SecondaryMenuItem>
       </SecondaryMenuContent>

@@ -9,8 +9,12 @@ import {
   SecondaryDropdownMenuItem,
   SecondaryDropdownMenuSeparator,
 } from "@/components/molecules/SecondaryMenu/SecondaryMenu";
-import { DotsThreeOutlineVerticalIcon } from "@phosphor-icons/react";
-import { CopyIcon, ExitIcon, TrashIcon } from "@radix-ui/react-icons";
+import {
+  ArrowSquareOutIcon,
+  CopyIcon,
+  DotsThreeOutlineVerticalIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
 
 export const NodeContextMenu = ({
@@ -45,7 +49,7 @@ export const NodeContextMenu = ({
       </DropdownMenuTrigger>
       <SecondaryDropdownMenuContent side="right" align="start">
         <SecondaryDropdownMenuItem onClick={handleCopy}>
-          <CopyIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+          <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
           <span className="dark:text-gray-100">Copy</span>
         </SecondaryDropdownMenuItem>
 
@@ -53,7 +57,7 @@ export const NodeContextMenu = ({
           <SecondaryDropdownMenuItem
             onClick={() => window.open(`/build?flowID=${subGraphID}`)}
           >
-            <ExitIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
             <span className="dark:text-gray-100">Open agent</span>
           </SecondaryDropdownMenuItem>
         )}
@@ -61,7 +65,10 @@ export const NodeContextMenu = ({
         <SecondaryDropdownMenuSeparator />
 
         <SecondaryDropdownMenuItem variant="destructive" onClick={handleDelete}>
-          <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+          <TrashIcon
+            size={20}
+            className="mr-2 text-red-500 dark:text-red-400"
+          />
           <span className="dark:text-red-400">Delete</span>
         </SecondaryDropdownMenuItem>
       </SecondaryDropdownMenuContent>
