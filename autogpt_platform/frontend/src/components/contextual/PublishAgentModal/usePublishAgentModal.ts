@@ -3,6 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import { PublishAgentInfoInitialData } from "./components/AgentInfoStep/helpers";
 import { useRouter } from "next/navigation";
 import { emptyModalState } from "./helpers";
+import {
+  useGetV2GetMyAgents,
+  useGetV2ListMySubmissions,
+} from "@/app/api/__generated__/endpoints/store/store";
+import { okData } from "@/app/api/helpers";
+import type { MyAgent } from "@/app/api/__generated__/models/myAgent";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -22,9 +28,17 @@ export interface Props {
   trigger?: React.ReactNode;
   targetState?: PublishState;
   onStateChange?: (state: PublishState) => void;
+  preSelectedAgentId?: string;
+  preSelectedAgentVersion?: number;
+  showTrigger?: boolean;
 }
 
-export function usePublishAgentModal({ targetState, onStateChange }: Props) {
+export function usePublishAgentModal({
+  targetState,
+  onStateChange,
+  preSelectedAgentId,
+  preSelectedAgentVersion,
+}: Props) {
   const [currentState, setCurrentState] = useState<PublishState>(
     targetState || defaultTargetState,
   );
@@ -42,13 +56,19 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
 
   const [_, setSelectedAgent] = useState<string | null>(null);
 
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(
+    preSelectedAgentId || null,
+  );
 
   const [selectedAgentVersion, setSelectedAgentVersion] = useState<
     number | null
-  >(null);
+  >(preSelectedAgentVersion || null);
 
   const router = useRouter();
+
+  // Fetch agent data for pre-populating form when agent is pre-selected
+  const { data: myAgents } = useGetV2GetMyAgents();
+  const { data: mySubmissions } = useGetV2ListMySubmissions();
 
   // Sync currentState with targetState when it changes from outside
   useEffect(() => {
@@ -60,13 +80,90 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
   // Reset internal state when modal opens
   useEffect(() => {
     if (!targetState) return;
-    if (targetState.isOpen && targetState.step === "select") {
+    if (targetState.isOpen) {
       setSelectedAgent(null);
-      setSelectedAgentId(null);
-      setSelectedAgentVersion(null);
+      setSelectedAgentId(preSelectedAgentId || null);
+      setSelectedAgentVersion(preSelectedAgentVersion || null);
       setInitialData(emptyModalState);
     }
-  }, [targetState]);
+  }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
+
+  // Pre-populate form data when modal opens with info step and pre-selected agent
+  useEffect(() => {
+    if (
+      !targetState?.isOpen ||
+      targetState.step !== "info" ||
+      !preSelectedAgentId ||
+      !preSelectedAgentVersion
+    )
+      return;
+    const agentsData = okData(myAgents) as any;
+    const submissionsData = okData(mySubmissions) as any;
+
+    if (!agentsData || !submissionsData) return;
+
+    // Find the agent data
+    const agent = agentsData.agents?.find(
+      (a: MyAgent) => a.agent_id === preSelectedAgentId,
+    );
+    if (!agent) return;
+
+    // Find published submission data for this agent (for updates)
+    const publishedSubmissionData = submissionsData.submissions
+      ?.filter(
+        (s: StoreSubmission) =>
+          s.status === "APPROVED" && s.agent_id === preSelectedAgentId,
+      )
+      .sort(
+        (a: StoreSubmission, b: StoreSubmission) =>
+          b.agent_version - a.agent_version,
+      )[0];
+
+    // Populate initial data (same logic as handleNextFromSelect)
+    const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
+      ? {
+          agent_id: preSelectedAgentId,
+          title: publishedSubmissionData.name,
+          subheader: publishedSubmissionData.sub_heading || "",
+          description: publishedSubmissionData.description,
+          instructions: publishedSubmissionData.instructions || "",
+          youtubeLink: publishedSubmissionData.video_url || "",
+          agentOutputDemo: publishedSubmissionData.agent_output_demo_url || "",
+          additionalImages: [
+            ...new Set(publishedSubmissionData.image_urls || []),
+          ].filter(Boolean) as string[],
+          category: publishedSubmissionData.categories?.[0] || "",
+          thumbnailSrc: agent.agent_image || "https://picsum.photos/300/200",
+          slug: publishedSubmissionData.slug,
+          recommendedScheduleCron: agent.recommended_schedule_cron || "",
+          changesSummary: publishedSubmissionData.changes_summary || "",
+        }
+      : {
+          ...emptyModalState,
+          agent_id: preSelectedAgentId,
+          title: agent.agent_name,
+          description: agent.description || "",
+          thumbnailSrc: agent.agent_image || "https://picsum.photos/300/200",
+          slug: agent.agent_name.replace(/ /g, "-"),
+          recommendedScheduleCron: agent.recommended_schedule_cron || "",
+        };
+
+    setInitialData(initialFormData);
+
+    // Update the state with the submission data if this is an update
+    if (publishedSubmissionData) {
+      setCurrentState((prevState) => ({
+        ...prevState,
+        submissionData: publishedSubmissionData,
+      }));
+    }
+  }, [
+    targetState,
+    preSelectedAgentId,
+    preSelectedAgentVersion,
+    myAgents,
+    mySubmissions,
+  ]);
 
   function handleClose() {
     // Reset all internal state
@@ -97,20 +194,43 @@ export function usePublishAgentModal({ targetState, onStateChange }: Props) {
       imageSrc: string;
       recommendedScheduleCron: string | null;
     },
+    publishedSubmissionData?: StoreSubmission | null,
   ) {
-    setInitialData({
-      ...emptyModalState,
-      agent_id: agentId,
-      title: agentData.name,
-      description: agentData.description,
-      thumbnailSrc: agentData.imageSrc,
-      slug: agentData.name.replace(/ /g, "-"),
-      recommendedScheduleCron: agentData.recommendedScheduleCron || "",
-    });
+    // Pre-populate with published data if this is an update, otherwise use agent data
+    const initialFormData: PublishAgentInfoInitialData = publishedSubmissionData
+      ? {
+          agent_id: agentId,
+          title: publishedSubmissionData.name,
+          subheader: publishedSubmissionData.sub_heading || "",
+          description: publishedSubmissionData.description,
+          instructions: publishedSubmissionData.instructions || "",
+          youtubeLink: publishedSubmissionData.video_url || "",
+          agentOutputDemo: publishedSubmissionData.agent_output_demo_url || "",
+          additionalImages: [
+            ...new Set(publishedSubmissionData.image_urls || []),
+          ].filter(Boolean) as string[],
+          category: publishedSubmissionData.categories?.[0] || "", // Take first category
+          thumbnailSrc: agentData.imageSrc, // Use current agent image
+          slug: publishedSubmissionData.slug,
+          recommendedScheduleCron: agentData.recommendedScheduleCron || "",
+          changesSummary: publishedSubmissionData.changes_summary || "", // Pre-populate with existing changes summary
+        }
+      : {
+          ...emptyModalState,
+          agent_id: agentId,
+          title: agentData.name,
+          description: agentData.description,
+          thumbnailSrc: agentData.imageSrc,
+          slug: agentData.name.replace(/ /g, "-"),
+          recommendedScheduleCron: agentData.recommendedScheduleCron || "",
+        };
+
+    setInitialData(initialFormData);
 
     updateState({
       ...currentState,
       step: "info",
+      submissionData: publishedSubmissionData || null,
     });
 
     setSelectedAgentId(agentId);

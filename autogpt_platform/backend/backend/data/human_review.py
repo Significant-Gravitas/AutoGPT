@@ -13,7 +13,7 @@ from prisma.models import PendingHumanReview
 from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
-from backend.server.v2.executions.review.model import (
+from backend.api.features.executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )
@@ -30,32 +30,6 @@ class ReviewResult(BaseModel):
     message: str = ""
     processed: bool
     node_exec_id: str
-
-
-async def get_pending_review_by_node_exec_id(
-    node_exec_id: str, user_id: str
-) -> Optional["PendingHumanReviewModel"]:
-    """
-    Get a pending review by node execution ID with user ownership validation.
-
-    Args:
-        node_exec_id: The node execution ID to check
-        user_id: The user ID to validate ownership
-
-    Returns:
-        The existing review if found and owned by the user, None otherwise
-    """
-    review = await PendingHumanReview.prisma().find_first(
-        where={
-            "nodeExecId": node_exec_id,
-            "userId": user_id,
-        }
-    )
-
-    if review:
-        return PendingHumanReviewModel.from_db(review)
-
-    return None
 
 
 async def get_or_create_human_review(
@@ -121,27 +95,17 @@ async def get_or_create_human_review(
     if review.processed:
         return None
 
-    if review.status == ReviewStatus.APPROVED:
-        # Return the approved review result
+    # If pending, return None to continue waiting, otherwise return the review result
+    if review.status == ReviewStatus.WAITING:
+        return None
+    else:
         return ReviewResult(
             data=review.payload,
-            status=ReviewStatus.APPROVED,
+            status=review.status,
             message=review.reviewMessage or "",
             processed=review.processed,
             node_exec_id=review.nodeExecId,
         )
-    elif review.status == ReviewStatus.REJECTED:
-        # Return the rejected review result
-        return ReviewResult(
-            data=None,
-            status=ReviewStatus.REJECTED,
-            message=review.reviewMessage or "",
-            processed=review.processed,
-            node_exec_id=review.nodeExecId,
-        )
-    else:
-        # Review is pending - return None to continue waiting
-        return None
 
 
 async def has_pending_reviews_for_graph_exec(graph_exec_id: str) -> bool:

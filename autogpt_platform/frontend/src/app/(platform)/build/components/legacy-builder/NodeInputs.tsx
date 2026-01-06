@@ -2,6 +2,7 @@ import {
   ConnectionData,
   CustomNodeData,
 } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { NodeTableInput } from "@/app/(platform)/build/components/legacy-builder/NodeTableInput";
 import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Calendar } from "@/components/__legacy__/ui/calendar";
@@ -28,7 +29,6 @@ import {
 } from "@/components/__legacy__/ui/select";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicker/GoogleDrivePickerInput";
-import { NodeTableInput } from "@/components/node-table-input";
 import {
   BlockIOArraySubSchema,
   BlockIOBooleanSubSchema,
@@ -984,15 +984,17 @@ const NodeArrayInput: FC<{
           );
         return (
           <div key={entryKey}>
-            <NodeHandle
-              title={`#${index + 1}`}
-              className="text-sm text-gray-500"
-              keyName={entryKey}
-              schema={schema.items!}
-              isConnected={isConnected}
-              isRequired={false}
-              side="left"
-            />
+            {schema.items && (
+              <NodeHandle
+                title={`#${index + 1}`}
+                className="text-sm text-gray-500"
+                keyName={entryKey}
+                schema={schema.items}
+                isConnected={isConnected}
+                isRequired={false}
+                side="left"
+              />
+            )}
             <div className="mb-2 flex space-x-2">
               {!isConnected &&
                 (schema.items ? (

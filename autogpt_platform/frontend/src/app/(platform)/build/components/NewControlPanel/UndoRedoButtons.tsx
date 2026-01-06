@@ -1,12 +1,12 @@
 import { Separator } from "@/components/__legacy__/ui/separator";
-import { ControlPanelButton } from "./ControlPanelButton";
-import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { ArrowUUpLeftIcon, ArrowUUpRightIcon } from "@phosphor-icons/react";
 import { useHistoryStore } from "../../stores/historyStore";
+import { ControlPanelButton } from "./ControlPanelButton";
 
 import { useEffect } from "react";
 
@@ -43,7 +43,7 @@ export const UndoRedoButtons = () => {
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton as="button" disabled={!canUndo()} onClick={undo}>
-            <ArrowUUpLeftIcon className="h-6 w-6" />
+            <ArrowUUpLeftIcon className="size-5" />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Undo</TooltipContent>
@@ -52,7 +52,7 @@ export const UndoRedoButtons = () => {
       <Tooltip delayDuration={100}>
         <TooltipTrigger asChild>
           <ControlPanelButton as="button" disabled={!canRedo()} onClick={redo}>
-            <ArrowUUpRightIcon className="h-6 w-6" />
+            <ArrowUUpRightIcon className="size-5" />
           </ControlPanelButton>
         </TooltipTrigger>
         <TooltipContent side="right">Redo</TooltipContent>

@@ -5,6 +5,7 @@ from enum import Enum
 from multiprocessing import Manager
 from queue import Empty
 from typing import (
+    TYPE_CHECKING,
     Annotated,
     Any,
     AsyncGenerator,
@@ -65,10 +66,25 @@ from .includes import (
 )
 from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 
+if TYPE_CHECKING:
+    pass
+
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 config = Config()
+
+
+class ExecutionContext(BaseModel):
+    """
+    Unified context that carries execution-level data throughout the entire execution flow.
+    This includes information needed by blocks, sub-graphs, and execution management.
+    """
+
+    safe_mode: bool = True
+    user_timezone: str = "UTC"
+    root_execution_id: Optional[str] = None
+    parent_execution_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -365,9 +381,8 @@ class GraphExecutionWithNodes(GraphExecution):
 
     def to_graph_execution_entry(
         self,
-        user_context: "UserContext",
+        execution_context: ExecutionContext,
         compiled_nodes_input_masks: Optional[NodesInputMasks] = None,
-        parent_graph_exec_id: Optional[str] = None,
     ):
         return GraphExecutionEntry(
             user_id=self.user_id,
@@ -375,8 +390,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
             nodes_input_masks=compiled_nodes_input_masks,
-            user_context=user_context,
-            parent_graph_exec_id=parent_graph_exec_id,
+            execution_context=execution_context,
         )
 
 
@@ -449,7 +463,7 @@ class NodeExecutionResult(BaseModel):
         )
 
     def to_node_execution_entry(
-        self, user_context: "UserContext"
+        self, execution_context: ExecutionContext
     ) -> "NodeExecutionEntry":
         return NodeExecutionEntry(
             user_id=self.user_id,
@@ -460,7 +474,7 @@ class NodeExecutionResult(BaseModel):
             node_id=self.node_id,
             block_id=self.block_id,
             inputs=self.input_data,
-            user_context=user_context,
+            execution_context=execution_context,
         )
 
 
@@ -826,6 +840,30 @@ async def upsert_execution_output(
     await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
+async def get_execution_outputs_by_node_exec_id(
+    node_exec_id: str,
+) -> dict[str, Any]:
+    """
+    Get all execution outputs for a specific node execution ID.
+
+    Args:
+        node_exec_id: The node execution ID to get outputs for
+
+    Returns:
+        Dictionary mapping output names to their data values
+    """
+    outputs = await AgentNodeExecutionInputOutput.prisma().find_many(
+        where={"referencedByOutputExecId": node_exec_id}
+    )
+
+    result = {}
+    for output in outputs:
+        if output.data is not None:
+            result[output.name] = type_utils.convert(output.data, JsonValue)
+
+    return result
+
+
 async def update_graph_execution_start_time(
     graph_exec_id: str,
 ) -> GraphExecution | None:
@@ -1099,23 +1137,20 @@ async def get_latest_node_execution(
 # ----------------- Execution Infrastructure ----------------- #
 
 
-class UserContext(BaseModel):
-    """Generic user context for graph execution containing user-specific settings."""
-
-    timezone: str
-
-
 class GraphExecutionEntry(BaseModel):
+    model_config = {"extra": "ignore"}
+
     user_id: str
     graph_exec_id: str
     graph_id: str
     graph_version: int
     nodes_input_masks: Optional[NodesInputMasks] = None
-    user_context: UserContext
-    parent_graph_exec_id: Optional[str] = None
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
 
 
 class NodeExecutionEntry(BaseModel):
+    model_config = {"extra": "ignore"}
+
     user_id: str
     graph_exec_id: str
     graph_id: str
@@ -1124,7 +1159,7 @@ class NodeExecutionEntry(BaseModel):
     node_id: str
     block_id: str
     inputs: BlockInput
-    user_context: UserContext
+    execution_context: ExecutionContext = Field(default_factory=ExecutionContext)
 
 
 class ExecutionQueue(Generic[T]):
@@ -1458,3 +1493,35 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+async def get_frequently_executed_graphs(
+    days_back: int = 30,
+    min_executions: int = 10,
+) -> list[dict]:
+    """Get graphs that have been frequently executed for monitoring."""
+    query_template = """
+    SELECT DISTINCT 
+        e."agentGraphId" as graph_id,
+        e."userId" as user_id,
+        COUNT(*) as execution_count
+    FROM {schema_prefix}"AgentGraphExecution" e
+    WHERE e."createdAt" >= $1::timestamp
+        AND e."isDeleted" = false
+        AND e."executionStatus" IN ('COMPLETED', 'FAILED', 'TERMINATED')
+    GROUP BY e."agentGraphId", e."userId"
+    HAVING COUNT(*) >= $2
+    ORDER BY execution_count DESC
+    """
+
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    result = await query_raw_with_schema(query_template, start_date, min_executions)
+
+    return [
+        {
+            "graph_id": row["graph_id"],
+            "user_id": row["user_id"],
+            "execution_count": int(row["execution_count"]),
+        }
+        for row in result
+    ]

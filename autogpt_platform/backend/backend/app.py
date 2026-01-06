@@ -36,10 +36,10 @@ def main(**kwargs):
     Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
     """
 
+    from backend.api.rest_api import AgentServer
+    from backend.api.ws_api import WebsocketServer
     from backend.executor import DatabaseManager, ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
-    from backend.server.rest_api import AgentServer
-    from backend.server.ws_api import WebsocketServer
 
     run_processes(
         DatabaseManager().set_log_level("warning"),

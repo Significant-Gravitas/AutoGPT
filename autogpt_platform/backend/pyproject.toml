@@ -82,6 +82,7 @@ firecrawl-py = "^4.3.6"
 exa-py = "^1.14.20"
 croniter = "^6.0.0"
 stagehand = "^0.5.1"
+gravitas-md2gdocs = "^0.1.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -114,6 +115,9 @@ cli = "backend.cli:main"
 format = "linter:format"
 lint = "linter:lint"
 test = "run_tests:test"
+load-store-agents = "test.load_store_agents:run"
+export-api-schema = "backend.cli.generate_openapi_json:main"
+oauth-tool = "backend.cli.oauth_tool:cli"
 
 [tool.isort]
 profile = "black"

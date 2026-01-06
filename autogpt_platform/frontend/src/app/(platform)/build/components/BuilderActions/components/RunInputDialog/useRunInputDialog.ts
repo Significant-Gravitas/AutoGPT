@@ -18,6 +18,7 @@ export const useRunInputDialog = ({
   const credentialsSchema = useGraphStore(
     (state) => state.credentialsInputSchema,
   );
+  const setIsGraphRunning = useGraphStore((state) => state.setIsGraphRunning);
 
   const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -41,6 +42,8 @@ export const useRunInputDialog = ({
           });
         },
         onError: (error) => {
+          // Reset running state on error
+          setIsGraphRunning(false);
           toast({
             title: (error.detail as string) ?? "An unexpected error occurred.",
             description: "An unexpected error occurred.",
@@ -76,8 +79,14 @@ export const useRunInputDialog = ({
     await executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
-      data: { inputs: inputValues, credentials_inputs: credentialValues },
+      data: {
+        inputs: inputValues,
+        credentials_inputs: credentialValues,
+        source: "builder",
+      },
     });
+    // Optimistically set running state immediately for responsive UI
+    setIsGraphRunning(true);
     setIsOpen(false);
   };
 
