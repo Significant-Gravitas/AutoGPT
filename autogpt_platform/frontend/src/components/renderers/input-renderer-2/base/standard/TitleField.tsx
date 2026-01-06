@@ -9,9 +9,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
 import { isAnyOfSchema } from "../../utils/schema-utils";
 import { cn } from "@/lib/utils";
-import { cleanUpHandleId, isArrayItem } from "../../helpers";
+import { isArrayItem } from "../../helpers";
 import { InputNodeHandle } from "@/app/(platform)/build/components/FlowEditor/handlers/NodeHandle";
-import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 
 export default function TitleField(props: TitleFieldProps) {
   const { id, title, required, schema, registry, uiSchema } = props;
@@ -28,7 +27,7 @@ export default function TitleField(props: TitleFieldProps) {
 
   const showHandle = uiOptions.showHandles ?? showHandles;
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center">
       {showHandle !== false && (
         <InputNodeHandle handleId={uiOptions.handleId} nodeId={nodeId} />
       )}
@@ -39,14 +38,18 @@ export default function TitleField(props: TitleFieldProps) {
       >
         {title}
       </Text>
+      <Text variant="small" className={"mr-1 text-red-500"}>
+        {required ? "*" : null}
+      </Text>
       {!isAnyOf && (
-        <Text variant="small" className={colorClass} id={description_id}>
+        <Text
+          variant="small"
+          className={cn("ml-2", colorClass)}
+          id={description_id}
+        >
           ({displayType})
         </Text>
       )}
-      <Text variant="small" className={"text-red-500"}>
-        {required ? "*" : null}
-      </Text>
     </div>
   );
 }

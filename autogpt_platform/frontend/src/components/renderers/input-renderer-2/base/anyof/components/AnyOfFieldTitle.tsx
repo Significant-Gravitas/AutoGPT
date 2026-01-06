@@ -10,6 +10,9 @@ import { useIsArrayItem } from "../../array/context/array-item-context";
 import { cleanUpHandleId } from "../../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { Text } from "@/components/atoms/Text/Text";
+import { isOptionalType } from "../../../utils/schema-utils";
+import { getTypeDisplayInfo } from "@/app/(platform)/build/components/FlowEditor/nodes/helpers";
+import { cn } from "@/lib/utils";
 
 interface customFieldProps extends FieldProps {
   selector: JSX.Element;
@@ -41,8 +44,12 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
   const handleId = cleanUpHandleId(uiOptions.handleId);
   const isHandleConnected = isInputConnected(nodeId, handleId);
 
+  const { isOptional, type } = isOptionalType(schema); // If we have something like int | null = we will treat it as optional int
+  const { displayType, colorClass } = getTypeDisplayInfo(type);
+
   const shouldShowSelector =
     shouldShowTypeSelector(schema) && !isArrayItem && !isHandleConnected;
+  const shoudlShowType = isHandleConnected || (isOptional && type);
 
   return (
     <div className="flex items-center gap-2">
@@ -54,9 +61,9 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
         registry={registry}
         uiSchema={uiSchema}
       />
-      {isHandleConnected && (
-        <Text variant="small" className="mr-2 text-zinc-700">
-          (any)
+      {shoudlShowType && (
+        <Text variant="small" className={cn("text-zinc-700", colorClass)}>
+          {isOptional ? `(${displayType})` : "(any)"}
         </Text>
       )}
       {shouldShowSelector && selector}

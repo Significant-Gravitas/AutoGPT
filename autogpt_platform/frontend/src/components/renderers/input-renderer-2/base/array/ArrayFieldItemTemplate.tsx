@@ -29,15 +29,9 @@ export default function ArrayFieldItemTemplate(
         <div className="shrink grow">
           <div className="shrink grow">{children}</div>
         </div>
-        <div className="flex items-end justify-end p-0.5">
+        <div className="flex items-end justify-end">
           {hasToolbar && (
-            <div
-              className="flex gap-2"
-              style={{
-                marginLeft: "5px",
-                marginTop: displayLabel ? `-6px` : undefined,
-              }}
-            >
+            <div className="-mt-4 mb-2 flex gap-2">
               <ArrayFieldItemButtonsTemplate {...buttonsProps} />
             </div>
           )}

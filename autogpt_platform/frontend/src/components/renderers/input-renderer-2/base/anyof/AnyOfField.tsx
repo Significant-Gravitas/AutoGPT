@@ -31,6 +31,7 @@ export const AnyOfField = (props: FieldProps) => {
     id: field_id + ANY_OF_FLAG,
     schema: schema,
   });
+
   const updatedUiSchema = updateUiOption(props.uiSchema, {
     handleId: handleId,
     label: false,

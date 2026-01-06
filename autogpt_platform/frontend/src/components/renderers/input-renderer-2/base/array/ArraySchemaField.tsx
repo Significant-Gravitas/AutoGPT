@@ -21,7 +21,7 @@ const ArraySchemaField = (props: FieldProps) => {
     <SchemaField
       {...props}
       uiSchema={updatedUiSchema}
-      title={"item-" + index.toString()}
+      title={"_item-" + index.toString()}
     />
   );
 };

@@ -7,7 +7,12 @@ import {
 } from "@rjsf/utils";
 
 import { isAnyOfChild, isAnyOfSchema } from "../../utils/schema-utils";
-import { cleanUpHandleId, getHandleId, updateUiOption } from "../../helpers";
+import {
+  cleanUpHandleId,
+  getHandleId,
+  isPartOfAnyOf,
+  updateUiOption,
+} from "../../helpers";
 
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
@@ -79,6 +84,10 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   if (!showAdvanced && isAdvancedField && !isHandleConnected) {
     return null;
   }
+
+  const marginBottom =
+    isPartOfAnyOf({ uiOptions }) || isAnyOfSchema(schema) ? 0 : 16;
+
   return (
     <WrapIfAdditionalTemplate
       classNames={classNames}
@@ -97,7 +106,7 @@ export default function FieldTemplate(props: FieldTemplateProps) {
       uiSchema={updatedUiSchema}
       registry={registry}
     >
-      <div className="mb-4 flex flex-col gap-2">
+      <div className="flex flex-col gap-2" style={{ marginBottom }}>
         {shouldShowTitleSection && (
           <div className="flex items-center gap-2">
             {shouldDisplayLabel && (
