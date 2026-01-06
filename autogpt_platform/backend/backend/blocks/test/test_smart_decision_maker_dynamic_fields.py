@@ -373,7 +373,7 @@ async def test_output_yielding_with_dynamic_fields():
             input_data = block.input_schema(
                 prompt="Create a user dictionary",
                 credentials=llm.TEST_CREDENTIALS_INPUT,
-                model=llm.LlmModel.GPT4O,
+                model=llm.DEFAULT_LLM_MODEL,
                 agent_mode_max_iterations=0,  # Use traditional mode to test output yielding
             )
 
@@ -594,7 +594,7 @@ async def test_validation_errors_dont_pollute_conversation():
                 input_data = block.input_schema(
                     prompt="Test prompt",
                     credentials=llm.TEST_CREDENTIALS_INPUT,
-                    model=llm.LlmModel.GPT4O,
+                    model=llm.DEFAULT_LLM_MODEL,
                     retry=3,  # Allow retries
                     agent_mode_max_iterations=1,
                 )
