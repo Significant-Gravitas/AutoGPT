@@ -1,0 +1,57 @@
+name: Deploy AutoGPT Platform to VPS
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # 1. Setup Deployment Directory
+            DEPLOY_DIR="~/auto-gpt-deploy"
+            mkdir -p $DEPLOY_DIR
+            cd $DEPLOY_DIR
+
+            # 2. Clone or Update Repository
+            if [ -d "AutoGPT" ]; then
+              echo "Updating existing repository..."
+              cd AutoGPT
+              git fetch origin
+              git reset --hard origin/${{ github.ref_name }}
+            else
+              echo "Cloning repository..."
+              git clone https://github.com/${{ github.repository }}.git AutoGPT
+              cd AutoGPT
+            fi
+
+            # 3. Navigate to Platform Directory
+            cd autogpt_platform
+
+            # 4. Setup Environment Files (Use defaults if no custom env exists)
+            if [ ! -f backend/.env ]; then
+              echo "Creating backend/.env from default..."
+              cp backend/.env.default backend/.env
+            fi
+            if [ ! -f frontend/.env ]; then
+              echo "Creating frontend/.env from default..."
+              cp frontend/.env.default frontend/.env
+            fi
+
+            # 5. Start Application with Docker Compose
+            echo "Starting Docker services..."
+            # Stop existing containers to ensure clean restart (optional, remove if downtime is an issue)
+            docker compose down --remove-orphans
+            
+            # Start up in detached mode
+            docker compose up -d --build
+
+            echo "Deployment finished successfully!"
