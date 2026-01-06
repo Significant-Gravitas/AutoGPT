@@ -34,7 +34,7 @@ export default function TitleField(props: TitleFieldProps) {
       <Text
         variant={isArrayItemFlag ? "small" : "body"}
         id={id}
-        className={cn("line-clamp-1", smallText && "text-zinc-700")}
+        className={cn("line-clamp-1", smallText && "text-sm text-zinc-700")}
       >
         {title}
       </Text>

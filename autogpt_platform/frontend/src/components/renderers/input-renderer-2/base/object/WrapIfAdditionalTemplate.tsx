@@ -73,7 +73,7 @@ export default function WrapIfAdditionalTemplate(
       <div className={`mb-4 flex flex-col gap-1`} style={style}>
         <TitleFieldTemplate
           id={titleId(title_id)}
-          title={label}
+          title={`#${label}`}
           required={required}
           schema={schema}
           registry={registry}
@@ -94,17 +94,19 @@ export default function WrapIfAdditionalTemplate(
               type="text"
               size="small"
             />
-            {children}
+            <div className="mt-2"> {children}</div>
           </div>
         )}
         {!isHandleConnected && (
-          <RemoveButton
-            id={buttonId(id, "remove")}
-            disabled={disabled || readonly}
-            onClick={onRemoveProperty}
-            uiSchema={uiSchema}
-            registry={registry}
-          />
+          <div className="-mt-4">
+            <RemoveButton
+              id={buttonId(id, "remove")}
+              disabled={disabled || readonly}
+              onClick={onRemoveProperty}
+              uiSchema={uiSchema}
+              registry={registry}
+            />
+          </div>
         )}
       </div>
     </>
