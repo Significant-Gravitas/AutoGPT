@@ -1445,6 +1445,7 @@ async def migrate_llm_models(migrate_to: LlmModel):
 
     # Get all model slugs from the registry (dynamic, not hardcoded enum)
     from backend.data import llm_registry
+
     enum_values = list(llm_registry.get_all_model_slugs_for_validation())
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 

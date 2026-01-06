@@ -93,7 +93,11 @@ export function LlmRegistryDashboard({
             </div>
             <AddModelModal providers={providers} creators={creators} />
           </div>
-          <ModelsTable models={models} providers={providers} creators={creators} />
+          <ModelsTable
+            models={models}
+            providers={providers}
+            creators={creators}
+          />
         </div>
       </div>
     </div>

@@ -338,4 +338,3 @@ def get_default_model_slug() -> str:
 
     # Fallback to preferred slug even if not in registry (for backwards compatibility)
     return preferred_slug
-

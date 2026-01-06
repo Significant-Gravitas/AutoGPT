@@ -63,7 +63,9 @@ export function AddModelModal({ providers, creators }: Props) {
               <h3 className="text-sm font-semibold text-foreground">
                 Basic Information
               </h3>
-              <p className="text-xs text-muted-foreground">Core model details</p>
+              <p className="text-xs text-muted-foreground">
+                Core model details
+              </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -244,8 +246,8 @@ export function AddModelModal({ providers, creators }: Props) {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Credit cost is always in platform credits. Credentials are inherited
-              from the selected provider.
+              Credit cost is always in platform credits. Credentials are
+              inherited from the selected provider.
             </p>
           </div>
 
@@ -285,4 +287,3 @@ export function AddModelModal({ providers, creators }: Props) {
     </Dialog>
   );
 }
-

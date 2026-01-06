@@ -7,7 +7,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
-import backend.server.v2.admin.llm_routes as llm_routes
+import backend.api.features.admin.llm_routes as llm_routes
 
 app = fastapi.FastAPI()
 app.include_router(llm_routes.router)
@@ -57,7 +57,7 @@ def test_list_llm_providers_success(
     ]
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.list_providers",
+        "backend.api.features.admin.llm_routes.llm_db.list_providers",
         new=AsyncMock(return_value=mock_providers),
     )
 
@@ -102,7 +102,7 @@ def test_list_llm_models_success(
     ]
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.list_models",
+        "backend.api.features.admin.llm_routes.llm_db.list_models",
         new=AsyncMock(return_value=mock_models),
     )
 
@@ -135,12 +135,12 @@ def test_create_llm_provider_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.upsert_provider",
+        "backend.api.features.admin.llm_routes.llm_db.upsert_provider",
         new=AsyncMock(return_value=mock_provider),
     )
 
     mock_refresh = mocker.patch(
-        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
+        "backend.api.features.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -196,12 +196,12 @@ def test_create_llm_model_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.create_model",
+        "backend.api.features.admin.llm_routes.llm_db.create_model",
         new=AsyncMock(return_value=mock_model),
     )
 
     mock_refresh = mocker.patch(
-        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
+        "backend.api.features.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -265,12 +265,12 @@ def test_update_llm_model_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.update_model",
+        "backend.api.features.admin.llm_routes.llm_db.update_model",
         new=AsyncMock(return_value=mock_model),
     )
 
     mock_refresh = mocker.patch(
-        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
+        "backend.api.features.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -315,12 +315,12 @@ def test_toggle_llm_model_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.toggle_model",
+        "backend.api.features.admin.llm_routes.llm_db.toggle_model",
         new=AsyncMock(return_value=mock_model),
     )
 
     mock_refresh = mocker.patch(
-        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
+        "backend.api.features.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -354,12 +354,12 @@ def test_delete_llm_model_success(
     }
 
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.delete_model",
+        "backend.api.features.admin.llm_routes.llm_db.delete_model",
         new=AsyncMock(return_value=type("obj", (object,), mock_response)()),
     )
 
     mock_refresh = mocker.patch(
-        "backend.server.v2.admin.llm_routes._refresh_runtime_state",
+        "backend.api.features.admin.llm_routes._refresh_runtime_state",
         new=AsyncMock(),
     )
 
@@ -385,7 +385,7 @@ def test_delete_llm_model_validation_error(
 ) -> None:
     """Test deletion fails with proper error when validation fails"""
     mocker.patch(
-        "backend.server.v2.admin.llm_routes.llm_db.delete_model",
+        "backend.api.features.admin.llm_routes.llm_db.delete_model",
         new=AsyncMock(side_effect=ValueError("Replacement model 'invalid' not found")),
     )
 

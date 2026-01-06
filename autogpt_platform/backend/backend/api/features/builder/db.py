@@ -14,8 +14,8 @@ import backend.data.block
 from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
-from backend.data.llm_registry import get_all_model_slugs_for_validation
 from backend.data.db import query_raw_with_schema
+from backend.data.llm_registry import get_all_model_slugs_for_validation
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
@@ -36,7 +36,10 @@ logger = logging.getLogger(__name__)
 
 def _get_llm_models() -> list[str]:
     """Get LLM model names for search matching from the registry."""
-    return [slug.lower().replace("-", " ") for slug in get_all_model_slugs_for_validation()]
+    return [
+        slug.lower().replace("-", " ") for slug in get_all_model_slugs_for_validation()
+    ]
+
 
 MAX_LIBRARY_AGENT_RESULTS = 100
 MAX_MARKETPLACE_AGENT_RESULTS = 100

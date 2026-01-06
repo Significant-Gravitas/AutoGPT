@@ -12,10 +12,7 @@ import {
 } from "@/components/atoms/Table/Table";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import {
-  deleteLlmCreatorAction,
-  updateLlmCreatorAction,
-} from "../actions";
+import { deleteLlmCreatorAction, updateLlmCreatorAction } from "../actions";
 import { useRouter } from "next/navigation";
 
 export function CreatorsTable({ creators }: { creators: LlmModelCreator[] }) {
@@ -174,7 +171,7 @@ function DeleteCreatorButton({ creatorId }: { creatorId: string }) {
       action={async (formData) => {
         if (
           confirm(
-            "Delete this creator? Models using this creator will have their creator set to none."
+            "Delete this creator? Models using this creator will have their creator set to none.",
           )
         ) {
           await deleteLlmCreatorAction(formData);

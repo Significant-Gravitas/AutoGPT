@@ -6,8 +6,13 @@ replacing hardcoded model configurations with a flexible admin-managed system.
 """
 
 from backend.data.llm_registry.model_types import ModelMetadata
-from backend.data.llm_registry import notifications
-from backend.data.llm_registry import schema_utils
+
+# Re-export for backwards compatibility
+from backend.data.llm_registry.notifications import (
+    REGISTRY_REFRESH_CHANNEL,
+    publish_registry_refresh_notification,
+    subscribe_to_registry_refresh,
+)
 from backend.data.llm_registry.registry import (
     RegistryModel,
     RegistryModelCost,
@@ -26,13 +31,6 @@ from backend.data.llm_registry.registry import (
     refresh_llm_registry,
     register_static_costs,
     register_static_metadata,
-)
-
-# Re-export for backwards compatibility
-from backend.data.llm_registry.notifications import (
-    REGISTRY_REFRESH_CHANNEL,
-    publish_registry_refresh_notification,
-    subscribe_to_registry_refresh,
 )
 from backend.data.llm_registry.schema_utils import (
     is_llm_model_field,
@@ -72,4 +70,3 @@ __all__ = [
     "refresh_llm_model_options",
     "update_schema_with_llm_registry",
 ]
-

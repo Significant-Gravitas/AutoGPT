@@ -175,13 +175,15 @@ async def get_execution_analytics_config(
 
     # Get all models from the registry (dynamic, not hardcoded enum)
     from backend.data import llm_registry
-    
-    recommended_model = "gpt-4o-mini"  # Using string value - enum accepts any model slug dynamically
+
+    recommended_model = (
+        "gpt-4o-mini"  # Using string value - enum accepts any model slug dynamically
+    )
     for registry_model in llm_registry.iter_dynamic_models():
         # Only include enabled models in the list
         if not registry_model.is_enabled:
             continue
-            
+
         model_enum = LlmModel(registry_model.slug)  # Create enum instance from slug
         label = generate_model_label(model_enum)
         # Add "(Recommended)" suffix to the recommended model

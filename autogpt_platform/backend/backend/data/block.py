@@ -25,6 +25,7 @@ from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
 
+from backend.data.llm_registry import update_schema_with_llm_registry
 from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
@@ -38,7 +39,6 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Config
 
-from backend.data.llm_registry import update_schema_with_llm_registry
 from .model import (
     ContributorDetails,
     Credentials,

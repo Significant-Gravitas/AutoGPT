@@ -21,7 +21,7 @@ export function DeleteModelModal({
 
   // Filter out the current model and disabled models from replacement options
   const replacementOptions = availableModels.filter(
-    (m) => m.id !== model.id && m.is_enabled
+    (m) => m.id !== model.id && m.is_enabled,
   );
 
   async function fetchUsage() {
@@ -80,7 +80,9 @@ export function DeleteModelModal({
         <div className="space-y-4">
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 dark:border-amber-400/30 dark:bg-amber-400/10">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 text-amber-600 dark:text-amber-400">⚠️</div>
+              <div className="flex-shrink-0 text-amber-600 dark:text-amber-400">
+                ⚠️
+              </div>
               <div className="text-sm text-foreground">
                 <p className="font-semibold">You are about to delete:</p>
                 <p className="mt-1">
@@ -89,7 +91,8 @@ export function DeleteModelModal({
                 </p>
                 {usageCount !== null && (
                   <p className="mt-2 font-semibold">
-                    Impact: {usageCount} block{usageCount !== 1 ? "s" : ""} currently use this model
+                    Impact: {usageCount} block{usageCount !== 1 ? "s" : ""}{" "}
+                    currently use this model
                   </p>
                 )}
                 <p className="mt-2 text-muted-foreground">
@@ -109,8 +112,9 @@ export function DeleteModelModal({
             />
 
             <label className="text-sm font-medium">
-              <span className="block mb-2">
-                Select Replacement Model <span className="text-destructive">*</span>
+              <span className="mb-2 block">
+                Select Replacement Model{" "}
+                <span className="text-destructive">*</span>
               </span>
               <select
                 required

@@ -61,7 +61,7 @@ function MigrationRow({ migration }: { migration: LlmModelMigration }) {
       await revertLlmMigrationAction(formData);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to revert migration"
+        err instanceof Error ? err.message : "Failed to revert migration",
       );
     } finally {
       setIsReverting(false);

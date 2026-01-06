@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Sequence
 
-import prisma, prisma.models
+import prisma
+import prisma.models
 
 from backend.data.db import transaction
 from backend.server.v2.llm import model as llm_model
@@ -511,7 +512,9 @@ async def delete_model(
     )
 
 
-def _map_migration(record: prisma.models.LlmModelMigration) -> llm_model.LlmModelMigration:
+def _map_migration(
+    record: prisma.models.LlmModelMigration,
+) -> llm_model.LlmModelMigration:
     return llm_model.LlmModelMigration(
         id=record.id,
         source_model_slug=record.sourceModelSlug,

@@ -69,4 +69,3 @@ export function ProviderList({ providers }: { providers: LlmProvider[] }) {
     </div>
   );
 }
-

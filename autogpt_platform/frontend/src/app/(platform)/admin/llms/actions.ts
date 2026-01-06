@@ -89,11 +89,15 @@ export async function createLlmModelAction(formData: FormData) {
   const creatorId = formData.get("creator_id");
 
   // Fetch provider to get default credentials
-  const providersResponse = await getV2ListLlmProviders({ include_models: false });
+  const providersResponse = await getV2ListLlmProviders({
+    include_models: false,
+  });
   if (providersResponse.status !== 200) {
     throw new Error("Failed to fetch providers");
   }
-  const provider = providersResponse.data.providers.find((p) => p.id === providerId);
+  const provider = providersResponse.data.providers.find(
+    (p) => p.id === providerId,
+  );
 
   if (!provider) {
     throw new Error("Provider not found");
@@ -222,7 +226,9 @@ export async function deleteLlmModelAction(formData: FormData) {
   return response.data;
 }
 
-export async function fetchLlmModelUsage(modelId: string): Promise<LlmModelUsageResponse> {
+export async function fetchLlmModelUsage(
+  modelId: string,
+): Promise<LlmModelUsageResponse> {
   const response = await getV2GetModelUsageCount(modelId);
   if (response.status !== 200) {
     throw new Error("Failed to fetch model usage");
@@ -235,16 +241,20 @@ export async function fetchLlmModelUsage(modelId: string): Promise<LlmModelUsage
 // =============================================================================
 
 export async function fetchLlmMigrations(
-  includeReverted: boolean = false
+  includeReverted: boolean = false,
 ): Promise<LlmMigrationsResponse> {
-  const response = await getV2ListModelMigrations({ include_reverted: includeReverted });
+  const response = await getV2ListModelMigrations({
+    include_reverted: includeReverted,
+  });
   if (response.status !== 200) {
     throw new Error("Failed to fetch migrations");
   }
   return response.data;
 }
 
-export async function revertLlmMigrationAction(formData: FormData): Promise<void> {
+export async function revertLlmMigrationAction(
+  formData: FormData,
+): Promise<void> {
   const migrationId = String(formData.get("migration_id"));
 
   const response = await postV2RevertAModelMigration(migrationId, null);
@@ -266,7 +276,9 @@ export async function fetchLlmCreators(): Promise<LlmCreatorsResponse> {
   return response.data;
 }
 
-export async function createLlmCreatorAction(formData: FormData): Promise<void> {
+export async function createLlmCreatorAction(
+  formData: FormData,
+): Promise<void> {
   const payload: UpsertLlmCreatorRequest = {
     name: String(formData.get("name") || "").trim(),
     display_name: String(formData.get("display_name") || "").trim(),
@@ -289,7 +301,9 @@ export async function createLlmCreatorAction(formData: FormData): Promise<void> 
   revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function updateLlmCreatorAction(formData: FormData): Promise<void> {
+export async function updateLlmCreatorAction(
+  formData: FormData,
+): Promise<void> {
   const creatorId = String(formData.get("creator_id"));
   const payload: UpsertLlmCreatorRequest = {
     name: String(formData.get("name") || "").trim(),
@@ -313,7 +327,9 @@ export async function updateLlmCreatorAction(formData: FormData): Promise<void> 
   revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function deleteLlmCreatorAction(formData: FormData): Promise<void> {
+export async function deleteLlmCreatorAction(
+  formData: FormData,
+): Promise<void> {
   const creatorId = String(formData.get("creator_id"));
 
   const response = await deleteV2DeleteModelCreator(creatorId);

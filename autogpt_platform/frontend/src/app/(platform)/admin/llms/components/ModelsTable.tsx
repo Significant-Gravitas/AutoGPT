@@ -136,10 +136,7 @@ export function ModelsTable({
                       providers={providers}
                       creators={creators}
                     />
-                    <DeleteModelModal
-                      model={model}
-                      availableModels={models}
-                    />
+                    <DeleteModelModal model={model} availableModels={models} />
                   </div>
                 </TableCell>
               </TableRow>
@@ -162,5 +159,3 @@ function EnableModelButton({ modelId }: { modelId: string }) {
     </form>
   );
 }
-
-

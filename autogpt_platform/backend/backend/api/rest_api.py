@@ -18,6 +18,7 @@ from prisma.errors import PrismaError
 
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.llm_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -37,7 +38,6 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
-import backend.api.features.admin.llm_routes
 import backend.server.v2.llm.routes as public_llm_routes
 import backend.util.service
 import backend.util.settings
@@ -127,7 +127,10 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.fix_llm_provider_credentials()
     # migrate_llm_models uses registry default model
     from backend.blocks.llm import LlmModel
-    await backend.data.graph.migrate_llm_models(LlmModel(llm_registry.get_default_model_slug()))
+
+    await backend.data.graph.migrate_llm_models(
+        LlmModel(llm_registry.get_default_model_slug())
+    )
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():

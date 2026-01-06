@@ -51,9 +51,7 @@ async def _refresh_runtime_state() -> None:
         logger.debug("Could not clear v2 builder cache: %s", e)
 
     # Notify all executor services to refresh their registry cache
-    from backend.data.llm_registry import (
-        publish_registry_refresh_notification,
-    )
+    from backend.data.llm_registry import publish_registry_refresh_notification
 
     publish_registry_refresh_notification()
     logger.info("Published registry refresh notification")

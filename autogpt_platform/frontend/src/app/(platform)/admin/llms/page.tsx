@@ -1,9 +1,9 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
-import { useLlmRegistryPage } from "./useLlmRegistryPage";
+import { getLlmRegistryPageData } from "./useLlmRegistryPage";
 import { LlmRegistryDashboard } from "./components/LlmRegistryDashboard";
 
 async function LlmRegistryPage() {
-  const data = await useLlmRegistryPage();
+  const data = await getLlmRegistryPageData();
   return <LlmRegistryDashboard {...data} />;
 }
 

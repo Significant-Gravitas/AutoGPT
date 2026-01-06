@@ -1,5 +1,5 @@
 /**
- * Hook for LLM Registry page data fetching and state management.
+ * Server-side data fetching for LLM Registry page.
  */
 
 import {
@@ -9,7 +9,7 @@ import {
   fetchLlmProviders,
 } from "./actions";
 
-export async function useLlmRegistryPage() {
+export async function getLlmRegistryPageData() {
   // Fetch providers and models (required)
   const [providersResponse, modelsResponse] = await Promise.all([
     fetchLlmProviders(),
@@ -44,4 +44,3 @@ export async function useLlmRegistryPage() {
     creators,
   };
 }
-

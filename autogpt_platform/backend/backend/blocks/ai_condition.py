@@ -1,7 +1,6 @@
 from typing import Any
 
 from backend.blocks.llm import (
-    DEFAULT_LLM_MODEL,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     AIBlockBase,

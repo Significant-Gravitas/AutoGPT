@@ -33,8 +33,8 @@ export function AddProviderModal() {
               Before Adding a Provider
             </h4>
             <p className="text-xs text-muted-foreground">
-              To use a new provider, you must first configure its credentials in the
-              backend:
+              To use a new provider, you must first configure its credentials in
+              the backend:
             </p>
             <ol className="list-inside list-decimal space-y-1 text-xs text-muted-foreground">
               <li>
@@ -55,8 +55,9 @@ export function AddProviderModal() {
                 </code>
               </li>
               <li>
-                Use the <strong>same provider name</strong> in the &quot;Credential Provider&quot;
-                field below that matches the key in{" "}
+                Use the <strong>same provider name</strong> in the
+                &quot;Credential Provider&quot; field below that matches the key
+                in{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono">
                   PROVIDER_CREDENTIALS
                 </code>
@@ -79,7 +80,9 @@ export function AddProviderModal() {
               <h3 className="text-sm font-semibold text-foreground">
                 Basic Information
               </h3>
-              <p className="text-xs text-muted-foreground">Core provider details</p>
+              <p className="text-xs text-muted-foreground">
+                Core provider details
+              </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -158,7 +161,8 @@ export function AddProviderModal() {
                 placeholder="openai"
               />
               <p className="text-xs text-muted-foreground">
-                <strong>Important:</strong> This must exactly match the key in the{" "}
+                <strong>Important:</strong> This must exactly match the key in
+                the{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                   PROVIDER_CREDENTIALS
                 </code>{" "}
@@ -166,7 +170,8 @@ export function AddProviderModal() {
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                   block_cost_config.py
                 </code>
-                . Common values: "openai", "anthropic", "groq", "open_router", etc.
+                . Common values: &quot;openai&quot;, &quot;anthropic&quot;,
+                &quot;groq&quot;, &quot;open_router&quot;, etc.
               </p>
             </div>
           </div>
@@ -177,7 +182,9 @@ export function AddProviderModal() {
               <h3 className="text-sm font-semibold text-foreground">
                 Capabilities
               </h3>
-              <p className="text-xs text-muted-foreground">Provider feature flags</p>
+              <p className="text-xs text-muted-foreground">
+                Provider feature flags
+              </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {[
@@ -233,4 +240,3 @@ export function AddProviderModal() {
     </Dialog>
   );
 }
-

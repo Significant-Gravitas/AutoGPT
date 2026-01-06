@@ -44,7 +44,7 @@ export function EditModelModal({
           className="space-y-4"
         >
           <input type="hidden" name="model_id" value={model.id} />
-          
+
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-sm font-medium">
               Display Name
@@ -154,7 +154,9 @@ export function EditModelModal({
                 defaultValue={cost?.credential_provider ?? provider?.name ?? ""}
                 className="mt-1 w-full rounded border border-input bg-background p-2 text-sm"
               >
-                <option value="" disabled>Select provider</option>
+                <option value="" disabled>
+                  Select provider
+                </option>
                 {providers.map((p) => (
                   <option key={p.id} value={p.name}>
                     {p.display_name} ({p.name})
@@ -170,11 +172,7 @@ export function EditModelModal({
           <input type="hidden" name="credential_type" value="api_key" />
 
           <Dialog.Footer>
-            <Button
-              variant="ghost"
-              size="small"
-              onClick={() => setOpen(false)}
-            >
+            <Button variant="ghost" size="small" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" size="small" type="submit">
@@ -186,4 +184,3 @@ export function EditModelModal({
     </Dialog>
   );
 }
-

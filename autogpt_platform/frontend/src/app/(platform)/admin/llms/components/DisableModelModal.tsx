@@ -24,7 +24,7 @@ export function DisableModelModal({
 
   // Filter out the current model and disabled models from replacement options
   const migrationOptions = availableModels.filter(
-    (m) => m.id !== model.id && m.is_enabled
+    (m) => m.id !== model.id && m.is_enabled,
   );
 
   async function fetchUsage() {
@@ -76,7 +76,12 @@ export function DisableModelModal({
       styling={{ maxWidth: "600px" }}
     >
       <Dialog.Trigger>
-        <Button type="button" variant="outline" size="small" className="min-w-0">
+        <Button
+          type="button"
+          variant="outline"
+          size="small"
+          className="min-w-0"
+        >
           Disable
         </Button>
       </Dialog.Trigger>
@@ -88,14 +93,14 @@ export function DisableModelModal({
         <div className="space-y-4">
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 dark:border-amber-400/30 dark:bg-amber-400/10">
             <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 text-amber-600 dark:text-amber-400">⚠️</div>
+              <div className="flex-shrink-0 text-amber-600 dark:text-amber-400">
+                ⚠️
+              </div>
               <div className="text-sm text-foreground">
                 <p className="font-semibold">You are about to disable:</p>
                 <p className="mt-1">
                   <span className="font-medium">{model.display_name}</span>{" "}
-                  <span className="text-muted-foreground">
-                    ({model.slug})
-                  </span>
+                  <span className="text-muted-foreground">({model.slug})</span>
                 </p>
                 {usageCount === null ? (
                   <p className="mt-2 text-muted-foreground">
@@ -116,7 +121,7 @@ export function DisableModelModal({
           </div>
 
           {hasUsage && (
-            <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-4">
+            <div className="space-y-4 rounded-lg border border-border bg-muted/50 p-4">
               <label className="flex items-start gap-3">
                 <input
                   type="checkbox"
@@ -134,18 +139,19 @@ export function DisableModelModal({
                     Migrate existing workflows to another model
                   </span>
                   <p className="mt-1 text-muted-foreground">
-                    Creates a revertible migration record. If unchecked, existing
-                    workflows will use automatic fallback to an enabled model from
-                    the same provider.
+                    Creates a revertible migration record. If unchecked,
+                    existing workflows will use automatic fallback to an enabled
+                    model from the same provider.
                   </p>
                 </div>
               </label>
 
               {wantsMigration && (
                 <div className="space-y-4 border-t border-border pt-4">
-                  <label className="text-sm font-medium block">
+                  <label className="block text-sm font-medium">
                     <span className="mb-2 block">
-                      Replacement Model <span className="text-destructive">*</span>
+                      Replacement Model{" "}
+                      <span className="text-destructive">*</span>
                     </span>
                     <select
                       required
@@ -167,10 +173,10 @@ export function DisableModelModal({
                     )}
                   </label>
 
-                  <label className="text-sm font-medium block">
+                  <label className="block text-sm font-medium">
                     <span className="mb-2 block">
                       Migration Reason{" "}
-                      <span className="text-muted-foreground font-normal">
+                      <span className="font-normal text-muted-foreground">
                         (optional)
                       </span>
                     </span>
@@ -186,10 +192,10 @@ export function DisableModelModal({
                     </p>
                   </label>
 
-                  <label className="text-sm font-medium block">
+                  <label className="block text-sm font-medium">
                     <span className="mb-2 block">
                       Custom Credit Cost{" "}
-                      <span className="text-muted-foreground font-normal">
+                      <span className="font-normal text-muted-foreground">
                         (optional)
                       </span>
                     </span>

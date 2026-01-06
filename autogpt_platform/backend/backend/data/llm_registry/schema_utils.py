@@ -128,4 +128,3 @@ def update_schema_with_llm_registry(
                 field_name,
                 exc,
             )
-
