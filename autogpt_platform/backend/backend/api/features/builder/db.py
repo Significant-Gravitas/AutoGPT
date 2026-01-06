@@ -14,6 +14,7 @@ import backend.data.block
 from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.block import AnyBlockSchema, BlockCategory, BlockInfo, BlockSchema
+from backend.data.llm_registry import get_all_model_slugs_for_validation
 from backend.data.db import query_raw_with_schema
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
@@ -31,7 +32,11 @@ from .model import (
 )
 
 logger = logging.getLogger(__name__)
-llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
+
+
+def _get_llm_models() -> list[str]:
+    """Get LLM model names for search matching from the registry."""
+    return [slug.lower().replace("-", " ") for slug in get_all_model_slugs_for_validation()]
 
 MAX_LIBRARY_AGENT_RESULTS = 100
 MAX_MARKETPLACE_AGENT_RESULTS = 100
@@ -496,8 +501,8 @@ async def _get_static_counts():
 def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
     for field in schema_cls.model_fields.values():
         if field.annotation == LlmModel:
-            # Check if query matches any value in llm_models
-            if any(query in name for name in llm_models):
+            # Check if query matches any value in llm_models from registry
+            if any(query in name for name in _get_llm_models()):
                 return True
     return False
 

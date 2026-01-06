@@ -126,7 +126,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     # migrate_llm_models uses registry default model
-    await backend.data.graph.migrate_llm_models(llm_registry.get_default_model_slug())
+    from backend.blocks.llm import LlmModel
+    await backend.data.graph.migrate_llm_models(LlmModel(llm_registry.get_default_model_slug()))
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():

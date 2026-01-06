@@ -190,6 +190,10 @@ class LlmModel(str, metaclass=LlmModelMeta):
 
 # MODEL_METADATA removed - all models now come from the database via llm_registry
 
+# Default model constant for backward compatibility
+# Uses the dynamic registry to get the default model
+DEFAULT_LLM_MODEL = LlmModel.default()
+
 
 class ToolCall(BaseModel):
     name: str
