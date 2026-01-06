@@ -8,6 +8,9 @@ from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.providers import ProviderName
 from backend.util.request import Requests
+from backend.util.settings import Settings
+
+settings = Settings()
 
 
 class RedditOAuthHandler(BaseOAuthHandler):
@@ -70,7 +73,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
 
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "AutoGPT:1.0 (by /u/autogpt)",
+            "User-Agent": settings.config.reddit_user_agent,
         }
 
         data = {
@@ -87,7 +90,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
         )
 
         if not response.ok:
-            error_text = response.text
+            error_text = response.text()
             raise ValueError(
                 f"Reddit token exchange failed: {response.status} - {error_text}"
             )
@@ -114,7 +117,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
         """Get the username from the access token"""
         headers = {
             "Authorization": f"Bearer {access_token}",
-            "User-Agent": "AutoGPT:1.0 (by /u/autogpt)",
+            "User-Agent": settings.config.reddit_user_agent,
         }
 
         response = await Requests().get(self.USERNAME_URL, headers=headers)
@@ -134,7 +137,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
 
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "AutoGPT:1.0 (by /u/autogpt)",
+            "User-Agent": settings.config.reddit_user_agent,
         }
 
         data = {
@@ -149,7 +152,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
         )
 
         if not response.ok:
-            error_text = response.text
+            error_text = response.text()
             raise ValueError(
                 f"Reddit token refresh failed: {response.status} - {error_text}"
             )
@@ -187,7 +190,7 @@ class RedditOAuthHandler(BaseOAuthHandler):
         """Revoke the access token"""
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "AutoGPT:1.0 (by /u/autogpt)",
+            "User-Agent": settings.config.reddit_user_agent,
         }
 
         data = {

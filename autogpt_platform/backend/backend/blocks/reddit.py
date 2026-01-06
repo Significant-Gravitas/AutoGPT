@@ -27,7 +27,7 @@ from backend.util.settings import Settings
 UserPostSort = Literal["new", "hot", "top", "controversial"]
 SearchSort = Literal["relevance", "hot", "top", "new", "comments"]
 TimeFilter = Literal["all", "day", "hour", "month", "week", "year"]
-CommentSort = Literal["best", "top", "new", "controversial", "old", "q&a"]
+CommentSort = Literal["best", "top", "new", "controversial", "old", "qa"]
 InboxType = Literal["all", "unread", "messages", "mentions", "comment_replies"]
 
 RedditCredentials = OAuth2Credentials
@@ -1922,8 +1922,8 @@ class GetRedditUserInfoBlock(Block):
                         public_description=redditor.subreddit.public_description or "",
                         subscribers=redditor.subreddit.subscribers or 0,
                         over_18=(
-                            redditor.subreddit.over_18
-                            if hasattr(redditor.subreddit, "over_18")
+                            redditor.subreddit.over18
+                            if hasattr(redditor.subreddit, "over18")
                             else False
                         ),
                     )
