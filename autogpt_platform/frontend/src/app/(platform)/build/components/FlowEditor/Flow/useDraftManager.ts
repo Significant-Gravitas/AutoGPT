@@ -257,8 +257,10 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
     try {
       useNodeStore.getState().setNodes(draft.nodes);
       useEdgeStore.getState().setEdges(draft.edges);
+      draft.nodes.forEach((node) => {
+        useNodeStore.getState().syncHardcodedValuesWithHandleIds(node.id);
+      });
 
-      // Restore nodeCounter to prevent ID conflicts when adding new nodes
       if (draft.nodeCounter !== undefined) {
         useNodeStore.setState({ nodeCounter: draft.nodeCounter });
       }

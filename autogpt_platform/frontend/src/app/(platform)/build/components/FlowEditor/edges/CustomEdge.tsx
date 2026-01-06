@@ -58,7 +58,7 @@ const CustomEdge = ({
         className={cn(
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
           selected
-            ? "stroke-zinc-800 !stroke-[2px]"
+            ? "stroke-zinc-800"
             : "stroke-zinc-500/50 hover:stroke-zinc-500",
         )}
       />
