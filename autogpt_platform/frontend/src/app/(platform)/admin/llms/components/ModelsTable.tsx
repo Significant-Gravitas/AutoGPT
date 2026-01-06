@@ -1,8 +1,6 @@
-import type {
-  LlmModel,
-  LlmModelCreator,
-  LlmProvider,
-} from "@/lib/autogpt-server-api/types";
+import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
+import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
+import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
 import {
   Table,
   TableBody,
@@ -55,7 +53,7 @@ export function ModelsTable({
         </TableHeader>
         <TableBody>
           {models.map((model) => {
-            const cost = model.costs[0];
+            const cost = model.costs?.[0];
             const provider = providerLookup.get(model.provider_id);
             return (
               <TableRow

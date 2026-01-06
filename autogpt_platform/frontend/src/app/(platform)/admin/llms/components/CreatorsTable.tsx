@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { LlmModelCreator } from "@/lib/autogpt-server-api/types";
+import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
 import {
   Table,
   TableBody,

@@ -2901,7 +2901,7 @@
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
         "description": "Get the details of a creator.\n- Creator Details Page",
-        "operationId": "getV2Get creator details",
+        "operationId": "getV2GetCreatorDetails",
         "parameters": [
           {
             "name": "username",
@@ -4716,7 +4716,7 @@
         "tags": ["v2", "admin", "llm", "admin"],
         "summary": "Get creator details",
         "description": "Get details of a specific model creator.",
-        "operationId": "getV2Get creator details",
+        "operationId": "getV2GetLlmCreatorDetails",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {

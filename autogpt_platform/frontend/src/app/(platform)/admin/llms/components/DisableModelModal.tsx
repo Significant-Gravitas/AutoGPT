@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmModel } from "@/lib/autogpt-server-api/types";
-import { toggleLlmModelAction } from "../actions";
+import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
+import { toggleLlmModelAction, fetchLlmModelUsage } from "../actions";
 
 export function DisableModelModal({
   model,
@@ -29,9 +29,7 @@ export function DisableModelModal({
 
   async function fetchUsage() {
     try {
-      const BackendApi = (await import("@/lib/autogpt-server-api")).default;
-      const api = new BackendApi();
-      const usage = await api.getAdminLlmModelUsage(model.id);
+      const usage = await fetchLlmModelUsage(model.id);
       setUsageCount(usage.node_count);
     } catch {
       setUsageCount(null);

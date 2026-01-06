@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmProvider, LlmModelCreator } from "@/lib/autogpt-server-api/types";
+import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
 import { createLlmModelAction } from "../actions";
 import { useRouter } from "next/navigation";
 

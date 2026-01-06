@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { LlmModelMigration } from "@/lib/autogpt-server-api/types";
+import type { LlmModelMigration } from "@/app/api/__generated__/models/llmModelMigration";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Table,

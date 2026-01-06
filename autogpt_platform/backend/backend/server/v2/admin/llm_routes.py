@@ -388,6 +388,7 @@ async def list_llm_creators():
 @router.get(
     "/creators/{creator_id}",
     summary="Get creator details",
+    operation_id="getV2GetLlmCreatorDetails",
     response_model=llm_model.LlmModelCreator,
 )
 async def get_llm_creator(creator_id: str):

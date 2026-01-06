@@ -3,11 +3,9 @@
 import { useState } from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type {
-  LlmModel,
-  LlmModelCreator,
-  LlmProvider,
-} from "@/lib/autogpt-server-api/types";
+import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
+import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
+import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
 import { updateLlmModelAction } from "../actions";
 
 export function EditModelModal({
@@ -20,7 +18,7 @@ export function EditModelModal({
   creators: LlmModelCreator[];
 }) {
   const [open, setOpen] = useState(false);
-  const cost = model.costs[0];
+  const cost = model.costs?.[0];
   const provider = providers.find((p) => p.id === model.provider_id);
 
   return (

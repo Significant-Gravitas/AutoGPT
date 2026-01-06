@@ -1,11 +1,9 @@
 "use client";
 
-import type {
-  LlmModel,
-  LlmModelCreator,
-  LlmModelMigration,
-  LlmProvider,
-} from "@/lib/autogpt-server-api/types";
+import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
+import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
+import type { LlmModelMigration } from "@/app/api/__generated__/models/llmModelMigration";
+import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
 import { AddProviderModal } from "./AddProviderModal";
 import { AddModelModal } from "./AddModelModal";
 import { AddCreatorModal } from "./AddCreatorModal";

@@ -2,18 +2,35 @@
 
 import { revalidatePath } from "next/cache";
 
-import BackendApi from "@/lib/autogpt-server-api";
-import type {
-  LlmProvider,
-  LlmModel,
-  LlmCreatorsResponse,
-  LlmMigrationsResponse,
-  UpsertLlmProviderRequest,
-  CreateLlmModelRequest,
-  UpdateLlmModelRequest,
-  ToggleLlmModelRequest,
-  UpsertLlmCreatorRequest,
-} from "@/lib/autogpt-server-api/types";
+// Generated API functions
+import {
+  getV2ListLlmProviders,
+  postV2CreateLlmProvider,
+  getV2ListLlmModels,
+  postV2CreateLlmModel,
+  patchV2UpdateLlmModel,
+  patchV2ToggleLlmModelAvailability,
+  deleteV2DeleteLlmModelAndMigrateWorkflows,
+  getV2GetModelUsageCount,
+  getV2ListModelMigrations,
+  postV2RevertAModelMigration,
+  getV2ListModelCreators,
+  postV2CreateModelCreator,
+  patchV2UpdateModelCreator,
+  deleteV2DeleteModelCreator,
+} from "@/app/api/__generated__/endpoints/admin/admin";
+
+// Generated types
+import type { LlmProvidersResponse } from "@/app/api/__generated__/models/llmProvidersResponse";
+import type { LlmModelsResponse } from "@/app/api/__generated__/models/llmModelsResponse";
+import type { UpsertLlmProviderRequest } from "@/app/api/__generated__/models/upsertLlmProviderRequest";
+import type { CreateLlmModelRequest } from "@/app/api/__generated__/models/createLlmModelRequest";
+import type { UpdateLlmModelRequest } from "@/app/api/__generated__/models/updateLlmModelRequest";
+import type { ToggleLlmModelRequest } from "@/app/api/__generated__/models/toggleLlmModelRequest";
+import type { LlmMigrationsResponse } from "@/app/api/__generated__/models/llmMigrationsResponse";
+import type { LlmCreatorsResponse } from "@/app/api/__generated__/models/llmCreatorsResponse";
+import type { UpsertLlmCreatorRequest } from "@/app/api/__generated__/models/upsertLlmCreatorRequest";
+import type { LlmModelUsageResponse } from "@/app/api/__generated__/models/llmModelUsageResponse";
 
 const ADMIN_LLM_PATH = "/admin/llms";
 
@@ -21,9 +38,12 @@ const ADMIN_LLM_PATH = "/admin/llms";
 // Provider Actions
 // =============================================================================
 
-export async function fetchLlmProviders(): Promise<{ providers: LlmProvider[] }> {
-  const api = new BackendApi();
-  return await api.listAdminLlmProviders(true);
+export async function fetchLlmProviders(): Promise<LlmProvidersResponse> {
+  const response = await getV2ListLlmProviders({ include_models: true });
+  if (response.status !== 200) {
+    throw new Error("Failed to fetch LLM providers");
+  }
+  return response.data;
 }
 
 export async function createLlmProviderAction(formData: FormData) {
@@ -45,8 +65,10 @@ export async function createLlmProviderAction(formData: FormData) {
     metadata: {},
   };
 
-  const api = new BackendApi();
-  await api.createAdminLlmProvider(payload);
+  const response = await postV2CreateLlmProvider(payload);
+  if (response.status !== 200) {
+    throw new Error("Failed to create LLM provider");
+  }
   revalidatePath(ADMIN_LLM_PATH);
 }
 
@@ -54,9 +76,12 @@ export async function createLlmProviderAction(formData: FormData) {
 // Model Actions
 // =============================================================================
 
-export async function fetchLlmModels(): Promise<{ models: LlmModel[] }> {
-  const api = new BackendApi();
-  return await api.listAdminLlmModels();
+export async function fetchLlmModels(): Promise<LlmModelsResponse> {
+  const response = await getV2ListLlmModels();
+  if (response.status !== 200) {
+    throw new Error("Failed to fetch LLM models");
+  }
+  return response.data;
 }
 
 export async function createLlmModelAction(formData: FormData) {
@@ -64,9 +89,11 @@ export async function createLlmModelAction(formData: FormData) {
   const creatorId = formData.get("creator_id");
 
   // Fetch provider to get default credentials
-  const api = new BackendApi();
-  const providersResponse = await api.listAdminLlmProviders(false);
-  const provider = providersResponse.providers.find((p) => p.id === providerId);
+  const providersResponse = await getV2ListLlmProviders({ include_models: false });
+  if (providersResponse.status !== 200) {
+    throw new Error("Failed to fetch providers");
+  }
+  const provider = providersResponse.data.providers.find((p) => p.id === providerId);
 
   if (!provider) {
     throw new Error("Provider not found");
@@ -99,7 +126,10 @@ export async function createLlmModelAction(formData: FormData) {
     ],
   };
 
-  await api.createAdminLlmModel(payload);
+  const response = await postV2CreateLlmModel(payload);
+  if (response.status !== 200) {
+    throw new Error("Failed to create LLM model");
+  }
   revalidatePath(ADMIN_LLM_PATH);
 }
 
@@ -146,8 +176,10 @@ export async function updateLlmModelAction(formData: FormData) {
       : undefined,
   };
 
-  const api = new BackendApi();
-  await api.updateAdminLlmModel(modelId, payload);
+  const response = await patchV2UpdateLlmModel(modelId, payload);
+  if (response.status !== 200) {
+    throw new Error("Failed to update LLM model");
+  }
   revalidatePath(ADMIN_LLM_PATH);
 }
 
@@ -165,28 +197,37 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
     custom_credit_cost: customCreditCost ? Number(customCreditCost) : undefined,
   };
 
-  const api = new BackendApi();
-  await api.toggleAdminLlmModel(modelId, payload);
+  const response = await patchV2ToggleLlmModelAvailability(modelId, payload);
+  if (response.status !== 200) {
+    throw new Error("Failed to toggle LLM model");
+  }
   revalidatePath(ADMIN_LLM_PATH);
 }
 
 export async function deleteLlmModelAction(formData: FormData) {
-  try {
-    const modelId = String(formData.get("model_id"));
-    const replacementModelSlug = String(formData.get("replacement_model_slug"));
+  const modelId = String(formData.get("model_id"));
+  const replacementModelSlug = String(formData.get("replacement_model_slug"));
 
-    if (!replacementModelSlug) {
-      throw new Error("Replacement model is required");
-    }
-
-    const api = new BackendApi();
-    const result = await api.deleteAdminLlmModel(modelId, replacementModelSlug);
-    revalidatePath(ADMIN_LLM_PATH);
-    return result;
-  } catch (error) {
-    console.error("Delete model error:", error);
-    throw error instanceof Error ? error : new Error("Failed to delete model");
+  if (!replacementModelSlug) {
+    throw new Error("Replacement model is required");
   }
+
+  const response = await deleteV2DeleteLlmModelAndMigrateWorkflows(modelId, {
+    replacement_model_slug: replacementModelSlug,
+  });
+  if (response.status !== 200) {
+    throw new Error("Failed to delete model");
+  }
+  revalidatePath(ADMIN_LLM_PATH);
+  return response.data;
+}
+
+export async function fetchLlmModelUsage(modelId: string): Promise<LlmModelUsageResponse> {
+  const response = await getV2GetModelUsageCount(modelId);
+  if (response.status !== 200) {
+    throw new Error("Failed to fetch model usage");
+  }
+  return response.data;
 }
 
 // =============================================================================
@@ -196,24 +237,21 @@ export async function deleteLlmModelAction(formData: FormData) {
 export async function fetchLlmMigrations(
   includeReverted: boolean = false
 ): Promise<LlmMigrationsResponse> {
-  const api = new BackendApi();
-  return await api.listAdminLlmMigrations(includeReverted);
+  const response = await getV2ListModelMigrations({ include_reverted: includeReverted });
+  if (response.status !== 200) {
+    throw new Error("Failed to fetch migrations");
+  }
+  return response.data;
 }
 
-export async function revertLlmMigrationAction(
-  formData: FormData
-): Promise<void> {
-  try {
-    const migrationId = String(formData.get("migration_id"));
-    const api = new BackendApi();
-    await api.revertAdminLlmMigration(migrationId);
-    revalidatePath(ADMIN_LLM_PATH);
-  } catch (error) {
-    console.error("Revert migration error:", error);
-    throw error instanceof Error
-      ? error
-      : new Error("Failed to revert migration");
+export async function revertLlmMigrationAction(formData: FormData): Promise<void> {
+  const migrationId = String(formData.get("migration_id"));
+
+  const response = await postV2RevertAModelMigration(migrationId, null);
+  if (response.status !== 200) {
+    throw new Error("Failed to revert migration");
   }
+  revalidatePath(ADMIN_LLM_PATH);
 }
 
 // =============================================================================
@@ -221,8 +259,11 @@ export async function revertLlmMigrationAction(
 // =============================================================================
 
 export async function fetchLlmCreators(): Promise<LlmCreatorsResponse> {
-  const api = new BackendApi();
-  return await api.listAdminLlmCreators();
+  const response = await getV2ListModelCreators();
+  if (response.status !== 200) {
+    throw new Error("Failed to fetch creators");
+  }
+  return response.data;
 }
 
 export async function createLlmCreatorAction(formData: FormData): Promise<void> {
@@ -241,8 +282,10 @@ export async function createLlmCreatorAction(formData: FormData): Promise<void> 
     metadata: {},
   };
 
-  const api = new BackendApi();
-  await api.createAdminLlmCreator(payload);
+  const response = await postV2CreateModelCreator(payload);
+  if (response.status !== 200) {
+    throw new Error("Failed to create creator");
+  }
   revalidatePath(ADMIN_LLM_PATH);
 }
 
@@ -263,19 +306,19 @@ export async function updateLlmCreatorAction(formData: FormData): Promise<void> 
     metadata: {},
   };
 
-  const api = new BackendApi();
-  await api.updateAdminLlmCreator(creatorId, payload);
+  const response = await patchV2UpdateModelCreator(creatorId, payload);
+  if (response.status !== 200) {
+    throw new Error("Failed to update creator");
+  }
   revalidatePath(ADMIN_LLM_PATH);
 }
 
 export async function deleteLlmCreatorAction(formData: FormData): Promise<void> {
-  try {
-    const creatorId = String(formData.get("creator_id"));
-    const api = new BackendApi();
-    await api.deleteAdminLlmCreator(creatorId);
-    revalidatePath(ADMIN_LLM_PATH);
-  } catch (error) {
-    console.error("Delete creator error:", error);
-    throw error instanceof Error ? error : new Error("Failed to delete creator");
+  const creatorId = String(formData.get("creator_id"));
+
+  const response = await deleteV2DeleteModelCreator(creatorId);
+  if (response.status !== 200) {
+    throw new Error("Failed to delete creator");
   }
+  revalidatePath(ADMIN_LLM_PATH);
 }
