@@ -36,6 +36,7 @@ export const AgentTableCard = ({
 }: AgentTableCardProps) => {
   const onView = () => {
     onViewSubmission({
+      listing_id: "", // TODO: Add listing_id to props if needed
       agent_id,
       agent_version,
       slug: "",

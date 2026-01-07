@@ -90,7 +90,7 @@ export function usePublishAgentModal({
     } else if (!targetState.isOpen && hasOpened) {
       setHasOpened(false);
     }
-  }, [targetState, preSelectedAgentId, preSelectedAgentVersion, hasOpened]);
+  }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
 
   // Pre-populate form data when modal opens with info step and pre-selected agent
   useEffect(() => {

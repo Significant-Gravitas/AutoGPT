@@ -34,6 +34,7 @@ export interface AgentTableRowProps {
   categories?: string[];
   store_listing_version_id?: string;
   changes_summary?: string;
+  listing_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
   onEditSubmission: (
@@ -60,6 +61,7 @@ export const AgentTableRow = ({
   categories,
   store_listing_version_id,
   changes_summary,
+  listing_id,
   onViewSubmission,
   onDeleteSubmission,
   onEditSubmission,
@@ -83,6 +85,7 @@ export const AgentTableRow = ({
     categories,
     store_listing_version_id,
     changes_summary,
+    listing_id,
   });
 
   // Determine if we should show Edit or View button

@@ -40,12 +40,17 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     },
   );
 
-  // Get user's submissions to check for pending submissions
+  // Get user's submissions - only fetch if user is the creator
   const { data: submissionsData } = useGetV2ListMySubmissions(
-    { page: 1, page_size: 50 }, // Get enough to cover recent submissions
+    { page: 1, page_size: 50 },
     {
       query: {
-        enabled: !!user?.id, // Only fetch if user is authenticated
+        // Only fetch if user is the creator AND agent has marketplace listing (to check pending submissions)
+        enabled: !!(
+          user?.id &&
+          agent?.owner_user_id === user.id &&
+          agent?.marketplace_listing
+        ),
       },
     },
   );
@@ -97,10 +102,8 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
           )
         : undefined;
 
-    // Determine if the user is the creator of this agent
-    // Compare current user ID with the marketplace listing creator ID
-    const isUserCreator =
-      user?.id && agent.marketplace_listing?.creator.id === user.id;
+    // Check if current user is the creator/owner of this agent
+    const isUserCreator = agent?.owner_user_id === user?.id;
 
     // Check if there's a pending submission for this specific agent version
     const submissionsResponse = okData(submissionsData) as any;
@@ -113,8 +116,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
           submission.status === "PENDING",
       );
 
-    // If user is creator and their version is newer than marketplace, show publish update banner
-    // BUT only if there's no pending submission for this version
+    // Show publish update button if user's version is newer and no pending submission
     const hasPublishUpdate =
       isUserCreator &&
       !hasPendingSubmissionForCurrentVersion &&

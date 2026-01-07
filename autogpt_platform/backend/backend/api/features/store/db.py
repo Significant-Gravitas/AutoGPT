@@ -614,6 +614,7 @@ async def get_store_submissions(
         submission_models = []
         for sub in submissions:
             submission_model = store_model.StoreSubmission(
+                listing_id=sub.listing_id,
                 agent_id=sub.agent_id,
                 agent_version=sub.agent_version,
                 name=sub.name,
@@ -667,35 +668,48 @@ async def delete_store_submission(
     submission_id: str,
 ) -> bool:
     """
-    Delete a store listing submission as the submitting user.
+    Delete a store submission version as the submitting user.
 
     Args:
         user_id: ID of the authenticated user
-        submission_id: ID of the submission to be deleted
+        submission_id: StoreListingVersion ID to delete
 
     Returns:
-        bool: True if the submission was successfully deleted, False otherwise
+        bool: True if successfully deleted
     """
-    logger.debug(f"Deleting store submission {submission_id} for user {user_id}")
-
     try:
-        # Verify the submission belongs to this user
-        submission = await prisma.models.StoreListing.prisma().find_first(
-            where={"agentGraphId": submission_id, "owningUserId": user_id}
+        # Find the submission version with ownership check
+        version = await prisma.models.StoreListingVersion.prisma().find_first(
+            where={"id": submission_id}, include={"StoreListing": True}
         )
 
-        if not submission:
-            logger.warning(f"Submission not found for user {user_id}: {submission_id}")
+        if (
+            not version
+            or not version.StoreListing
+            or version.StoreListing.owningUserId != user_id
+        ):
+            raise store_exceptions.SubmissionNotFoundError("Submission not found")
+
+        # Prevent deletion of approved submissions
+        if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
             raise store_exceptions.SubmissionNotFoundError(
-                f"Submission not found for this user. User ID: {user_id}, Submission ID: {submission_id}"
+                "Cannot delete approved submissions"
             )
 
-        # Delete the submission
-        await prisma.models.StoreListing.prisma().delete(where={"id": submission.id})
-
-        logger.debug(
-            f"Successfully deleted submission {submission_id} for user {user_id}"
+        # Delete the version
+        await prisma.models.StoreListingVersion.prisma().delete(
+            where={"id": version.id}
         )
+
+        # Clean up empty listing if this was the last version
+        remaining = await prisma.models.StoreListingVersion.prisma().count(
+            where={"storeListingId": version.storeListingId}
+        )
+        if remaining == 0:
+            await prisma.models.StoreListing.prisma().delete(
+                where={"id": version.storeListingId}
+            )
+
         return True
 
     except Exception as e:
@@ -839,6 +853,7 @@ async def create_store_submission(
         logger.debug(f"Created store listing for agent {agent_id}")
         # Return submission details
         return store_model.StoreSubmission(
+            listing_id=listing.id,
             agent_id=agent_id,
             agent_version=agent_version,
             name=name,
@@ -1002,6 +1017,7 @@ async def edit_store_submission(
             if not updated_version:
                 raise DatabaseError("Failed to update store listing version")
             return store_model.StoreSubmission(
+                listing_id=current_version.StoreListing.id,
                 agent_id=current_version.agentGraphId,
                 agent_version=current_version.agentGraphVersion,
                 name=name,
@@ -1135,6 +1151,7 @@ async def create_store_version(
         )
         # Return submission details
         return store_model.StoreSubmission(
+            listing_id=listing.id,
             agent_id=agent_id,
             agent_version=agent_version,
             name=name,
@@ -1714,6 +1731,11 @@ async def review_store_submission(
 
         # Convert to Pydantic model for consistency
         return store_model.StoreSubmission(
+            listing_id=(
+                submission.StoreListing.id
+                if hasattr(submission, "storeListing") and submission.StoreListing
+                else ""
+            ),
             agent_id=submission.agentGraphId,
             agent_version=submission.agentGraphVersion,
             name=submission.name,
@@ -1851,6 +1873,7 @@ async def get_admin_listings_with_versions(
             # If we have versions, turn them into StoreSubmission models
             for version in listing.Versions or []:
                 version_model = store_model.StoreSubmission(
+                    listing_id=listing.id,
                     agent_id=version.agentGraphId,
                     agent_version=version.agentGraphVersion,
                     name=version.name,

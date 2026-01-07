@@ -26,6 +26,7 @@ interface useAgentTableRowProps {
   categories?: string[];
   store_listing_version_id?: string;
   changes_summary?: string;
+  listing_id?: string;
 }
 
 export const useAgentTableRow = ({
@@ -46,9 +47,11 @@ export const useAgentTableRow = ({
   categories,
   store_listing_version_id,
   changes_summary,
+  listing_id,
 }: useAgentTableRowProps) => {
   const handleView = () => {
     onViewSubmission({
+      listing_id: listing_id || "",
       agent_id,
       agent_version,
       slug: "",
@@ -81,7 +84,9 @@ export const useAgentTableRow = ({
   };
 
   const handleDelete = () => {
-    onDeleteSubmission(agent_id);
+    // Use store_listing_version_id to delete the specific submission/version
+    const submissionId = store_listing_version_id || listing_id || agent_id;
+    onDeleteSubmission(submissionId);
   };
 
   return { handleView, handleDelete, handleEdit };
