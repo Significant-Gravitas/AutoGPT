@@ -95,6 +95,15 @@ class Node(BaseDbModel):
     output_links: list[Link] = []
 
     @property
+    def credentials_optional(self) -> bool:
+        """
+        Whether credentials are optional for this node.
+        When True and credentials are not configured, the node will be skipped
+        during execution rather than causing a validation error.
+        """
+        return self.metadata.get("credentials_optional", False)
+
+    @property
     def block(self) -> AnyBlockSchema | "_UnknownBlockBase":
         """Get the block for this node. Returns UnknownBlock if block is deleted/missing."""
         block = get_block(self.block_id)

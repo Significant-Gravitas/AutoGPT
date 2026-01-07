@@ -15,11 +15,13 @@ export const useCredentialField = ({
   formData,
   nodeId,
   onChange,
+  disableAutoSelect = false,
 }: {
   credentialSchema: BlockIOCredentialsSubSchema; // Here we are using manual typing, we need to fix it with automatic one
   formData: Record<string, any>;
   nodeId: string;
   onChange: (value: Record<string, any>) => void;
+  disableAutoSelect?: boolean;
 }) => {
   const previousProviderRef = useRef<string | null>(null);
 
@@ -108,8 +110,10 @@ export const useCredentialField = ({
   }, [credentialProvider, formData.id, credentials, onChange]);
 
   // This side effect is used to auto-select the latest credential when none is selected [latest means last one in the list of credentials]
+  // Auto-selection is disabled when credentials are marked as optional
   useEffect(() => {
     if (
+      !disableAutoSelect &&
       !isCredentialListLoading &&
       filteredCredentials.length > 0 &&
       !formData.id && // No credential currently selected
@@ -120,6 +124,7 @@ export const useCredentialField = ({
       setCredential(latestCredential.id);
     }
   }, [
+    disableAutoSelect,
     isCredentialListLoading,
     filteredCredentials.length,
     formData.id,

@@ -62,6 +62,10 @@ type NodeStore = {
     errors: { [key: string]: string },
   ) => void;
   clearAllNodeErrors: () => void; // Add this
+
+  // Credentials optional helpers
+  getCredentialsOptional: (nodeId: string) => boolean;
+  setCredentialsOptional: (nodeId: string, optional: boolean) => void;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -220,6 +224,9 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         ...(node.data.metadata?.customized_name !== undefined && {
           customized_name: node.data.metadata.customized_name,
         }),
+        ...(node.data.metadata?.credentials_optional !== undefined && {
+          credentials_optional: node.data.metadata.credentials_optional,
+        }),
       },
     };
   },
@@ -304,5 +311,36 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         data: { ...n.data, errors: undefined },
       })),
     }));
+  },
+
+  getCredentialsOptional: (nodeId: string) => {
+    const node = get().nodes.find((n) => n.id === nodeId);
+    return node?.data?.metadata?.credentials_optional ?? false;
+  },
+
+  setCredentialsOptional: (nodeId: string, optional: boolean) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                metadata: {
+                  ...n.data.metadata,
+                  credentials_optional: optional,
+                },
+              },
+            }
+          : n,
+      ),
+    }));
+
+    const newState = {
+      nodes: get().nodes,
+      edges: useEdgeStore.getState().edges,
+    };
+
+    useHistoryStore.getState().pushState(newState);
   },
 }));

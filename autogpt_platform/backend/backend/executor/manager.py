@@ -918,6 +918,21 @@ class ExecutionProcessor:
 
                 queued_node_exec = execution_queue.get()
 
+                # Check if this node should be skipped due to optional credentials
+                if queued_node_exec.node_id in graph_exec.nodes_to_skip:
+                    log_metadata.info(
+                        f"Skipping node execution {queued_node_exec.node_exec_id} "
+                        f"for node {queued_node_exec.node_id} - optional credentials not configured"
+                    )
+                    # Mark the node as completed without executing
+                    # No outputs will be produced, so downstream nodes won't trigger
+                    update_node_execution_status(
+                        db_client=db_client,
+                        exec_id=queued_node_exec.node_exec_id,
+                        status=ExecutionStatus.COMPLETED,
+                    )
+                    continue
+
                 log_metadata.debug(
                     f"Dispatching node execution {queued_node_exec.node_exec_id} "
                     f"for node {queued_node_exec.node_id}",
