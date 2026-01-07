@@ -77,16 +77,20 @@ export function usePublishAgentModal({
     }
   }, [targetState]);
 
-  // Reset internal state when modal opens
+  // Reset internal state when modal opens (only on initial open, not on every targetState change)
+  const [hasOpened, setHasOpened] = useState(false);
   useEffect(() => {
     if (!targetState) return;
-    if (targetState.isOpen) {
+    if (targetState.isOpen && !hasOpened) {
       setSelectedAgent(null);
       setSelectedAgentId(preSelectedAgentId || null);
       setSelectedAgentVersion(preSelectedAgentVersion || null);
       setInitialData(emptyModalState);
+      setHasOpened(true);
+    } else if (!targetState.isOpen && hasOpened) {
+      setHasOpened(false);
     }
-  }, [targetState, preSelectedAgentId, preSelectedAgentVersion]);
+  }, [targetState, preSelectedAgentId, preSelectedAgentVersion, hasOpened]);
 
   // Pre-populate form data when modal opens with info step and pre-selected agent
   useEffect(() => {

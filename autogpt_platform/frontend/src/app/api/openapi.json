@@ -9819,8 +9819,18 @@
       },
       "StoreSubmissionRequest": {
         "properties": {
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Agent Id",
+            "description": "Agent ID cannot be empty"
+          },
+          "agent_version": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Agent Version",
+            "description": "Agent version must be greater than 0"
+          },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },

@@ -54,7 +54,7 @@ export function useAgentInfoStep({
   });
 
   useEffect(() => {
-    if (initialData) {
+    if (initialData?.agent_id) {
       setAgentId(initialData.agent_id);
       const initialImages = [
         ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
@@ -77,6 +77,13 @@ export function useAgentInfoStep({
       });
     }
   }, [initialData, form]);
+
+  // Ensure agentId is set from selectedAgentId if initialData doesn't have it
+  useEffect(() => {
+    if (selectedAgentId && !agentId) {
+      setAgentId(selectedAgentId);
+    }
+  }, [selectedAgentId, agentId]);
 
   const handleImagesChange = useCallback((newImages: string[]) => {
     setImages(newImages);
