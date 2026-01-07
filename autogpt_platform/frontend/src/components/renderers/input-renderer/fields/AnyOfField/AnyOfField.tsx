@@ -56,11 +56,25 @@ export const AnyOfField = ({
           .join("_") || ""
       : generateHandleId(idSchema.$id ?? "");
 
-  const updatedFormContexrt = { ...formContext, fromAnyOf: true };
+  const updatedFormContext = { ...formContext, fromAnyOf: true };
 
-  const { nodeId, showHandles = true } = updatedFormContexrt;
+  const {
+    nodeId,
+    showHandles = true,
+    brokenInputs,
+    typeMismatchInputs,
+  } = updatedFormContext;
   const { isInputConnected } = useEdgeStore();
   const isConnected = showHandles ? isInputConnected(nodeId, handleId) : false;
+  // Check if this input is broken (from formContext, passed by FormCreator)
+  const isBroken = handleId
+    ? ((brokenInputs as Set<string> | undefined)?.has(handleId) ?? false)
+    : false;
+  // Check if this input has a type mismatch, and get the new type if so
+  const newTypeFromMismatch = handleId
+    ? (typeMismatchInputs as Map<string, string> | undefined)?.get(handleId)
+    : undefined;
+  const hasTypeMismatch = !!newTypeFromMismatch;
   const {
     isNullableType,
     nonNull,
@@ -105,7 +119,7 @@ export const AnyOfField = ({
             name={name}
             registry={registry}
             disabled={disabled}
-            formContext={updatedFormContexrt}
+            formContext={updatedFormContext}
           />
         </div>
       );
@@ -125,7 +139,7 @@ export const AnyOfField = ({
           name={name}
           registry={registry}
           disabled={disabled}
-          formContext={updatedFormContexrt}
+          formContext={updatedFormContext}
         />
       </div>
     );
@@ -149,15 +163,24 @@ export const AnyOfField = ({
                 handleId={handleId}
                 isConnected={isConnected}
                 side="left"
+                isBroken={isBroken}
               />
             )}
             <Text
               variant={formContext.size === "small" ? "body" : "body-medium"}
+              className={cn(isBroken && "text-red-500 line-through")}
             >
               {schema.title || name.charAt(0).toUpperCase() + name.slice(1)}
             </Text>
-            <Text variant="small" className={colorClass}>
-              ({displayType} | null)
+            <Text
+              variant="small"
+              className={cn(
+                colorClass,
+                isBroken && "text-red-500 line-through",
+                hasTypeMismatch && "rounded bg-red-100 px-1 !text-red-600",
+              )}
+            >
+              ({hasTypeMismatch ? newTypeFromMismatch : displayType} | null)
             </Text>
           </div>
           {!isConnected && (
@@ -168,9 +191,9 @@ export const AnyOfField = ({
             />
           )}
         </div>
-        <div className="mt-2">
-          {!isConnected && isEnabled && renderInput(nonNull)}
-        </div>
+        {!isConnected && isEnabled && (
+          <div className="mt-2">{renderInput(nonNull)}</div>
+        )}
       </div>
     );
   }
@@ -185,9 +208,13 @@ export const AnyOfField = ({
             handleId={handleId}
             isConnected={isConnected}
             side="left"
+            isBroken={isBroken}
           />
         )}
-        <Text variant={formContext.size === "small" ? "body" : "body-medium"}>
+        <Text
+          variant={formContext.size === "small" ? "body" : "body-medium"}
+          className={cn(isBroken && "text-red-500 line-through")}
+        >
           {schema.title || name.charAt(0).toUpperCase() + name.slice(1)}
         </Text>
         {!isConnected && (

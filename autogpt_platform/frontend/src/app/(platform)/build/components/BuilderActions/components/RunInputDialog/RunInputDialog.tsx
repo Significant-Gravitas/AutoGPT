@@ -57,18 +57,17 @@ export const RunInputDialog = ({
                     Credentials
                   </Text>
                 </div>
-                <div className="px-2">
-                  <FormRenderer
-                    jsonSchema={credentialsSchema as RJSFSchema}
-                    handleChange={(v) => handleCredentialChange(v.formData)}
-                    uiSchema={credentialsUiSchema}
-                    initialValues={{}}
-                    formContext={{
-                      showHandles: false,
-                      size: "large",
-                    }}
-                  />
-                </div>
+                <FormRenderer
+                  className="mt-4 px-2"
+                  jsonSchema={credentialsSchema as RJSFSchema}
+                  handleChange={(v) => handleCredentialChange(v.formData)}
+                  uiSchema={credentialsUiSchema}
+                  initialValues={{}}
+                  formContext={{
+                    showHandles: false,
+                    size: "large",
+                  }}
+                />
               </div>
             )}
 
@@ -80,18 +79,17 @@ export const RunInputDialog = ({
                     Inputs
                   </Text>
                 </div>
-                <div className="px-2">
-                  <FormRenderer
-                    jsonSchema={inputSchema as RJSFSchema}
-                    handleChange={(v) => handleInputChange(v.formData)}
-                    uiSchema={uiSchema}
-                    initialValues={{}}
-                    formContext={{
-                      showHandles: false,
-                      size: "large",
-                    }}
-                  />
-                </div>
+                <FormRenderer
+                  className="mt-4 px-2"
+                  jsonSchema={inputSchema as RJSFSchema}
+                  handleChange={(v) => handleInputChange(v.formData)}
+                  uiSchema={uiSchema}
+                  initialValues={{}}
+                  formContext={{
+                    showHandles: false,
+                    size: "large",
+                  }}
+                />
               </div>
             )}
 

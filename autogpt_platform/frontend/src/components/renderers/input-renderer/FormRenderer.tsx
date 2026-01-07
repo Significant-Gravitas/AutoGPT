@@ -13,6 +13,8 @@ type FormContextType = {
   uiType?: BlockUIType;
   showHandles?: boolean;
   size?: "small" | "medium" | "large";
+  brokenInputs?: Set<string>;
+  typeMismatchInputs?: Map<string, string>; // Map of input name -> new type
 };
 
 type FormRendererProps = {
@@ -21,6 +23,7 @@ type FormRendererProps = {
   uiSchema: any;
   initialValues: any;
   formContext: FormContextType;
+  className?: string;
 };
 
 export const FormRenderer = ({
@@ -29,25 +32,25 @@ export const FormRenderer = ({
   uiSchema,
   initialValues,
   formContext,
+  className,
 }: FormRendererProps) => {
   const preprocessedSchema = useMemo(() => {
     return preprocessInputSchema(jsonSchema);
   }, [jsonSchema]);
   return (
-    <div className={"mt-4"}>
-      <Form
-        schema={preprocessedSchema}
-        validator={customValidator}
-        fields={fields}
-        templates={templates}
-        widgets={widgets}
-        formContext={formContext}
-        onChange={handleChange}
-        uiSchema={uiSchema}
-        formData={initialValues}
-        noValidate={true}
-        liveValidate={false}
-      />
-    </div>
+    <Form
+      className={className}
+      schema={preprocessedSchema}
+      validator={customValidator}
+      fields={fields}
+      templates={templates}
+      widgets={widgets}
+      formContext={formContext}
+      onChange={handleChange}
+      uiSchema={uiSchema}
+      formData={initialValues}
+      noValidate={true}
+      liveValidate={false}
+    />
   );
 };

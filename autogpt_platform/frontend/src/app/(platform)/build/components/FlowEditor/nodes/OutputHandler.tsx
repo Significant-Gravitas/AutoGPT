@@ -2,7 +2,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { CaretDownIcon, InfoIcon } from "@phosphor-icons/react";
 import { RJSFSchema } from "@rjsf/utils";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import NodeHandle from "../handlers/NodeHandle";
 import {
@@ -12,9 +12,32 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { getTypeDisplayInfo } from "./helpers";
 import { generateHandleId } from "../handlers/helpers";
 import { BlockUIType } from "../../types";
+import { cn } from "@/lib/utils";
+
+/**
+ * Hook to get the set of broken output names for a node in resolution mode.
+ */
+function useBrokenOutputs(nodeID: string): Set<string> {
+  // Subscribe to the actual state values, not just methods
+  const isInResolution = useNodeStore((state) =>
+    state.nodesInResolutionMode.has(nodeID),
+  );
+  const resolutionData = useNodeStore((state) =>
+    state.nodeResolutionData.get(nodeID),
+  );
+
+  return useMemo(() => {
+    if (!isInResolution || !resolutionData) {
+      return new Set<string>();
+    }
+
+    return new Set(resolutionData.incompatibilities.missingOutputs);
+  }, [isInResolution, resolutionData]);
+}
 
 export const OutputHandler = ({
   outputSchema,
@@ -28,6 +51,7 @@ export const OutputHandler = ({
   const { isOutputConnected } = useEdgeStore();
   const properties = outputSchema?.properties || {};
   const [isOutputVisible, setIsOutputVisible] = useState(true);
+  const brokenOutputs = useBrokenOutputs(nodeId);
 
   return (
     <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-slate-200/50 bg-white py-3.5">
@@ -53,6 +77,7 @@ export const OutputHandler = ({
         <div className="flex flex-col items-end gap-2">
           {Object.entries(properties).map(([key, property]: [string, any]) => {
             const isConnected = isOutputConnected(nodeId, key);
+            const isBroken = brokenOutputs.has(key);
             const shouldShow = isConnected || isOutputVisible;
             const { displayType, colorClass } = getTypeDisplayInfo(property);
 
@@ -74,7 +99,13 @@ export const OutputHandler = ({
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                <Text variant="body" className="text-slate-700">
+                <Text
+                  variant="body"
+                  className={cn(
+                    "text-slate-700",
+                    isBroken && "text-red-500 line-through",
+                  )}
+                >
                   {property?.title || key}{" "}
                 </Text>
                 <Text variant="small" as="span" className={colorClass}>
@@ -87,6 +118,7 @@ export const OutputHandler = ({
                   }
                   isConnected={isConnected}
                   side="right"
+                  isBroken={isBroken}
                 />
               </div>
             ) : null;

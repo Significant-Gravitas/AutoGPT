@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { GraphMeta } from "@/app/api/__generated__/models/graphMeta";
 
 interface GraphStore {
   graphExecutionStatus: AgentExecutionStatus | undefined;
@@ -17,6 +18,10 @@ interface GraphStore {
     outputSchema: Record<string, any> | null,
   ) => void;
 
+  // Available graphs; used for sub-graph updates
+  availableSubGraphs: GraphMeta[];
+  setAvailableSubGraphs: (graphs: GraphMeta[]) => void;
+
   hasInputs: () => boolean;
   hasCredentials: () => boolean;
   hasOutputs: () => boolean;
@@ -29,6 +34,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   inputSchema: null,
   credentialsInputSchema: null,
   outputSchema: null,
+  availableSubGraphs: [],
 
   setGraphExecutionStatus: (status: AgentExecutionStatus | undefined) => {
     set({
@@ -45,6 +51,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   setGraphSchemas: (inputSchema, credentialsInputSchema, outputSchema) =>
     set({ inputSchema, credentialsInputSchema, outputSchema }),
+
+  setAvailableSubGraphs: (graphs) => set({ availableSubGraphs: graphs }),
 
   hasOutputs: () => {
     const { outputSchema } = get();

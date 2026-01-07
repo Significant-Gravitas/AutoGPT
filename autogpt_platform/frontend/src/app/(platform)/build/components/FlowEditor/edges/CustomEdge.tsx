@@ -8,6 +8,7 @@ import {
   getBezierPath,
 } from "@xyflow/react";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { XIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
@@ -35,6 +36,9 @@ const CustomEdge = ({
   selected,
 }: EdgeProps<CustomEdge>) => {
   const removeConnection = useEdgeStore((state) => state.removeEdge);
+  // Subscribe to the actual brokenEdgeIds state so we re-render when it changes
+  const isBroken = useNodeStore((state) => state.brokenEdgeIDs.has(id));
+  const removeBrokenEdgeID = useNodeStore((state) => state.removeBrokenEdgeID);
   const [isHovered, setIsHovered] = useState(false);
 
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -50,6 +54,14 @@ const CustomEdge = ({
   const beadUp = data?.beadUp ?? 0;
   const beadDown = data?.beadDown ?? 0;
 
+  const handleRemoveEdge = () => {
+    removeConnection(id);
+    // Also remove from broken edges tracking if it was broken
+    if (isBroken) {
+      removeBrokenEdgeID(id);
+    }
+  };
+
   return (
     <>
       <BaseEdge
@@ -57,9 +69,11 @@ const CustomEdge = ({
         markerEnd={markerEnd}
         className={cn(
           isStatic && "!stroke-[1.5px] [stroke-dasharray:6]",
-          selected
-            ? "stroke-zinc-800"
-            : "stroke-zinc-500/50 hover:stroke-zinc-500",
+          isBroken
+            ? "!stroke-red-500 !stroke-[2px] [stroke-dasharray:4]"
+            : selected
+              ? "stroke-zinc-800"
+              : "stroke-zinc-500/50 hover:stroke-zinc-500",
         )}
       />
       <JSBeads
@@ -70,12 +84,16 @@ const CustomEdge = ({
       />
       <EdgeLabelRenderer>
         <Button
-          onClick={() => removeConnection(id)}
+          onClick={handleRemoveEdge}
           className={cn(
             "absolute h-fit min-w-0 p-1 transition-opacity",
-            isHovered ? "opacity-100" : "opacity-0",
+            isBroken
+              ? "bg-red-500 opacity-100 hover:bg-red-600"
+              : isHovered
+                ? "opacity-100"
+                : "opacity-0",
           )}
-          variant="secondary"
+          variant={isBroken ? "primary" : "secondary"}
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
             pointerEvents: "all",

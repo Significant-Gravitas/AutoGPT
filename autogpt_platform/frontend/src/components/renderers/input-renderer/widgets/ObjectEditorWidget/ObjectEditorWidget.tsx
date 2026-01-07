@@ -12,6 +12,7 @@ import {
   HandleIdType,
   parseKeyValueHandleId,
 } from "@/app/(platform)/build/components/FlowEditor/handlers/helpers";
+import { cn } from "@/lib/utils";
 
 export interface ObjectEditorProps {
   id: string;
@@ -22,6 +23,8 @@ export interface ObjectEditorProps {
   className?: string;
   nodeId: string;
   fieldKey: string;
+  brokenInputs?: Set<string>;
+  typeMismatchInputs?: Map<string, string>; // Map of input name -> new type
 }
 
 export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
@@ -34,6 +37,8 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
       disabled = false,
       className,
       nodeId,
+      brokenInputs,
+      typeMismatchInputs,
     },
     ref,
   ) => {
@@ -96,7 +101,7 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
     return (
       <div
         ref={ref}
-        className={`flex flex-col gap-2 ${className || ""}`}
+        className={cn("flex flex-col gap-2", className)}
         id={parentFieldId}
       >
         {Object.entries(value).map(([key, propertyValue], idx) => {
@@ -106,6 +111,13 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
             HandleIdType.KEY_VALUE,
           );
           const isDynamicPropertyConnected = isInputConnected(nodeId, handleId);
+          const isBroken = handleId
+            ? (brokenInputs?.has(handleId) ?? false)
+            : false;
+          const newTypeFromMismatch = handleId
+            ? typeMismatchInputs?.get(handleId)
+            : undefined;
+          const hasTypeMismatch = !!newTypeFromMismatch;
 
           return (
             <div key={idx} className="flex flex-col gap-2">
@@ -115,13 +127,27 @@ export const ObjectEditor = React.forwardRef<HTMLDivElement, ObjectEditorProps>(
                     isConnected={isDynamicPropertyConnected}
                     handleId={handleId}
                     side="left"
+                    isBroken={isBroken}
                   />
                 )}
-                <Text variant="small" className="!text-gray-500">
+                <Text
+                  variant="small"
+                  className={cn(
+                    "!text-gray-500",
+                    isBroken && "!text-red-500 line-through",
+                  )}
+                >
                   #{key.trim() === "" ? "" : key}
                 </Text>
-                <Text variant="small" className="!text-green-500">
-                  (string)
+                <Text
+                  variant="small"
+                  className={cn(
+                    "!text-green-500",
+                    isBroken && "!text-red-500 line-through",
+                    hasTypeMismatch && "rounded bg-red-100 px-1 !text-red-600",
+                  )}
+                >
+                  ({hasTypeMismatch ? newTypeFromMismatch : "string"})
                 </Text>
               </div>
               {!isDynamicPropertyConnected && (

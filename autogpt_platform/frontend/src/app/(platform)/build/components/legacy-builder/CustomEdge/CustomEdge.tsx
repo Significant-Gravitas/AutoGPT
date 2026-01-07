@@ -60,9 +60,15 @@ export function CustomEdge({
     targetY - 5,
   );
   const { deleteElements } = useReactFlow<Node, CustomEdge>();
-  const { visualizeBeads } = useContext(BuilderContext) ?? {
+  const builderContext = useContext(BuilderContext);
+  const { visualizeBeads } = builderContext ?? {
     visualizeBeads: "no",
   };
+
+  // Check if this edge is broken (during resolution mode)
+  const isBroken =
+    builderContext?.resolutionMode?.active &&
+    builderContext?.resolutionMode?.brokenEdgeIds?.includes(id);
 
   const onEdgeRemoveClick = () => {
     deleteElements({ edges: [{ id }] });
@@ -171,12 +177,27 @@ export function CustomEdge({
 
   const middle = getPointForT(0.5);
 
+  // Determine edge color - red for broken edges
+  const baseColor = data?.edgeColor ?? "#555555";
+  const edgeColor = isBroken ? "#ef4444" : baseColor;
+  // Add opacity to hex color (99 = 60% opacity, 80 = 50% opacity)
+  const strokeColor = isBroken
+    ? `${edgeColor}99`
+    : selected
+      ? edgeColor
+      : `${edgeColor}80`;
+
   return (
     <>
       <BaseEdge
         path={svgPath}
         markerEnd={markerEnd}
-        className={`data-sentry-unmask transition-all duration-200 ${data?.isStatic ? "[stroke-dasharray:5_3]" : "[stroke-dasharray:0]"} [stroke-width:${data?.isStatic ? 2.5 : 2}px] hover:[stroke-width:${data?.isStatic ? 3.5 : 3}px] ${selected ? `[stroke:${data?.edgeColor ?? "#555555"}]` : `[stroke:${data?.edgeColor ?? "#555555"}80] hover:[stroke:${data?.edgeColor ?? "#555555"}]`}`}
+        style={{
+          stroke: strokeColor,
+          strokeWidth: data?.isStatic ? 2.5 : 2,
+          strokeDasharray: data?.isStatic ? "5 3" : undefined,
+        }}
+        className="data-sentry-unmask transition-all duration-200"
       />
       <path
         d={svgPath}

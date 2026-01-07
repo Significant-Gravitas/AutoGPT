@@ -36,7 +36,13 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   uiSchema,
 }) => {
   const { isInputConnected } = useEdgeStore();
-  const { nodeId, showHandles = true, size = "small" } = formContext;
+  const {
+    nodeId,
+    showHandles = true,
+    size = "small",
+    brokenInputs,
+    typeMismatchInputs,
+  } = formContext;
   const uiType = formContext.uiType;
 
   const showAdvanced = useNodeStore(
@@ -56,7 +62,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   const isCredential = isCredentialFieldSchema(schema);
   const suppressHandle = isAnyOf || isOneOf;
 
-  let handleId = null;
+  let handleId: string | null = null;
   if (!isArrayItem) {
     if (uiType === BlockUIType.AGENT) {
       const parts = fieldId.split("_");
@@ -72,6 +78,13 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   }
 
   const isConnected = showHandles ? isInputConnected(nodeId, handleId) : false;
+  // Check if this input is broken (from formContext, passed by FormCreator)
+  const isBroken = handleId ? (brokenInputs?.has(handleId) ?? false) : false;
+  // Check if this input has a type mismatch, and get the new type if so
+  const newTypeFromMismatch = handleId
+    ? (typeMismatchInputs as Map<string, string> | undefined)?.get(handleId)
+    : undefined;
+  const hasTypeMismatch = !!newTypeFromMismatch;
 
   if (!showAdvanced && schema.advanced === true && !isConnected) {
     return null;
@@ -113,7 +126,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
   return (
     <div
       className={cn(
-        "mb-4 space-y-2",
+        "mb-4 space-y-2 last:mb-0", // peer-to-peer spacing since we can't style the parent with gap-y
         fromAnyOf && "mb-0",
         size === "small" ? "w-[350px]" : "w-full",
       )}
@@ -125,6 +138,7 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               handleId={handleId}
               isConnected={isConnected}
               side="left"
+              isBroken={isBroken}
             />
           )}
           <Text
@@ -139,14 +153,21 @@ const FieldTemplate: React.FC<FieldTemplateProps> = ({
               uiType === BlockUIType.INPUT && "ml-3",
               uiType === BlockUIType.WEBHOOK && "ml-3",
               uiType === BlockUIType.WEBHOOK_MANUAL && "ml-3",
+              isBroken && "text-red-500 line-through",
             )}
           >
             {isCredential && credentialProvider
               ? toDisplayName(credentialProvider) + " credentials"
               : schema.title || label}
           </Text>
-          <Text variant="small" className={colorClass}>
-            ({displayType})
+          <Text
+            variant="small"
+            className={cn(
+              colorClass,
+              hasTypeMismatch && "rounded bg-red-100 px-1 !text-red-600",
+            )}
+          >
+            ({hasTypeMismatch ? newTypeFromMismatch : displayType})
           </Text>
           {required && <span style={{ color: "red" }}>*</span>}
           {description?.props?.description && (
