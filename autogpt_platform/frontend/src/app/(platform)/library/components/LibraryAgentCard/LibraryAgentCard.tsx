@@ -268,7 +268,7 @@ export default function LibraryAgentCard({
           <button
             onClick={handleToggleFavorite}
             className={cn(
-              "absolute right-4 top-4 rounded-full bg-white/90 p-2 backdrop-blur-sm transition-all duration-200",
+              "rounded-full bg-white/90 p-2 backdrop-blur-sm transition-all duration-200",
               "hover:scale-110 hover:bg-white",
               "focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2",
               isUpdating && "cursor-not-allowed opacity-50",
