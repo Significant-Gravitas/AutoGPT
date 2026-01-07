@@ -8,6 +8,7 @@ import {
 import { ArrowSquareOutIcon, CopyIcon, TrashIcon } from "@phosphor-icons/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useReactFlow } from "@xyflow/react";
+import { useEffect, useRef } from "react";
 import { CustomNode } from "../CustomNode";
 
 type Props = {
@@ -16,8 +17,12 @@ type Props = {
   children: React.ReactNode;
 };
 
+const DOUBLE_CLICK_TIMEOUT = 300;
+
 export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
   const { deleteElements } = useReactFlow<CustomNode>();
+  const lastRightClickTime = useRef<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   function copyNode() {
     useNodeStore.setState((state) => ({
@@ -35,10 +40,34 @@ export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
     deleteElements({ nodes: [{ id: nodeId }] });
   }
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    function handleContextMenu(e: MouseEvent) {
+      const now = Date.now();
+      const timeSinceLastClick = now - lastRightClickTime.current;
+
+      if (timeSinceLastClick < DOUBLE_CLICK_TIMEOUT) {
+        e.stopImmediatePropagation();
+        lastRightClickTime.current = 0;
+        return;
+      }
+
+      lastRightClickTime.current = now;
+    }
+
+    container.addEventListener("contextmenu", handleContextMenu, true);
+
+    return () => {
+      container.removeEventListener("contextmenu", handleContextMenu, true);
+    };
+  }, []);
+
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
-        <div>{children}</div>
+        <div ref={containerRef}>{children}</div>
       </ContextMenu.Trigger>
       <SecondaryMenuContent>
         <SecondaryMenuItem onSelect={copyNode}>
