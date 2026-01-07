@@ -24,7 +24,8 @@ export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
         // adding $id for custom field
         const customFieldId = findCustomFieldId(processedProperty);
         if (customFieldId) {
-          processedProperty.$id = customFieldId;
+          processedProperty.$id =
+            customFieldId + "_%_" + processedProperty.title;
         }
 
         // Only add type if no type is defined AND no anyOf/oneOf/allOf is present

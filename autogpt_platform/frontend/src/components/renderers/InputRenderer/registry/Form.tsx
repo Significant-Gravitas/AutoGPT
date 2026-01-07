@@ -6,6 +6,7 @@ import {
   generateBaseWidgets,
 } from "../base/base-registry";
 import { generateCustomFields } from "../custom/custom-registry";
+import { CustomSchemaField } from "./CustomSchemaField";
 
 export function generateForm(): ComponentType<FormProps> {
   const theme: ThemeProps = {
@@ -14,6 +15,7 @@ export function generateForm(): ComponentType<FormProps> {
     fields: {
       ...generateBaseFields(),
       ...generateCustomFields(),
+      SchemaField: CustomSchemaField,
     },
   };
 
