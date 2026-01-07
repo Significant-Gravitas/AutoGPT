@@ -4,11 +4,10 @@ import {
   TemplatesType,
 } from "@rjsf/utils";
 import { AnyOfField } from "./anyof/AnyOfField";
-import { AddButton, CopyButton, RemoveButton } from "./standard/buttons";
 import {
   ArrayFieldItemTemplate,
-  ArraySchemaField,
   ArrayFieldTemplate,
+  ArraySchemaField,
 } from "./array";
 import {
   ObjectFieldTemplate,
@@ -16,14 +15,16 @@ import {
   WrapIfAdditionalTemplate,
 } from "./object";
 import { DescriptionField, FieldTemplate, TitleField } from "./standard";
+import { AddButton, CopyButton, RemoveButton } from "./standard/buttons";
 import {
-  TextWidget,
-  SelectWidget,
   CheckboxWidget,
-  FileWidget,
-  DateWidget,
-  TimeWidget,
   DateTimeWidget,
+  DateWidget,
+  FileWidget,
+  GoogleDrivePickerWidget,
+  SelectWidget,
+  TextWidget,
+  TimeWidget,
 } from "./standard/widgets";
 
 const NoButton = () => null;
@@ -65,5 +66,6 @@ export function generateBaseWidgets(): RegistryWidgetsType {
     DateWidget,
     TimeWidget,
     DateTimeWidget,
+    GoogleDrivePickerWidget,
   };
 }
