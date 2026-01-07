@@ -1,9 +1,13 @@
+import { BlockUIType } from "@/app/(platform)/build/components/types";
+import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
+import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/atoms/Tooltip/BaseTooltip";
+  globalRegistry,
+  OutputActions,
+  OutputItem,
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import { Label } from "@/components/__legacy__/ui/label";
+import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
 import {
   Sheet,
   SheetContent,
@@ -12,20 +16,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/__legacy__/ui/sheet";
-import { BuilderActionButton } from "../BuilderActionButton";
-import { BookOpenIcon } from "@phosphor-icons/react";
-import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
-import { useShallow } from "zustand/react/shallow";
-import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { BlockUIType } from "@/app/(platform)/build/components/types";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
-import { Label } from "@/components/__legacy__/ui/label";
-import { useMemo } from "react";
+import { Button } from "@/components/atoms/Button/Button";
 import {
-  globalRegistry,
-  OutputItem,
-  OutputActions,
-} from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/OutputRenderers";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
+import { BookOpenIcon } from "@phosphor-icons/react";
+import { useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
   const hasOutputs = useGraphStore(useShallow((state) => state.hasOutputs));
@@ -76,9 +76,13 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         <Tooltip>
           <TooltipTrigger asChild>
             <SheetTrigger asChild>
-              <BuilderActionButton disabled={!flowID || !hasOutputs()}>
-                <BookOpenIcon className="size-6" />
-              </BuilderActionButton>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={!flowID || !hasOutputs()}
+              >
+                <BookOpenIcon className="size-4" />
+              </Button>
             </SheetTrigger>
           </TooltipTrigger>
           <TooltipContent>

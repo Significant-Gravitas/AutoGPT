@@ -1,10 +1,15 @@
 "use client";
 
+import {
+  getPaginatedTotalCount,
+  getPaginationNextPageNumber,
+  unpaginate,
+} from "@/app/api/helpers";
 import { useGetV2ListFavoriteLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 
 export function useFavoriteAgents() {
   const {
-    data: agents,
+    data: agentsQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -15,36 +20,14 @@ export function useFavoriteAgents() {
       page_size: 10,
     },
     {
-      query: {
-        getNextPageParam: (lastPage) => {
-          // Only paginate on successful responses
-          if (!lastPage || lastPage.status !== 200) return undefined;
-
-          const pagination = lastPage.data.pagination;
-          const isMore =
-            pagination.current_page * pagination.page_size <
-            pagination.total_items;
-
-          return isMore ? pagination.current_page + 1 : undefined;
-        },
-      },
+      query: { getNextPageParam: getPaginationNextPageNumber },
     },
   );
 
-  const allAgents =
-    agents?.pages?.flatMap((page) => {
-      // Only process successful responses
-      if (!page || page.status !== 200) return [];
-      const response = page.data;
-      return response?.agents || [];
-    }) ?? [];
-
-  const agentCount = (() => {
-    const firstPage = agents?.pages?.[0];
-    // Only count from successful responses
-    if (!firstPage || firstPage.status !== 200) return 0;
-    return firstPage.data?.pagination?.total_items || 0;
-  })();
+  const allAgents = agentsQueryData
+    ? unpaginate(agentsQueryData, "agents")
+    : [];
+  const agentCount = getPaginatedTotalCount(agentsQueryData);
 
   return {
     allAgents,

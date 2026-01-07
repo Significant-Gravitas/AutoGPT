@@ -92,6 +92,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     O1 = "o1"
     O1_MINI = "o1-mini"
     # GPT-5 models
+    GPT5_2 = "gpt-5.2-2025-12-11"
+    GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5 = "gpt-5-2025-08-07"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
@@ -106,6 +108,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
+    CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
@@ -152,6 +155,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     GROK_4 = "x-ai/grok-4"
+    GROK_4_FAST = "x-ai/grok-4-fast"
+    GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
@@ -189,6 +195,8 @@ MODEL_METADATA = {
     LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
     # GPT-5 models
+    LlmModel.GPT5_2: ModelMetadata("openai", 400000, 128000),
+    LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
     LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
@@ -213,6 +221,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-4-sonnet-20250514
+    LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
+        "anthropic", 200000, 64000
+    ),  # claude-opus-4-5-20251101
     LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
         "anthropic", 200000, 64000
     ),  # claude-sonnet-4-5-20250929
@@ -277,6 +288,9 @@ MODEL_METADATA = {
     LlmModel.META_LLAMA_4_SCOUT: ModelMetadata("open_router", 131072, 131072),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata("open_router", 1048576, 1000000),
     LlmModel.GROK_4: ModelMetadata("open_router", 256000, 256000),
+    LlmModel.GROK_4_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_4_1_FAST: ModelMetadata("open_router", 2000000, 30000),
+    LlmModel.GROK_CODE_FAST_1: ModelMetadata("open_router", 256000, 10000),
     LlmModel.KIMI_K2: ModelMetadata("open_router", 131000, 131000),
     LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata("open_router", 262144, 262144),
     LlmModel.QWEN3_CODER: ModelMetadata("open_router", 262144, 262144),
@@ -290,6 +304,8 @@ MODEL_METADATA = {
     LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000),
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000),
 }
+
+DEFAULT_LLM_MODEL = LlmModel.GPT5_2
 
 for model in LlmModel:
     if model not in MODEL_METADATA:
@@ -778,7 +794,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -843,7 +859,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             input_schema=AIStructuredResponseGeneratorBlock.Input,
             output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expected_format": {
                     "key1": "value1",
@@ -1209,7 +1225,7 @@ class AITextGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -1305,7 +1321,7 @@ class AITextSummarizerBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for summarizing the text.",
         )
         focus: str = SchemaField(
@@ -1522,7 +1538,7 @@ class AIConversationBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for the conversation.",
         )
         credentials: AICredentials = AICredentialsField()
@@ -1560,7 +1576,7 @@ class AIConversationBlock(AIBlockBase):
                     },
                     {"role": "user", "content": "Where was it played?"},
                 ],
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -1623,7 +1639,7 @@ class AIListGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4O,
+            default=DEFAULT_LLM_MODEL,
             description="The language model to use for generating the list.",
             advanced=True,
         )
@@ -1680,7 +1696,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of "
                     "fictional worlds."
                 ),
-                "model": LlmModel.GPT4O,
+                "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
                 "force_json_output": False,

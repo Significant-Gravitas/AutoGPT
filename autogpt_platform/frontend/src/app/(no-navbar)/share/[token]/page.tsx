@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { useParams } from "next/navigation";
-import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/AgentRunsView/components/SelectedRunView/components/RunOutputs";
+import { RunOutputs } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/SelectedRunView/components/RunOutputs";
+import { okData } from "@/app/api/helpers";
+import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
 import {
   Card,
   CardContent,
@@ -11,19 +11,18 @@ import {
 } from "@/components/__legacy__/ui/card";
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { InfoIcon } from "lucide-react";
-import { useGetV1GetSharedExecution } from "@/app/api/__generated__/endpoints/default/default";
+import { useParams } from "next/navigation";
 
 export default function SharePage() {
   const params = useParams();
   const token = params.token as string;
 
   const {
-    data: response,
+    data: executionData,
     isLoading: loading,
     error,
-  } = useGetV1GetSharedExecution(token);
+  } = useGetV1GetSharedExecution(token, { query: { select: okData } });
 
-  const executionData = response?.status === 200 ? response.data : undefined;
   const is404 = !loading && !executionData;
 
   if (loading) {

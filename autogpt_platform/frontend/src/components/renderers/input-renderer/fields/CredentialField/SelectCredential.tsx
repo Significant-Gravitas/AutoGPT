@@ -84,7 +84,7 @@ export const SelectCredential: React.FC<SelectCredentialProps> = ({
         rel="noopener noreferrer"
         variant="outline"
         size="icon"
-        className="h-8 w-8 border-zinc-300 p-0"
+        className="h-8 w-8 !min-w-8 border-zinc-300 p-0"
       >
         <ArrowSquareOutIcon className="h-4 w-4 text-zinc-600" />
       </Button>

@@ -51,9 +51,11 @@ export async function fetchUser(): Promise<FetchUserResult> {
     const { user, error } = await getCurrentUser();
 
     if (error || !user) {
+      // Only mark as loaded if we got an explicit error (not just no user)
+      // This allows retrying when cookies aren't ready yet after login
       return {
         user: null,
-        hasLoadedUser: true,
+        hasLoadedUser: !!error, // Only true if there was an error, not just no user
         isUserLoading: false,
       };
     }
@@ -68,14 +70,14 @@ export async function fetchUser(): Promise<FetchUserResult> {
     console.error("Get user error:", error);
     return {
       user: null,
-      hasLoadedUser: true,
+      hasLoadedUser: true, // Error means we tried and failed, so mark as loaded
       isUserLoading: false,
     };
   }
 }
 
 interface ValidateSessionParams {
-  pathname: string;
+  path: string;
   currentUser: User | null;
 }
 
@@ -90,7 +92,7 @@ export async function validateSession(
   params: ValidateSessionParams,
 ): Promise<ValidateSessionResult> {
   try {
-    const result = await validateSessionAction(params.pathname);
+    const result = await validateSessionAction(params.path);
 
     if (!result.isValid) {
       return {
@@ -116,7 +118,7 @@ export async function validateSession(
     };
   } catch (error) {
     console.error("Session validation error:", error);
-    const redirectPath = getRedirectPath(params.pathname);
+    const redirectPath = getRedirectPath(params.path);
     return {
       isValid: false,
       redirectPath,
@@ -144,7 +146,7 @@ interface StorageEventHandlerParams {
   event: StorageEvent;
   api: BackendAPI | null;
   router: AppRouterInstance | null;
-  pathname: string;
+  path: string;
 }
 
 interface StorageEventHandlerResult {
@@ -165,7 +167,7 @@ export function handleStorageEvent(
     params.api.disconnectWebSocket();
   }
 
-  const redirectPath = getRedirectPath(params.pathname);
+  const redirectPath = getRedirectPath(params.path);
 
   return {
     shouldLogout: true,

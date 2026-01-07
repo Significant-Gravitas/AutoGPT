@@ -61,7 +61,19 @@ function getEnvironmentStr() {
 }
 
 function getPreviewStealingDev() {
-  return process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
+  const branch = process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
+  const appEnv = getAppEnv();
+
+  if (
+    !branch ||
+    branch === "dev" ||
+    branch === "refs/heads/dev" ||
+    appEnv !== AppEnv.DEV
+  ) {
+    return null;
+  }
+
+  return branch;
 }
 
 function isProductionBuild() {

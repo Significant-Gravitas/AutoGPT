@@ -1,0 +1,505 @@
+{
+  "id": "0d440799-44ba-4d6c-85b3-b3739f1e1287",
+  "version": 12,
+  "is_active": true,
+  "name": "AI Webpage Copy Improver",
+  "description": "Elevate your web content with this powerful AI Webpage Copy Improver. Designed for marketers, SEO specialists, and web developers, this tool analyses and enhances website copy for maximum impact. Using advanced language models, it optimizes text for better clarity, SEO performance, and increased conversion rates. The AI examines your existing content, identifies areas for improvement, and generates refined copy that maintains your brand voice while boosting engagement. From homepage headlines to product descriptions, transform your web presence with AI-driven insights. Improve readability, incorporate targeted keywords, and craft compelling calls-to-action - all with the click of a button. Take your digital marketing to the next level with the AI Webpage Copy Improver.",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "130ec496-f75d-4fe2-9cd6-8c00d08ea4a7",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Improved Webpage Copy"
+      },
+      "metadata": {
+        "position": {
+          "x": 1039.5884372540172,
+          "y": -0.8359099621230968
+        }
+      },
+      "input_links": [
+        {
+          "id": "d4334477-3616-454f-a430-614ca27f5b36",
+          "source_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+          "sink_id": "130ec496-f75d-4fe2-9cd6-8c00d08ea4a7",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "0d440799-44ba-4d6c-85b3-b3739f1e1287",
+      "graph_version": 12,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "cefccd07-fe70-4feb-bf76-46b20aaa5d35",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Original Page Analysis",
+        "description": "Analysis of the webpage as it currently stands."
+      },
+      "metadata": {
+        "position": {
+          "x": 1037.7724103954706,
+          "y": -606.5934325506903
+        }
+      },
+      "input_links": [
+        {
+          "id": "f979ab78-0903-4f19-a7c2-a419d5d81aef",
+          "source_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+          "sink_id": "cefccd07-fe70-4feb-bf76-46b20aaa5d35",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "0d440799-44ba-4d6c-85b3-b3739f1e1287",
+      "graph_version": 12,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "375f8bc3-afd9-4025-ad8e-9aeb329af7ce",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Homepage URL",
+        "value": "https://agpt.co",
+        "description": "Enter the URL of the homepage you want to improve"
+      },
+      "metadata": {
+        "position": {
+          "x": -1195.1455674454749,
+          "y": 0
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "cbb12335-fefd-4560-9fff-98675130fbad",
+          "source_id": "375f8bc3-afd9-4025-ad8e-9aeb329af7ce",
+          "sink_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+          "source_name": "result",
+          "sink_name": "url",
+          "is_static": true
+        }
+      ],
+      "graph_id": "0d440799-44ba-4d6c-85b3-b3739f1e1287",
+      "graph_version": 12,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+      "block_id": "436c3984-57fd-4b85-8e9a-459b356883bd",
+      "input_default": {
+        "raw_content": false
+      },
+      "metadata": {
+        "position": {
+          "x": -631.7330786555249,
+          "y": 1.9638396496230826
+        }
+      },
+      "input_links": [
+        {
+          "id": "cbb12335-fefd-4560-9fff-98675130fbad",
+          "source_id": "375f8bc3-afd9-4025-ad8e-9aeb329af7ce",
+          "sink_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+          "source_name": "result",
+          "sink_name": "url",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "adfa6113-77b3-4e32-b136-3e694b87553e",
+          "source_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+          "sink_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+          "source_name": "content",
+          "sink_name": "prompt_values_#_CONTENT",
+          "is_static": false
+        },
+        {
+          "id": "5d5656fd-4208-4296-bc70-e39cc31caada",
+          "source_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+          "sink_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+          "source_name": "content",
+          "sink_name": "prompt_values_#_CONTENT",
+          "is_static": false
+        }
+      ],
+      "graph_id": "0d440799-44ba-4d6c-85b3-b3739f1e1287",
+      "graph_version": 12,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "prompt": "Current Webpage Content:\n```\n{{CONTENT}}\n```\n\nBased on the following analysis of the webpage content:\n\n```\n{{ANALYSIS}}\n```\n\nRewrite and improve the content to address the identified issues. Focus on:\n1. Enhancing clarity and readability\n2. Optimizing for SEO (suggest and incorporate relevant keywords)\n3. Improving calls-to-action for better conversion rates\n4. Refining the structure and organization\n5. Maintaining brand consistency while improving the overall tone\n\nProvide the improved content in HTML format inside a code-block with \"```\" backticks, preserving the original structure where appropriate. Also, include a brief summary of the changes made and their potential impact.",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 488.37278423303917,
+          "y": 0
+        }
+      },
+      "input_links": [
+        {
+          "id": "adfa6113-77b3-4e32-b136-3e694b87553e",
+          "source_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+          "sink_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+          "source_name": "content",
+          "sink_name": "prompt_values_#_CONTENT",
+          "is_static": false
+        },
+        {
+          "id": "6bcca45d-c9d5-439e-ac43-e4a1264d8f57",
+          "source_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+          "sink_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_ANALYSIS",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d4334477-3616-454f-a430-614ca27f5b36",
+          "source_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+          "sink_id": "130ec496-f75d-4fe2-9cd6-8c00d08ea4a7",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "0d440799-44ba-4d6c-85b3-b3739f1e1287",
+      "graph_version": 12,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "08612ce2-625b-4c17-accd-3acace7b6477",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4o",
+        "prompt": "Analyze the following webpage content and provide a detailed report on its current state, including strengths and weaknesses in terms of clarity, SEO optimization, and potential for conversion:\n\n{{CONTENT}}\n\nInclude observations on:\n1. Overall readability and clarity\n2. Use of keywords and SEO-friendly language\n3. Effectiveness of calls-to-action\n4. Structure and organization of content\n5. Tone and brand consistency",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -72.66206703605442,
+          "y": -0.58403945075381
+        }
+      },
+      "input_links": [
+        {
+          "id": "5d5656fd-4208-4296-bc70-e39cc31caada",
+          "source_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+          "sink_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+          "source_name": "content",
+          "sink_name": "prompt_values_#_CONTENT",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f979ab78-0903-4f19-a7c2-a419d5d81aef",
+          "source_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+          "sink_id": "cefccd07-fe70-4feb-bf76-46b20aaa5d35",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "6bcca45d-c9d5-439e-ac43-e4a1264d8f57",
+          "source_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+          "sink_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_ANALYSIS",
+          "is_static": false
+        }
+      ],
+      "graph_id": "0d440799-44ba-4d6c-85b3-b3739f1e1287",
+      "graph_version": 12,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "adfa6113-77b3-4e32-b136-3e694b87553e",
+      "source_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+      "sink_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+      "source_name": "content",
+      "sink_name": "prompt_values_#_CONTENT",
+      "is_static": false
+    },
+    {
+      "id": "d4334477-3616-454f-a430-614ca27f5b36",
+      "source_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+      "sink_id": "130ec496-f75d-4fe2-9cd6-8c00d08ea4a7",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "5d5656fd-4208-4296-bc70-e39cc31caada",
+      "source_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+      "sink_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+      "source_name": "content",
+      "sink_name": "prompt_values_#_CONTENT",
+      "is_static": false
+    },
+    {
+      "id": "f979ab78-0903-4f19-a7c2-a419d5d81aef",
+      "source_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+      "sink_id": "cefccd07-fe70-4feb-bf76-46b20aaa5d35",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "6bcca45d-c9d5-439e-ac43-e4a1264d8f57",
+      "source_id": "08612ce2-625b-4c17-accd-3acace7b6477",
+      "sink_id": "c9924577-70d8-4ccb-9106-6f796df09ef9",
+      "source_name": "response",
+      "sink_name": "prompt_values_#_ANALYSIS",
+      "is_static": false
+    },
+    {
+      "id": "cbb12335-fefd-4560-9fff-98675130fbad",
+      "source_id": "375f8bc3-afd9-4025-ad8e-9aeb329af7ce",
+      "sink_id": "b40595c6-dba3-4779-a129-cd4f01fff103",
+      "source_name": "result",
+      "sink_name": "url",
+      "is_static": true
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [],
+  "user_id": "",
+  "created_at": "2024-12-20T19:47:22.036Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Homepage URL": {
+        "advanced": false,
+        "secret": false,
+        "title": "Homepage URL",
+        "description": "Enter the URL of the homepage you want to improve",
+        "default": "https://agpt.co"
+      }
+    },
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Improved Webpage Copy": {
+        "advanced": false,
+        "secret": false,
+        "title": "Improved Webpage Copy"
+      },
+      "Original Page Analysis": {
+        "advanced": false,
+        "secret": false,
+        "title": "Original Page Analysis",
+        "description": "Analysis of the webpage as it currently stands."
+      }
+    },
+    "required": [
+      "Improved Webpage Copy",
+      "Original Page Analysis"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "jina_api_key_credentials": {
+        "credentials_provider": [
+          "jina"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "jina",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.JINA: 'jina'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-4o"
+        ]
+      }
+    },
+    "required": [
+      "jina_api_key_credentials",
+      "openai_api_key_credentials"
+    ],
+    "title": "AIWebpageCopyImproverCredentialsInputSchema",
+    "type": "object"
+  }
+}

@@ -64,7 +64,9 @@ export const useAnyOfField = (
 
   const [selectedType, setSelectedType] = useState<string>(initialSelectedType);
 
-  const isEnabled = formData !== null && formData !== undefined;
+  // Only check for explicit null (set by toggle off), not undefined (empty input)
+  // This allows users to clear number inputs without the field disappearing
+  const isEnabled = formData !== null;
 
   const handleTypeChange = (t: string) => {
     setSelectedType(t);
@@ -79,7 +81,13 @@ export const useAnyOfField = (
     }
   };
 
-  const handleValueChange = (value: any) => onChange(value);
+  const handleValueChange = (value: any) => {
+    if (isNullableType && value === null) {
+      onChange(undefined);
+      return;
+    }
+    onChange(value);
+  };
 
   const currentTypeOption = typeOptions.find((o) => o.type === selectedType);
 

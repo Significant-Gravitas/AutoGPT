@@ -14,11 +14,15 @@ import { NoSearchResult } from "../NoSearchResult";
 
 export const BlockMenuSearch = () => {
   const {
-    allSearchData,
+    searchResults,
     isFetchingNextPage,
     fetchNextPage,
     hasNextPage,
     searchLoading,
+    handleAddLibraryAgent,
+    handleAddMarketplaceAgent,
+    addingLibraryAgentId,
+    addingMarketplaceAgentSlug,
   } = useBlockMenuSearch();
   const { searchQuery } = useBlockMenuStore();
 
@@ -35,7 +39,7 @@ export const BlockMenuSearch = () => {
     );
   }
 
-  if (allSearchData.length === 0) {
+  if (searchResults.length === 0) {
     return <NoSearchResult />;
   }
 
@@ -49,7 +53,7 @@ export const BlockMenuSearch = () => {
         loader={<LoadingSpinner className="size-13" />}
         className="space-y-2.5"
       >
-        {allSearchData.map((item: SearchResponseItemsItem, index: number) => {
+        {searchResults.map((item: SearchResponseItemsItem, index: number) => {
           const { type, data } = getSearchItemType(item);
           // backend give support to these 3 types only [right now] - we need to give support to integration and ai agent types in follow up PRs
           switch (type) {
@@ -63,7 +67,13 @@ export const BlockMenuSearch = () => {
                   image_url={data.agent_image}
                   creator_name={data.creator}
                   number_of_runs={data.runs}
-                  loading={false}
+                  loading={addingMarketplaceAgentSlug === data.slug}
+                  onClick={() =>
+                    handleAddMarketplaceAgent({
+                      creator_name: data.creator,
+                      slug: data.slug,
+                    })
+                  }
                 />
               );
             case "block":
@@ -86,6 +96,8 @@ export const BlockMenuSearch = () => {
                   image_url={data.image_url}
                   version={data.graph_version}
                   edited_time={data.updated_at}
+                  isLoading={addingLibraryAgentId === data.id}
+                  onClick={() => handleAddLibraryAgent(data)}
                 />
               );
 

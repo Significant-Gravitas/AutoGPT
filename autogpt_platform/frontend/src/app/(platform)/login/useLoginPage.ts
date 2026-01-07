@@ -3,21 +3,32 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
 
 export function useLoginPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
+  const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
+
+  // Get redirect destination from 'next' query parameter
+  const nextUrl = searchParams.get("next");
+
+  useEffect(() => {
+    if (isLoggedIn && !isLoggingIn) {
+      router.push(nextUrl || "/marketplace");
+    }
+  }, [isLoggedIn, isLoggingIn, nextUrl, router]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -29,12 +40,19 @@ export function useLoginPage() {
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
+    setIsLoggingIn(true);
 
     try {
+      // Include next URL in OAuth flow if present
+      const callbackUrl = nextUrl
+        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
+        : `/auth/callback`;
+      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
       });
 
       if (!response.ok) {
@@ -46,6 +64,7 @@ export function useLoginPage() {
       if (url) window.location.href = url as string;
     } catch (error) {
       setIsGoogleLoading(false);
+      setIsLoggingIn(false);
       setFeedback(
         error instanceof Error ? error.message : "Failed to start OAuth flow",
       );
@@ -54,6 +73,7 @@ export function useLoginPage() {
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
+    setIsLoggingIn(true);
 
     if (data.email.includes("@agpt.co")) {
       toast({
@@ -62,6 +82,7 @@ export function useLoginPage() {
       });
 
       setIsLoading(false);
+      setIsLoggingIn(false);
       return;
     }
 
@@ -72,7 +93,9 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (result.onboarding) {
+      if (nextUrl) {
+        router.replace(nextUrl);
+      } else if (result.onboarding) {
         router.replace("/onboarding");
       } else {
         router.replace("/marketplace");
@@ -86,6 +109,7 @@ export function useLoginPage() {
         variant: "destructive",
       });
       setIsLoading(false);
+      setIsLoggingIn(false);
     }
   }
 

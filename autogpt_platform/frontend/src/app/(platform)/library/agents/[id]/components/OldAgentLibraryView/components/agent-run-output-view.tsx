@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useMemo } from "react";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import React, { useMemo } from "react";
 
 import {
   Card,
@@ -11,12 +11,12 @@ import {
 } from "@/components/__legacy__/ui/card";
 
 import LoadingBox from "@/components/__legacy__/ui/loading";
+import type { OutputMetadata } from "../../NewAgentLibraryView/components/selected-views/OutputRenderers";
 import {
   globalRegistry,
-  OutputItem,
   OutputActions,
-} from "../../AgentRunsView/components/OutputRenderers";
-import type { OutputMetadata } from "../../AgentRunsView/components/OutputRenderers";
+  OutputItem,
+} from "../../NewAgentLibraryView/components/selected-views/OutputRenderers";
 
 export function AgentRunOutputView({
   agentRunOutputs,

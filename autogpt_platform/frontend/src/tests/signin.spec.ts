@@ -1,11 +1,11 @@
 // auth.spec.ts
 
 import test from "@playwright/test";
-import { getTestUser } from "./utils/auth";
+import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
 import { hasUrl, isHidden, isVisible } from "./utils/assertion";
+import { getTestUser } from "./utils/auth";
 import { getSelectors } from "./utils/selectors";
-import { BuildPage } from "./pages/build.page";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/login");
@@ -152,10 +152,10 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Check if Tab 2 has been redirected to login or refresh the page to trigger redirect
   try {
     await page2.reload();
-    await hasUrl(page2, "/login");
+    await hasUrl(page2, "/login?next=%2Fbuild");
   } catch {
     // If reload fails, the page might already be redirecting
-    await hasUrl(page2, "/login");
+    await hasUrl(page2, "/login?next=%2Fbuild");
   }
 
   // Verify the profile menu is no longer visible (user is logged out)
@@ -170,4 +170,30 @@ test("multi-tab logout with WebSocket cleanup", async ({ context }) => {
   // Clean up
   await page1.close();
   await page2.close();
+});
+
+test("logged in user is redirected from /login to /marketplace", async ({
+  page,
+}) => {
+  const testUser = await getTestUser();
+  const loginPage = new LoginPage(page);
+
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
+
+  await page.goto("/login");
+  await hasUrl(page, "/marketplace");
+});
+
+test("logged in user is redirected from /signup to /marketplace", async ({
+  page,
+}) => {
+  const testUser = await getTestUser();
+  const loginPage = new LoginPage(page);
+
+  await loginPage.login(testUser.email, testUser.password);
+  await hasUrl(page, "/marketplace");
+
+  await page.goto("/signup");
+  await hasUrl(page, "/marketplace");
 });

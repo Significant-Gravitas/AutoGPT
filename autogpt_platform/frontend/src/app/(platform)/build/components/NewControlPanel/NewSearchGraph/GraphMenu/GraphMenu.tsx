@@ -1,13 +1,13 @@
-import React from "react";
+import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
-import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
+import React from "react";
 import { ControlPanelButton } from "../../ControlPanelButton";
-import { CustomNode } from "@/app/(platform)/build/components/legacy-builder/CustomNode/CustomNode";
+import { GraphSearchContent } from "../GraphMenuContent/GraphContent";
 import { useGraphMenu } from "./useGraphMenu";
 
 interface GraphSearchMenuProps {
@@ -50,7 +50,7 @@ export const GraphSearchMenu: React.FC<GraphSearchMenuProps> = ({
           selected={blockMenuSelected === "search"}
           className="rounded-none"
         >
-          <MagnifyingGlassIcon className="h-5 w-6" strokeWidth={2} />
+          <MagnifyingGlassIcon className="size-5" strokeWidth={2} />
         </ControlPanelButton>
       </PopoverTrigger>
 

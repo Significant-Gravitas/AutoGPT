@@ -3,6 +3,14 @@ import { withSentryConfig } from "@sentry/nextjs";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   productionBrowserSourceMaps: true,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "256mb",
+    },
+    // Increase body size limit for API routes (file uploads) - 256MB to match backend limit
+    proxyClientMaxBodySize: "256mb",
+    middlewareClientMaxBodySize: "256mb",
+  },
   images: {
     domains: [
       // We dont need to maintain alphabetical order here
@@ -34,7 +42,8 @@ const nextConfig = {
       },
     ],
   },
-  output: "standalone",
+  // Vercel has its own deployment mechanism and doesn't need standalone mode
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
 };
 

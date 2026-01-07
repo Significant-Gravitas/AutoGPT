@@ -7,14 +7,14 @@ docs_dir: content
 nav:
   - Home: index.md
 
-  - The AutoGPT Platform 🆕: 
-    - Getting Started: 
+  - The AutoGPT Platform 🆕:
+    - Getting Started:
         - Setup AutoGPT (Local-Host): platform/getting-started.md
         - Edit an Agent: platform/edit-agent.md
         - Delete an Agent: platform/delete-agent.md
-        - Download & Import and Agent: platform/download-agent-from-marketplace-local.md 
+        - Download & Import and Agent: platform/download-agent-from-marketplace-local.md
         - Create a Basic Agent: platform/create-basic-agent.md
-        - Submit an Agent to the Marketplace: platform/submit-agent-to-marketplace.md   
+        - Submit an Agent to the Marketplace: platform/submit-agent-to-marketplace.md
     - Advanced Setup: platform/advanced_setup.md
     - Agent Blocks: platform/agent-blocks.md
     - Build your own Blocks: platform/new_blocks.md
@@ -23,6 +23,9 @@ nav:
     - Using AI/ML API: platform/aimlapi.md
     - Using D-ID: platform/d_id.md
     - Blocks: platform/blocks/blocks.md
+    - API:
+      - Introduction: platform/integrating/api-guide.md
+      - OAuth & SSO: platform/integrating/oauth-guide.md
     - Contributing:
         - Tests: platform/contributing/tests.md
         - OAuth Flows: platform/contributing/oauth-integration-flow.md

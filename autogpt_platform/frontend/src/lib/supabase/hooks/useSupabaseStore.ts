@@ -21,7 +21,7 @@ import {
 interface InitializeParams {
   api: BackendAPI;
   router: AppRouterInstance;
-  pathname: string;
+  path: string;
 }
 
 interface LogOutParams {
@@ -32,7 +32,7 @@ interface LogOutParams {
 
 interface ValidateParams {
   force?: boolean;
-  pathname?: string;
+  path?: string;
   router?: AppRouterInstance;
 }
 
@@ -47,7 +47,7 @@ interface SupabaseStoreState {
   listenersCleanup: (() => void) | null;
   routerRef: AppRouterInstance | null;
   apiRef: BackendAPI | null;
-  currentPathname: string;
+  currentPath: string;
   initialize: (params: InitializeParams) => Promise<void>;
   logOut: (params?: LogOutParams) => Promise<void>;
   validateSession: (params?: ValidateParams) => Promise<boolean>;
@@ -60,7 +60,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     set({
       routerRef: params.router,
       apiRef: params.api,
-      currentPathname: params.pathname,
+      currentPath: params.path,
     });
 
     const supabaseClient = ensureSupabaseClient();
@@ -72,10 +72,29 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     if (!initializationPromise) {
       initializationPromise = (async () => {
-        if (!get().hasLoadedUser) {
+        // Always fetch user if we haven't loaded it yet, or if user is null but hasLoadedUser is true
+        // This handles the case where hasLoadedUser might be stale after logout/login
+        if (!get().hasLoadedUser || !get().user) {
           set({ isUserLoading: true });
           const result = await fetchUser();
           set(result);
+
+          // If fetchUser didn't return a user, validate the session to ensure we have the latest state
+          // This handles race conditions after login where cookies might not be immediately available
+          if (!result.user) {
+            const validationResult = await validateSessionHelper({
+              path: params.path,
+              currentUser: null,
+            });
+
+            if (validationResult.user && validationResult.isValid) {
+              set({
+                user: validationResult.user,
+                hasLoadedUser: true,
+                isUserLoading: false,
+              });
+            }
+          }
         } else {
           set({ isUserLoading: false });
         }
@@ -104,7 +123,6 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
   }
 
   async function logOut(params?: LogOutParams): Promise<void> {
-    const router = params?.router ?? get().routerRef;
     const api = params?.api ?? get().apiRef;
     const options = params?.options ?? {};
 
@@ -122,24 +140,27 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     broadcastLogout();
 
+    // Clear React Query cache to prevent stale data from old user
+    if (typeof window !== "undefined") {
+      const { getQueryClient } = await import("@/lib/react-query/queryClient");
+      const queryClient = getQueryClient();
+      queryClient.clear();
+    }
+
     set({
       user: null,
       hasLoadedUser: false,
       isUserLoading: false,
     });
 
-    const result = await serverLogout(options);
-
-    if (result.success && router) {
-      router.push("/login");
-    }
+    await serverLogout(options);
   }
 
   async function validateSessionInternal(
     params?: ValidateParams,
   ): Promise<boolean> {
     const router = params?.router ?? get().routerRef;
-    const pathname = params?.pathname ?? get().currentPathname;
+    const pathname = params?.path ?? get().currentPath;
 
     if (!router || !pathname) return true;
     if (!params?.force && get().isValidating) return true;
@@ -154,7 +175,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
 
     try {
       const result = await validateSessionHelper({
-        pathname,
+        path: pathname,
         currentUser: get().user,
       });
 
@@ -203,7 +224,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
       event,
       api: get().apiRef,
       router: get().routerRef,
-      pathname: get().currentPathname,
+      path: get().currentPath,
     });
 
     if (!result.shouldLogout) return;
@@ -262,7 +283,7 @@ export const useSupabaseStore = create<SupabaseStoreState>((set, get) => {
     listenersCleanup: null,
     routerRef: null,
     apiRef: null,
-    currentPathname: "",
+    currentPath: "",
     initialize,
     logOut,
     validateSession: validateSessionInternal,

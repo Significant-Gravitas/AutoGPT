@@ -64,6 +64,9 @@ import { useCopyPaste } from "../useCopyPaste";
 import NewControlPanel from "@/app/(platform)/build/components/NewControlPanel/NewControlPanel";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { BuildActionBar } from "../BuildActionBar";
+import { FloatingReviewsPanel } from "@/components/organisms/FloatingReviewsPanel/FloatingReviewsPanel";
+import { useFlowRealtime } from "@/app/(platform)/build/components/FlowEditor/Flow/useFlowRealtime";
+import { FloatingSafeModeToggle } from "../../FloatingSafeModeToogle";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -101,6 +104,7 @@ const FlowEditor: React.FC<{
     updateNode,
     getViewport,
     setViewport,
+    fitView,
     screenToFlowPosition,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
@@ -113,6 +117,7 @@ const FlowEditor: React.FC<{
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
   // State to control if save popover should be pinned open
   const [pinSavePopover, setPinSavePopover] = useState(false);
+  const [hasAutoFramed, setHasAutoFramed] = useState(false);
 
   const {
     agentName,
@@ -148,6 +153,9 @@ const FlowEditor: React.FC<{
   const [immediateNodePositions, setImmediateNodePositions] = useState<
     Record<string, { x: number; y: number }>
   >(Object.fromEntries(nodes.map((node) => [node.id, node.position])));
+
+  // Add realtime execution status tracking for FloatingReviewsPanel
+  useFlowRealtime();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -480,35 +488,26 @@ const FlowEditor: React.FC<{
     return uuidv4();
   }, []);
 
-  // Set the initial view port to center the canvas.
   useEffect(() => {
-    const { x, y } = getViewport();
-    if (nodes.length <= 0 || x !== 0 || y !== 0) {
+    if (nodes.length === 0) {
       return;
     }
 
-    const topLeft = { x: Infinity, y: Infinity };
-    const bottomRight = { x: -Infinity, y: -Infinity };
+    if (hasAutoFramed) {
+      return;
+    }
 
-    nodes.forEach((node) => {
-      const { x, y } = node.position;
-      topLeft.x = Math.min(topLeft.x, x);
-      topLeft.y = Math.min(topLeft.y, y);
-      // Rough estimate of the width and height of the node: 500x400.
-      bottomRight.x = Math.max(bottomRight.x, x + 500);
-      bottomRight.y = Math.max(bottomRight.y, y + 400);
+    const rafId = requestAnimationFrame(() => {
+      fitView({ padding: 0.2, duration: 800, maxZoom: 1 });
+      setHasAutoFramed(true);
     });
 
-    const centerX = (topLeft.x + bottomRight.x) / 2;
-    const centerY = (topLeft.y + bottomRight.y) / 2;
-    const zoom = 0.8;
+    return () => cancelAnimationFrame(rafId);
+  }, [fitView, hasAutoFramed, nodes.length]);
 
-    setViewport({
-      x: window.innerWidth / 2 - centerX * zoom,
-      y: window.innerHeight / 2 - centerY * zoom,
-      zoom: zoom,
-    });
-  }, [nodes, getViewport, setViewport]);
+  useEffect(() => {
+    setHasAutoFramed(false);
+  }, [flowID, flowVersion]);
 
   const navigateToNode = useCallback(
     (nodeId: string) => {
@@ -926,6 +925,12 @@ const FlowEditor: React.FC<{
         >
           <Controls />
           <Background className="dark:bg-slate-800" />
+          {savedAgent && (
+            <FloatingSafeModeToggle
+              graph={savedAgent}
+              className="right-2 top-32 p-2"
+            />
+          )}
           {isNewBlockEnabled ? (
             <NewControlPanel
               flowExecutionID={flowExecutionID}
@@ -1024,6 +1029,11 @@ const FlowEditor: React.FC<{
           saveAndRun={saveAndRun}
         />
       )}
+      <FloatingReviewsPanel
+        executionId={flowExecutionID || undefined}
+        graphId={flowID || undefined}
+        className="fixed bottom-24 right-4"
+      />
       <Suspense fallback={null}>
         <OttoChatWidget
           graphID={flowID}
