@@ -300,6 +300,7 @@ export default function LibraryAgentCard({
         >
           <Text
             variant="h5"
+            data-testid="library-agent-card-name"
             className="line-clamp-3 hyphens-auto break-words no-underline hover:no-underline"
           >
             {name}
@@ -334,8 +335,8 @@ export default function LibraryAgentCard({
         <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pb-1 pt-3">
           <Link
             href={`/library/agents/${id}`}
+            data-testid="library-agent-card-see-runs-link"
             className="flex items-center gap-1 text-[13px]"
-            isExternal
           >
             See runs <CaretCircleRightIcon size={20} />
           </Link>
@@ -343,6 +344,7 @@ export default function LibraryAgentCard({
           {can_access_graph && (
             <Link
               href={`/build?flowID=${graph_id}`}
+              data-testid="library-agent-card-open-in-builder-link"
               className="flex items-center gap-1 text-[13px]"
               isExternal
             >

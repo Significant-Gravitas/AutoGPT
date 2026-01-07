@@ -18,6 +18,7 @@ test.describe("Build", () => { //(1)!
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
   // prettier-ignore
   test.beforeEach(async ({ page }) => { //(3)! ts-ignore
+    test.setTimeout(25000);
     const loginPage = new LoginPage(page);
     const testUser = await getTestUser();
 
