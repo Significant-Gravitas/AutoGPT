@@ -72,7 +72,7 @@ export function EditAgentForm({
           <ThumbnailImages
             agentId={submission.agent_id}
             onImagesChange={handleImagesChange}
-            initialImages={submission.image_urls || []}
+            initialImages={Array.from(new Set(submission.image_urls || []))}
             initialSelectedImage={submission.image_urls?.[0] || null}
             errorMessage={form.formState.errors.root?.message}
           />

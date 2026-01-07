@@ -54,7 +54,7 @@ export const useEditAgentForm = ({
   type EditAgentFormData = z.infer<typeof editAgentSchema>;
 
   const [images, setImages] = React.useState<string[]>(
-    submission.image_urls || [],
+    Array.from(new Set(submission.image_urls || [])), // Remove duplicates
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -132,6 +132,12 @@ export const useEditAgentForm = ({
 
       // Extract the StoreSubmission from the response
       if (response.status === 200 && response.data) {
+        toast({
+          title: "Agent Updated",
+          description: "Your agent submission has been updated successfully.",
+          duration: 3000,
+          variant: "default",
+        });
         onSuccess(response.data);
       } else {
         throw new Error("Failed to update submission");
