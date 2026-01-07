@@ -143,6 +143,7 @@ export function CredentialsInput({
               size="small"
               onClick={handleActionButtonClick}
               className="w-fit"
+              type="button"
             >
               {actionButtonText}
             </Button>
@@ -155,6 +156,7 @@ export function CredentialsInput({
             size="small"
             onClick={handleActionButtonClick}
             className="w-fit"
+            type="button"
           >
             {actionButtonText}
           </Button>
