@@ -8,7 +8,23 @@ import { useRouter } from "next/navigation";
 
 export function AddCreatorModal() {
   const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  async function handleSubmit(formData: FormData) {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await createLlmCreatorAction(formData);
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create creator");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <Dialog
@@ -27,14 +43,7 @@ export function AddCreatorModal() {
           model).
         </div>
 
-        <form
-          action={async (formData) => {
-            await createLlmCreatorAction(formData);
-            setOpen(false);
-            router.refresh();
-          }}
-          className="space-y-4"
-        >
+        <form action={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <label
@@ -103,17 +112,32 @@ export function AddCreatorModal() {
             />
           </div>
 
+          {error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
           <Dialog.Footer>
             <Button
               variant="ghost"
               size="small"
-              onClick={() => setOpen(false)}
               type="button"
+              onClick={() => {
+                setOpen(false);
+                setError(null);
+              }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button variant="primary" size="small" type="submit">
-              Add Creator
+            <Button
+              variant="primary"
+              size="small"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Creating..." : "Add Creator"}
             </Button>
           </Dialog.Footer>
         </form>

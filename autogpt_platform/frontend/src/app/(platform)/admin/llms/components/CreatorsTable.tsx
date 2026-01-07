@@ -58,7 +58,13 @@ export function CreatorsTable({ creators }: { creators: LlmModelCreator[] }) {
                     rel="noopener noreferrer"
                     className="text-sm text-primary hover:underline"
                   >
-                    {new URL(creator.website_url).hostname}
+                    {(() => {
+                      try {
+                        return new URL(creator.website_url).hostname;
+                      } catch {
+                        return creator.website_url;
+                      }
+                    })()}
                   </a>
                 ) : (
                   <span className="text-muted-foreground">—</span>
@@ -80,7 +86,23 @@ export function CreatorsTable({ creators }: { creators: LlmModelCreator[] }) {
 
 function EditCreatorModal({ creator }: { creator: LlmModelCreator }) {
   const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  async function handleSubmit(formData: FormData) {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await updateLlmCreatorAction(formData);
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update creator");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <Dialog
@@ -94,14 +116,7 @@ function EditCreatorModal({ creator }: { creator: LlmModelCreator }) {
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <form
-          action={async (formData) => {
-            await updateLlmCreatorAction(formData);
-            setOpen(false);
-            router.refresh();
-          }}
-          className="space-y-4"
-        >
+        <form action={handleSubmit} className="space-y-4">
           <input type="hidden" name="creator_id" value={creator.id} />
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -145,17 +160,32 @@ function EditCreatorModal({ creator }: { creator: LlmModelCreator }) {
             />
           </div>
 
+          {error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
           <Dialog.Footer>
             <Button
               variant="ghost"
               size="small"
-              onClick={() => setOpen(false)}
               type="button"
+              onClick={() => {
+                setOpen(false);
+                setError(null);
+              }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button variant="primary" size="small" type="submit">
-              Update
+            <Button
+              variant="primary"
+              size="small"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Updating..." : "Update"}
             </Button>
           </Dialog.Footer>
         </form>

@@ -27,12 +27,7 @@ async def initialize_registry_for_executor() -> None:
             await db.connect()
             logger.info("[GraphExecutor] Connected to database for registry refresh")
 
-        # Refresh LLM registry before initializing blocks
-        await llm_registry.refresh_llm_registry()
-        refresh_llm_costs()
-        logger.info("[GraphExecutor] LLM registry refreshed")
-
-        # Initialize blocks (also refreshes registry, but we do it explicitly above)
+        # Initialize blocks (internally refreshes LLM registry and costs)
         await initialize_blocks()
         logger.info("[GraphExecutor] Blocks initialized")
     except Exception as exc:

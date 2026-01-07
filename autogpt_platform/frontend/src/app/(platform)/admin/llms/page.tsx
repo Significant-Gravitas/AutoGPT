@@ -8,7 +8,6 @@ async function LlmRegistryPage() {
 }
 
 export default async function AdminLlmRegistryPage() {
-  "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedLlmRegistryPage = await withAdminAccess(LlmRegistryPage);
   return <ProtectedLlmRegistryPage />;

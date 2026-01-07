@@ -147,6 +147,7 @@ export function DeleteModelModal({
               <Button
                 variant="ghost"
                 size="small"
+                type="button"
                 onClick={() => {
                   setOpen(false);
                   setSelectedReplacement("");

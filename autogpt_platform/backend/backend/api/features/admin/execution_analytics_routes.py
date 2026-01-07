@@ -201,6 +201,21 @@ async def get_execution_analytics_config(
     # Sort models by provider and name for better UX
     available_models.sort(key=lambda x: (x.provider, x.label))
 
+    # Handle case where no models are available
+    if not available_models:
+        logger.warning(
+            "No enabled LLM models found in registry. "
+            "Ensure models are configured and enabled in the LLM Registry."
+        )
+        # Provide a placeholder entry so admins see meaningful feedback
+        available_models.append(
+            ModelInfo(
+                value="",
+                label="No models available - configure in LLM Registry",
+                provider="none",
+            )
+        )
+
     return ExecutionAnalyticsConfig(
         available_models=available_models,
         default_system_prompt=DEFAULT_SYSTEM_PROMPT,

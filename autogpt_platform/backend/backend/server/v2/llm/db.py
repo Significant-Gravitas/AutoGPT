@@ -252,24 +252,22 @@ async def update_model(
     # If we have costs to update, we need to handle them separately
     # because nested writes have different constraints
     if request.costs is not None:
-        # First update scalar fields
-        if scalar_data:
-            await prisma.models.LlmModel.prisma().update(
-                where={"id": model_id},
-                data=scalar_data,
-            )
-        # Then handle costs: delete existing and create new
-        await prisma.models.LlmModelCost.prisma().delete_many(
-            where={"llmModelId": model_id}
-        )
-        if request.costs:
-            cost_payload = _cost_create_payload(request.costs)
-            for cost_item in cost_payload["create"]:
-                cost_item["llmModelId"] = model_id
-                await prisma.models.LlmModelCost.prisma().create(
-                    data=cast(Any, cost_item)
+        # Wrap cost replacement in a transaction for atomicity
+        async with transaction() as tx:
+            # First update scalar fields
+            if scalar_data:
+                await tx.llmmodel.update(
+                    where={"id": model_id},
+                    data=scalar_data,
                 )
-        # Fetch the updated record
+            # Then handle costs: delete existing and create new
+            await tx.llmmodelcost.delete_many(where={"llmModelId": model_id})
+            if request.costs:
+                cost_payload = _cost_create_payload(request.costs)
+                for cost_item in cost_payload["create"]:
+                    cost_item["llmModelId"] = model_id
+                    await tx.llmmodelcost.create(data=cast(Any, cost_item))
+        # Fetch the updated record (outside transaction)
         record = await prisma.models.LlmModel.prisma().find_unique(
             where={"id": model_id},
             include={"Costs": True, "Creator": True},

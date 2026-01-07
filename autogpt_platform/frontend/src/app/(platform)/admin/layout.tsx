@@ -1,5 +1,8 @@
+"use client";
+
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText, Cpu } from "lucide-react";
+import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+import { Cpu } from "@phosphor-icons/react";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -29,7 +32,7 @@ const sidebarLinkGroups = [
       {
         text: "LLM Registry",
         href: "/admin/llms",
-        icon: <Cpu className="h-6 w-6" />,
+        icon: <Cpu size={24} />,
       },
       {
         text: "Admin User Management",

@@ -8,7 +8,25 @@ import { useRouter } from "next/navigation";
 
 export function AddProviderModal() {
   const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  async function handleSubmit(formData: FormData) {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await createLlmProviderAction(formData);
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to create provider",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <Dialog
@@ -66,14 +84,7 @@ export function AddProviderModal() {
           </div>
         </div>
 
-        <form
-          action={async (formData) => {
-            await createLlmProviderAction(formData);
-            setOpen(false);
-            router.refresh();
-          }}
-          className="space-y-6"
-        >
+        <form action={handleSubmit} className="space-y-6">
           {/* Basic Information */}
           <div className="space-y-4">
             <div className="space-y-1">
@@ -222,17 +233,32 @@ export function AddProviderModal() {
             </div>
           </div>
 
+          {error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
           <Dialog.Footer>
             <Button
               variant="ghost"
               size="small"
-              onClick={() => setOpen(false)}
               type="button"
+              onClick={() => {
+                setOpen(false);
+                setError(null);
+              }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button variant="primary" size="small" type="submit">
-              Save Provider
+            <Button
+              variant="primary"
+              size="small"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Creating..." : "Save Provider"}
             </Button>
           </Dialog.Footer>
         </form>
