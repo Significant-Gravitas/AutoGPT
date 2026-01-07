@@ -3,6 +3,7 @@
     ".env*",
     ".vscode/**",
     ".auth/**",
+    ".claude/**",
     "autogpt_platform/.env*",
     "autogpt_platform/backend/.env*",
     "autogpt_platform/frontend/.env*",
