@@ -965,82 +965,56 @@ async def edit_store_submission(
         # Currently we are not allowing user to update the agent associated with a submission
         # If we allow it in future, then we need a check here to verify the agent belongs to this user.
 
-        # Check if we can edit this submission
-        if current_version.submissionStatus == prisma.enums.SubmissionStatus.REJECTED:
+        # Only allow editing of PENDING submissions
+        if current_version.submissionStatus != prisma.enums.SubmissionStatus.PENDING:
             raise store_exceptions.InvalidOperationError(
-                "Cannot edit a rejected submission"
-            )
-
-        # For APPROVED submissions, we need to create a new version
-        if current_version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            # Create a new version for the existing listing
-            return await create_store_version(
-                user_id=user_id,
-                agent_id=current_version.agentGraphId,
-                agent_version=current_version.agentGraphVersion,
-                store_listing_id=current_version.storeListingId,
-                name=name,
-                video_url=video_url,
-                agent_output_demo_url=agent_output_demo_url,
-                image_urls=image_urls,
-                description=description,
-                sub_heading=sub_heading,
-                categories=categories,
-                changes_summary=changes_summary,
-                recommended_schedule_cron=recommended_schedule_cron,
-                instructions=instructions,
+                f"Cannot edit a {current_version.submissionStatus.value.lower()} submission. Only pending submissions can be edited."
             )
 
         # For PENDING submissions, we can update the existing version
-        elif current_version.submissionStatus == prisma.enums.SubmissionStatus.PENDING:
-            # Update the existing version
-            updated_version = await prisma.models.StoreListingVersion.prisma().update(
-                where={"id": store_listing_version_id},
-                data=prisma.types.StoreListingVersionUpdateInput(
-                    name=name,
-                    videoUrl=video_url,
-                    agentOutputDemoUrl=agent_output_demo_url,
-                    imageUrls=image_urls,
-                    description=description,
-                    categories=categories,
-                    subHeading=sub_heading,
-                    changesSummary=changes_summary,
-                    recommendedScheduleCron=recommended_schedule_cron,
-                    instructions=instructions,
-                ),
-            )
-
-            logger.debug(
-                f"Updated existing version {store_listing_version_id} for agent {current_version.agentGraphId}"
-            )
-
-            if not updated_version:
-                raise DatabaseError("Failed to update store listing version")
-            return store_model.StoreSubmission(
-                listing_id=current_version.StoreListing.id,
-                agent_id=current_version.agentGraphId,
-                agent_version=current_version.agentGraphVersion,
+        # Update the existing version
+        updated_version = await prisma.models.StoreListingVersion.prisma().update(
+            where={"id": store_listing_version_id},
+            data=prisma.types.StoreListingVersionUpdateInput(
                 name=name,
-                sub_heading=sub_heading,
-                slug=current_version.StoreListing.slug,
+                videoUrl=video_url,
+                agentOutputDemoUrl=agent_output_demo_url,
+                imageUrls=image_urls,
                 description=description,
-                instructions=instructions,
-                image_urls=image_urls,
-                date_submitted=updated_version.submittedAt or updated_version.createdAt,
-                status=updated_version.submissionStatus,
-                runs=0,
-                rating=0.0,
-                store_listing_version_id=updated_version.id,
-                changes_summary=changes_summary,
-                video_url=video_url,
                 categories=categories,
-                version=updated_version.version,
-            )
+                subHeading=sub_heading,
+                changesSummary=changes_summary,
+                recommendedScheduleCron=recommended_schedule_cron,
+                instructions=instructions,
+            ),
+        )
 
-        else:
-            raise store_exceptions.InvalidOperationError(
-                f"Cannot edit submission with status: {current_version.submissionStatus}"
-            )
+        logger.debug(
+            f"Updated existing version {store_listing_version_id} for agent {current_version.agentGraphId}"
+        )
+
+        if not updated_version:
+            raise DatabaseError("Failed to update store listing version")
+        return store_model.StoreSubmission(
+            listing_id=current_version.StoreListing.id,
+            agent_id=current_version.agentGraphId,
+            agent_version=current_version.agentGraphVersion,
+            name=name,
+            sub_heading=sub_heading,
+            slug=current_version.StoreListing.slug,
+            description=description,
+            instructions=instructions,
+            image_urls=image_urls,
+            date_submitted=updated_version.submittedAt or updated_version.createdAt,
+            status=updated_version.submissionStatus,
+            runs=0,
+            rating=0.0,
+            store_listing_version_id=updated_version.id,
+            changes_summary=changes_summary,
+            video_url=video_url,
+            categories=categories,
+            version=updated_version.version,
+        )
 
     except (
         store_exceptions.SubmissionNotFoundError,
