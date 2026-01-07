@@ -8,7 +8,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
 import type {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,

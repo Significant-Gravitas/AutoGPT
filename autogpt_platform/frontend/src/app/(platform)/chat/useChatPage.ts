@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
-import { useChatSession } from "@/app/(platform)/chat/useChatSession";
+import { useChatSession } from "@/components/contextual/Chat/useChatSession";
+import { useChatStream } from "@/components/contextual/Chat/useChatStream";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useChatStream } from "@/app/(platform)/chat/useChatStream";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 
 export function useChatPage() {
   const router = useRouter();
