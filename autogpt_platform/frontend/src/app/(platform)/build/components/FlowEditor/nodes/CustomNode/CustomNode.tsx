@@ -119,7 +119,14 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
       </NodeContainer>
     );
 
-    return <NodeRightClickMenu nodeId={nodeId}>{node}</NodeRightClickMenu>;
+    return (
+      <NodeRightClickMenu
+        nodeId={nodeId}
+        subGraphID={data.hardcodedValues?.graph_id}
+      >
+        {node}
+      </NodeRightClickMenu>
+    );
   },
 );
 

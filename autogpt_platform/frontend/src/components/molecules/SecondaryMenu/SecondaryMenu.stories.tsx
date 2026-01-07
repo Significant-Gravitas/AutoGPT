@@ -3,9 +3,13 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { DotsThreeOutlineVerticalIcon } from "@phosphor-icons/react";
+import {
+  ArrowSquareOutIcon,
+  CopyIcon,
+  DotsThreeOutlineVerticalIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
-import { CopyIcon, ExitIcon, TrashIcon } from "@radix-ui/react-icons";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import {
   SecondaryDropdownMenuContent,
@@ -35,11 +39,11 @@ export const ContextMenuExample: Story = {
         </ContextMenu.Trigger>
         <SecondaryMenuContent>
           <SecondaryMenuItem onSelect={() => alert("Copy")}>
-            <CopyIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+            <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
             <span className="dark:text-gray-100">Copy</span>
           </SecondaryMenuItem>
           <SecondaryMenuItem onSelect={() => alert("Open agent")}>
-            <ExitIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
             <span className="dark:text-gray-100">Open agent</span>
           </SecondaryMenuItem>
           <SecondaryMenuSeparator />
@@ -47,7 +51,10 @@ export const ContextMenuExample: Story = {
             variant="destructive"
             onSelect={() => alert("Delete")}
           >
-            <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+            <TrashIcon
+              size={20}
+              className="mr-2 text-red-500 dark:text-red-400"
+            />
             <span className="dark:text-red-400">Delete</span>
           </SecondaryMenuItem>
         </SecondaryMenuContent>
@@ -67,11 +74,11 @@ export const DropdownMenuExample: Story = {
         </DropdownMenuTrigger>
         <SecondaryDropdownMenuContent side="right" align="start">
           <SecondaryDropdownMenuItem onClick={() => alert("Copy")}>
-            <CopyIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+            <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
             <span className="dark:text-gray-100">Copy</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuItem onClick={() => alert("Open agent")}>
-            <ExitIcon className="mr-2 h-5 w-5 dark:text-gray-100" />
+            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
             <span className="dark:text-gray-100">Open agent</span>
           </SecondaryDropdownMenuItem>
           <SecondaryDropdownMenuSeparator />
@@ -79,7 +86,10 @@ export const DropdownMenuExample: Story = {
             variant="destructive"
             onClick={() => alert("Delete")}
           >
-            <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+            <TrashIcon
+              size={20}
+              className="mr-2 text-red-500 dark:text-red-400"
+            />
             <span className="dark:text-red-400">Delete</span>
           </SecondaryDropdownMenuItem>
         </SecondaryDropdownMenuContent>

@@ -5,18 +5,18 @@ import {
   SecondaryMenuItem,
   SecondaryMenuSeparator,
 } from "@/components/molecules/SecondaryMenu/SecondaryMenu";
-import { CopyIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, CopyIcon, TrashIcon } from "@phosphor-icons/react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { useReactFlow } from "@xyflow/react";
 import { CustomNode } from "../CustomNode";
 
-export function NodeRightClickMenu({
-  nodeId,
-  children,
-}: {
+type Props = {
   nodeId: string;
+  subGraphID?: string;
   children: React.ReactNode;
-}) {
+};
+
+export function NodeRightClickMenu({ nodeId, subGraphID, children }: Props) {
   const { deleteElements } = useReactFlow<CustomNode>();
 
   function copyNode() {
@@ -46,6 +46,22 @@ export function NodeRightClickMenu({
           <span className="dark:text-gray-100">Copy</span>
         </SecondaryMenuItem>
         <SecondaryMenuSeparator />
+
+        {subGraphID && (
+          <>
+            <SecondaryMenuItem
+              onClick={() => window.open(`/build?flowID=${subGraphID}`)}
+            >
+              <ArrowSquareOutIcon
+                size={20}
+                className="mr-2 dark:text-gray-100"
+              />
+              <span className="dark:text-gray-100">Open agent</span>
+            </SecondaryMenuItem>
+            <SecondaryMenuSeparator />
+          </>
+        )}
+
         <SecondaryMenuItem variant="destructive" onSelect={deleteNode}>
           <TrashIcon
             size={20}

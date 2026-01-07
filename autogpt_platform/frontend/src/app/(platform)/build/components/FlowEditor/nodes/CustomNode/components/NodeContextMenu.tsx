@@ -17,13 +17,12 @@ import {
 } from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
 
-export const NodeContextMenu = ({
-  nodeId,
-  subGraphID,
-}: {
+type Props = {
   nodeId: string;
   subGraphID?: string;
-}) => {
+};
+
+export const NodeContextMenu = ({ nodeId, subGraphID }: Props) => {
   const { deleteElements } = useReactFlow();
 
   function handleCopy() {
@@ -52,17 +51,22 @@ export const NodeContextMenu = ({
           <CopyIcon size={20} className="mr-2 dark:text-gray-100" />
           <span className="dark:text-gray-100">Copy</span>
         </SecondaryDropdownMenuItem>
+        <SecondaryDropdownMenuSeparator />
 
         {subGraphID && (
-          <SecondaryDropdownMenuItem
-            onClick={() => window.open(`/build?flowID=${subGraphID}`)}
-          >
-            <ArrowSquareOutIcon size={20} className="mr-2 dark:text-gray-100" />
-            <span className="dark:text-gray-100">Open agent</span>
-          </SecondaryDropdownMenuItem>
+          <>
+            <SecondaryDropdownMenuItem
+              onClick={() => window.open(`/build?flowID=${subGraphID}`)}
+            >
+              <ArrowSquareOutIcon
+                size={20}
+                className="mr-2 dark:text-gray-100"
+              />
+              <span className="dark:text-gray-100">Open agent</span>
+            </SecondaryDropdownMenuItem>
+            <SecondaryDropdownMenuSeparator />
+          </>
         )}
-
-        <SecondaryDropdownMenuSeparator />
 
         <SecondaryDropdownMenuItem variant="destructive" onClick={handleDelete}>
           <TrashIcon
