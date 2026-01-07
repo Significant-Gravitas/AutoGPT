@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import {
   getV2ListFavoriteLibraryAgentsResponse,
   getV2ListLibraryAgentsResponse,
+  usePatchV2UpdateLibraryAgent,
 } from "@/app/api/__generated__/endpoints/library/library";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -21,7 +22,6 @@ import Avatar, {
 } from "@/components/atoms/Avatar/Avatar";
 import { Link } from "@/components/atoms/Link/Link";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import BackendAPI, { LibraryAgentID } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
@@ -45,10 +45,9 @@ export default function LibraryAgentCard({
   const isFromMarketplace = Boolean(marketplace_listing);
   const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
   const [isFavorite, setIsFavorite] = useState(is_favorite);
-  const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
-  const api = new BackendAPI();
   const queryClient = getQueryClient();
+  const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent();
 
   const { data: profile } = useGetV2GetUserProfile({
     query: {
@@ -198,30 +197,27 @@ export default function LibraryAgentCard({
   };
 
   const handleToggleFavorite = async (e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent navigation when clicking the heart
+    e.preventDefault();
     e.stopPropagation();
 
-    if (isUpdating || !isAgentFavoritingEnabled) return;
+    if (!isAgentFavoritingEnabled) return;
 
     const newIsFavorite = !isFavorite;
 
-    // Optimistic update
     setIsFavorite(newIsFavorite);
     updateQueryData(newIsFavorite);
 
-    setIsUpdating(true);
     try {
-      await api.updateLibraryAgent(id as LibraryAgentID, {
-        is_favorite: newIsFavorite,
+      await updateLibraryAgent({
+        libraryAgentId: id,
+        data: { is_favorite: newIsFavorite },
       });
 
       toast({
         title: newIsFavorite ? "Added to favorites" : "Removed from favorites",
         description: `${name} has been ${newIsFavorite ? "added to" : "removed from"} your favorites.`,
       });
-    } catch (error) {
-      // Revert on error
-      console.error("Failed to update favorite status:", error);
+    } catch {
       setIsFavorite(!newIsFavorite);
       updateQueryData(!newIsFavorite);
 
@@ -230,8 +226,6 @@ export default function LibraryAgentCard({
         description: "Failed to update favorite status. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsUpdating(false);
     }
   };
 
@@ -241,10 +235,7 @@ export default function LibraryAgentCard({
       data-agent-id={id}
       className="group inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
     >
-      <NextLink
-        href={`/library/agents/${id}`}
-        className="overflow-hidde w-full flex-shrink-0"
-      >
+      <NextLink href={`/library/agents/${id}`} className="w-full flex-shrink-0">
         <div className="flex items-center gap-2 px-4 pt-3">
           <Avatar className="h-4 w-4 rounded-full">
             <AvatarImage
@@ -271,10 +262,8 @@ export default function LibraryAgentCard({
               "rounded-full bg-white/90 p-2 backdrop-blur-sm transition-all duration-200",
               "hover:scale-110 hover:bg-white",
               "focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2",
-              isUpdating && "cursor-not-allowed opacity-50",
               !isFavorite && "opacity-0 group-hover:opacity-100",
             )}
-            disabled={isUpdating}
             aria-label={
               isFavorite ? "Remove from favorites" : "Add to favorites"
             }

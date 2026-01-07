@@ -4,7 +4,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Heart } from "lucide-react";
+import { HeartIcon } from "@phosphor-icons/react";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
 
@@ -32,7 +32,7 @@ export function FavoritesSection() {
   return (
     <div className="mb-8">
       <div className="flex items-center gap-[10px] p-2 pb-[10px]">
-        <Heart className="h-5 w-5 fill-red-500 text-red-500" />
+        <HeartIcon className="h-5 w-5 fill-red-500 text-red-500" />
         <span className="font-poppin text-[18px] font-semibold leading-[28px] text-neutral-800">
           Favorites
         </span>
