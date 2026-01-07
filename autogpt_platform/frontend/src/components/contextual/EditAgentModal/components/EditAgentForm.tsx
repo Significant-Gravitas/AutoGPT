@@ -8,7 +8,6 @@ import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import { ThumbnailImages } from "../../PublishAgentModal/components/AgentInfoStep/components/ThumbnailImages";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { StepHeader } from "../../PublishAgentModal/components/StepHeader";
 import { useEditAgentForm } from "./useEditAgentForm";
 
 interface EditAgentFormProps {
