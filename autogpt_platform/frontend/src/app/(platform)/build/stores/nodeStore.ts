@@ -13,6 +13,10 @@ import { useHistoryStore } from "./historyStore";
 import { useEdgeStore } from "./edgeStore";
 import { BlockUIType } from "../components/types";
 import { pruneEmptyValues } from "@/lib/utils";
+import {
+  ensurePathExists,
+  parseHandleIdToPath,
+} from "@/components/renderers/InputRenderer/helpers";
 
 // Minimum movement (in pixels) required before logging position change to history
 // Prevents spamming history with small movements when clicking on inputs inside blocks
@@ -62,6 +66,8 @@ type NodeStore = {
     errors: { [key: string]: string },
   ) => void;
   clearAllNodeErrors: () => void; // Add this
+
+  syncHardcodedValuesWithHandleIds: (nodeId: string) => void;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -304,5 +310,36 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         data: { ...n.data, errors: undefined },
       })),
     }));
+  },
+
+  syncHardcodedValuesWithHandleIds: (nodeId: string) => {
+    const node = get().nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+
+    const handleIds = useEdgeStore.getState().getAllHandleIdsOfANode(nodeId);
+    const additionalHandles = handleIds.filter((h) => h.includes("_#_"));
+
+    if (additionalHandles.length === 0) return;
+
+    const hardcodedValues = JSON.parse(
+      JSON.stringify(node.data.hardcodedValues || {}),
+    );
+
+    let modified = false;
+
+    additionalHandles.forEach((handleId) => {
+      const segments = parseHandleIdToPath(handleId);
+      if (ensurePathExists(hardcodedValues, segments)) {
+        modified = true;
+      }
+    });
+
+    if (modified) {
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, hardcodedValues } } : n,
+        ),
+      }));
+    }
   },
 }));
