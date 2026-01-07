@@ -1,18 +1,17 @@
-import React from "react";
+import { useControlPanelStore } from "@/app/(platform)/build/stores/controlPanelStore";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/__legacy__/ui/popover";
-import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
-import { ControlPanelButton } from "../../ControlPanelButton";
-import { LegoIcon } from "@phosphor-icons/react";
-import { useControlPanelStore } from "@/app/(platform)/build/stores/controlPanelStore";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { LegoIcon } from "@phosphor-icons/react";
+import { ControlPanelButton } from "../../ControlPanelButton";
+import { BlockMenuContent } from "../BlockMenuContent/BlockMenuContent";
 
 export const BlockMenu = () => {
   const { blockMenuOpen, setBlockMenuOpen } = useControlPanelStore();
@@ -28,7 +27,7 @@ export const BlockMenu = () => {
               selected={blockMenuOpen}
               className="rounded-none"
             >
-              <LegoIcon className="h-6 w-6" />
+              <LegoIcon className="size-5" />
             </ControlPanelButton>
           </PopoverTrigger>
         </TooltipTrigger>

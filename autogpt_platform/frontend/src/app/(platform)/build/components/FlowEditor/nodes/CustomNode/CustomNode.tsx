@@ -10,7 +10,7 @@ import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutio
 import { NodeContainer } from "./components/NodeContainer";
 import { NodeHeader } from "./components/NodeHeader";
 import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
+import { preprocessInputSchema } from "@/components/renderers/InputRenderer/utils/input-schema-pre-processor";
 import { OutputHandler } from "../OutputHandler";
 import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
 import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
@@ -99,7 +99,7 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             nodeId={nodeId}
             uiType={data.uiType}
             className={cn(
-              "bg-white pr-6",
+              "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}

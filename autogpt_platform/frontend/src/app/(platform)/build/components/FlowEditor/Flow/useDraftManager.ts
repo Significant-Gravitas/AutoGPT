@@ -7,7 +7,12 @@ import {
   DraftData,
 } from "@/services/builder-draft/draft-service";
 import { BuilderDraft } from "@/lib/dexie/db";
-import { cleanNodes, cleanEdges } from "@/lib/dexie/draft-utils";
+import {
+  cleanNodes,
+  cleanEdges,
+  calculateDraftDiff,
+  DraftDiff,
+} from "@/lib/dexie/draft-utils";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { useGraphStore } from "../../../stores/graphStore";
@@ -19,6 +24,7 @@ const AUTO_SAVE_INTERVAL_MS = 15000; // 15 seconds
 interface DraftRecoveryState {
   isOpen: boolean;
   draft: BuilderDraft | null;
+  diff: DraftDiff | null;
 }
 
 /**
@@ -31,6 +37,7 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
   const [state, setState] = useState<DraftRecoveryState>({
     isOpen: false,
     draft: null,
+    diff: null,
   });
 
   const [{ flowID, flowVersion }] = useQueryStates({
@@ -207,9 +214,16 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
       );
 
       if (isDifferent && (draft.nodes.length > 0 || draft.edges.length > 0)) {
+        const diff = calculateDraftDiff(
+          draft.nodes,
+          draft.edges,
+          currentNodes,
+          currentEdges,
+        );
         setState({
           isOpen: true,
           draft,
+          diff,
         });
       } else {
         await draftService.deleteDraft(effectiveFlowId);
@@ -231,6 +245,7 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
     setState({
       isOpen: false,
       draft: null,
+      diff: null,
     });
   }, [flowID]);
 
@@ -242,8 +257,10 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
     try {
       useNodeStore.getState().setNodes(draft.nodes);
       useEdgeStore.getState().setEdges(draft.edges);
+      draft.nodes.forEach((node) => {
+        useNodeStore.getState().syncHardcodedValuesWithHandleIds(node.id);
+      });
 
-      // Restore nodeCounter to prevent ID conflicts when adding new nodes
       if (draft.nodeCounter !== undefined) {
         useNodeStore.setState({ nodeCounter: draft.nodeCounter });
       }
@@ -267,6 +284,7 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
       setState({
         isOpen: false,
         draft: null,
+        diff: null,
       });
     } catch (error) {
       console.error("[DraftRecovery] Failed to load draft:", error);
@@ -275,7 +293,7 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
 
   const discardDraft = useCallback(async () => {
     if (!state.draft) {
-      setState({ isOpen: false, draft: null });
+      setState({ isOpen: false, draft: null, diff: null });
       return;
     }
 
@@ -285,7 +303,7 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
       console.error("[DraftRecovery] Failed to discard draft:", error);
     }
 
-    setState({ isOpen: false, draft: null });
+    setState({ isOpen: false, draft: null, diff: null });
   }, [state.draft]);
 
   return {
@@ -294,6 +312,7 @@ export function useDraftManager(isInitialLoadComplete: boolean) {
     savedAt: state.draft?.savedAt ?? 0,
     nodeCount: state.draft?.nodes.length ?? 0,
     edgeCount: state.draft?.edges.length ?? 0,
+    diff: state.diff,
     loadDraft,
     discardDraft,
   };
