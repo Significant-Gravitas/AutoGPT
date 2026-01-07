@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "ralph-wiggum@claude-plugins-official": true
+  }
+}

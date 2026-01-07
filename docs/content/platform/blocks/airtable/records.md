@@ -1,0 +1,184 @@
+# Airtable Create Records
+
+### What it is
+Create records in an Airtable table.
+
+### What it does
+Create records in an Airtable table
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| base_id | The Airtable base ID | str | Yes |
+| table_id_or_name | Table ID or name | str | Yes |
+| records | Array of records to create (each with 'fields' object) | List[Dict[str, True]] | Yes |
+| skip_normalization | Skip output normalization to get raw Airtable response (faster but may have missing fields) | bool | No |
+| typecast | Automatically convert string values to appropriate types | bool | No |
+| return_fields_by_field_id | Return fields by field ID | bool | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| records | Array of created record objects | List[Dict[str, True]] |
+| details | Details of the created records | Dict[str, True] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Airtable Delete Records
+
+### What it is
+Delete records from an Airtable table.
+
+### What it does
+Delete records from an Airtable table
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| base_id | The Airtable base ID | str | Yes |
+| table_id_or_name | Table ID or name - It's better to use the table ID instead of the name | str | Yes |
+| record_ids | Array of upto 10 record IDs to delete | List[str] | Yes |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| records | Array of deletion results | List[Dict[str, True]] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Airtable Get Record
+
+### What it is
+Get a single record from Airtable.
+
+### What it does
+Get a single record from Airtable
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| base_id | The Airtable base ID | str | Yes |
+| table_id_or_name | Table ID or name | str | Yes |
+| record_id | The record ID to retrieve | str | Yes |
+| normalize_output | Normalize output to include all fields with proper empty values (disable to skip schema fetch and get raw Airtable response) | bool | No |
+| include_field_metadata | Include field type and configuration metadata (requires normalize_output=true) | bool | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| id | The record ID | str |
+| fields | The record fields | Dict[str, True] |
+| created_time | The record created time | str |
+| field_metadata | Field type and configuration metadata (only when include_field_metadata=true) | Dict[str, True] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Airtable List Records
+
+### What it is
+List records from an Airtable table.
+
+### What it does
+List records from an Airtable table
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| base_id | The Airtable base ID | str | Yes |
+| table_id_or_name | Table ID or name | str | Yes |
+| filter_formula | Airtable formula to filter records | str | No |
+| view | View ID or name to use | str | No |
+| sort | Sort configuration (array of {field, direction}) | List[Dict[str, True]] | No |
+| max_records | Maximum number of records to return | int | No |
+| page_size | Number of records per page (max 100) | int | No |
+| offset | Pagination offset from previous request | str | No |
+| return_fields | Specific fields to return (comma-separated) | List[str] | No |
+| normalize_output | Normalize output to include all fields with proper empty values (disable to skip schema fetch and get raw Airtable response) | bool | No |
+| include_field_metadata | Include field type and configuration metadata (requires normalize_output=true) | bool | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| records | Array of record objects | List[Dict[str, True]] |
+| offset | Offset for next page (null if no more records) | str |
+| field_metadata | Field type and configuration metadata (only when include_field_metadata=true) | Dict[str, True] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
+## Airtable Update Records
+
+### What it is
+Update records in an Airtable table.
+
+### What it does
+Update records in an Airtable table
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| base_id | The Airtable base ID | str | Yes |
+| table_id_or_name | Table ID or name - It's better to use the table ID instead of the name | str | Yes |
+| records | Array of records to update (each with 'id' and 'fields') | List[Dict[str, True]] | Yes |
+| typecast | Automatically convert string values to appropriate types | bool | No |
+
+### Outputs
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| records | Array of updated record objects | List[Dict[str, True]] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
