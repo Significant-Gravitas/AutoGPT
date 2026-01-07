@@ -1,9 +1,9 @@
-import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
+import type { OutputMetadata } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import {
   globalRegistry,
   OutputActions,
   OutputItem,
-} from "@/components/contextual/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";

@@ -3,12 +3,12 @@
 import type {
   OutputMetadata,
   OutputRenderer,
-} from "@/components/contextual/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import {
   globalRegistry,
   OutputActions,
   OutputItem,
-} from "@/components/contextual/OutputRenderers";
+} from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
 import React, { useMemo } from "react";
 
 type OutputsRecord = Record<string, Array<unknown>>;

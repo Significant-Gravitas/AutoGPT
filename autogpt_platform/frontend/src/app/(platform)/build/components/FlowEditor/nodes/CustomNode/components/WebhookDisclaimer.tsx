@@ -1,10 +1,10 @@
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
+import { Text } from "@/components/atoms/Text/Text";
+import Link from "next/link";
 import { useGetV2GetLibraryAgentByGraphId } from "@/app/api/__generated__/endpoints/library/library";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Text } from "@/components/atoms/Text/Text";
-import { isValidUUID } from "@/components/contextual/Chat/helpers";
-import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
-import Link from "next/link";
-import { parseAsString, useQueryStates } from "nuqs";
+import { useQueryStates, parseAsString } from "nuqs";
+import { isValidUUID } from "@/app/(platform)/chat/helpers";
 
 export const WebhookDisclaimer = ({ nodeId }: { nodeId: string }) => {
   const [{ flowID }] = useQueryStates({

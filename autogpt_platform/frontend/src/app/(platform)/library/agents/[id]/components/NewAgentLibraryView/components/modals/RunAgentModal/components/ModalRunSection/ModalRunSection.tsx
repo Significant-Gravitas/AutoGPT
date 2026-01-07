@@ -1,7 +1,7 @@
+import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Input } from "@/components/atoms/Input/Input";
-import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { RunAgentInputs } from "../../../../../../../../../../../../components/contextual/RunAgentInputs/RunAgentInputs";
+import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
 import { ModalSection } from "../ModalSection/ModalSection";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
