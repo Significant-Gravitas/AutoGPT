@@ -39,7 +39,6 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const host = headersList.get("host") || "";
-  const previewStealingDev = environment.getPreviewStealingDev();
 
   return (
     <html
