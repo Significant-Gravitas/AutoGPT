@@ -30,7 +30,7 @@ export function EditAgentForm({
     isSubmitting,
     handleFormSubmit,
     handleImagesChange,
-  } = useEditAgentForm({ submission, onSuccess });
+  } = useEditAgentForm({ submission, onSuccess, onClose });
 
   return (
     <div className="mx-auto flex w-full flex-col rounded-3xl">

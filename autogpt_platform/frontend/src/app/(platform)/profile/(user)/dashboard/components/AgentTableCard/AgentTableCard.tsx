@@ -63,9 +63,14 @@ export const AgentTableCard = ({
           />
         </div>
         <div className="flex-1">
-          <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
-            {agentName}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
+              {agentName}
+            </h3>
+            <span className="text-[13px] text-neutral-500 dark:text-neutral-400">
+              v{agent_version}
+            </span>
+          </div>
           <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
             {description}
           </p>

@@ -19,11 +19,13 @@ interface useEditAgentFormProps {
     agent_id: string;
   };
   onSuccess: (submission: StoreSubmission) => void;
+  onClose: () => void;
 }
 
 export const useEditAgentForm = ({
   submission,
   onSuccess,
+  onClose,
 }: useEditAgentFormProps) => {
   const editAgentSchema = z.object({
     title: z
@@ -138,7 +140,10 @@ export const useEditAgentForm = ({
           duration: 3000,
           variant: "default",
         });
+
+        // Call onSuccess and explicitly close the modal
         onSuccess(response.data);
+        onClose();
       } else {
         throw new Error("Failed to update submission");
       }
