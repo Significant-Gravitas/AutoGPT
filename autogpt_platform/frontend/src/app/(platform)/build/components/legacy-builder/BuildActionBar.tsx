@@ -1,8 +1,8 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/__legacy__/ui/button";
-import { AlertTriangle, LogOut } from "lucide-react";
-import { ClockIcon } from "@phosphor-icons/react";
+import { LogOut } from "lucide-react";
+import { ClockIcon, WarningIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/__legacy__/ui/icons";
 
 interface Props {
@@ -39,7 +39,7 @@ export const BuildActionBar: React.FC<Props> = ({
         )}
       >
         <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-900/30">
-          <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          <WarningIcon className="size-5 text-amber-600 dark:text-amber-400" />
           <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
             Remove incompatible connections to continue
           </span>
