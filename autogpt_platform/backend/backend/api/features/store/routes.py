@@ -5,6 +5,7 @@ import urllib.parse
 from typing import Literal
 
 import autogpt_libs.auth
+from autogpt_libs.auth.dependencies import get_optional_user_id
 import fastapi
 import fastapi.responses
 
@@ -76,6 +77,45 @@ async def update_or_create_profile(
     """
     updated_profile = await store_db.update_profile(user_id=user_id, profile=profile)
     return updated_profile
+
+
+##############################################
+############## Waitlist Endpoints ############
+##############################################
+@router.get(
+    "/waitlist",
+    summary="Get the agent waitlist",
+    tags=["store", "public"],
+    response_model=store_model.StoreWaitlistsAllResponse,
+)
+async def get_waitlist():
+    """
+    Get the agent waitlist details.
+    """
+    waitlist = await store_db.get_waitlist()
+    return waitlist
+
+
+@router.post(
+    path="/waitlist/{waitlist_id}/join",
+    summary="Add self to the agent waitlist",
+    tags=["store", "public"],
+    response_model=store_model.StoreWaitlistEntry,
+)
+async def add_self_to_waitlist(
+    user_id: str | None = fastapi.Security(get_optional_user_id),
+    waitlist_id: str = fastapi.Path(..., description="The ID of the waitlist to join"),
+    email: str | None = fastapi.Body(
+        default=None, description="Email address for unauthenticated users"
+    ),
+):
+    """
+    Add the current user to the agent waitlist.
+    """
+    waitlist_entry = await store_db.add_user_to_waitlist(
+        waitlist_id=waitlist_id, user_id=user_id, email=email
+    )
+    return waitlist_entry
 
 
 ##############################################

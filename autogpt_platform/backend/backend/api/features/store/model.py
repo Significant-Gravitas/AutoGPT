@@ -1,6 +1,7 @@
 import datetime
 from typing import List
 
+from backend.data.model import User
 import prisma.enums
 import pydantic
 
@@ -216,3 +217,23 @@ class ReviewSubmissionRequest(pydantic.BaseModel):
     is_approved: bool
     comments: str  # External comments visible to creator
     internal_comments: str | None = None  # Private admin notes
+
+
+class StoreWaitlistEntry(pydantic.BaseModel):
+    waitlist_id: str
+    storeListing: StoreListingWithVersions | None = None
+    owner: User | None = None
+    slug: str
+
+    # Content fields
+    name: str
+    subHeading: str
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+    imageUrls: list[str]
+    description: str
+    categories: list[str]
+
+
+class StoreWaitlistsAllResponse(pydantic.BaseModel):
+    listings: list[StoreWaitlistEntry]

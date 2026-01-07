@@ -4965,6 +4965,135 @@
         }
       }
     },
+    "/api/store/profile": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Get user profile",
+        "description": "Get the profile details for the authenticated user.\nCached for 1 hour per user.",
+        "operationId": "getV2Get user profile",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileDetails" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Update user profile",
+        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    CreatorDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
+        "operationId": "postV2Update user profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Profile" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreatorDetails" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/store/waitlist": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Get the agent waitlist",
+        "description": "Get the agent waitlist details.",
+        "operationId": "getV2Get the agent waitlist",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreWaitlistsAllResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/waitlist/{waitlist_id}/join": {
+      "post": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Add self to the agent waitlist",
+        "description": "Add the current user to the agent waitlist.",
+        "operationId": "postV2Add self to the agent waitlist",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "waitlist_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The ID of the waitlist to join",
+              "title": "Waitlist Id"
+            },
+            "description": "The ID of the waitlist to join"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [{ "type": "string" }, { "type": "null" }],
+                "description": "Email address for unauthenticated users",
+                "title": "Email"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreWaitlistEntry" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/agents": {
       "get": {
         "tags": ["v2", "store", "public"],
@@ -9885,6 +10014,68 @@
         "required": ["submissions", "pagination"],
         "title": "StoreSubmissionsResponse"
       },
+      "StoreWaitlistEntry": {
+        "properties": {
+          "waitlist_id": { "type": "string", "title": "Waitlist Id" },
+          "storeListing": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/StoreListingWithVersions" },
+              { "type": "null" }
+            ]
+          },
+          "owner": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/User" },
+              { "type": "null" }
+            ]
+          },
+          "slug": { "type": "string", "title": "Slug" },
+          "name": { "type": "string", "title": "Name" },
+          "subHeading": { "type": "string", "title": "Subheading" },
+          "videoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Videourl"
+          },
+          "agentOutputDemoUrl": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agentoutputdemourl"
+          },
+          "imageUrls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Imageurls"
+          },
+          "description": { "type": "string", "title": "Description" },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "waitlist_id",
+          "slug",
+          "name",
+          "subHeading",
+          "imageUrls",
+          "description",
+          "categories"
+        ],
+        "title": "StoreWaitlistEntry"
+      },
+      "StoreWaitlistsAllResponse": {
+        "properties": {
+          "listings": {
+            "items": { "$ref": "#/components/schemas/StoreWaitlistEntry" },
+            "type": "array",
+            "title": "Listings"
+          }
+        },
+        "type": "object",
+        "required": ["listings"],
+        "title": "StoreWaitlistsAllResponse"
+      },
       "SubmissionStatus": {
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
@@ -11368,6 +11559,128 @@
         ],
         "title": "UploadFileResponse"
       },
+      "User": {
+        "properties": {
+          "id": { "type": "string", "title": "Id", "description": "User ID" },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "User email address"
+          },
+          "email_verified": {
+            "type": "boolean",
+            "title": "Email Verified",
+            "description": "Whether email is verified",
+            "default": true
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name",
+            "description": "User display name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When user was created"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "When user was last updated"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "description": "User metadata as dict"
+          },
+          "integrations": {
+            "type": "string",
+            "title": "Integrations",
+            "description": "Encrypted integrations data",
+            "default": ""
+          },
+          "stripe_customer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Stripe Customer Id",
+            "description": "Stripe customer ID"
+          },
+          "top_up_config": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/AutoTopUpConfig" },
+              { "type": "null" }
+            ],
+            "description": "Top up configuration"
+          },
+          "max_emails_per_day": {
+            "type": "integer",
+            "title": "Max Emails Per Day",
+            "description": "Maximum emails per day",
+            "default": 3
+          },
+          "notify_on_agent_run": {
+            "type": "boolean",
+            "title": "Notify On Agent Run",
+            "description": "Notify on agent run",
+            "default": true
+          },
+          "notify_on_zero_balance": {
+            "type": "boolean",
+            "title": "Notify On Zero Balance",
+            "description": "Notify on zero balance",
+            "default": true
+          },
+          "notify_on_low_balance": {
+            "type": "boolean",
+            "title": "Notify On Low Balance",
+            "description": "Notify on low balance",
+            "default": true
+          },
+          "notify_on_block_execution_failed": {
+            "type": "boolean",
+            "title": "Notify On Block Execution Failed",
+            "description": "Notify on block execution failure",
+            "default": true
+          },
+          "notify_on_continuous_agent_error": {
+            "type": "boolean",
+            "title": "Notify On Continuous Agent Error",
+            "description": "Notify on continuous agent error",
+            "default": true
+          },
+          "notify_on_daily_summary": {
+            "type": "boolean",
+            "title": "Notify On Daily Summary",
+            "description": "Notify on daily summary",
+            "default": true
+          },
+          "notify_on_weekly_summary": {
+            "type": "boolean",
+            "title": "Notify On Weekly Summary",
+            "description": "Notify on weekly summary",
+            "default": true
+          },
+          "notify_on_monthly_summary": {
+            "type": "boolean",
+            "title": "Notify On Monthly Summary",
+            "description": "Notify on monthly summary",
+            "default": true
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "User timezone (IANA timezone identifier or 'not-set')",
+            "default": "not-set"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["id", "email", "created_at", "updated_at"],
+        "title": "User",
+        "description": "Application-layer User model with snake_case convention."
+      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -11674,6 +11987,7 @@
       }
     },
     "securitySchemes": {
+      "HTTPBearer": { "type": "http", "scheme": "bearer" },
       "APIKeyAuthenticator-X-Postmark-Webhook-Token": {
         "type": "apiKey",
         "in": "header",

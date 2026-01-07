@@ -1957,3 +1957,104 @@ async def get_agent_as_admin(
         )
 
     return graph
+
+
+async def get_waitlist() -> list[store_model.StoreWaitlistEntry]:
+    """Get all waitlists."""
+    try:
+        waitlists = await prisma.models.WaitlistEntry.prisma().find_many(
+            where={"isDeleted": False},
+            order=[{"createdAt": "desc"}],
+        )
+
+        # order them by votes before returning without vote counts to the frontend
+        sorted_list = sorted(waitlists, key=lambda x: x.votes, reverse=True)
+
+        lists = [
+            store_model.StoreWaitlistEntry(
+                name=waitlist.name,
+                description=waitlist.description,
+                waitlist_id=waitlist.waitlistId,
+                slug=waitlist.slug,
+                subHeading=waitlist.subHeading,
+                imageUrls=waitlist.imageUrls or [],
+                categories=waitlist.categories,
+            )
+            for waitlist in sorted_list
+            if waitlist.status != prisma.enums.WaitlistExternalStatus.CANCELED
+            and waitlist.status != prisma.enums.WaitlistExternalStatus.DONE
+        ]
+
+        return lists
+    except Exception as e:
+        logger.error(f"Error fetching waitlists: {e}")
+        raise DatabaseError("Failed to fetch waitlists") from e
+
+
+async def add_user_to_waitlist(
+    waitlist_id: str, user_id: str | None, email: str | None
+):
+    """Add a user to a waitlist."""
+    logger.debug(f"Adding user {user_id} to waitlist {waitlist_id}")
+
+    try:
+        waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
+            where={"id": waitlist_id}
+        )
+
+        if not waitlist:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        # Check if user is already in the waitlist
+        existing_entry = None
+        if user_id:
+            existing_entry = await prisma.models.WaitlistEntry.prisma().find_first(
+                where={
+                    "waitlistId": waitlist_id,
+                    "userId": user_id,
+                    "isDeleted": False,
+                }
+            )
+        elif email:
+            existing_entry = await prisma.models.WaitlistEntry.prisma().find_first(
+                where={
+                    "waitlistId": waitlist_id,
+                    "email": email,
+                    "isDeleted": False,
+                }
+            )
+
+        if existing_entry:
+            # convert emails to user if appropriate
+            raise NotImplementedError(
+                "Implment the capibility to convert email based waitlist entries to user based ones and remove the email based waitlist entry."
+            )
+
+        # Create new waitlist entry
+        new_entry = await prisma.models.WaitlistEntry.prisma().create(
+            data=prisma.types.WaitlistEntryCreateInput(
+                waitlistId=waitlist_id,
+                userId=user_id,
+                email=email,
+                name="",
+                description="",
+                slug="",
+                subHeading="",
+                imageUrls=[],
+                categories=[],
+            )
+        )
+
+        return store_model.StoreWaitlistEntry(
+            name=new_entry.name,
+            description=new_entry.description,
+            waitlist_id=new_entry.waitlistId,
+            slug=new_entry.slug,
+            subHeading=new_entry.subHeading,
+            imageUrls=new_entry.imageUrls or [],
+            categories=new_entry.categories,
+        )
+
+    except Exception as e:
+        logger.error(f"Error adding user to waitlist: {e}")
+        raise DatabaseError("Failed to add user to waitlist") from e
