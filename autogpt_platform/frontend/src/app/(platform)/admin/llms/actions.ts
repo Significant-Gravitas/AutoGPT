@@ -18,6 +18,7 @@ import {
   postV2CreateModelCreator,
   patchV2UpdateModelCreator,
   deleteV2DeleteModelCreator,
+  postV2SetRecommendedModel,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 
 // Generated types
@@ -336,5 +337,22 @@ export async function deleteLlmCreatorAction(
   if (response.status !== 200) {
     throw new Error("Failed to delete creator");
   }
+  revalidatePath(ADMIN_LLM_PATH);
+}
+
+// =============================================================================
+// Recommended Model Actions
+// =============================================================================
+
+export async function setRecommendedModelAction(
+  formData: FormData,
+): Promise<void> {
+  const modelId = String(formData.get("model_id"));
+
+  const response = await postV2SetRecommendedModel({ model_id: modelId });
+  if (response.status !== 200) {
+    throw new Error("Failed to set recommended model");
+  }
+
   revalidatePath(ADMIN_LLM_PATH);
 }

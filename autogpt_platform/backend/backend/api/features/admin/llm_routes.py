@@ -482,3 +482,73 @@ async def delete_llm_creator(creator_id: str):
             status_code=500,
             detail="Failed to delete creator",
         ) from exc
+
+
+# ============================================================================
+# Recommended Model Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/recommended-model",
+    summary="Get recommended model",
+    response_model=llm_model.RecommendedModelResponse,
+)
+async def get_recommended_model():
+    """
+    Get the currently recommended LLM model.
+
+    The recommended model is shown to users as the default/suggested option
+    in model selection dropdowns.
+    """
+    try:
+        model = await llm_db.get_recommended_model()
+        return llm_model.RecommendedModelResponse(
+            model=model,
+            slug=model.slug if model else None,
+        )
+    except Exception as exc:
+        logger.exception("Failed to get recommended model: %s", exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to get recommended model",
+        ) from exc
+
+
+@router.post(
+    "/recommended-model",
+    summary="Set recommended model",
+    response_model=llm_model.SetRecommendedModelResponse,
+)
+async def set_recommended_model(request: llm_model.SetRecommendedModelRequest):
+    """
+    Set a model as the recommended model.
+
+    This clears the recommended flag from any other model and sets it on
+    the specified model. The model must be enabled to be set as recommended.
+
+    The recommended model is displayed to users as the default/suggested
+    option in model selection dropdowns throughout the platform.
+    """
+    try:
+        model, previous_slug = await llm_db.set_recommended_model(request.model_id)
+        await _refresh_runtime_state()
+        logger.info(
+            "Set recommended model to '%s' (previous: %s)",
+            model.slug,
+            previous_slug or "none",
+        )
+        return llm_model.SetRecommendedModelResponse(
+            model=model,
+            previous_recommended_slug=previous_slug,
+            message=f"Model '{model.display_name}' is now the recommended model",
+        )
+    except ValueError as exc:
+        logger.warning("Set recommended model validation failed: %s", exc)
+        raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Failed to set recommended model: %s", exc)
+        raise fastapi.HTTPException(
+            status_code=500,
+            detail="Failed to set recommended model",
+        ) from exc

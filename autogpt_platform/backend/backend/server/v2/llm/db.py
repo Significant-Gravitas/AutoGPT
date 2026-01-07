@@ -64,6 +64,7 @@ def _map_model(record: prisma.models.LlmModel) -> llm_model.LlmModel:
         context_window=record.contextWindow,
         max_output_tokens=record.maxOutputTokens,
         is_enabled=record.isEnabled,
+        is_recommended=record.isRecommended,
         capabilities=_json_dict(record.capabilities),
         metadata=_json_dict(record.metadata),
         costs=costs,
@@ -758,3 +759,89 @@ async def delete_creator(creator_id: str) -> bool:
 
     await prisma.models.LlmModelCreator.prisma().delete(where={"id": creator_id})
     return True
+
+
+async def get_recommended_model() -> llm_model.LlmModel | None:
+    """
+    Get the currently recommended LLM model.
+
+    Returns:
+        The recommended model, or None if no model is marked as recommended.
+    """
+    record = await prisma.models.LlmModel.prisma().find_first(
+        where={"isRecommended": True, "isEnabled": True},
+        include={"Costs": True, "Creator": True},
+    )
+    return _map_model(record) if record else None
+
+
+async def set_recommended_model(
+    model_id: str,
+) -> tuple[llm_model.LlmModel, str | None]:
+    """
+    Set a model as the recommended model.
+
+    This will clear the isRecommended flag from any other model and set it
+    on the specified model. The model must be enabled.
+
+    Args:
+        model_id: UUID of the model to set as recommended
+
+    Returns:
+        Tuple of (the updated model, previous recommended model slug or None)
+
+    Raises:
+        ValueError: If model not found or not enabled
+    """
+    # First, verify the model exists and is enabled
+    target_model = await prisma.models.LlmModel.prisma().find_unique(
+        where={"id": model_id}
+    )
+    if not target_model:
+        raise ValueError(f"Model with id '{model_id}' not found")
+    if not target_model.isEnabled:
+        raise ValueError(
+            f"Cannot set disabled model '{target_model.slug}' as recommended"
+        )
+
+    # Get the current recommended model (if any)
+    current_recommended = await prisma.models.LlmModel.prisma().find_first(
+        where={"isRecommended": True}
+    )
+    previous_slug = current_recommended.slug if current_recommended else None
+
+    # Use a transaction to ensure atomicity
+    async with transaction() as tx:
+        # Clear isRecommended from all models
+        await tx.llmmodel.update_many(
+            where={"isRecommended": True},
+            data={"isRecommended": False},
+        )
+        # Set the new recommended model
+        await tx.llmmodel.update(
+            where={"id": model_id},
+            data={"isRecommended": True},
+        )
+
+    # Fetch and return the updated model
+    updated_record = await prisma.models.LlmModel.prisma().find_unique(
+        where={"id": model_id},
+        include={"Costs": True, "Creator": True},
+    )
+    if not updated_record:
+        raise ValueError("Failed to fetch updated model")
+
+    return _map_model(updated_record), previous_slug
+
+
+async def get_recommended_model_slug() -> str | None:
+    """
+    Get the slug of the currently recommended LLM model.
+
+    Returns:
+        The slug of the recommended model, or None if no model is marked as recommended.
+    """
+    record = await prisma.models.LlmModel.prisma().find_first(
+        where={"isRecommended": True, "isEnabled": True},
+    )
+    return record.slug if record else None

@@ -1055,6 +1055,7 @@ model LlmModel {
   contextWindow   Int
   maxOutputTokens Int?
   isEnabled       Boolean @default(true)
+  isRecommended   Boolean @default(false)
 
   capabilities Json @default("{}")
   metadata     Json @default("{}")

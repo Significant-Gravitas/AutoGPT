@@ -40,6 +40,7 @@ class LlmModel(pydantic.BaseModel):
     context_window: int
     max_output_tokens: Optional[int] = None
     is_enabled: bool = True
+    is_recommended: bool = False
     capabilities: dict[str, Any] = pydantic.Field(default_factory=dict)
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
     costs: list[LlmModelCost] = pydantic.Field(default_factory=list)
@@ -193,3 +194,18 @@ class RevertMigrationResponse(pydantic.BaseModel):
     )
     source_model_re_enabled: bool = False  # Whether the source model was re-enabled
     message: str
+
+
+class SetRecommendedModelRequest(pydantic.BaseModel):
+    model_id: str
+
+
+class SetRecommendedModelResponse(pydantic.BaseModel):
+    model: LlmModel
+    previous_recommended_slug: Optional[str] = None
+    message: str
+
+
+class RecommendedModelResponse(pydantic.BaseModel):
+    model: Optional[LlmModel] = None
+    slug: Optional[str] = None

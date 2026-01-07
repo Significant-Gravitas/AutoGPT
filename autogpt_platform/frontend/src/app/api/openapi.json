@@ -4673,6 +4673,70 @@
         }
       }
     },
+    "/api/llm/admin/admin/llm/recommended-model": {
+      "get": {
+        "tags": ["v2", "admin", "llm", "llm", "admin"],
+        "summary": "Get recommended model",
+        "description": "Get the currently recommended LLM model.\n\nThe recommended model is shown to users as the default/suggested option\nin model selection dropdowns.",
+        "operationId": "getV2Get recommended model",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendedModelResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "admin", "llm", "llm", "admin"],
+        "summary": "Set recommended model",
+        "description": "Set a model as the recommended model.\n\nThis clears the recommended flag from any other model and sets it on\nthe specified model. The model must be enabled to be set as recommended.\n\nThe recommended model is displayed to users as the default/suggested\noption in model selection dropdowns throughout the platform.",
+        "operationId": "postV2Set recommended model",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRecommendedModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetRecommendedModelResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/llm/models": {
       "get": {
         "tags": ["v2", "llm", "llm"],
@@ -8903,6 +8967,11 @@
             "title": "Is Enabled",
             "default": true
           },
+          "is_recommended": {
+            "type": "boolean",
+            "title": "Is Recommended",
+            "default": false
+          },
           "capabilities": {
             "additionalProperties": true,
             "type": "object",
@@ -10215,6 +10284,22 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "RecommendedModelResponse": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LlmModel" },
+              { "type": "null" }
+            ]
+          },
+          "slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "title": "RecommendedModelResponse"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -10539,6 +10624,25 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetRecommendedModelRequest": {
+        "properties": { "model_id": { "type": "string", "title": "Model Id" } },
+        "type": "object",
+        "required": ["model_id"],
+        "title": "SetRecommendedModelRequest"
+      },
+      "SetRecommendedModelResponse": {
+        "properties": {
+          "model": { "$ref": "#/components/schemas/LlmModel" },
+          "previous_recommended_slug": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Previous Recommended Slug"
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["model", "message"],
+        "title": "SetRecommendedModelResponse"
       },
       "ShareRequest": {
         "properties": {},

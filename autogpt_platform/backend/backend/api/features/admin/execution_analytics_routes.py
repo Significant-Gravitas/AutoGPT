@@ -175,19 +175,26 @@ async def get_execution_analytics_config(
 
     # Get all models from the registry (dynamic, not hardcoded enum)
     from backend.data import llm_registry
+    from backend.server.v2.llm import db as llm_db
 
-    recommended_model = (
-        "gpt-4o-mini"  # Using string value - enum accepts any model slug dynamically
-    )
+    # Get the recommended model from the database (configurable via admin UI)
+    recommended_model_slug = await llm_db.get_recommended_model_slug()
+
+    # Build the available models list
+    first_enabled_slug = None
     for registry_model in llm_registry.iter_dynamic_models():
         # Only include enabled models in the list
         if not registry_model.is_enabled:
             continue
 
+        # Track first enabled model as fallback
+        if first_enabled_slug is None:
+            first_enabled_slug = registry_model.slug
+
         model_enum = LlmModel(registry_model.slug)  # Create enum instance from slug
         label = generate_model_label(model_enum)
         # Add "(Recommended)" suffix to the recommended model
-        if registry_model.slug == recommended_model:
+        if registry_model.slug == recommended_model_slug:
             label += " (Recommended)"
 
         available_models.append(
@@ -216,11 +223,14 @@ async def get_execution_analytics_config(
             )
         )
 
+    # Use the DB recommended model, or fallback to first enabled model
+    final_recommended = recommended_model_slug or first_enabled_slug or ""
+
     return ExecutionAnalyticsConfig(
         available_models=available_models,
         default_system_prompt=DEFAULT_SYSTEM_PROMPT,
         default_user_prompt=DEFAULT_USER_PROMPT,
-        recommended_model=recommended_model,
+        recommended_model=final_recommended,
     )
 
 

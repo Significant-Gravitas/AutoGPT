@@ -11,6 +11,7 @@ import { ProviderList } from "./ProviderList";
 import { ModelsTable } from "./ModelsTable";
 import { MigrationsTable } from "./MigrationsTable";
 import { CreatorsTable } from "./CreatorsTable";
+import { RecommendedModelSelector } from "./RecommendedModelSelector";
 
 interface Props {
   providers: LlmProvider[];
@@ -93,6 +94,12 @@ export function LlmRegistryDashboard({
             </div>
             <AddModelModal providers={providers} creators={creators} />
           </div>
+
+          {/* Recommended Model Selector */}
+          <div className="mb-6">
+            <RecommendedModelSelector models={models} />
+          </div>
+
           <ModelsTable
             models={models}
             providers={providers}

@@ -18,6 +18,8 @@ export function DeleteModelModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usageCount, setUsageCount] = useState<number | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
 
   // Filter out the current model and disabled models from replacement options
   const replacementOptions = availableModels.filter(
@@ -25,11 +27,17 @@ export function DeleteModelModal({
   );
 
   async function fetchUsage() {
+    setUsageLoading(true);
+    setUsageError(null);
     try {
       const usage = await fetchLlmModelUsage(model.id);
       setUsageCount(usage.node_count);
-    } catch {
+    } catch (err) {
+      console.error("Failed to fetch model usage:", err);
+      setUsageError("Failed to load usage count");
       setUsageCount(null);
+    } finally {
+      setUsageLoading(false);
     }
   }
 
@@ -55,6 +63,9 @@ export function DeleteModelModal({
           setOpen(isOpen);
           if (isOpen) {
             setUsageCount(null);
+            setUsageError(null);
+            setError(null);
+            setSelectedReplacement("");
             await fetchUsage();
           }
         },
@@ -89,7 +100,15 @@ export function DeleteModelModal({
                   <span className="font-medium">{model.display_name}</span>{" "}
                   <span className="text-muted-foreground">({model.slug})</span>
                 </p>
-                {usageCount !== null && (
+                {usageLoading && (
+                  <p className="mt-2 text-muted-foreground">
+                    Loading usage count...
+                  </p>
+                )}
+                {usageError && (
+                  <p className="mt-2 text-destructive">{usageError}</p>
+                )}
+                {!usageLoading && !usageError && usageCount !== null && (
                   <p className="mt-2 font-semibold">
                     Impact: {usageCount} block{usageCount !== 1 ? "s" : ""}{" "}
                     currently use this model

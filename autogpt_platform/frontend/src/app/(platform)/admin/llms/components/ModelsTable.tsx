@@ -1,3 +1,5 @@
+"use client";
+
 import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
 import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
 import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
@@ -14,6 +16,7 @@ import { toggleLlmModelAction } from "../actions";
 import { DeleteModelModal } from "./DeleteModelModal";
 import { DisableModelModal } from "./DisableModelModal";
 import { EditModelModal } from "./EditModelModal";
+import { Star } from "@phosphor-icons/react";
 
 export function ModelsTable({
   models,
@@ -111,15 +114,23 @@ export function ModelsTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      model.is_enabled
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {model.is_enabled ? "Enabled" : "Disabled"}
-                  </span>
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        model.is_enabled
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {model.is_enabled ? "Enabled" : "Disabled"}
+                    </span>
+                    {model.is_recommended && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                        <Star size={12} weight="fill" />
+                        Recommended
+                      </span>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-2">

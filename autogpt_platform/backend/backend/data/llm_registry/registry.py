@@ -60,6 +60,7 @@ class RegistryModel:
     extra_metadata: dict[str, Any]
     provider_display_name: str
     is_enabled: bool
+    is_recommended: bool = False
     costs: tuple[RegistryModelCost, ...] = field(default_factory=tuple)
     creator: RegistryModelCreator | None = None
 
@@ -177,6 +178,7 @@ async def refresh_llm_registry() -> None:
                     else record.providerId
                 ),
                 is_enabled=record.isEnabled,
+                is_recommended=record.isRecommended,
                 costs=costs,
                 creator=creator,
             )
@@ -332,19 +334,24 @@ def get_default_model_slug() -> str:
     """
     Get the default model slug to use for block defaults.
 
-    Prefers "gpt-4o" if it exists and is enabled, otherwise returns
-    the first enabled model from the registry, or "gpt-4o" as fallback.
+    Returns the recommended model if set, otherwise falls back to "gpt-4o"
+    if enabled, then first enabled model, or "gpt-4o" as final fallback.
     """
-    # Prefer gpt-4o if available and enabled
-    preferred_slug = "gpt-4o"
-    preferred_model = _dynamic_models.get(preferred_slug)
-    if preferred_model and preferred_model.is_enabled:
-        return preferred_slug
+    # First, check for recommended model
+    for model in _dynamic_models.values():
+        if model.is_recommended and model.is_enabled:
+            return model.slug
+
+    # Fallback to gpt-4o if available and enabled
+    fallback_slug = "gpt-4o"
+    fallback_model = _dynamic_models.get(fallback_slug)
+    if fallback_model and fallback_model.is_enabled:
+        return fallback_slug
 
     # Find first enabled model
     for model in sorted(_dynamic_models.values(), key=lambda m: m.display_name.lower()):
         if model.is_enabled:
             return model.slug
 
-    # Fallback to preferred slug even if not in registry (for backwards compatibility)
-    return preferred_slug
+    # Final fallback for backwards compatibility
+    return fallback_slug
