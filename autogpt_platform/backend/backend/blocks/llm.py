@@ -4,17 +4,19 @@ import logging
 import re
 import secrets
 from abc import ABC
-from enum import Enum, EnumMeta
+from enum import Enum
 from json import JSONDecodeError
-from typing import Any, Iterable, List, Literal, NamedTuple, Optional
+from typing import Any, Iterable, List, Literal, Optional
 
 import anthropic
 import ollama
 import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, GetCoreSchemaHandler, SecretStr
+from pydantic_core import CoreSchema, core_schema
 
+from backend.data import llm_registry
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -22,6 +24,7 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.llm_registry import ModelMetadata
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -66,114 +69,111 @@ TEST_CREDENTIALS_INPUT = {
 
 
 def AICredentialsField() -> AICredentials:
+    """
+    Returns a CredentialsField for LLM providers.
+    The discriminator_mapping will be refreshed when the schema is generated
+    if it's empty, ensuring the LLM registry is loaded.
+    """
+    # Get the mapping now - it may be empty initially, but will be refreshed
+    # when the schema is generated via CredentialsMetaInput._add_json_schema_extra
+    mapping = llm_registry.get_llm_discriminator_mapping()
+
     return CredentialsField(
         description="API key for the LLM provider.",
         discriminator="model",
-        discriminator_mapping={
-            model.value: model.metadata.provider for model in LlmModel
-        },
+        discriminator_mapping=mapping,  # May be empty initially, refreshed later
     )
 
 
-class ModelMetadata(NamedTuple):
-    provider: str
-    context_window: int
-    max_output_tokens: int | None
+def llm_model_schema_extra() -> dict[str, Any]:
+    return {"options": llm_registry.get_llm_model_schema_options()}
 
 
-class LlmModelMeta(EnumMeta):
-    pass
+class LlmModelMeta(type):
+    """
+    Metaclass for LlmModel that enables attribute-style access to dynamic models.
+
+    This allows code like `LlmModel.GPT4O` to work by converting the attribute
+    name to a slug format:
+    - GPT4O -> gpt-4o
+    - GPT4O_MINI -> gpt-4o-mini
+    - CLAUDE_3_5_SONNET -> claude-3-5-sonnet
+    """
+
+    def __getattr__(cls, name: str):
+        # Don't intercept private/dunder attributes
+        if name.startswith("_"):
+            raise AttributeError(f"type object 'LlmModel' has no attribute '{name}'")
+
+        # Convert attribute name to slug format:
+        # 1. Lowercase: GPT4O -> gpt4o
+        # 2. Underscores to hyphens: GPT4O_MINI -> gpt4o-mini
+        # 3. Insert hyphen between letter and digit: gpt4o -> gpt-4o
+        slug = name.lower().replace("_", "-")
+        slug = re.sub(r"([a-z])(\d)", r"\1-\2", slug)
+
+        return cls(slug)
 
 
-class LlmModel(str, Enum, metaclass=LlmModelMeta):
-    # OpenAI models
-    O3_MINI = "o3-mini"
-    O3 = "o3-2025-04-16"
-    O1 = "o1"
-    O1_MINI = "o1-mini"
-    # GPT-5 models
-    GPT5_2 = "gpt-5.2-2025-12-11"
-    GPT5_1 = "gpt-5.1-2025-11-13"
-    GPT5 = "gpt-5-2025-08-07"
-    GPT5_MINI = "gpt-5-mini-2025-08-07"
-    GPT5_NANO = "gpt-5-nano-2025-08-07"
-    GPT5_CHAT = "gpt-5-chat-latest"
-    GPT41 = "gpt-4.1-2025-04-14"
-    GPT41_MINI = "gpt-4.1-mini-2025-04-14"
-    GPT4O_MINI = "gpt-4o-mini"
-    GPT4O = "gpt-4o"
-    GPT4_TURBO = "gpt-4-turbo"
-    GPT3_5_TURBO = "gpt-3.5-turbo"
-    # Anthropic models
-    CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
-    CLAUDE_4_OPUS = "claude-opus-4-20250514"
-    CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
-    CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
-    CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
-    CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
-    CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
-    CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
-    # AI/ML API models
-    AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
-    AIML_API_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
-    AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
-    AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
-    # Groq models
-    LLAMA3_3_70B = "llama-3.3-70b-versatile"
-    LLAMA3_1_8B = "llama-3.1-8b-instant"
-    # Ollama models
-    OLLAMA_LLAMA3_3 = "llama3.3"
-    OLLAMA_LLAMA3_2 = "llama3.2"
-    OLLAMA_LLAMA3_8B = "llama3"
-    OLLAMA_LLAMA3_405B = "llama3.1:405b"
-    OLLAMA_DOLPHIN = "dolphin-mistral:latest"
-    # OpenRouter models
-    OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
-    OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
-    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
-    GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
-    GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
-    GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
-    GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
-    MISTRAL_NEMO = "mistralai/mistral-nemo"
-    COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
-    COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
-    DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
-    DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
-    PERPLEXITY_SONAR = "perplexity/sonar"
-    PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
-    PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
-    NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
-    NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
-    AMAZON_NOVA_LITE_V1 = "amazon/nova-lite-v1"
-    AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
-    AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
-    MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
-    GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
-    META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
-    META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
-    GROK_4 = "x-ai/grok-4"
-    GROK_4_FAST = "x-ai/grok-4-fast"
-    GROK_4_1_FAST = "x-ai/grok-4.1-fast"
-    GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
-    KIMI_K2 = "moonshotai/kimi-k2"
-    QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
-    QWEN3_CODER = "qwen/qwen3-coder"
-    # Llama API models
-    LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
-    LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
-    LLAMA_API_LLAMA3_3_8B = "Llama-3.3-8B-Instruct"
-    LLAMA_API_LLAMA3_3_70B = "Llama-3.3-70B-Instruct"
-    # v0 by Vercel models
-    V0_1_5_MD = "v0-1.5-md"
-    V0_1_5_LG = "v0-1.5-lg"
-    V0_1_0_MD = "v0-1.0-md"
+class LlmModel(str, metaclass=LlmModelMeta):
+    """
+    Dynamic LLM model type that accepts any model slug from the registry.
+
+    This is a string subclass (not an Enum) that allows any model slug value.
+    All models are managed via the LLM Registry in the database.
+
+    Usage:
+        model = LlmModel("gpt-4o")  # Direct construction
+        model = LlmModel.GPT4O      # Attribute access (converted to "gpt-4o")
+        model.value                  # Returns the slug string
+        model.provider               # Returns the provider from registry
+    """
+
+    def __new__(cls, value: str):
+        if isinstance(value, LlmModel):
+            return value
+        return str.__new__(cls, value)
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        """
+        Tell Pydantic how to validate LlmModel.
+
+        Accepts strings and converts them to LlmModel instances.
+        """
+        return core_schema.no_info_after_validator_function(
+            cls,  # The validator function (LlmModel constructor)
+            core_schema.str_schema(),  # Accept string input
+            serialization=core_schema.to_string_ser_schema(),  # Serialize as string
+        )
+
+    @property
+    def value(self) -> str:
+        """Return the model slug (for compatibility with enum-style access)."""
+        return str(self)
+
+    @classmethod
+    def default(cls) -> "LlmModel":
+        """
+        Get the default model from the registry.
+
+        Returns the preferred default model (gpt-4o if available and enabled,
+        otherwise the first enabled model from the registry).
+        """
+        from backend.data.llm_registry import get_default_model_slug
+
+        return cls(get_default_model_slug())
 
     @property
     def metadata(self) -> ModelMetadata:
-        return MODEL_METADATA[self]
+        metadata = llm_registry.get_llm_model_metadata(self.value)
+        if metadata:
+            return metadata
+        raise ValueError(
+            f"Missing metadata for model: {self.value}. Model not found in LLM registry."
+        )
 
     @property
     def provider(self) -> str:
@@ -188,128 +188,11 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
         return self.metadata.max_output_tokens
 
 
-MODEL_METADATA = {
-    # https://platform.openai.com/docs/models
-    LlmModel.O3: ModelMetadata("openai", 200000, 100000),
-    LlmModel.O3_MINI: ModelMetadata("openai", 200000, 100000),  # o3-mini-2025-01-31
-    LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
-    LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
-    # GPT-5 models
-    LlmModel.GPT5_2: ModelMetadata("openai", 400000, 128000),
-    LlmModel.GPT5_1: ModelMetadata("openai", 400000, 128000),
-    LlmModel.GPT5: ModelMetadata("openai", 400000, 128000),
-    LlmModel.GPT5_MINI: ModelMetadata("openai", 400000, 128000),
-    LlmModel.GPT5_NANO: ModelMetadata("openai", 400000, 128000),
-    LlmModel.GPT5_CHAT: ModelMetadata("openai", 400000, 16384),
-    LlmModel.GPT41: ModelMetadata("openai", 1047576, 32768),
-    LlmModel.GPT41_MINI: ModelMetadata("openai", 1047576, 32768),
-    LlmModel.GPT4O_MINI: ModelMetadata(
-        "openai", 128000, 16384
-    ),  # gpt-4o-mini-2024-07-18
-    LlmModel.GPT4O: ModelMetadata("openai", 128000, 16384),  # gpt-4o-2024-08-06
-    LlmModel.GPT4_TURBO: ModelMetadata(
-        "openai", 128000, 4096
-    ),  # gpt-4-turbo-2024-04-09
-    LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096),  # gpt-3.5-turbo-0125
-    # https://docs.anthropic.com/en/docs/about-claude/models
-    LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
-        "anthropic", 200000, 32000
-    ),  # claude-opus-4-1-20250805
-    LlmModel.CLAUDE_4_OPUS: ModelMetadata(
-        "anthropic", 200000, 32000
-    ),  # claude-4-opus-20250514
-    LlmModel.CLAUDE_4_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000
-    ),  # claude-4-sonnet-20250514
-    LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
-        "anthropic", 200000, 64000
-    ),  # claude-opus-4-5-20251101
-    LlmModel.CLAUDE_4_5_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000
-    ),  # claude-sonnet-4-5-20250929
-    LlmModel.CLAUDE_4_5_HAIKU: ModelMetadata(
-        "anthropic", 200000, 64000
-    ),  # claude-haiku-4-5-20251001
-    LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
-        "anthropic", 200000, 64000
-    ),  # claude-3-7-sonnet-20250219
-    LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
-        "anthropic", 200000, 4096
-    ),  # claude-3-haiku-20240307
-    # https://docs.aimlapi.com/api-overview/model-database/text-models
-    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata("aiml_api", 32000, 8000),
-    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata("aiml_api", 128000, 40000),
-    LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata("aiml_api", 128000, None),
-    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata("aiml_api", 131000, 2000),
-    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata("aiml_api", 128000, None),
-    # https://console.groq.com/docs/models
-    LlmModel.LLAMA3_3_70B: ModelMetadata("groq", 128000, 32768),
-    LlmModel.LLAMA3_1_8B: ModelMetadata("groq", 128000, 8192),
-    # https://ollama.com/library
-    LlmModel.OLLAMA_LLAMA3_3: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_LLAMA3_2: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_LLAMA3_8B: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_LLAMA3_405B: ModelMetadata("ollama", 8192, None),
-    LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
-    # https://openrouter.ai/models
-    LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
-    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata("open_router", 1048576, 65535),
-    LlmModel.GEMINI_2_5_FLASH: ModelMetadata("open_router", 1048576, 65535),
-    LlmModel.GEMINI_2_0_FLASH: ModelMetadata("open_router", 1048576, 8192),
-    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
-        "open_router", 1048576, 65535
-    ),
-    LlmModel.GEMINI_2_0_FLASH_LITE: ModelMetadata("open_router", 1048576, 8192),
-    LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
-    LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),
-    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
-    LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
-    LlmModel.DEEPSEEK_R1_0528: ModelMetadata("open_router", 163840, 163840),
-    LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 8000),
-    LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 8000),
-    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
-        "open_router",
-        128000,
-        16000,
-    ),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
-        "open_router", 131000, 4096
-    ),
-    LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: ModelMetadata(
-        "open_router", 12288, 12288
-    ),
-    LlmModel.OPENAI_GPT_OSS_120B: ModelMetadata("open_router", 131072, 131072),
-    LlmModel.OPENAI_GPT_OSS_20B: ModelMetadata("open_router", 131072, 32768),
-    LlmModel.AMAZON_NOVA_LITE_V1: ModelMetadata("open_router", 300000, 5120),
-    LlmModel.AMAZON_NOVA_MICRO_V1: ModelMetadata("open_router", 128000, 5120),
-    LlmModel.AMAZON_NOVA_PRO_V1: ModelMetadata("open_router", 300000, 5120),
-    LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata("open_router", 65536, 4096),
-    LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata("open_router", 4096, 4096),
-    LlmModel.META_LLAMA_4_SCOUT: ModelMetadata("open_router", 131072, 131072),
-    LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata("open_router", 1048576, 1000000),
-    LlmModel.GROK_4: ModelMetadata("open_router", 256000, 256000),
-    LlmModel.GROK_4_FAST: ModelMetadata("open_router", 2000000, 30000),
-    LlmModel.GROK_4_1_FAST: ModelMetadata("open_router", 2000000, 30000),
-    LlmModel.GROK_CODE_FAST_1: ModelMetadata("open_router", 256000, 10000),
-    LlmModel.KIMI_K2: ModelMetadata("open_router", 131000, 131000),
-    LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata("open_router", 262144, 262144),
-    LlmModel.QWEN3_CODER: ModelMetadata("open_router", 262144, 262144),
-    # Llama API models
-    LlmModel.LLAMA_API_LLAMA_4_SCOUT: ModelMetadata("llama_api", 128000, 4028),
-    LlmModel.LLAMA_API_LLAMA4_MAVERICK: ModelMetadata("llama_api", 128000, 4028),
-    LlmModel.LLAMA_API_LLAMA3_3_8B: ModelMetadata("llama_api", 128000, 4028),
-    LlmModel.LLAMA_API_LLAMA3_3_70B: ModelMetadata("llama_api", 128000, 4028),
-    # v0 by Vercel models
-    LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000),
-    LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000),
-    LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000),
-}
+# MODEL_METADATA removed - all models now come from the database via llm_registry
 
-DEFAULT_LLM_MODEL = LlmModel.GPT5_2
-
-for model in LlmModel:
-    if model not in MODEL_METADATA:
-        raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
+# Default model constant for backward compatibility
+# Uses the dynamic registry to get the default model
+DEFAULT_LLM_MODEL = LlmModel.default()
 
 
 class ToolCall(BaseModel):
@@ -438,19 +321,94 @@ async def llm_call(
             - prompt_tokens: The number of tokens used in the prompt.
             - completion_tokens: The number of tokens used in the completion.
     """
-    provider = llm_model.metadata.provider
-    context_window = llm_model.context_window
+    # Get model metadata and check if enabled - with fallback support
+    # The model we'll actually use (may differ if original is disabled)
+    model_to_use = llm_model.value
+
+    # Check if model is in registry and if it's enabled
+    from backend.data.llm_registry import (
+        get_fallback_model_for_disabled,
+        get_model_info,
+    )
+
+    model_info = get_model_info(llm_model.value)
+
+    if model_info and not model_info.is_enabled:
+        # Model is disabled - try to find a fallback from the same provider
+        fallback = get_fallback_model_for_disabled(llm_model.value)
+        if fallback:
+            logger.warning(
+                f"Model '{llm_model.value}' is disabled. Using fallback model '{fallback.slug}' from the same provider ({fallback.metadata.provider})."
+            )
+            model_to_use = fallback.slug
+            # Use fallback model's metadata
+            provider = fallback.metadata.provider
+            context_window = fallback.metadata.context_window
+            model_max_output = fallback.metadata.max_output_tokens or int(2**15)
+        else:
+            # No fallback available - raise error
+            raise ValueError(
+                f"LLM model '{llm_model.value}' is disabled and no fallback model "
+                f"from the same provider is available. Please enable the model or "
+                f"select a different model in the block configuration."
+            )
+    else:
+        # Model is enabled or not in registry (legacy/static model)
+        try:
+            provider = llm_model.metadata.provider
+            context_window = llm_model.context_window
+            model_max_output = llm_model.max_output_tokens or int(2**15)
+        except ValueError:
+            # Model not in cache - try refreshing the registry once if we have DB access
+            logger.warning(f"Model {llm_model.value} not found in registry cache")
+
+            # Try refreshing the registry if we have database access
+            from backend.data.db import is_connected
+
+            if is_connected():
+                try:
+                    logger.info(
+                        f"Refreshing LLM registry and retrying lookup for {llm_model.value}"
+                    )
+                    await llm_registry.refresh_llm_registry()
+                    # Try again after refresh
+                    try:
+                        provider = llm_model.metadata.provider
+                        context_window = llm_model.context_window
+                        model_max_output = llm_model.max_output_tokens or int(2**15)
+                        logger.info(
+                            f"Successfully loaded model {llm_model.value} metadata after registry refresh"
+                        )
+                    except ValueError:
+                        # Still not found after refresh
+                        raise ValueError(
+                            f"LLM model '{llm_model.value}' not found in registry after refresh. "
+                            "Please ensure the model is added and enabled in the LLM registry via the admin UI."
+                        )
+                except Exception as refresh_exc:
+                    logger.error(f"Failed to refresh LLM registry: {refresh_exc}")
+                    raise ValueError(
+                        f"LLM model '{llm_model.value}' not found in registry and failed to refresh. "
+                        "Please ensure the model is added to the LLM registry via the admin UI."
+                    ) from refresh_exc
+            else:
+                # No DB access (e.g., in executor without direct DB connection)
+                # The registry should have been loaded on startup
+                raise ValueError(
+                    f"LLM model '{llm_model.value}' not found in registry cache. "
+                    "The registry may need to be refreshed. Please contact support or try again later."
+                )
 
     if compress_prompt_to_fit:
         prompt = compress_prompt(
             messages=prompt,
-            target_tokens=llm_model.context_window // 2,
+            target_tokens=context_window // 2,
             lossy_ok=True,
         )
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
-    model_max_output = llm_model.max_output_tokens or int(2**15)
+    # model_max_output already set above
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
@@ -468,7 +426,7 @@ async def llm_call(
             response_format = {"type": "json_object"}
 
         response = await oai_client.chat.completions.create(
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
@@ -515,7 +473,7 @@ async def llm_call(
         )
         try:
             resp = await client.messages.create(
-                model=llm_model.value,
+                model=model_to_use,
                 system=sysprompt,
                 messages=messages,
                 max_tokens=max_tokens,
@@ -579,7 +537,7 @@ async def llm_call(
         client = AsyncGroq(api_key=credentials.api_key.get_secret_value())
         response_format = {"type": "json_object"} if force_json_output else None
         response = await client.chat.completions.create(
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
@@ -601,7 +559,7 @@ async def llm_call(
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
         response = await client.generate(
-            model=llm_model.value,
+            model=model_to_use,
             prompt=f"{sys_messages}\n\n{usr_messages}",
             stream=False,
             options={"num_ctx": max_tokens},
@@ -631,7 +589,7 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
@@ -673,7 +631,7 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
@@ -700,7 +658,7 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "aiml_api":
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://api.aimlapi.com/v2",
             api_key=credentials.api_key.get_secret_value(),
             default_headers={
@@ -710,8 +668,8 @@ async def llm_call(
             },
         )
 
-        completion = client.chat.completions.create(
-            model=llm_model.value,
+        completion = await client.chat.completions.create(
+            model=model_to_use,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
         )
@@ -743,7 +701,7 @@ async def llm_call(
         )
 
         response = await client.chat.completions.create(
-            model=llm_model.value,
+            model=model_to_use,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
@@ -794,9 +752,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=DEFAULT_LLM_MODEL,
+            default_factory=LlmModel.default,
             description="The language model to use for answering the prompt.",
             advanced=False,
+            json_schema_extra=llm_model_schema_extra(),
         )
         force_json_output: bool = SchemaField(
             title="Restrict LLM to pure JSON output",
@@ -859,7 +818,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             input_schema=AIStructuredResponseGeneratorBlock.Input,
             output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
-                "model": DEFAULT_LLM_MODEL,
+                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expected_format": {
                     "key1": "value1",
@@ -1225,9 +1184,10 @@ class AITextGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=DEFAULT_LLM_MODEL,
+            default_factory=LlmModel.default,
             description="The language model to use for answering the prompt.",
             advanced=False,
+            json_schema_extra=llm_model_schema_extra(),
         )
         credentials: AICredentials = AICredentialsField()
         sys_prompt: str = SchemaField(
@@ -1321,8 +1281,9 @@ class AITextSummarizerBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=DEFAULT_LLM_MODEL,
+            default_factory=LlmModel.default,
             description="The language model to use for summarizing the text.",
+            json_schema_extra=llm_model_schema_extra(),
         )
         focus: str = SchemaField(
             title="Focus",
@@ -1538,8 +1499,9 @@ class AIConversationBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=DEFAULT_LLM_MODEL,
+            default_factory=LlmModel.default,
             description="The language model to use for the conversation.",
+            json_schema_extra=llm_model_schema_extra(),
         )
         credentials: AICredentials = AICredentialsField()
         max_tokens: int | None = SchemaField(
@@ -1576,7 +1538,7 @@ class AIConversationBlock(AIBlockBase):
                     },
                     {"role": "user", "content": "Where was it played?"},
                 ],
-                "model": DEFAULT_LLM_MODEL,
+                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -1639,9 +1601,10 @@ class AIListGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=DEFAULT_LLM_MODEL,
+            default_factory=LlmModel.default,
             description="The language model to use for generating the list.",
             advanced=True,
+            json_schema_extra=llm_model_schema_extra(),
         )
         credentials: AICredentials = AICredentialsField()
         max_retries: int = SchemaField(
@@ -1696,7 +1659,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of "
                     "fictional worlds."
                 ),
-                "model": DEFAULT_LLM_MODEL,
+                "model": "gpt-4o",  # Using string value - enum accepts any model slug dynamically
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
                 "force_json_output": False,

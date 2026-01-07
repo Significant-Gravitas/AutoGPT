@@ -1,0 +1,15 @@
+import { withRoleAccess } from "@/lib/withRoleAccess";
+import { getLlmRegistryPageData } from "./useLlmRegistryPage";
+import { LlmRegistryDashboard } from "./components/LlmRegistryDashboard";
+
+async function LlmRegistryPage() {
+  const data = await getLlmRegistryPageData();
+  return <LlmRegistryDashboard {...data} />;
+}
+
+export default async function AdminLlmRegistryPage() {
+  "use server";
+  const withAdminAccess = await withRoleAccess(["admin"]);
+  const ProtectedLlmRegistryPage = await withAdminAccess(LlmRegistryPage);
+  return <ProtectedLlmRegistryPage />;
+}

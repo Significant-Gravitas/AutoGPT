@@ -41,6 +41,13 @@ const Dot: FC<{ isConnected: boolean; type?: string }> = memo(
 );
 Dot.displayName = "Dot";
 
+const getSchemaType = (schema: BlockIOSubSchema): string | undefined => {
+  if (schema && "type" in schema && typeof schema.type === "string") {
+    return schema.type;
+  }
+  return undefined;
+};
+
 const NodeHandle: FC<HandleProps> = ({
   keyName,
   schema,
@@ -50,7 +57,8 @@ const NodeHandle: FC<HandleProps> = ({
   title,
   className,
 }) => {
-  const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${
+  const schemaType = getSchemaType(schema);
+  const typeClass = `text-sm ${getTypeTextColor(schemaType || "any")} ${
     side === "left" ? "text-left" : "text-right"
   }`;
 
@@ -66,7 +74,7 @@ const NodeHandle: FC<HandleProps> = ({
         {isRequired ? "*" : ""}
       </span>
       <span className={`${typeClass} data-sentry-unmask flex items-end`}>
-        ({TYPE_NAME[schema.type as keyof typeof TYPE_NAME] || "any"})
+        ({TYPE_NAME[schemaType as keyof typeof TYPE_NAME] || "any"})
       </span>
     </div>
   );
@@ -95,7 +103,7 @@ const NodeHandle: FC<HandleProps> = ({
           className="group -ml-[38px]"
         >
           <div className="pointer-events-none flex items-center">
-            <Dot isConnected={isConnected} type={schema.type} />
+            <Dot isConnected={isConnected} type={schemaType} />
             {label}
           </div>
         </Handle>
@@ -118,7 +126,7 @@ const NodeHandle: FC<HandleProps> = ({
         >
           <div className="pointer-events-none flex items-center">
             {label}
-            <Dot isConnected={isConnected} type={schema.type} />
+            <Dot isConnected={isConnected} type={schemaType} />
           </div>
         </Handle>
       </div>

@@ -25,6 +25,7 @@ from prisma.models import AgentBlock
 from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
 
+from backend.data.llm_registry import update_schema_with_llm_registry
 from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 from backend.util import json
@@ -141,35 +142,59 @@ class BlockInfo(BaseModel):
 
 
 class BlockSchema(BaseModel):
-    cached_jsonschema: ClassVar[dict[str, Any]]
+    cached_jsonschema: ClassVar[dict[str, Any] | None] = None
+
+    @classmethod
+    def clear_schema_cache(cls) -> None:
+        """Clear the cached JSON schema for this class."""
+        # Use None instead of {} because {} is truthy and would prevent regeneration
+        cls.cached_jsonschema = None  # type: ignore
+
+    @staticmethod
+    def clear_all_schema_caches() -> None:
+        """Clear cached JSON schemas for all BlockSchema subclasses."""
+
+        def clear_recursive(cls: type) -> None:
+            """Recursively clear cache for class and all subclasses."""
+            if hasattr(cls, "clear_schema_cache"):
+                cls.clear_schema_cache()
+            for subclass in cls.__subclasses__():
+                clear_recursive(subclass)
+
+        clear_recursive(BlockSchema)
 
     @classmethod
     def jsonschema(cls) -> dict[str, Any]:
-        if cls.cached_jsonschema:
-            return cls.cached_jsonschema
+        # Generate schema if not cached
+        if not cls.cached_jsonschema:
+            model = jsonref.replace_refs(cls.model_json_schema(), merge_props=True)
 
-        model = jsonref.replace_refs(cls.model_json_schema(), merge_props=True)
+            def ref_to_dict(obj):
+                if isinstance(obj, dict):
+                    # OpenAPI <3.1 does not support sibling fields that has a $ref key
+                    # So sometimes, the schema has an "allOf"/"anyOf"/"oneOf" with 1 item.
+                    keys = {"allOf", "anyOf", "oneOf"}
+                    one_key = next(
+                        (k for k in keys if k in obj and len(obj[k]) == 1), None
+                    )
+                    if one_key:
+                        obj.update(obj[one_key][0])
 
-        def ref_to_dict(obj):
-            if isinstance(obj, dict):
-                # OpenAPI <3.1 does not support sibling fields that has a $ref key
-                # So sometimes, the schema has an "allOf"/"anyOf"/"oneOf" with 1 item.
-                keys = {"allOf", "anyOf", "oneOf"}
-                one_key = next((k for k in keys if k in obj and len(obj[k]) == 1), None)
-                if one_key:
-                    obj.update(obj[one_key][0])
+                    return {
+                        key: ref_to_dict(value)
+                        for key, value in obj.items()
+                        if not key.startswith("$") and key != one_key
+                    }
+                elif isinstance(obj, list):
+                    return [ref_to_dict(item) for item in obj]
 
-                return {
-                    key: ref_to_dict(value)
-                    for key, value in obj.items()
-                    if not key.startswith("$") and key != one_key
-                }
-            elif isinstance(obj, list):
-                return [ref_to_dict(item) for item in obj]
+                return obj
 
-            return obj
+            cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
 
-        cls.cached_jsonschema = cast(dict[str, Any], ref_to_dict(model))
+        # Always post-process to ensure LLM registry data is up-to-date
+        # This refreshes model options and discriminator mappings even if schema was cached
+        update_schema_with_llm_registry(cls.cached_jsonschema, cls)
 
         return cls.cached_jsonschema
 
@@ -785,6 +810,28 @@ def is_block_auth_configured(
 
 
 async def initialize_blocks() -> None:
+    # Refresh LLM registry before initializing blocks so blocks can use registry data
+    # This ensures the registry cache is populated even in executor context
+    try:
+        from backend.data import llm_registry
+        from backend.data.block_cost_config import refresh_llm_costs
+
+        # Only refresh if we have DB access (check if Prisma is connected)
+        from backend.data.db import is_connected
+
+        if is_connected():
+            await llm_registry.refresh_llm_registry()
+            refresh_llm_costs()
+            logger.info("LLM registry refreshed during block initialization")
+        else:
+            logger.warning(
+                "Prisma not connected, skipping LLM registry refresh during block initialization"
+            )
+    except Exception as exc:
+        logger.warning(
+            "Failed to refresh LLM registry during block initialization: %s", exc
+        )
+
     # First, sync all provider costs to blocks
     # Imported here to avoid circular import
     from backend.sdk.cost_integration import sync_all_provider_costs
