@@ -240,7 +240,7 @@ export default function useAgentGraph(
         connections: graph.links
           .filter((l) => [l.source_id, l.sink_id].includes(node.id))
           .map((link) => ({
-            edge_id: formatEdgeID(link),
+            id: formatEdgeID(link),
             source: link.source_id,
             sourceHandle: link.source_name,
             target: link.sink_id,

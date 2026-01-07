@@ -6,7 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate";
+import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate/types";
 import { cn } from "@/lib/utils";
 
 interface SubAgentUpdateBarProps {

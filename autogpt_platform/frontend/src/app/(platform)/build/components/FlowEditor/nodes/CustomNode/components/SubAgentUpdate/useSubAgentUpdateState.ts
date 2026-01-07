@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import {
@@ -8,12 +8,14 @@ import {
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import {
   useSubAgentUpdate,
-  createUpdatedHardcodedValues,
+  createUpdatedAgentNodeInputs,
   getBrokenEdgeIDs,
-  GraphMetaLike,
 } from "@/app/(platform)/build/hooks/useSubAgentUpdate";
 import { GraphInputSchema, GraphOutputSchema } from "@/lib/autogpt-server-api";
 import { CustomNodeData } from "../../CustomNode";
+
+// Stable empty set to avoid creating new references in selectors
+const EMPTY_SET: Set<string> = new Set();
 
 type UseSubAgentUpdateParams = {
   nodeID: string;
@@ -37,16 +39,20 @@ export function useSubAgentUpdateState({
   const isNodeInResolutionMode = useNodeStore(
     useShallow((state) => state.isNodeInResolutionMode),
   );
-  const setBrokenEdgeIds = useNodeStore(
+  const setBrokenEdgeIDs = useNodeStore(
     useShallow((state) => state.setBrokenEdgeIDs),
   );
-  const brokenEdgeIds = useNodeStore(
-    useShallow((state) => state.brokenEdgeIDs),
+  // Get this node's broken edge IDs from the per-node map
+  // Use EMPTY_SET as fallback to maintain referential stability
+  const brokenEdgeIDs = useNodeStore(
+    (state) => state.brokenEdgeIDs.get(nodeID) || EMPTY_SET,
   );
   const getNodeResolutionData = useNodeStore(
     useShallow((state) => state.getNodeResolutionData),
   );
-  const edges = useEdgeStore(useShallow((state) => state.edges));
+  const connectedEdges = useEdgeStore(
+    useShallow((state) => state.getNodeEdges(nodeID)),
+  );
   const availableSubGraphs = useGraphStore(
     useShallow((state) => state.availableSubGraphs),
   );
@@ -63,13 +69,6 @@ export function useSubAgentUpdateState({
     | GraphOutputSchema
     | undefined;
 
-  // Get node connections
-  const nodeConnections = useMemo(() => {
-    return edges.filter(
-      (edge) => edge.source === nodeID || edge.target === nodeID,
-    );
-  }, [edges, nodeID]);
-
   // Use the sub-agent update hook
   const updateInfo = useSubAgentUpdate(
     nodeID,
@@ -77,7 +76,7 @@ export function useSubAgentUpdateState({
     graphVersion,
     currentInputSchema,
     currentOutputSchema,
-    nodeConnections,
+    connectedEdges,
     availableSubGraphs,
   );
 
@@ -85,13 +84,13 @@ export function useSubAgentUpdateState({
 
   // Handle update button click
   const handleUpdateClick = useCallback(() => {
-    if (!updateInfo.hasUpdate || !updateInfo.latestFlow) return;
+    if (!updateInfo.hasUpdate || !updateInfo.latestGraph) return;
 
     if (updateInfo.isCompatible) {
       // Compatible update - apply directly
-      const newHardcodedValues = createUpdatedHardcodedValues(
+      const newHardcodedValues = createUpdatedAgentNodeInputs(
         nodeData.hardcodedValues,
-        updateInfo.latestFlow as GraphMetaLike,
+        updateInfo.latestGraph,
       );
       updateNodeData(nodeID, { hardcodedValues: newHardcodedValues });
     } else {
@@ -100,7 +99,7 @@ export function useSubAgentUpdateState({
     }
   }, [
     updateInfo.hasUpdate,
-    updateInfo.latestFlow,
+    updateInfo.latestGraph,
     updateInfo.isCompatible,
     nodeData.hardcodedValues,
     updateNodeData,
@@ -108,31 +107,31 @@ export function useSubAgentUpdateState({
   ]);
 
   // Handle confirming an incompatible update
-  const handleConfirmIncompatibleUpdate = useCallback(() => {
-    if (!updateInfo.latestFlow || !updateInfo.incompatibilities) return;
+  function handleConfirmIncompatibleUpdate() {
+    if (!updateInfo.latestGraph || !updateInfo.incompatibilities) return;
 
-    const latestFlow = updateInfo.latestFlow as GraphMetaLike;
+    const latestGraph = updateInfo.latestGraph;
 
-    // Get the new schemas from the latest flow
+    // Get the new schemas from the latest graph version
     const newInputSchema =
-      (latestFlow.input_schema as Record<string, unknown>) || {};
+      (latestGraph.input_schema as Record<string, unknown>) || {};
     const newOutputSchema =
-      (latestFlow.output_schema as Record<string, unknown>) || {};
+      (latestGraph.output_schema as Record<string, unknown>) || {};
 
     // Create the updated hardcoded values but DON'T apply them yet
     // We'll apply them when resolution is complete
-    const pendingHardcodedValues = createUpdatedHardcodedValues(
+    const pendingHardcodedValues = createUpdatedAgentNodeInputs(
       nodeData.hardcodedValues,
-      latestFlow,
+      latestGraph,
     );
 
-    // Get broken edge IDs
+    // Get broken edge IDs and store them for this node
     const brokenIds = getBrokenEdgeIDs(
-      nodeConnections,
+      connectedEdges,
       updateInfo.incompatibilities,
       nodeID,
     );
-    setBrokenEdgeIds(brokenIds);
+    setBrokenEdgeIDs(nodeID, brokenIds);
 
     // Enter resolution mode with both old and new schemas
     // DON'T apply the update yet - keep old schema so connections remain visible
@@ -151,17 +150,7 @@ export function useSubAgentUpdateState({
     setNodeResolutionMode(nodeID, true, resolutionData);
 
     setShowIncompatibilityDialog(false);
-  }, [
-    updateInfo.latestFlow,
-    updateInfo.incompatibilities,
-    nodeData.hardcodedValues,
-    currentInputSchema,
-    currentOutputSchema,
-    nodeID,
-    nodeConnections,
-    setBrokenEdgeIds,
-    setNodeResolutionMode,
-  ]);
+  }
 
   // Check if resolution is complete (all broken edges removed)
   const resolutionData = getNodeResolutionData(nodeID);
@@ -171,8 +160,8 @@ export function useSubAgentUpdateState({
     if (!isInResolutionMode) return;
 
     // Check if any broken edges still exist
-    const remainingBroken = Array.from(brokenEdgeIds).filter((edgeId) =>
-      edges.some((e) => e.id === edgeId),
+    const remainingBroken = Array.from(brokenEdgeIDs).filter((edgeId) =>
+      connectedEdges.some((e) => e.id === edgeId),
     );
 
     if (remainingBroken.length === 0) {
@@ -182,18 +171,15 @@ export function useSubAgentUpdateState({
           hardcodedValues: resolutionData.pendingHardcodedValues,
         });
       }
+      // setNodeResolutionMode will clean up this node's broken edges automatically
       setNodeResolutionMode(nodeID, false);
-      setBrokenEdgeIds([]);
     }
   }, [
     isInResolutionMode,
-    brokenEdgeIds,
-    edges,
+    brokenEdgeIDs,
+    connectedEdges,
     resolutionData,
-    updateNodeData,
-    setNodeResolutionMode,
     nodeID,
-    setBrokenEdgeIds,
   ]);
 
   return {

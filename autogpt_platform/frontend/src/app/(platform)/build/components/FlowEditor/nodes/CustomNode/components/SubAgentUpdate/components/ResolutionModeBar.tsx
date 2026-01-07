@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate";
+import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate/types";
 
 type ResolutionModeBarProps = {
   incompatibilities: IncompatibilityInfo | null;

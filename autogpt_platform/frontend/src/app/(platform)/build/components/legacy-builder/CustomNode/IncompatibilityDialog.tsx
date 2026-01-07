@@ -9,8 +9,9 @@ import {
 } from "@/components/__legacy__/ui/dialog";
 import { Button } from "@/components/__legacy__/ui/button";
 import { AlertTriangle, XCircle, PlusCircle } from "lucide-react";
-import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate";
+import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate/types";
 import { beautifyString } from "@/lib/utils";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 
 interface IncompatibilityDialogProps {
   isOpen: boolean;
@@ -103,12 +104,12 @@ export const IncompatibilityDialog: React.FC<IncompatibilityDialogProps> = ({
           )}
         </div>
 
-        <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-          <p>
+        <Alert variant="warning">
+          <AlertDescription>
             If you proceed, you&apos;ll need to remove the broken connections
             before you can save or run your agent.
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={onClose}>

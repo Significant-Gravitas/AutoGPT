@@ -26,7 +26,7 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { CustomNode } from "../CustomNode/CustomNode";
+import { ConnectedEdge, CustomNode } from "../CustomNode/CustomNode";
 import "./flow.css";
 import {
   BlockUIType,
@@ -36,7 +36,7 @@ import {
   GraphMeta,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
-import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate";
+import { IncompatibilityInfo } from "../../../hooks/useSubAgentUpdate/types";
 import { Key, storage } from "@/services/storage/local-storage";
 import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
 import { history } from "../history";
@@ -537,17 +537,19 @@ const FlowEditor: React.FC<{
                 ...node.data.connections.filter(
                   (conn) =>
                     !removedEdges.some(
-                      (removedEdge) => removedEdge.id === conn.edge_id,
+                      (removedEdge) => removedEdge.id === conn.id,
                     ),
                 ),
                 // Add node connections for added edges
-                ...addedEdges.map((addedEdge) => ({
-                  edge_id: addedEdge.item.id,
-                  source: addedEdge.item.source,
-                  target: addedEdge.item.target,
-                  sourceHandle: addedEdge.item.sourceHandle!,
-                  targetHandle: addedEdge.item.targetHandle!,
-                })),
+                ...addedEdges.map(
+                  (addedEdge): ConnectedEdge => ({
+                    id: addedEdge.item.id,
+                    source: addedEdge.item.source,
+                    target: addedEdge.item.target,
+                    sourceHandle: addedEdge.item.sourceHandle!,
+                    targetHandle: addedEdge.item.targetHandle!,
+                  }),
+                ),
               ],
             },
           }));
@@ -573,13 +575,15 @@ const FlowEditor: React.FC<{
             data: {
               ...node.data,
               connections: [
-                ...replaceEdges.map((replaceEdge) => ({
-                  edge_id: replaceEdge.item.id,
-                  source: replaceEdge.item.source,
-                  target: replaceEdge.item.target,
-                  sourceHandle: replaceEdge.item.sourceHandle!,
-                  targetHandle: replaceEdge.item.targetHandle!,
-                })),
+                ...replaceEdges.map(
+                  (replaceEdge): ConnectedEdge => ({
+                    id: replaceEdge.item.id,
+                    source: replaceEdge.item.source,
+                    target: replaceEdge.item.target,
+                    sourceHandle: replaceEdge.item.sourceHandle!,
+                    targetHandle: replaceEdge.item.targetHandle!,
+                  }),
+                ),
               ],
             },
           })),

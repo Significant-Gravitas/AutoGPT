@@ -18,6 +18,7 @@ import {
   parseHandleIdToPath,
 } from "@/components/renderers/InputRenderer/helpers";
 import { IncompatibilityInfo } from "../hooks/useSubAgentUpdate";
+import { IncompatibilityInfo } from "../hooks/useSubAgentUpdate/types";
 
 // Resolution mode data stored per node
 export type NodeResolutionData = {
@@ -94,19 +95,26 @@ type NodeStore = {
 
   // Sub-agent resolution mode state
   nodesInResolutionMode: Set<string>;
-  brokenEdgeIDs: Set<string>;
+  brokenEdgeIDs: Map<string, Set<string>>; // nodeId -> Set of broken edge IDs
   nodeResolutionData: Map<string, NodeResolutionData>; // nodeId -> resolution data
   setNodeResolutionMode: (
-    nodeId: string,
+    nodeID: string,
     inResolution: boolean,
     resolutionData?: NodeResolutionData,
   ) => void;
-  isNodeInResolutionMode: (nodeId: string) => boolean;
-  getNodeResolutionData: (nodeId: string) => NodeResolutionData | undefined;
-  setBrokenEdgeIDs: (edgeIds: string[]) => void;
-  removeBrokenEdgeID: (edgeId: string) => void;
-  isEdgeBroken: (edgeId: string) => boolean;
+  isNodeInResolutionMode: (nodeID: string) => boolean;
+  getNodeResolutionData: (nodeID: string) => NodeResolutionData | undefined;
+  setBrokenEdgeIDs: (nodeID: string, edgeIDs: string[]) => void;
+  removeBrokenEdgeID: (nodeID: string, edgeID: string) => void;
+  isEdgeBroken: (edgeID: string) => boolean;
   clearResolutionState: () => void;
+
+  // Helper functions for input renderers
+  isInputBroken: (nodeID: string, handleID: string) => boolean;
+  getInputTypeMismatch: (
+    nodeID: string,
+    handleID: string,
+  ) => string | undefined;
 };
 
 export const useNodeStore = create<NodeStore>((set, get) => ({
@@ -413,7 +421,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
 
   // Sub-agent resolution mode state
   nodesInResolutionMode: new Set<string>(),
-  brokenEdgeIDs: new Set<string>(),
+  brokenEdgeIDs: new Map<string, Set<string>>(),
   nodeResolutionData: new Map<string, NodeResolutionData>(),
 
   setNodeResolutionMode: (
@@ -424,6 +432,7 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
     set((state) => {
       const newNodesSet = new Set(state.nodesInResolutionMode);
       const newResolutionDataMap = new Map(state.nodeResolutionData);
+      const newBrokenEdgeIDs = new Map(state.brokenEdgeIDs);
 
       if (inResolution) {
         newNodesSet.add(nodeID);
@@ -433,44 +442,75 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
       } else {
         newNodesSet.delete(nodeID);
         newResolutionDataMap.delete(nodeID);
+        newBrokenEdgeIDs.delete(nodeID); // Clean up broken edges when exiting resolution mode
       }
 
       return {
         nodesInResolutionMode: newNodesSet,
         nodeResolutionData: newResolutionDataMap,
+        brokenEdgeIDs: newBrokenEdgeIDs,
       };
     });
   },
 
-  isNodeInResolutionMode: (nodeId: string) => {
-    return get().nodesInResolutionMode.has(nodeId);
+  isNodeInResolutionMode: (nodeID: string) => {
+    return get().nodesInResolutionMode.has(nodeID);
   },
 
-  getNodeResolutionData: (nodeId: string) => {
-    return get().nodeResolutionData.get(nodeId);
+  getNodeResolutionData: (nodeID: string) => {
+    return get().nodeResolutionData.get(nodeID);
   },
 
-  setBrokenEdgeIDs: (edgeIds: string[]) => {
-    set({ brokenEdgeIDs: new Set(edgeIds) });
-  },
-
-  removeBrokenEdgeID: (edgeId: string) => {
+  setBrokenEdgeIDs: (nodeID: string, edgeIDs: string[]) => {
     set((state) => {
-      const newSet = new Set(state.brokenEdgeIDs);
-      newSet.delete(edgeId);
-      return { brokenEdgeIDs: newSet };
+      const newMap = new Map(state.brokenEdgeIDs);
+      newMap.set(nodeID, new Set(edgeIDs));
+      return { brokenEdgeIDs: newMap };
     });
   },
 
-  isEdgeBroken: (edgeId: string) => {
-    return get().brokenEdgeIDs.has(edgeId);
+  removeBrokenEdgeID: (nodeID: string, edgeID: string) => {
+    set((state) => {
+      const newMap = new Map(state.brokenEdgeIDs);
+      const nodeSet = new Set(newMap.get(nodeID) || []);
+      nodeSet.delete(edgeID);
+      newMap.set(nodeID, nodeSet);
+      return { brokenEdgeIDs: newMap };
+    });
+  },
+
+  isEdgeBroken: (edgeID: string) => {
+    // Check across all nodes
+    const brokenEdgeIDs = get().brokenEdgeIDs;
+    for (const edgeSet of brokenEdgeIDs.values()) {
+      if (edgeSet.has(edgeID)) {
+        return true;
+      }
+    }
+    return false;
   },
 
   clearResolutionState: () => {
     set({
       nodesInResolutionMode: new Set<string>(),
-      brokenEdgeIDs: new Set<string>(),
+      brokenEdgeIDs: new Map<string, Set<string>>(),
       nodeResolutionData: new Map<string, NodeResolutionData>(),
     });
+  },
+
+  // Helper functions for input renderers
+  isInputBroken: (nodeID: string, handleID: string) => {
+    const resolutionData = get().nodeResolutionData.get(nodeID);
+    if (!resolutionData) return false;
+    return resolutionData.incompatibilities.missingInputs.includes(handleID);
+  },
+
+  getInputTypeMismatch: (nodeID: string, handleID: string) => {
+    const resolutionData = get().nodeResolutionData.get(nodeID);
+    if (!resolutionData) return undefined;
+    const mismatch = resolutionData.incompatibilities.inputTypeMismatches.find(
+      (m) => m.name === handleID,
+    );
+    return mismatch?.newType;
   },
 }));

@@ -5,9 +5,10 @@ import {
   PlusCircleIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/atoms/Button/Button";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
-import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate";
+import { IncompatibilityInfo } from "@/app/(platform)/build/hooks/useSubAgentUpdate/types";
 
 type IncompatibleUpdateDialogProps = {
   isOpen: boolean;
@@ -129,12 +130,12 @@ export function IncompatibleUpdateDialog({
             />
           )}
 
-          <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-            <p>
+          <Alert variant="warning">
+            <AlertDescription>
               If you proceed, you&apos;ll need to remove the broken connections
               before you can save or run your agent.
-            </p>
-          </div>
+            </AlertDescription>
+          </Alert>
 
           <Dialog.Footer>
             <Button variant="ghost" size="small" onClick={onClose}>
@@ -144,7 +145,7 @@ export function IncompatibleUpdateDialog({
               variant="primary"
               size="small"
               onClick={onConfirm}
-              className="bg-amber-600 hover:bg-amber-700"
+              className="border-amber-700 bg-amber-600 hover:bg-amber-700"
             >
               Update Anyway
             </Button>

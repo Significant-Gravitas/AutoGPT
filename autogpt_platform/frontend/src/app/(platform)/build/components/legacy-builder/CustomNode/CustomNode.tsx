@@ -68,17 +68,17 @@ import { SubAgentUpdateBar } from "./SubAgentUpdateBar";
 import { IncompatibilityDialog } from "./IncompatibilityDialog";
 import {
   useSubAgentUpdate,
-  createUpdatedHardcodedValues,
+  createUpdatedAgentNodeInputs,
   getBrokenEdgeIDs,
 } from "../../../hooks/useSubAgentUpdate";
 
-export type ConnectionData = Array<{
-  edge_id: string;
+export type ConnectedEdge = {
+  id: string;
   source: string;
   sourceHandle: string;
   target: string;
   targetHandle: string;
-}>;
+};
 
 export type CustomNodeData = {
   blockType: string;
@@ -89,7 +89,7 @@ export type CustomNodeData = {
   inputSchema: BlockIORootSchema;
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
-  connections: ConnectionData;
+  connections: ConnectedEdge[];
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -275,13 +275,13 @@ export const CustomNode = React.memo(
 
     // Handle update button click
     const handleUpdateClick = useCallback(() => {
-      if (!subAgentUpdate.latestFlow) return;
+      if (!subAgentUpdate.latestGraph) return;
 
       if (subAgentUpdate.isCompatible) {
         // Compatible update - directly apply
-        const updatedValues = createUpdatedHardcodedValues(
+        const updatedValues = createUpdatedAgentNodeInputs(
           data.hardcodedValues,
-          subAgentUpdate.latestFlow,
+          subAgentUpdate.latestGraph,
         );
         setHardcodedValues(updatedValues);
         toast({
@@ -296,14 +296,14 @@ export const CustomNode = React.memo(
 
     // Handle confirm incompatible update
     const handleConfirmIncompatibleUpdate = useCallback(() => {
-      if (!subAgentUpdate.latestFlow || !subAgentUpdate.incompatibilities) {
+      if (!subAgentUpdate.latestGraph || !subAgentUpdate.incompatibilities) {
         return;
       }
 
       // Create the updated values but DON'T apply them yet
-      const updatedValues = createUpdatedHardcodedValues(
+      const updatedValues = createUpdatedAgentNodeInputs(
         data.hardcodedValues,
-        subAgentUpdate.latestFlow,
+        subAgentUpdate.latestGraph,
       );
 
       // Get broken edge IDs

@@ -9,8 +9,8 @@ import {
 import { cn, beautifyString } from "@/lib/utils";
 import { CustomNodeData } from "../../CustomNode";
 import { useSubAgentUpdateState } from "./useSubAgentUpdateState";
-import { IncompatibleUpdateDialog } from "./IncompatibleUpdateDialog";
-import { ResolutionModeBar } from "./ResolutionModeBar";
+import { IncompatibleUpdateDialog } from "./components/IncompatibleUpdateDialog";
+import { ResolutionModeBar } from "./components/ResolutionModeBar";
 
 /**
  * Inline component for the update bar that can be placed after the header.

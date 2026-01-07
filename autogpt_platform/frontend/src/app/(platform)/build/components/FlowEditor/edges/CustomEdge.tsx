@@ -36,9 +36,8 @@ const CustomEdge = ({
   selected,
 }: EdgeProps<CustomEdge>) => {
   const removeConnection = useEdgeStore((state) => state.removeEdge);
-  // Subscribe to the actual brokenEdgeIds state so we re-render when it changes
-  const isBroken = useNodeStore((state) => state.brokenEdgeIDs.has(id));
-  const removeBrokenEdgeID = useNodeStore((state) => state.removeBrokenEdgeID);
+  // Subscribe to the brokenEdgeIDs map and check if this edge is broken across any node
+  const isBroken = useNodeStore((state) => state.isEdgeBroken(id));
   const [isHovered, setIsHovered] = useState(false);
 
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -56,10 +55,8 @@ const CustomEdge = ({
 
   const handleRemoveEdge = () => {
     removeConnection(id);
-    // Also remove from broken edges tracking if it was broken
-    if (isBroken) {
-      removeBrokenEdgeID(id);
-    }
+    // Note: broken edge tracking is cleaned up automatically by useSubAgentUpdateState
+    // when it detects the edge no longer exists
   };
 
   return (

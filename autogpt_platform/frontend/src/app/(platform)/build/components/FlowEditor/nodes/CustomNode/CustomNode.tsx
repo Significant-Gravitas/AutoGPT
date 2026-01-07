@@ -20,53 +20,8 @@ import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
 import { NodeRightClickMenu } from "./components/NodeRightClickMenu";
 import { StickyNoteBlock } from "./components/StickyNoteBlock";
 import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
-
-type SchemaProperties = Record<string, unknown>;
-
-/**
- * Merges schemas during resolution mode to include removed inputs/outputs
- * that still have connections, so users can see and delete them.
- */
-function mergeSchemaForResolution(
-  currentSchema: Record<string, unknown>,
-  newSchema: Record<string, unknown>,
-  resolutionData: NodeResolutionData,
-  type: "input" | "output",
-): Record<string, unknown> {
-  const newProps = (newSchema.properties as SchemaProperties) || {};
-  const currentProps = (currentSchema.properties as SchemaProperties) || {};
-  const mergedProps = { ...newProps };
-  const incomp = resolutionData.incompatibilities;
-
-  if (type === "input") {
-    // Add back missing inputs that have connections
-    incomp.missingInputs.forEach((inputName: string) => {
-      if (currentProps[inputName]) {
-        mergedProps[inputName] = currentProps[inputName];
-      }
-    });
-    // Add back inputs with type mismatches (keep old type so connection works visually)
-    incomp.inputTypeMismatches.forEach(
-      (mismatch: { name: string; oldType: string; newType: string }) => {
-        if (currentProps[mismatch.name]) {
-          mergedProps[mismatch.name] = currentProps[mismatch.name];
-        }
-      },
-    );
-  } else {
-    // Add back missing outputs that have connections
-    incomp.missingOutputs.forEach((outputName: string) => {
-      if (currentProps[outputName]) {
-        mergedProps[outputName] = currentProps[outputName];
-      }
-    });
-  }
-
-  return {
-    ...newSchema,
-    properties: mergedProps,
-  };
-}
+import { mergeSchemaForResolution } from "./helpers";
+import { useNodeStore } from "../../../../stores/nodeStore";
 
 export type CustomNodeData = {
   hardcodedValues: {
