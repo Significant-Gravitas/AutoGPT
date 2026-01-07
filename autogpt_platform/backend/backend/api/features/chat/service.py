@@ -7,8 +7,13 @@ import orjson
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
+from backend.data.understanding import (
+    format_understanding_for_prompt,
+    get_business_understanding,
+)
 from backend.util.exceptions import NotFoundError
 
+from . import db as chat_db
 from .config import ChatConfig
 from .model import (
     ChatMessage,
@@ -16,6 +21,9 @@ from .model import (
     Usage,
     get_chat_session,
     upsert_chat_session,
+)
+from .model import (
+    create_chat_session as model_create_chat_session,
 )
 from .response_model import (
     StreamBaseResponse,
@@ -36,15 +44,109 @@ config = ChatConfig()
 client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
 
 
+async def _is_first_session(user_id: str) -> bool:
+    """Check if this is the user's first chat session.
+
+    Returns True if the user has 1 or fewer sessions (meaning this is their first).
+    """
+    try:
+        session_count = await chat_db.get_user_session_count(user_id)
+        return session_count <= 1
+    except Exception as e:
+        logger.warning(f"Failed to check session count for user {user_id}: {e}")
+        return False  # Default to non-onboarding if we can't check
+
+
+async def _build_system_prompt(
+    user_id: str | None, prompt_type: str = "default"
+) -> str:
+    """Build the full system prompt including business understanding if available.
+
+    Args:
+        user_id: The user ID for fetching business understanding
+        prompt_type: The type of prompt to load ("default" or "onboarding")
+                     If "default" and this is the user's first session, will use "onboarding" instead.
+
+    Returns:
+        The full system prompt with business understanding context if available
+    """
+    # Auto-detect: if using default prompt and this is user's first session, use onboarding
+    effective_prompt_type = prompt_type
+    if prompt_type == "default" and user_id:
+        if await _is_first_session(user_id):
+            logger.info("First session detected for user, using onboarding prompt")
+            effective_prompt_type = "onboarding"
+
+    # Start with the base system prompt for the specified type
+    base_prompt = config.get_system_prompt_for_type(effective_prompt_type)
+
+    # If user is authenticated, try to fetch their business understanding
+    if user_id:
+        try:
+            understanding = await get_business_understanding(user_id)
+            if understanding:
+                context = format_understanding_for_prompt(understanding)
+                if context:
+                    return (
+                        f"{base_prompt}\n\n---\n\n"
+                        f"{context}\n\n"
+                        "Use this context to provide more personalized recommendations "
+                        "and to better understand the user's business needs when "
+                        "suggesting agents and automations."
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to fetch business understanding: {e}")
+
+    return base_prompt
+
+
+async def _generate_session_title(message: str) -> str | None:
+    """Generate a concise title for a chat session based on the first message.
+
+    Args:
+        message: The first user message in the session
+
+    Returns:
+        A short title (3-6 words) or None if generation fails
+    """
+    try:
+        response = await client.chat.completions.create(
+            model=config.title_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate a very short title (3-6 words) for a chat conversation "
+                        "based on the user's first message. The title should capture the "
+                        "main topic or intent. Return ONLY the title, no quotes or punctuation."
+                    ),
+                },
+                {"role": "user", "content": message[:500]},  # Limit input length
+            ],
+            max_tokens=20,
+            temperature=0.7,
+        )
+        title = response.choices[0].message.content
+        if title:
+            # Clean up the title
+            title = title.strip().strip("\"'")
+            # Limit length
+            if len(title) > 50:
+                title = title[:47] + "..."
+            return title
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to generate session title: {e}")
+        return None
+
+
 async def create_chat_session(
     user_id: str | None = None,
 ) -> ChatSession:
     """
     Create a new chat session and persist it to the database.
     """
-    session = ChatSession.new(user_id)
-    # Persist the session immediately so it can be used for streaming
-    return await upsert_chat_session(session)
+    return await model_create_chat_session(user_id)
 
 
 async def get_session(
@@ -55,6 +157,19 @@ async def get_session(
     Get a chat session by ID.
     """
     return await get_chat_session(session_id, user_id)
+
+
+async def get_user_sessions(
+    user_id: str,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[ChatSession]:
+    """
+    Get all chat sessions for a user.
+    """
+    from .model import get_user_sessions as model_get_user_sessions
+
+    return await model_get_user_sessions(user_id, limit, offset)
 
 
 async def assign_user_to_session(
@@ -78,6 +193,8 @@ async def stream_chat_completion(
     user_id: str | None = None,
     retry_count: int = 0,
     session: ChatSession | None = None,
+    context: dict[str, str] | None = None,  # {url: str, content: str}
+    prompt_type: str = "default",
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -89,6 +206,7 @@ async def stream_chat_completion(
         user_message: User's input message
         user_id: User ID for authentication (None for anonymous)
         session: Optional pre-loaded session object (for recursive calls to avoid Redis refetch)
+        prompt_type: The type of prompt to use ("default" or "onboarding")
 
     Yields:
         StreamBaseResponse objects formatted as SSE
@@ -121,9 +239,18 @@ async def stream_chat_completion(
         )
 
     if message:
+        # Build message content with context if provided
+        message_content = message
+        if context and context.get("url") and context.get("content"):
+            context_text = f"Page URL: {context['url']}\n\nPage Content:\n{context['content']}\n\n---\n\nUser Message: {message}"
+            message_content = context_text
+            logger.info(
+                f"Including page context: URL={context['url']}, content_length={len(context['content'])}"
+            )
+
         session.messages.append(
             ChatMessage(
-                role="user" if is_user_message else "assistant", content=message
+                role="user" if is_user_message else "assistant", content=message_content
             )
         )
         logger.info(
@@ -140,6 +267,32 @@ async def stream_chat_completion(
     )
     session = await upsert_chat_session(session)
     assert session, "Session not found"
+
+    # Generate title for new sessions on first user message (non-blocking)
+    # Check: is_user_message, no title yet, and this is the first user message
+    if is_user_message and message and not session.title:
+        user_messages = [m for m in session.messages if m.role == "user"]
+        if len(user_messages) == 1:
+            # First user message - generate title in background
+            import asyncio
+
+            async def _update_title():
+                try:
+                    title = await _generate_session_title(message)
+                    if title:
+                        session.title = title
+                        await upsert_chat_session(session)
+                        logger.info(
+                            f"Generated title for session {session_id}: {title}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to update session title: {e}")
+
+            # Fire and forget - don't block the chat response
+            asyncio.create_task(_update_title())
+
+    # Build system prompt with business understanding
+    system_prompt = await _build_system_prompt(user_id, prompt_type)
 
     assistant_response = ChatMessage(
         role="assistant",
@@ -159,6 +312,7 @@ async def stream_chat_completion(
         async for chunk in _stream_chat_chunks(
             session=session,
             tools=tools,
+            system_prompt=system_prompt,
         ):
 
             if isinstance(chunk, StreamTextChunk):
@@ -279,6 +433,7 @@ async def stream_chat_completion(
             user_id=user_id,
             retry_count=retry_count + 1,
             session=session,
+            prompt_type=prompt_type,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -324,6 +479,7 @@ async def stream_chat_completion(
             session_id=session.session_id,
             user_id=user_id,
             session=session,  # Pass session object to avoid Redis refetch
+            prompt_type=prompt_type,
         ):
             yield chunk
 
@@ -331,6 +487,7 @@ async def stream_chat_completion(
 async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
+    system_prompt: str | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """
     Pure streaming function for OpenAI chat completions with tool calling.
@@ -338,9 +495,9 @@ async def _stream_chat_chunks(
     This function is database-agnostic and focuses only on streaming logic.
 
     Args:
-        messages: Conversation context as ChatCompletionMessageParam list
-        session_id: Session ID
-        user_id: User ID for tool execution
+        session: Chat session with conversation history
+        tools: Available tools for the model
+        system_prompt: System prompt to prepend to messages
 
     Yields:
         SSE formatted JSON response objects
@@ -350,6 +507,17 @@ async def _stream_chat_chunks(
 
     logger.info("Starting pure chat stream")
 
+    # Build messages with system prompt prepended
+    messages = session.to_openai_messages()
+    if system_prompt:
+        from openai.types.chat import ChatCompletionSystemMessageParam
+
+        system_message = ChatCompletionSystemMessageParam(
+            role="system",
+            content=system_prompt,
+        )
+        messages = [system_message] + messages
+
     # Loop to handle tool calls and continue conversation
     while True:
         try:
@@ -358,7 +526,7 @@ async def _stream_chat_chunks(
             # Create the stream with proper types
             stream = await client.chat.completions.create(
                 model=model,
-                messages=session.to_openai_messages(),
+                messages=messages,
                 tools=tools,
                 tool_choice="auto",
                 stream=True,
@@ -502,8 +670,12 @@ async def _yield_tool_call(
     """
     logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
 
-    # Parse tool call arguments - exceptions will propagate to caller
-    arguments = orjson.loads(tool_calls[yield_idx]["function"]["arguments"])
+    # Parse tool call arguments - handle empty arguments gracefully
+    raw_arguments = tool_calls[yield_idx]["function"]["arguments"]
+    if raw_arguments:
+        arguments = orjson.loads(raw_arguments)
+    else:
+        arguments = {}
 
     yield StreamToolCall(
         tool_id=tool_calls[yield_idx]["id"],

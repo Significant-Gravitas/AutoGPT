@@ -1,5 +1,6 @@
 """Pydantic models for tool responses."""
 
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -19,6 +20,15 @@ class ResponseType(str, Enum):
     ERROR = "error"
     NO_RESULTS = "no_results"
     SUCCESS = "success"
+    DOC_SEARCH_RESULTS = "doc_search_results"
+    AGENT_OUTPUT = "agent_output"
+    BLOCK_LIST = "block_list"
+    BLOCK_OUTPUT = "block_output"
+    UNDERSTANDING_UPDATED = "understanding_updated"
+    # Agent generation responses
+    AGENT_PREVIEW = "agent_preview"
+    AGENT_SAVED = "agent_saved"
+    CLARIFICATION_NEEDED = "clarification_needed"
 
 
 # Base response model
@@ -173,3 +183,128 @@ class ErrorResponse(ToolResponseBase):
     type: ResponseType = ResponseType.ERROR
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+# Documentation search models
+class DocSearchResult(BaseModel):
+    """A single documentation search result."""
+
+    title: str
+    path: str
+    section: str
+    snippet: str  # Short excerpt for UI display
+    content: str  # Full text content for LLM to read and understand
+    score: float
+    doc_url: str | None = None
+
+
+class DocSearchResultsResponse(ToolResponseBase):
+    """Response for search_docs tool."""
+
+    type: ResponseType = ResponseType.DOC_SEARCH_RESULTS
+    results: list[DocSearchResult]
+    count: int
+    query: str
+
+
+# Agent output models
+class ExecutionOutputInfo(BaseModel):
+    """Summary of a single execution's outputs."""
+
+    execution_id: str
+    status: str
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    outputs: dict[str, list[Any]]
+    inputs_summary: dict[str, Any] | None = None
+
+
+class AgentOutputResponse(ToolResponseBase):
+    """Response for agent_output tool."""
+
+    type: ResponseType = ResponseType.AGENT_OUTPUT
+    agent_name: str
+    agent_id: str
+    library_agent_id: str | None = None
+    library_agent_link: str | None = None
+    execution: ExecutionOutputInfo | None = None
+    available_executions: list[dict[str, Any]] | None = None
+    total_executions: int = 0
+
+
+# Block models
+class BlockInfoSummary(BaseModel):
+    """Summary of a block for search results."""
+
+    id: str
+    name: str
+    description: str
+    categories: list[str]
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+
+
+class BlockListResponse(ToolResponseBase):
+    """Response for find_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_LIST
+    blocks: list[BlockInfoSummary]
+    count: int
+    query: str
+
+
+class BlockOutputResponse(ToolResponseBase):
+    """Response for run_block tool."""
+
+    type: ResponseType = ResponseType.BLOCK_OUTPUT
+    block_id: str
+    block_name: str
+    outputs: dict[str, list[Any]]
+    success: bool = True
+
+
+# Business understanding models
+class UnderstandingUpdatedResponse(ToolResponseBase):
+    """Response for add_understanding tool."""
+
+    type: ResponseType = ResponseType.UNDERSTANDING_UPDATED
+    updated_fields: list[str] = Field(default_factory=list)
+    current_understanding: dict[str, Any] = Field(default_factory=dict)
+
+
+# Agent generation models
+class ClarifyingQuestion(BaseModel):
+    """A question that needs user clarification."""
+
+    question: str
+    keyword: str
+    example: str | None = None
+
+
+class AgentPreviewResponse(ToolResponseBase):
+    """Response for previewing a generated agent before saving."""
+
+    type: ResponseType = ResponseType.AGENT_PREVIEW
+    agent_json: dict[str, Any]
+    agent_name: str
+    description: str
+    node_count: int
+    link_count: int = 0
+
+
+class AgentSavedResponse(ToolResponseBase):
+    """Response when an agent is saved to the library."""
+
+    type: ResponseType = ResponseType.AGENT_SAVED
+    agent_id: str
+    agent_name: str
+    library_agent_id: str
+    library_agent_link: str
+    agent_page_link: str  # Link to the agent builder/editor page
+
+
+class ClarificationNeededResponse(ToolResponseBase):
+    """Response when the LLM needs more information from the user."""
+
+    type: ResponseType = ResponseType.CLARIFICATION_NEEDED
+    questions: list[ClarifyingQuestion] = Field(default_factory=list)
