@@ -1,9 +1,8 @@
 "use client";
 
-import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Text } from "@/components/atoms/Text/Text";
 import { getQueryClient } from "@/lib/react-query/queryClient";
-import { HeartIcon } from "@phosphor-icons/react";
+import { CaretCircleRightIcon, HeartIcon } from "@phosphor-icons/react";
 import { InfiniteData } from "@tanstack/react-query";
 import Image from "next/image";
 import NextLink from "next/link";
@@ -13,7 +12,9 @@ import {
   getV2ListFavoriteLibraryAgentsResponse,
   getV2ListLibraryAgentsResponse,
 } from "@/app/api/__generated__/endpoints/library/library";
+import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { okData } from "@/app/api/helpers";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
@@ -38,14 +39,22 @@ export default function LibraryAgentCard({
     creator_image_url,
     image_url,
     is_favorite,
+    marketplace_listing,
   },
 }: LibraryAgentCardProps) {
+  const isFromMarketplace = Boolean(marketplace_listing);
   const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
   const [isFavorite, setIsFavorite] = useState(is_favorite);
   const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
   const api = new BackendAPI();
   const queryClient = getQueryClient();
+
+  const { data: profile } = useGetV2GetUserProfile({
+    query: {
+      select: okData,
+    },
+  });
 
   // Sync local state with prop when it changes (e.g., after query invalidation)
   useEffect(() => {
@@ -230,36 +239,31 @@ export default function LibraryAgentCard({
     <div
       data-testid="library-agent-card"
       data-agent-id={id}
-      className="group inline-flex h-[275px] w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
+      className="group inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
     >
       <NextLink
         href={`/library/agents/${id}`}
-        className="relative h-[123px] w-full flex-shrink-0 overflow-hidden rounded-t-[20px] no-underline"
+        className="overflow-hidde w-full flex-shrink-0"
       >
-        {!image_url ? (
-          <div
-            className={`h-full w-full ${
-              [
-                "bg-gradient-to-r from-green-200 to-blue-200",
-                "bg-gradient-to-r from-pink-200 to-purple-200",
-                "bg-gradient-to-r from-yellow-200 to-orange-200",
-                "bg-gradient-to-r from-blue-200 to-cyan-200",
-                "bg-gradient-to-r from-indigo-200 to-purple-200",
-              ][parseInt(id.slice(0, 8), 16) % 5]
-            }`}
-            style={{
-              backgroundSize: "200% 200%",
-              animation: "gradient 15s ease infinite",
-            }}
-          />
-        ) : (
-          <Image
-            src={image_url}
-            alt={`${name} preview image`}
-            fill
-            className="object-cover"
-          />
-        )}
+        <div className="flex items-center gap-2 px-4 pt-3">
+          <Avatar className="h-4 w-4 rounded-full">
+            <AvatarImage
+              src={
+                isFromMarketplace
+                  ? creator_image_url || "/avatar-placeholder.png"
+                  : profile?.avatar_url || "/avatar-placeholder.png"
+              }
+              alt={`${name} creator avatar`}
+            />
+            <AvatarFallback size={48}>{name.charAt(0)}</AvatarFallback>
+          </Avatar>
+          <Text
+            variant="small-medium"
+            className="uppercase tracking-wide text-zinc-400"
+          >
+            {isFromMarketplace ? "FROM MARKETPLACE" : "Built by you"}
+          </Text>
+        </div>
         {isAgentFavoritingEnabled && (
           <button
             onClick={handleToggleFavorite}
@@ -287,45 +291,63 @@ export default function LibraryAgentCard({
             />
           </button>
         )}
-        <div className="absolute bottom-4 left-4">
-          <Avatar className="h-12 w-12">
-            <AvatarImage
-              src={
-                creator_image_url
-                  ? creator_image_url
-                  : "/avatar-placeholder.png"
-              }
-              alt={`${name} creator avatar`}
-            />
-            <AvatarFallback size={48}>{name.charAt(0)}</AvatarFallback>
-          </Avatar>
-        </div>
       </NextLink>
 
-      <div className="flex w-full flex-1 flex-col px-4 pb-4 pt-1">
-        <Link href={`/library/agents/${id}`}>
-          <OverflowText
-            value={name}
-            variant="body"
-            className="mb-4 font-sans text-[1.125rem] tracking-normal"
-          />
-
+      <div className="flex w-full flex-1 flex-col px-4 pb-3">
+        <Link
+          href={`/library/agents/${id}`}
+          className="flex w-full items-start justify-between gap-2 no-underline hover:no-underline"
+        >
           <Text
-            variant="body"
-            className="line-clamp-2 text-ellipsis text-zinc-500"
+            variant="h5"
+            className="line-clamp-3 hyphens-auto break-words no-underline hover:no-underline"
           >
-            {description}
+            {name}
           </Text>
+
+          {!image_url ? (
+            <div
+              className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
+                [
+                  "bg-gradient-to-r from-green-200 to-blue-200",
+                  "bg-gradient-to-r from-pink-200 to-purple-200",
+                  "bg-gradient-to-r from-yellow-200 to-orange-200",
+                  "bg-gradient-to-r from-blue-200 to-cyan-200",
+                  "bg-gradient-to-r from-indigo-200 to-purple-200",
+                ][parseInt(id.slice(0, 8), 16) % 5]
+              }`}
+              style={{
+                backgroundSize: "200% 200%",
+                animation: "gradient 15s ease infinite",
+              }}
+            />
+          ) : (
+            <Image
+              src={image_url}
+              alt={`${name} preview image`}
+              fill
+              className="h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small object-cover"
+            />
+          )}
         </Link>
 
-        <div className="flex-grow" />
-        {/* Spacer */}
-
-        <div className="items-between mt-4 flex w-full justify-between gap-3">
-          <Link href={`/library/agents/${id}`}>See runs</Link>
+        <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pt-3">
+          <Link
+            href={`/library/agents/${id}`}
+            className="flex items-center gap-1 text-[13px]"
+            isExternal
+          >
+            See runs <CaretCircleRightIcon size={20} />
+          </Link>
 
           {can_access_graph && (
-            <Link href={`/build?flowID=${graph_id}`}>Open in builder</Link>
+            <Link
+              href={`/build?flowID=${graph_id}`}
+              className="flex items-center gap-1 text-[13px]"
+              isExternal
+            >
+              Open in builder <CaretCircleRightIcon size={20} />
+            </Link>
           )}
         </div>
       </div>

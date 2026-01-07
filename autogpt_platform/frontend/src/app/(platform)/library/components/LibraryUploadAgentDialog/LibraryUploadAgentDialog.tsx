@@ -40,7 +40,7 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
         <Button
           data-testid="upload-agent-button"
           variant="primary"
-          className="h-[2.78rem] w-fit sm:w-[177px]"
+          className="h-[2.78rem] w-full md:w-[12rem]"
           size="small"
         >
           <UploadSimpleIcon width={18} height={18} />

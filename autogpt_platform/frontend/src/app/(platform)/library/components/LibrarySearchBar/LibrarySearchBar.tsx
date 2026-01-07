@@ -10,7 +10,7 @@ export default function LibrarySearchBar(): React.ReactNode {
   return (
     <div
       data-testid="search-bar"
-      className="relative z-[21] -mb-6 flex items-center"
+      className="relative z-[21] -mb-6 flex w-full items-center md:w-auto"
     >
       <MagnifyingGlassIcon
         width={18}
