@@ -293,7 +293,7 @@ export default function LibraryAgentCard({
         )}
       </NextLink>
 
-      <div className="flex w-full flex-1 flex-col px-4 pb-3">
+      <div className="flex w-full flex-1 flex-col px-4 pb-2">
         <Link
           href={`/library/agents/${id}`}
           className="flex w-full items-start justify-between gap-2 no-underline hover:no-underline"
@@ -331,7 +331,7 @@ export default function LibraryAgentCard({
           )}
         </Link>
 
-        <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pt-3">
+        <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pb-1 pt-3">
           <Link
             href={`/library/agents/${id}`}
             className="flex items-center gap-1 text-[13px]"
