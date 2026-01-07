@@ -54,7 +54,7 @@
     "@radix-ui/react-tooltip": "1.2.8",
     "@rjsf/core": "6.1.2",
     "@rjsf/utils": "6.1.2",
-    "@rjsf/validator-ajv8": "5.24.13",
+    "@rjsf/validator-ajv8": "6.1.2",
     "@sentry/nextjs": "10.27.0",
     "@supabase/ssr": "0.7.0",
     "@supabase/supabase-js": "2.78.0",
