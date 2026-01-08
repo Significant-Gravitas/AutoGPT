@@ -1093,32 +1093,71 @@ async def create_store_version(
                 f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
             )
 
-        # Get the latest version number
-        latest_version = listing.Versions[0] if listing.Versions else None
-
-        next_version = (latest_version.version + 1) if latest_version else 1
-
-        # Create a new version for the existing listing
-        new_version = await prisma.models.StoreListingVersion.prisma().create(
-            data=prisma.types.StoreListingVersionCreateInput(
-                version=next_version,
-                agentGraphId=agent_id,
-                agentGraphVersion=agent_version,
-                name=name,
-                videoUrl=video_url,
-                agentOutputDemoUrl=agent_output_demo_url,
-                imageUrls=image_urls,
-                description=description,
-                instructions=instructions,
-                categories=categories,
-                subHeading=sub_heading,
-                submissionStatus=prisma.enums.SubmissionStatus.PENDING,
-                submittedAt=datetime.now(),
-                changesSummary=changes_summary,
-                recommendedScheduleCron=recommended_schedule_cron,
-                storeListingId=store_listing_id,
+        # Check if there's already a PENDING submission for this agent (any version)
+        existing_pending_submission = (
+            await prisma.models.StoreListingVersion.prisma().find_first(
+                where=prisma.types.StoreListingVersionWhereInput(
+                    storeListingId=store_listing_id,
+                    agentGraphId=agent_id,
+                    submissionStatus=prisma.enums.SubmissionStatus.PENDING,
+                    isDeleted=False,
+                )
             )
         )
+
+        # Handle existing pending submission and create new one atomically
+        async with transaction() as tx:
+            # Get the latest version number first
+            latest_listing = await prisma.models.StoreListing.prisma(tx).find_first(
+                where=prisma.types.StoreListingWhereInput(
+                    id=store_listing_id, owningUserId=user_id
+                ),
+                include={"Versions": {"order_by": {"version": "desc"}, "take": 1}},
+            )
+
+            if not latest_listing:
+                raise store_exceptions.ListingNotFoundError(
+                    f"Store listing not found. User ID: {user_id}, Listing ID: {store_listing_id}"
+                )
+
+            latest_version = (
+                latest_listing.Versions[0] if latest_listing.Versions else None
+            )
+            next_version = (latest_version.version + 1) if latest_version else 1
+
+            # If there's an existing pending submission, delete it atomically before creating new one
+            if existing_pending_submission:
+                logger.info(
+                    f"Found existing PENDING submission for agent {agent_id} (was v{existing_pending_submission.agentGraphVersion}, now v{agent_version}), replacing existing submission instead of creating duplicate"
+                )
+                await prisma.models.StoreListingVersion.prisma(tx).delete(
+                    where={"id": existing_pending_submission.id}
+                )
+                logger.debug(
+                    f"Deleted existing pending submission {existing_pending_submission.id}"
+                )
+
+            # Create a new version for the existing listing
+            new_version = await prisma.models.StoreListingVersion.prisma(tx).create(
+                data=prisma.types.StoreListingVersionCreateInput(
+                    version=next_version,
+                    agentGraphId=agent_id,
+                    agentGraphVersion=agent_version,
+                    name=name,
+                    videoUrl=video_url,
+                    agentOutputDemoUrl=agent_output_demo_url,
+                    imageUrls=image_urls,
+                    description=description,
+                    instructions=instructions,
+                    categories=categories,
+                    subHeading=sub_heading,
+                    submissionStatus=prisma.enums.SubmissionStatus.PENDING,
+                    submittedAt=datetime.now(),
+                    changesSummary=changes_summary,
+                    recommendedScheduleCron=recommended_schedule_cron,
+                    storeListingId=store_listing_id,
+                )
+            )
 
         logger.debug(
             f"Created new version for listing {store_listing_id} of agent {agent_id}"

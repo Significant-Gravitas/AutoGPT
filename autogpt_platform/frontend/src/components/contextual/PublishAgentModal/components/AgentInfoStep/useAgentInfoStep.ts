@@ -1,10 +1,8 @@
 import { useEffect, useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
 import * as Sentry from "@sentry/nextjs";
 import {
   PublishAgentFormData,
@@ -33,7 +31,6 @@ export function useAgentInfoStep({
   const [images, setImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const queryClient = useQueryClient();
   const { toast } = useToast();
   const api = useBackendAPI();
 
@@ -130,10 +127,6 @@ export function useAgentInfoStep({
         recommended_schedule_cron: data.recommendedScheduleCron || null,
         changes_summary: data.changesSummary || null,
       } as any);
-
-      await queryClient.invalidateQueries({
-        queryKey: getGetV2ListMySubmissionsQueryKey(),
-      });
 
       onSuccess(response);
     } catch (error) {

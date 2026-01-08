@@ -6,9 +6,11 @@ import { emptyModalState } from "./helpers";
 import {
   useGetV2GetMyAgents,
   useGetV2ListMySubmissions,
+  getGetV2ListMySubmissionsQueryKey,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import type { MyAgent } from "@/app/api/__generated__/models/myAgent";
+import { useQueryClient } from "@tanstack/react-query";
 
 const defaultTargetState: PublishState = {
   isOpen: false,
@@ -65,6 +67,7 @@ export function usePublishAgentModal({
   >(preSelectedAgentVersion || null);
 
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // Fetch agent data for pre-populating form when agent is pre-selected
   const { data: myAgents } = useGetV2GetMyAgents();
@@ -175,6 +178,11 @@ export function usePublishAgentModal({
     setSelectedAgentId(null);
     setSelectedAgentVersion(null);
     setInitialData(emptyModalState);
+
+    // Invalidate submissions query to refresh the data after modal closes
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListMySubmissionsQueryKey(),
+    });
 
     // Update parent with clean closed state
     const newState = {
