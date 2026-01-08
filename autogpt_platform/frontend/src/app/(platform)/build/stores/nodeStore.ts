@@ -70,7 +70,6 @@ type NodeStore = {
   syncHardcodedValuesWithHandleIds: (nodeId: string) => void;
 
   // Credentials optional helpers
-  getCredentialsOptional: (nodeId: string) => boolean;
   setCredentialsOptional: (nodeId: string, optional: boolean) => void;
 };
 
@@ -348,12 +347,6 @@ export const useNodeStore = create<NodeStore>((set, get) => ({
         ),
       }));
     }
-  },
-
-  getCredentialsOptional: (nodeId: string): boolean => {
-    const node = get().nodes.find((n) => n.id === nodeId);
-    const value = node?.data?.metadata?.credentials_optional;
-    return typeof value === "boolean" ? value : false;
   },
 
   setCredentialsOptional: (nodeId: string, optional: boolean) => {

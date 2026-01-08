@@ -1,4 +1,5 @@
 import { RJSFSchema } from "@rjsf/utils";
+import { findCustomFieldId } from "../custom/custom-registry";
 
 /**
  * Pre-processes the input schema to ensure all properties have a type defined.
@@ -20,9 +21,11 @@ export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
       if (property && typeof property === "object") {
         const processedProperty = { ...property };
 
-        // Note: We intentionally don't add $id for custom fields here
-        // because AJV doesn't allow duplicate $id values. Instead, custom field
-        // matching should be done via ui:field in the uiSchema.
+        // adding $id for custom field
+        const customFieldId = findCustomFieldId(processedProperty);
+        if (customFieldId) {
+          processedProperty.$id = customFieldId;
+        }
 
         // Only add type if no type is defined AND no anyOf/oneOf/allOf is present
         if (
