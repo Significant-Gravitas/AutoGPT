@@ -1,6 +1,7 @@
 import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
 import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
+import { LlmModelField } from "./LlmModelField/LlmModelField";
 
 export interface CustomFieldDefinition {
   id: string;
@@ -29,6 +30,15 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
       );
     },
     component: GoogleDrivePickerField,
+  },
+  {
+    id: "custom/llm_model_field",
+    matcher: (schema: any) => {
+      return (
+        typeof schema === "object" && schema !== null && "llm_model" in schema
+      );
+    },
+    component: LlmModelField,
   },
 ];
 

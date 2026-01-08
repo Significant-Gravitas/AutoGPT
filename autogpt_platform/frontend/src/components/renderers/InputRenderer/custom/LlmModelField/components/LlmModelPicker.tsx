@@ -39,9 +39,9 @@ export function LlmModelPicker({
   const [activeTitle, setActiveTitle] = useState<string | null>(null);
 
   const creators = useMemo(() => {
-    return Array.from(new Set(models.map((model) => model.creator))).sort(
-      (a, b) => toLlmDisplayName(a).localeCompare(toLlmDisplayName(b)),
-    );
+    return Array.from(
+      new Set(models.map((model) => model.creator)),
+    ).sort((a, b) => toLlmDisplayName(a).localeCompare(toLlmDisplayName(b)));
   }, [models]);
 
   const modelsByCreator = useMemo(() => groupByCreator(models), [models]);
@@ -57,13 +57,10 @@ export function LlmModelPicker({
 
   const currentCreator = activeCreator ?? creators[0] ?? null;
   const currentModels = currentCreator
-    ? (modelsByCreator.get(currentCreator) ?? [])
+    ? modelsByCreator.get(currentCreator) ?? []
     : [];
 
-  const modelsByTitle = useMemo(
-    () => groupByTitle(currentModels),
-    [currentModels],
-  );
+  const modelsByTitle = useMemo(() => groupByTitle(currentModels), [currentModels]);
 
   const modelEntries = useMemo(() => {
     return Array.from(modelsByTitle.entries())
@@ -116,10 +113,10 @@ export function LlmModelPicker({
       <PopoverContent
         align="start"
         sideOffset={8}
-        className="w-[24rem] rounded-lg border border-zinc-200 bg-white p-2 shadow-sm"
+        className="max-h-[60vh] w-[--radix-popover-trigger-width] overflow-y-auto rounded-md border border-zinc-200 bg-white p-0 shadow-[0px_1px_4px_rgba(12,12,13,0.12)]"
       >
         {view === "creator" && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             {recommendedModel && (
               <>
                 <LlmMenuItem
@@ -137,6 +134,7 @@ export function LlmModelPicker({
                 title={toLlmDisplayName(creator)}
                 icon={<LlmIcon value={creator} />}
                 showChevron={true}
+                isActive={selectedModel?.creator === creator}
                 onClick={() => {
                   setActiveCreator(creator);
                   setView("model");
@@ -146,7 +144,7 @@ export function LlmModelPicker({
           </div>
         )}
         {view === "model" && currentCreator && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             <LlmMenuHeader
               label={toLlmDisplayName(currentCreator)}
               onBack={() => setView("creator")}
@@ -173,7 +171,7 @@ export function LlmModelPicker({
           </div>
         )}
         {view === "provider" && activeTitle && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             <LlmMenuHeader
               label={activeTitle}
               onBack={() => setView("model")}
@@ -184,7 +182,7 @@ export function LlmModelPicker({
                 key={`${entry.title}-${entry.provider}`}
                 title={toLlmDisplayName(entry.provider)}
                 icon={<LlmIcon value={entry.provider} />}
-                isActive={selectedModel?.name === entry.name}
+                isActive={selectedModel?.provider === entry.provider}
                 onClick={() => handleSelectModel(entry.name)}
               />
             ))}

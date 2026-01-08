@@ -2,7 +2,7 @@ import { RJSFSchema } from "@rjsf/utils";
 import { preprocessInputSchema } from "./utils/input-schema-pre-processor";
 import { useMemo } from "react";
 import { customValidator } from "./utils/custom-validator";
-import { isLlmModelFieldSchema } from "./fields/LlmModelField/LlmModelField";
+import { isLlmModelFieldSchema } from "./custom/LlmModelField/LlmModelField";
 import Form from "./registry";
 import { ExtendedFormContextType } from "./types";
 
@@ -55,7 +55,7 @@ function buildLlmModelUiSchema(schema: RJSFSchema): Record<string, any> {
   }
 
   if (isLlmModelFieldSchema(schema)) {
-    return { "ui:field": "llmModel" };
+    return { "ui:field": "custom/llm_model_field" };
   }
 
   const result: Record<string, any> = {};

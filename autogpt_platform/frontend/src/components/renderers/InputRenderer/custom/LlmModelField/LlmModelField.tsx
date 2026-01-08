@@ -10,7 +10,7 @@ type LlmModelSchema = RJSFSchema & {
 };
 
 export const LlmModelField = (props: FieldProps) => {
-  const { schema, formData, onChange, disabled, readonly } = props;
+  const { schema, formData, onChange, disabled, readonly, fieldPathId } = props;
 
   const metadata = useMemo(() => {
     return (schema as LlmModelSchema)?.llm_model_metadata ?? {};
@@ -28,8 +28,8 @@ export const LlmModelField = (props: FieldProps) => {
         : "";
 
   const selectedModel = selectedName
-    ? (metadata[selectedName] ??
-      models.find((model) => model.name === selectedName))
+    ? metadata[selectedName] ??
+      models.find((model) => model.name === selectedName)
     : undefined;
 
   const recommendedName =
@@ -49,7 +49,7 @@ export const LlmModelField = (props: FieldProps) => {
       models={models}
       selectedModel={selectedModel}
       recommendedModel={recommendedModel}
-      onSelect={(value) => onChange(value)}
+      onSelect={(value) => onChange(value, fieldPathId?.path)}
       disabled={disabled || readonly}
     />
   );
