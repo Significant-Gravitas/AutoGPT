@@ -5,11 +5,14 @@ Handles generation and storage of OpenAI embeddings for store listings
 to enable semantic/hybrid search.
 """
 
+import asyncio
 import logging
-import os
 from typing import Any
 
 import prisma
+from openai import OpenAI
+
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +60,10 @@ async def generate_embedding(text: str) -> list[float] | None:
     Returns None if embedding generation fails.
     """
     try:
-        from openai import OpenAI
-
-        api_key = os.getenv("OPENAI_API_KEY")
+        settings = Settings()
+        api_key = settings.secrets.openai_internal_api_key
         if not api_key:
-            logger.warning("OPENAI_API_KEY not set, cannot generate embedding")
+            logger.warning("openai_internal_api_key not set, cannot generate embedding")
             return None
 
         client = OpenAI(api_key=api_key)
@@ -335,21 +337,22 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
                 "message": "No missing embeddings",
             }
 
-        success = 0
-        failed = 0
-
-        for row in missing:
-            result = await ensure_embedding(
+        # Process embeddings concurrently for better performance
+        embedding_tasks = [
+            ensure_embedding(
                 version_id=row["id"],
                 name=row["name"],
                 description=row["description"],
                 sub_heading=row["subHeading"],
                 categories=row["categories"] or [],
             )
-            if result:
-                success += 1
-            else:
-                failed += 1
+            for row in missing
+        ]
+
+        results = await asyncio.gather(*embedding_tasks, return_exceptions=True)
+
+        success = sum(1 for result in results if result is True)
+        failed = len(results) - success
 
         return {
             "processed": len(missing),

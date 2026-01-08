@@ -29,6 +29,8 @@ from backend.util.settings import Settings
 
 from . import exceptions as store_exceptions
 from . import model as store_model
+from .embeddings import ensure_embedding
+from .hybrid_search import hybrid_search
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -55,48 +57,62 @@ async def get_store_agents(
         f"Getting store agents. featured={featured}, creators={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
 
+    search_used_hybrid = False
+    store_agents: list[store_model.StoreAgent] = []
+    total = 0
+    total_pages = 0
+
     try:
-        # If search_query is provided, use hybrid search (embeddings + tsvector)
+        # If search_query is provided, try hybrid search (embeddings + tsvector)
         if search_query:
-            from backend.api.features.store.hybrid_search import hybrid_search
+            try:
+                # Use hybrid search combining semantic and lexical signals
+                agents, total = await hybrid_search(
+                    query=search_query,
+                    featured=featured,
+                    creators=creators,
+                    category=category,
+                    sorted_by="relevance",  # Use hybrid scoring for relevance
+                    page=page,
+                    page_size=page_size,
+                )
+                search_used_hybrid = True
 
-            # Use hybrid search combining semantic and lexical signals
-            agents, total = await hybrid_search(
-                query=search_query,
-                featured=featured,
-                creators=creators,
-                category=category,
-                sorted_by="relevance",  # Use hybrid scoring for relevance
-                page=page,
-                page_size=page_size,
-            )
+                # Convert hybrid search results (dict format)
+                total_pages = (total + page_size - 1) // page_size
+                store_agents: list[store_model.StoreAgent] = []
+                for agent in agents:
+                    try:
+                        store_agent = store_model.StoreAgent(
+                            slug=agent["slug"],
+                            agent_name=agent["agent_name"],
+                            agent_image=(
+                                agent["agent_image"][0] if agent["agent_image"] else ""
+                            ),
+                            creator=agent["creator_username"] or "Needs Profile",
+                            creator_avatar=agent["creator_avatar"] or "",
+                            sub_heading=agent["sub_heading"],
+                            description=agent["description"],
+                            runs=agent["runs"],
+                            rating=agent["rating"],
+                        )
+                        store_agents.append(store_agent)
+                    except Exception as e:
+                        logger.error(
+                            f"Error parsing Store agent from hybrid search results: {e}"
+                        )
+                        continue
 
-            total_pages = (total + page_size - 1) // page_size
+            except Exception as hybrid_error:
+                # If hybrid search fails (e.g., missing embeddings table),
+                # fallback to basic search logic below
+                logger.warning(
+                    f"Hybrid search failed, falling back to basic search: {hybrid_error}"
+                )
+                search_used_hybrid = False
 
-            # Convert raw results to StoreAgent models
-            store_agents: list[store_model.StoreAgent] = []
-            for agent in agents:
-                try:
-                    store_agent = store_model.StoreAgent(
-                        slug=agent["slug"],
-                        agent_name=agent["agent_name"],
-                        agent_image=(
-                            agent["agent_image"][0] if agent["agent_image"] else ""
-                        ),
-                        creator=agent["creator_username"] or "Needs Profile",
-                        creator_avatar=agent["creator_avatar"] or "",
-                        sub_heading=agent["sub_heading"],
-                        description=agent["description"],
-                        runs=agent["runs"],
-                        rating=agent["rating"],
-                    )
-                    store_agents.append(store_agent)
-                except Exception as e:
-                    logger.error(f"Error parsing Store agent from search results: {e}")
-                    continue
-
-        else:
-            # Non-search query path (original logic)
+        if not search_used_hybrid:
+            # Fallback path - use basic search or no search
             where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
             if featured:
                 where_clause["featured"] = featured
@@ -104,6 +120,14 @@ async def get_store_agents(
                 where_clause["creator_username"] = {"in": creators}
             if category:
                 where_clause["categories"] = {"has": category}
+
+            # Add basic text search if search_query provided but hybrid failed
+            if search_query:
+                where_clause["OR"] = [
+                    {"agent_name": {"contains": search_query, "mode": "insensitive"}},
+                    {"sub_heading": {"contains": search_query, "mode": "insensitive"}},
+                    {"description": {"contains": search_query, "mode": "insensitive"}},
+                ]
 
             order_by = []
             if sorted_by == "rating":
@@ -1491,8 +1515,6 @@ async def review_store_submission(
 
             # Generate embedding for approved listing (non-blocking)
             try:
-                from backend.api.features.store.embeddings import ensure_embedding
-
                 await ensure_embedding(
                     version_id=store_listing_version_id,
                     name=store_listing_version.name,

@@ -12,6 +12,11 @@ import sys
 
 import prisma
 
+from backend.api.features.store.embeddings import (
+    backfill_missing_embeddings,
+    get_embedding_stats,
+)
+
 
 async def main(batch_size: int = 100) -> int:
     """Run the backfill process."""
@@ -21,11 +26,6 @@ async def main(batch_size: int = 100) -> int:
     prisma.register(client)
 
     try:
-        from backend.api.features.store.embeddings import (
-            backfill_missing_embeddings,
-            get_embedding_stats,
-        )
-
         # Get current stats
         print("Current embedding stats:")
         stats = await get_embedding_stats()
