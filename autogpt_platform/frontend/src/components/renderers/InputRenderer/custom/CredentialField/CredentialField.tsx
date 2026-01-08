@@ -79,7 +79,7 @@ export const CredentialsField = (props: FieldProps) => {
 
       {/* Optional credentials toggle */}
       {nodeId && !formContext?.readOnly && (
-        <div className="flex items-center gap-2 mt-1">
+        <div className="mt-1 flex items-center gap-2">
           <Switch
             id={`credentials-optional-${nodeId}`}
             checked={credentialsOptional}
@@ -89,7 +89,7 @@ export const CredentialsField = (props: FieldProps) => {
           />
           <label
             htmlFor={`credentials-optional-${nodeId}`}
-            className="text-xs text-gray-500 cursor-pointer"
+            className="cursor-pointer text-xs text-gray-500"
           >
             Optional - skip block if not configured
           </label>
