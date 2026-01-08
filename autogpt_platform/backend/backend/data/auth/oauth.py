@@ -1029,6 +1029,46 @@ async def admin_update_oauth_application(
     return OAuthApplicationInfo.from_db(updated_app) if updated_app else None
 
 
+async def user_update_oauth_application(
+    app_id: str,
+    owner_id: str,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    redirect_uris: Optional[list[str]] = None,
+    scopes: Optional[list[APIPermission]] = None,
+) -> Optional[OAuthApplicationInfo]:
+    """
+    Update an OAuth application (user function - can only update own apps).
+
+    Returns the updated app info, or None if app not found or not owned by user.
+    """
+    from prisma.types import OAuthApplicationUpdateInput
+
+    app = await PrismaOAuthApplication.prisma().find_unique(where={"id": app_id})
+    if not app or app.ownerId != owner_id:
+        return None
+
+    patch: OAuthApplicationUpdateInput = {}
+    if name is not None:
+        patch["name"] = name
+    if description is not None:
+        patch["description"] = description
+    if redirect_uris is not None:
+        patch["redirectUris"] = redirect_uris
+    if scopes is not None:
+        patch["scopes"] = [s.value for s in scopes]
+
+    if not patch:
+        return OAuthApplicationInfo.from_db(app)  # return unchanged
+
+    updated_app = await PrismaOAuthApplication.prisma().update(
+        where={"id": app_id},
+        data=patch,
+    )
+    return OAuthApplicationInfo.from_db(updated_app) if updated_app else None
+
+
 async def delete_oauth_application(app_id: str) -> bool:
     """
     Delete an OAuth application and all its associated tokens.

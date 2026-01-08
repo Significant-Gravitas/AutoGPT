@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   useGetOauthListMyOauthApps,
   usePatchOauthUpdateAppStatus,
@@ -10,12 +10,19 @@ import {
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import BackendAPI from "@/lib/autogpt-server-api";
+import type { OAuthApplicationCreationResult } from "@/lib/autogpt-server-api/types";
 
 export const useOAuthApps = () => {
   const queryClient = getQueryClient();
   const { toast } = useToast();
   const [updatingAppId, setUpdatingAppId] = useState<string | null>(null);
   const [uploadingAppId, setUploadingAppId] = useState<string | null>(null);
+  const [deletingAppId, setDeletingAppId] = useState<string | null>(null);
+  const [regeneratingAppId, setRegeneratingAppId] = useState<string | null>(
+    null,
+  );
+  const [isCreating, setIsCreating] = useState(false);
 
   const { data: oauthAppsResponse, isLoading } = useGetOauthListMyOauthApps({
     query: { select: okData },
@@ -40,6 +47,12 @@ export const useOAuthApps = () => {
       },
     },
   });
+
+  const invalidateApps = useCallback(() => {
+    return queryClient.invalidateQueries({
+      queryKey: getGetOauthListMyOauthAppsQueryKey(),
+    });
+  }, [queryClient]);
 
   const handleToggleStatus = async (appId: string, currentStatus: boolean) => {
     try {
@@ -98,12 +111,108 @@ export const useOAuthApps = () => {
     }
   };
 
+  const handleCreateApp = async (request: {
+    name: string;
+    description?: string;
+    redirect_uris: string[];
+    scopes: string[];
+  }): Promise<OAuthApplicationCreationResult | null> => {
+    try {
+      setIsCreating(true);
+      const api = new BackendAPI();
+      const result = await api.createMyOAuthApp(request);
+      await invalidateApps();
+      toast({
+        title: "Success",
+        description: "OAuth application created successfully",
+      });
+      return result;
+    } catch (error) {
+      console.error("Failed to create OAuth app:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to create OAuth application";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      return null;
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleDeleteApp = async (appId: string): Promise<boolean> => {
+    try {
+      setDeletingAppId(appId);
+      const api = new BackendAPI();
+      await api.deleteMyOAuthApp(appId);
+      await invalidateApps();
+      toast({
+        title: "Success",
+        description: "OAuth application deleted successfully",
+      });
+      return true;
+    } catch (error) {
+      console.error("Failed to delete OAuth app:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to delete OAuth application";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      setDeletingAppId(null);
+    }
+  };
+
+  const handleRegenerateSecret = async (
+    appId: string,
+  ): Promise<string | null> => {
+    try {
+      setRegeneratingAppId(appId);
+      const api = new BackendAPI();
+      const result = await api.regenerateMyOAuthSecret(appId);
+      toast({
+        title: "Success",
+        description: "Client secret regenerated successfully",
+      });
+      return result.client_secret;
+    } catch (error) {
+      console.error("Failed to regenerate secret:", error);
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to regenerate client secret";
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      return null;
+    } finally {
+      setRegeneratingAppId(null);
+    }
+  };
+
   return {
     oauthApps: oauthAppsResponse ?? [],
     isLoading,
     updatingAppId,
     uploadingAppId,
+    deletingAppId,
+    regeneratingAppId,
+    isCreating,
     handleToggleStatus,
     handleUploadLogo,
+    handleCreateApp,
+    handleDeleteApp,
+    handleRegenerateSecret,
   };
 };

@@ -31,20 +31,25 @@ from pydantic import BaseModel, Field
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
+    OAuthApplicationCreationResult,
     OAuthApplicationInfo,
     TokenIntrospectionResult,
     consume_authorization_code,
     create_access_token,
     create_authorization_code,
+    create_oauth_application,
     create_refresh_token,
+    delete_oauth_application,
     get_oauth_application,
     get_oauth_application_by_id,
     introspect_token,
     list_user_oauth_applications,
     refresh_tokens,
+    regenerate_client_secret,
     revoke_access_token,
     revoke_refresh_token,
     update_oauth_application,
+    user_update_oauth_application,
     validate_client_credentials,
     validate_redirect_uri,
     validate_scopes,
@@ -831,3 +836,243 @@ async def _delete_app_current_logo_file(app: OAuthApplicationInfo):
             logger.warning(
                 f"Failed to delete old logo for OAuth app #{app.id}: {e}", exc_info=e
             )
+
+
+# ============================================================================
+# User Self-Service Endpoints (create, update, delete own apps)
+# ============================================================================
+
+
+class CreateOAuthAppRequest(BaseModel):
+    """Request to create a new OAuth application"""
+
+    name: str = Field(description="Application name")
+    description: Optional[str] = Field(None, description="Application description")
+    redirect_uris: list[str] = Field(description="Allowed redirect URIs")
+    scopes: list[str] = Field(
+        description="List of scopes (e.g., EXECUTE_GRAPH, READ_GRAPH)"
+    )
+
+
+class UpdateOAuthAppRequest(BaseModel):
+    """Request to update an OAuth application"""
+
+    name: Optional[str] = Field(None, description="Application name")
+    description: Optional[str] = Field(None, description="Application description")
+    redirect_uris: Optional[list[str]] = Field(
+        None, description="Allowed redirect URIs"
+    )
+    scopes: Optional[list[str]] = Field(None, description="List of scopes")
+
+
+class RegenerateSecretResponse(BaseModel):
+    """Response when regenerating a client secret"""
+
+    client_secret: str = Field(
+        description="New plaintext client secret - shown only once"
+    )
+
+
+@router.post(
+    "/apps",
+    response_model=OAuthApplicationCreationResult,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create OAuth Application",
+)
+async def create_oauth_app(
+    request: CreateOAuthAppRequest = Body(),
+    user_id: str = Security(get_user_id),
+) -> OAuthApplicationCreationResult:
+    """
+    Create a new OAuth application.
+
+    Returns the created application including the plaintext client secret
+    (which is only shown once).
+
+    The client secret is hashed before storage and cannot be retrieved later.
+    If lost, a new secret must be generated using the regenerate endpoint.
+    """
+    # Validate scopes
+    try:
+        validated_scopes = [
+            APIKeyPermission(s.strip()) for s in request.scopes if s.strip()
+        ]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid scope: {e}",
+        )
+
+    if not validated_scopes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one scope is required",
+        )
+
+    # Validate redirect URIs
+    if not request.redirect_uris:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one redirect URI is required",
+        )
+
+    result = await create_oauth_application(
+        name=request.name,
+        description=request.description,
+        redirect_uris=request.redirect_uris,
+        scopes=validated_scopes,
+        owner_id=user_id,
+    )
+
+    logger.info(
+        f"User #{user_id} created OAuth app '{result.application.name}' "
+        f"(client_id: {result.application.client_id})"
+    )
+
+    return result
+
+
+@router.patch(
+    "/apps/{app_id}",
+    response_model=OAuthApplicationInfo,
+    summary="Update OAuth Application",
+)
+async def update_oauth_app(
+    app_id: str,
+    request: UpdateOAuthAppRequest = Body(),
+    user_id: str = Security(get_user_id),
+) -> OAuthApplicationInfo:
+    """
+    Update an OAuth application.
+
+    Only the application owner can update their own applications.
+    Can update name, description, redirect URIs, and scopes.
+    """
+    # Validate scopes if provided
+    validated_scopes = None
+    if request.scopes is not None:
+        try:
+            validated_scopes = [
+                APIKeyPermission(s.strip()) for s in request.scopes if s.strip()
+            ]
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid scope: {e}",
+            )
+
+        if not validated_scopes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one scope is required",
+            )
+
+    # Validate redirect URIs if provided
+    if request.redirect_uris is not None and not request.redirect_uris:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one redirect URI is required",
+        )
+
+    updated_app = await user_update_oauth_application(
+        app_id=app_id,
+        owner_id=user_id,
+        name=request.name,
+        description=request.description,
+        redirect_uris=request.redirect_uris,
+        scopes=validated_scopes,
+    )
+
+    if not updated_app:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found or you don't have permission to update it",
+        )
+
+    logger.info(f"User #{user_id} updated OAuth app '{updated_app.name}' (#{app_id})")
+
+    return updated_app
+
+
+@router.delete(
+    "/apps/{app_id}",
+    summary="Delete OAuth Application",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_oauth_app(
+    app_id: str,
+    user_id: str = Security(get_user_id),
+):
+    """
+    Delete an OAuth application.
+
+    Only the application owner can delete their own applications.
+    This will also delete all associated authorization codes, access tokens,
+    and refresh tokens.
+
+    This action is irreversible.
+    """
+    # Verify ownership
+    app = await get_oauth_application_by_id(app_id)
+    if not app or app.owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found or you don't have permission to delete it",
+        )
+
+    # Delete the logo file if it exists
+    await _delete_app_current_logo_file(app)
+
+    deleted = await delete_oauth_application(app_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    logger.info(f"User #{user_id} deleted OAuth app '{app.name}' (#{app_id})")
+    return None
+
+
+@router.post(
+    "/apps/{app_id}/regenerate-secret",
+    response_model=RegenerateSecretResponse,
+    summary="Regenerate Client Secret",
+)
+async def regenerate_oauth_secret(
+    app_id: str,
+    user_id: str = Security(get_user_id),
+) -> RegenerateSecretResponse:
+    """
+    Regenerate the client secret for an OAuth application.
+
+    Only the application owner can regenerate the secret.
+    The old secret will be invalidated immediately.
+    Returns the new plaintext client secret (shown only once).
+
+    All existing tokens will continue to work, but new token requests
+    must use the new client secret.
+    """
+    # Verify ownership
+    app = await get_oauth_application_by_id(app_id)
+    if not app or app.owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found or you don't have permission to update it",
+        )
+
+    new_secret = await regenerate_client_secret(app_id)
+
+    if not new_secret:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    logger.info(
+        f"User #{user_id} regenerated client secret for OAuth app "
+        f"'{app.name}' (#{app_id})"
+    )
+
+    return RegenerateSecretResponse(client_secret=new_secret)

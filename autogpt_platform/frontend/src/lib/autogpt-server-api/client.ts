@@ -659,6 +659,43 @@ export default class BackendAPI {
     return this._request("POST", `/oauth/admin/apps/${appId}/regenerate-secret`);
   }
 
+  /////////////////////////////////////////
+  //////// User OAuth API /////////////////
+  /////////////////////////////////////////
+
+  getMyOAuthApps(): Promise<OAuthApplication[]> {
+    return this._get("/oauth/apps/mine");
+  }
+
+  createMyOAuthApp(request: {
+    name: string;
+    description?: string;
+    redirect_uris: string[];
+    scopes: string[];
+  }): Promise<OAuthApplicationCreationResult> {
+    return this._request("POST", "/oauth/apps", request);
+  }
+
+  updateMyOAuthApp(
+    appId: string,
+    request: {
+      name?: string;
+      description?: string;
+      redirect_uris?: string[];
+      scopes?: string[];
+    },
+  ): Promise<OAuthApplication> {
+    return this._request("PATCH", `/oauth/apps/${appId}`, request);
+  }
+
+  deleteMyOAuthApp(appId: string): Promise<void> {
+    return this._request("DELETE", `/oauth/apps/${appId}`);
+  }
+
+  regenerateMyOAuthSecret(appId: string): Promise<RegenerateSecretResponse> {
+    return this._request("POST", `/oauth/apps/${appId}/regenerate-secret`);
+  }
+
   ////////////////////////////////////////
   //////////// V2 LIBRARY API ////////////
   ////////////////////////////////////////
