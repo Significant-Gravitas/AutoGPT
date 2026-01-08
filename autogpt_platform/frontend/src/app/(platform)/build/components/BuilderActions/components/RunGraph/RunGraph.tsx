@@ -1,15 +1,14 @@
-import { useRunGraph } from "./useRunGraph";
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
-import { useShallow } from "zustand/react/shallow";
-import { PlayIcon, StopIcon } from "@phosphor-icons/react";
-import { cn } from "@/lib/utils";
-import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { BuilderActionButton } from "../BuilderActionButton";
+import { PlayIcon, StopIcon } from "@phosphor-icons/react";
+import { useShallow } from "zustand/react/shallow";
+import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
+import { useRunGraph } from "./useRunGraph";
 
 export const RunGraph = ({ flowID }: { flowID: string | null }) => {
   const {
@@ -29,21 +28,19 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <BuilderActionButton
-            className={cn(
-              isGraphRunning &&
-                "border-red-500 bg-gradient-to-br from-red-400 to-red-500 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.5),0_2px_4px_0_rgba(0,0,0,0.2)]",
-            )}
+          <Button
+            size="icon"
+            variant={isGraphRunning ? "destructive" : "primary"}
             onClick={isGraphRunning ? handleStopGraph : handleRunGraph}
             disabled={!flowID || isExecutingGraph || isTerminatingGraph}
-            isLoading={isExecutingGraph || isTerminatingGraph || isSaving}
+            loading={isExecutingGraph || isTerminatingGraph || isSaving}
           >
             {!isGraphRunning ? (
-              <PlayIcon className="size-6 drop-shadow-sm" />
+              <PlayIcon className="size-4" />
             ) : (
-              <StopIcon className="size-6 drop-shadow-sm" />
+              <StopIcon className="size-4" />
             )}
-          </BuilderActionButton>
+          </Button>
         </TooltipTrigger>
         <TooltipContent>
           {isGraphRunning ? "Stop agent" : "Run agent"}
