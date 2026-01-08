@@ -8,7 +8,7 @@ import {
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
 import { uiSchema } from "../../../FlowEditor/nodes/uiSchema";
-import { isCredentialFieldSchema } from "@/components/renderers/input-renderer/fields/CredentialField/helpers";
+import { isCredentialFieldSchema } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
 
 export const useRunInputDialog = ({
   setIsOpen,

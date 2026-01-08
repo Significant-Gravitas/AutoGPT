@@ -23,7 +23,7 @@ export const NodeDataRenderer = ({ nodeId }: { nodeId: string }) => {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-b-xl border-t border-slate-200/50 px-4 py-4">
+    <div className="flex flex-col gap-3 rounded-b-xl border-t border-zinc-200 px-4 py-4">
       <div className="flex items-center justify-between">
         <Text variant="body-medium" className="!font-semibold text-slate-700">
           Node Output

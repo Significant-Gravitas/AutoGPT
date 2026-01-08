@@ -3,7 +3,7 @@ import React from "react";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockUIType } from "../../types";
-import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
+import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 
 export const FormCreator = React.memo(
   ({
@@ -20,17 +20,32 @@ export const FormCreator = React.memo(
     className?: string;
   }) => {
     const updateNodeData = useNodeStore((state) => state.updateNodeData);
+
     const getHardCodedValues = useNodeStore(
       (state) => state.getHardCodedValues,
     );
+
     const handleChange = ({ formData }: any) => {
       if ("credentials" in formData && !formData.credentials?.id) {
         delete formData.credentials;
       }
-      updateNodeData(nodeId, { hardcodedValues: formData });
+
+      const updatedValues =
+        uiType === BlockUIType.AGENT
+          ? {
+              ...getHardCodedValues(nodeId),
+              inputs: formData,
+            }
+          : formData;
+
+      updateNodeData(nodeId, { hardcodedValues: updatedValues });
     };
 
-    const initialValues = getHardCodedValues(nodeId);
+    const hardcodedValues = getHardCodedValues(nodeId);
+    const initialValues =
+      uiType === BlockUIType.AGENT
+        ? (hardcodedValues.inputs ?? {})
+        : hardcodedValues;
 
     return (
       <div className={className}>

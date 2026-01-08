@@ -4,19 +4,12 @@ import {
   OutputActions,
   OutputItem,
 } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/selected-views/OutputRenderers";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { beautifyString } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Clipboard, Maximize2 } from "lucide-react";
 import React, { FC, useMemo, useState } from "react";
 import { Button } from "../../../../../components/__legacy__/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../../../components/__legacy__/ui/dialog";
 import { ContentRenderer } from "../../../../../components/__legacy__/ui/render";
 import { ScrollArea } from "../../../../../components/__legacy__/ui/scroll-area";
 import { Separator } from "../../../../../components/__legacy__/ui/separator";
@@ -120,138 +113,155 @@ const ExpandableOutputDialog: FC<ExpandableOutputDialogProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="flex h-[90vh] w-[90vw] max-w-4xl flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center justify-between pr-8">
-            <div className="flex items-center gap-2">
-              <Maximize2 size={20} />
-              Full Output Preview
-            </div>
-            {enableEnhancedOutputHandling && (
-              <div className="flex items-center gap-3">
-                <label
-                  htmlFor="enhanced-rendering-toggle"
-                  className="cursor-pointer select-none text-sm font-normal text-gray-600"
-                >
-                  Enhanced Rendering
-                </label>
-                <Switch
-                  id="enhanced-rendering-toggle"
-                  checked={useEnhancedRenderer}
-                  onCheckedChange={setUseEnhancedRenderer}
-                />
-              </div>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            Execution ID: <span className="font-mono text-xs">{execId}</span>
-            <br />
-            Pin:{" "}
-            <span className="font-semibold">{beautifyString(pinName)}</span>
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-hidden">
-          {useEnhancedRenderer && outputItems.length > 0 && (
-            <div className="border-b px-4 py-2">
-              <OutputActions
-                items={outputItems.map((item) => ({
-                  value: item.value,
-                  metadata: item.metadata,
-                  renderer: item.renderer,
-                }))}
+    <Dialog
+      title={
+        <div className="flex items-center justify-between pr-8">
+          <div className="flex items-center gap-2">
+            <Maximize2 size={20} />
+            Full Output Preview
+          </div>
+          {enableEnhancedOutputHandling && (
+            <div className="flex items-center gap-3">
+              <label
+                htmlFor="enhanced-rendering-toggle"
+                className="cursor-pointer select-none text-sm font-normal text-gray-600"
+              >
+                Enhanced Rendering
+              </label>
+              <Switch
+                id="enhanced-rendering-toggle"
+                checked={useEnhancedRenderer}
+                onCheckedChange={setUseEnhancedRenderer}
               />
             </div>
           )}
-          <ScrollArea className="h-full">
-            <div className="p-4">
-              {data.length > 0 ? (
-                useEnhancedRenderer ? (
-                  <div className="space-y-4">
-                    {outputItems.map((item) => (
-                      <OutputItem
-                        key={item.key}
-                        value={item.value}
-                        metadata={item.metadata}
-                        renderer={item.renderer}
-                        label={item.label}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {data.map((item, index) => (
-                      <div
-                        key={index}
-                        className="rounded-lg border bg-gray-50 p-4"
-                      >
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-600">
-                            Item {index + 1} of {data.length}
-                          </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const itemData =
-                                typeof item === "object"
-                                  ? JSON.stringify(item, null, 2)
-                                  : String(item);
-                              navigator.clipboard
-                                .writeText(itemData)
-                                .then(() => {
-                                  toast({
-                                    title: `Item ${index + 1} copied to clipboard!`,
-                                    duration: 2000,
-                                  });
-                                });
-                            }}
-                            className="flex items-center gap-1"
-                          >
-                            <Clipboard size={14} />
-                            Copy Item
-                          </Button>
-                        </div>
-                        <Separator className="mb-3" />
-                        <div className="whitespace-pre-wrap break-words font-mono text-sm">
-                          <ContentRenderer
-                            value={item}
-                            truncateLongData={false}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              ) : (
-                <div className="py-8 text-center text-gray-500">
-                  No data available
-                </div>
-              )}
-            </div>
-          </ScrollArea>
         </div>
+      }
+      controlled={{
+        isOpen,
+        set: (open) => {
+          if (!open) onClose();
+        },
+      }}
+      onClose={onClose}
+      styling={{
+        maxWidth: "56rem",
+        width: "90vw",
+        height: "90vh",
+      }}
+    >
+      <Dialog.Content>
+        <div className="flex h-full flex-col">
+          <div className="pb-4">
+            <p className="text-sm text-zinc-600">
+              Execution ID: <span className="font-mono text-xs">{execId}</span>
+              <br />
+              Pin:{" "}
+              <span className="font-semibold">{beautifyString(pinName)}</span>
+            </p>
+          </div>
 
-        <DialogFooter className="flex justify-between">
-          <div className="text-sm text-gray-600">
-            {data.length} item{data.length !== 1 ? "s" : ""} total
-          </div>
-          <div className="flex gap-2">
-            {!useEnhancedRenderer && (
-              <Button
-                variant="outline"
-                onClick={copyData}
-                className="flex items-center gap-1"
-              >
-                <Clipboard size={16} />
-                Copy All
-              </Button>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {useEnhancedRenderer && outputItems.length > 0 && (
+              <div className="border-b px-4 py-2">
+                <OutputActions
+                  items={outputItems.map((item) => ({
+                    value: item.value,
+                    metadata: item.metadata,
+                    renderer: item.renderer,
+                  }))}
+                />
+              </div>
             )}
-            <Button onClick={onClose}>Close</Button>
+            <ScrollArea className="h-full">
+              <div className="p-4">
+                {data.length > 0 ? (
+                  useEnhancedRenderer ? (
+                    <div className="space-y-4">
+                      {outputItems.map((item) => (
+                        <OutputItem
+                          key={item.key}
+                          value={item.value}
+                          metadata={item.metadata}
+                          renderer={item.renderer}
+                          label={item.label}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {data.map((item, index) => (
+                        <div
+                          key={index}
+                          className="rounded-lg border bg-gray-50 p-4"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-600">
+                              Item {index + 1} of {data.length}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const itemData =
+                                  typeof item === "object"
+                                    ? JSON.stringify(item, null, 2)
+                                    : String(item);
+                                navigator.clipboard
+                                  .writeText(itemData)
+                                  .then(() => {
+                                    toast({
+                                      title: `Item ${index + 1} copied to clipboard!`,
+                                      duration: 2000,
+                                    });
+                                  });
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <Clipboard size={14} />
+                              Copy Item
+                            </Button>
+                          </div>
+                          <Separator className="mb-3" />
+                          <div className="whitespace-pre-wrap break-words font-mono text-sm">
+                            <ContentRenderer
+                              value={item}
+                              truncateLongData={false}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <div className="py-8 text-center text-gray-500">
+                    No data available
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
           </div>
-        </DialogFooter>
-      </DialogContent>
+
+          <Dialog.Footer className="flex justify-between">
+            <div className="text-sm text-gray-600">
+              {data.length} item{data.length !== 1 ? "s" : ""} total
+            </div>
+            <div className="flex gap-2">
+              {!useEnhancedRenderer && (
+                <Button
+                  variant="outline"
+                  onClick={copyData}
+                  className="flex items-center gap-1"
+                >
+                  <Clipboard size={16} />
+                  Copy All
+                </Button>
+              )}
+              <Button onClick={onClose}>Close</Button>
+            </div>
+          </Dialog.Footer>
+        </div>
+      </Dialog.Content>
     </Dialog>
   );
 };

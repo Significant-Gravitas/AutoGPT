@@ -16,6 +16,7 @@ from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBala
 from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
 
+from backend.api.features.admin.model import UserHistoryResponse
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.db import query_raw_with_schema
 from backend.data.includes import MAX_CREDIT_REFUND_REQUESTS_FETCH
@@ -29,7 +30,6 @@ from backend.data.model import (
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
-from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import SafeJson, dumps
@@ -341,6 +341,19 @@ class UserCreditBase(ABC):
 
         if result:
             # UserBalance is already updated by the CTE
+
+            # Clear insufficient funds notification flags when credits are added
+            # so user can receive alerts again if they run out in the future.
+            if transaction.amount > 0 and transaction.type in [
+                CreditTransactionType.GRANT,
+                CreditTransactionType.TOP_UP,
+            ]:
+                from backend.executor.manager import (
+                    clear_insufficient_funds_notifications,
+                )
+
+                await clear_insufficient_funds_notifications(user_id)
+
             return result[0]["balance"]
 
     async def _add_transaction(
@@ -530,6 +543,22 @@ class UserCreditBase(ABC):
         if result:
             new_balance, tx_key = result[0]["balance"], result[0]["transactionKey"]
             # UserBalance is already updated by the CTE
+
+            # Clear insufficient funds notification flags when credits are added
+            # so user can receive alerts again if they run out in the future.
+            if (
+                amount > 0
+                and is_active
+                and transaction_type
+                in [CreditTransactionType.GRANT, CreditTransactionType.TOP_UP]
+            ):
+                # Lazy import to avoid circular dependency with executor.manager
+                from backend.executor.manager import (
+                    clear_insufficient_funds_notifications,
+                )
+
+                await clear_insufficient_funds_notifications(user_id)
+
             return new_balance, tx_key
 
         # If no result, either user doesn't exist or insufficient balance

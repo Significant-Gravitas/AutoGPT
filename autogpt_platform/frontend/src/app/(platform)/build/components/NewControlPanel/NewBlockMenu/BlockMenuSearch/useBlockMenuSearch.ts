@@ -1,18 +1,25 @@
-import { useBlockMenuStore } from "../../../../stores/blockMenuStore";
-import { useGetV2BuilderSearchInfinite } from "@/app/api/__generated__/endpoints/store/store";
-import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 import { useCallback, useEffect, useState } from "react";
+import { useBlockMenuStore } from "@/app/(platform)/build/stores/blockMenuStore";
 import { useAddAgentToBuilder } from "../hooks/useAddAgentToBuilder";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { getV2GetSpecificAgent } from "@/app/api/__generated__/endpoints/store/store";
 import {
-  getGetV2ListLibraryAgentsQueryKey,
-  usePostV2AddMarketplaceAgent,
-} from "@/app/api/__generated__/endpoints/library/library";
+  getPaginationNextPageNumber,
+  okData,
+  unpaginate,
+} from "@/app/api/helpers";
 import {
   getGetV2GetBuilderItemCountsQueryKey,
   getGetV2GetBuilderSuggestionsQueryKey,
 } from "@/app/api/__generated__/endpoints/default/default";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  getV2GetLibraryAgent,
+  usePostV2AddMarketplaceAgent,
+} from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getV2GetSpecificAgent,
+  useGetV2BuilderSearchInfinite,
+} from "@/app/api/__generated__/endpoints/store/store";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
@@ -39,7 +46,7 @@ export const useBlockMenuSearch = () => {
   >(null);
 
   const {
-    data: searchData,
+    data: searchQueryData,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -52,18 +59,7 @@ export const useBlockMenuSearch = () => {
       search_id: searchId,
     },
     {
-      query: {
-        getNextPageParam: (lastPage) => {
-          const response = lastPage.data as SearchResponse;
-          const { pagination } = response;
-          if (!pagination) {
-            return undefined;
-          }
-
-          const { current_page, total_pages } = pagination;
-          return current_page < total_pages ? current_page + 1 : undefined;
-        },
-      },
+      query: { getNextPageParam: getPaginationNextPageNumber },
     },
   );
 
@@ -92,16 +88,15 @@ export const useBlockMenuSearch = () => {
   });
 
   useEffect(() => {
-    if (!searchData?.pages?.length) {
+    if (!searchQueryData?.pages?.length) {
       return;
     }
 
-    const latestPage = searchData.pages[searchData.pages.length - 1];
-    const response = latestPage?.data as SearchResponse;
-    if (response?.search_id && response.search_id !== searchId) {
-      setSearchId(response.search_id);
+    const lastPage = okData(searchQueryData.pages.at(-1));
+    if (lastPage?.search_id && lastPage.search_id !== searchId) {
+      setSearchId(lastPage.search_id);
     }
-  }, [searchData, searchId, setSearchId]);
+  }, [searchQueryData, searchId, setSearchId]);
 
   useEffect(() => {
     if (searchId && !searchQuery) {
@@ -109,11 +104,9 @@ export const useBlockMenuSearch = () => {
     }
   }, [resetSearchSession, searchId, searchQuery]);
 
-  const allSearchData =
-    searchData?.pages?.flatMap((page) => {
-      const response = page.data as SearchResponse;
-      return response.items;
-    }) ?? [];
+  const searchResults = searchQueryData
+    ? unpaginate(searchQueryData, "items")
+    : [];
 
   const handleAddLibraryAgent = async (agent: LibraryAgent) => {
     setAddingLibraryAgentId(agent.id);
@@ -151,7 +144,12 @@ export const useBlockMenuSearch = () => {
       });
 
       const libraryAgent = response.data as LibraryAgent;
-      addAgentToBuilder(libraryAgent);
+
+      const { data: libraryAgentDetails } = await getV2GetLibraryAgent(
+        libraryAgent.id,
+      );
+
+      addAgentToBuilder(libraryAgentDetails as LibraryAgent);
 
       toast({
         title: "Agent Added",
@@ -171,7 +169,7 @@ export const useBlockMenuSearch = () => {
   };
 
   return {
-    allSearchData,
+    searchResults,
     isFetchingNextPage,
     fetchNextPage,
     hasNextPage,
