@@ -3,9 +3,8 @@ from datetime import UTC, datetime
 from os import getenv
 
 import pytest
-from pydantic import SecretStr
-
 from prisma.types import ProfileCreateInput
+from pydantic import SecretStr
 
 from backend.api.features.chat.model import ChatSession
 from backend.api.features.store import db as store_db

@@ -22,6 +22,7 @@ import random
 from typing import Any, Dict, List
 
 from faker import Faker
+from prisma.types import AgentBlockCreateInput
 
 # Import API functions from the backend
 from backend.api.features.library.db import create_library_agent, create_preset
@@ -179,12 +180,12 @@ class TestDataCreator:
             for block in blocks_to_create:
                 try:
                     await prisma.agentblock.create(
-                        data={
-                            "id": block.id,
-                            "name": block.name,
-                            "inputSchema": "{}",
-                            "outputSchema": "{}",
-                        }
+                        data=AgentBlockCreateInput(
+                            id=block.id,
+                            name=block.name,
+                            inputSchema="{}",
+                            outputSchema="{}",
+                        )
                     )
                 except Exception as e:
                     print(f"Error creating block {block.name}: {e}")

@@ -114,7 +114,22 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
 
-    create_input = UserOnboardingCreateInput(userId=user_id, **update)
+    # Build create_input manually to avoid type issues with Prisma update types
+    create_input = UserOnboardingCreateInput(
+        userId=user_id,
+        walletShown=data.walletShown if data.walletShown else None,
+        notified=(
+            list(set(data.notified + onboarding.notified))
+            if data.notified is not None
+            else None
+        ),
+        usageReason=data.usageReason,
+        integrations=data.integrations,
+        otherIntegrations=data.otherIntegrations,
+        selectedStoreListingVersionId=data.selectedStoreListingVersionId,
+        agentInput=SafeJson(data.agentInput) if data.agentInput is not None else None,
+        onboardingAgentExecutionId=data.onboardingAgentExecutionId,
+    )
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data=UserOnboardingUpsertInput(

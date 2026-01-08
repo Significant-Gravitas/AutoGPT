@@ -11,11 +11,7 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
-from prisma.types import (
-    UserBalanceCreateInput,
-    UserBalanceUpsertInput,
-    UserCreateInput,
-)
+from prisma.types import UserBalanceCreateInput, UserBalanceUpsertInput, UserCreateInput
 
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
@@ -115,15 +111,15 @@ async def test_ceiling_balance_clamps_when_would_exceed(server: SpinTestServer):
         )
 
         # Balance should be clamped to ceiling
-        assert final_balance == 1000, (
-            f"Balance should be clamped to 1000, got {final_balance}"
-        )
+        assert (
+            final_balance == 1000
+        ), f"Balance should be clamped to 1000, got {final_balance}"
 
         # Verify with get_credits too
         stored_balance = await credit_system.get_credits(user_id)
-        assert stored_balance == 1000, (
-            f"Stored balance should be 1000, got {stored_balance}"
-        )
+        assert (
+            stored_balance == 1000
+        ), f"Stored balance should be 1000, got {stored_balance}"
 
         # Verify transaction shows the clamped amount
         transactions = await CreditTransaction.prisma().find_many(
@@ -172,9 +168,9 @@ async def test_ceiling_balance_allows_when_under_threshold(server: SpinTestServe
 
         # Verify with get_credits too
         stored_balance = await credit_system.get_credits(user_id)
-        assert stored_balance == 500, (
-            f"Stored balance should be 500, got {stored_balance}"
-        )
+        assert (
+            stored_balance == 500
+        ), f"Stored balance should be 500, got {stored_balance}"
 
     finally:
         await cleanup_test_user(user_id)
