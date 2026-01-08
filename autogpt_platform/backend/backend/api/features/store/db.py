@@ -2357,8 +2357,7 @@ async def link_waitlist_to_listing_admin(
 
         waitlist = await prisma.models.WaitlistEntry.prisma().update(
             where={"id": waitlist_id},
-            # TODO: fix this properly in prisma by making sure this is setable. surely theres somewhere else we've done something like this
-            data={"storeListingId": store_listing_id},
+            data={"StoreListing": {"connect": {"id": store_listing_id}}},
             include={"joinedUsers": True},
         )
 
