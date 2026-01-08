@@ -1,3 +1,6 @@
+-- DropIndex
+DROP INDEX "StoreListingVersion_storeListingId_version_key";
+
 -- CreateTable
 CREATE TABLE "UserBusinessUnderstanding" (
     "id" TEXT NOT NULL,
