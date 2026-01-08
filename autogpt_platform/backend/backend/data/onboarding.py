@@ -117,14 +117,14 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     # Build create_input manually to avoid type issues with Prisma update types
     create_input = UserOnboardingCreateInput(
         userId=user_id,
-        walletShown=data.walletShown if data.walletShown else None,
+        walletShown=data.walletShown if data.walletShown else False,
         notified=(
             list(set(data.notified + onboarding.notified))
             if data.notified is not None
-            else None
+            else []
         ),
         usageReason=data.usageReason,
-        integrations=data.integrations,
+        integrations=data.integrations if data.integrations is not None else [],
         otherIntegrations=data.otherIntegrations,
         selectedStoreListingVersionId=data.selectedStoreListingVersionId,
         agentInput=SafeJson(data.agentInput) if data.agentInput is not None else None,
