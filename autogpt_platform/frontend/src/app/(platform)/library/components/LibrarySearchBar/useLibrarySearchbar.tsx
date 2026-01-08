@@ -2,7 +2,7 @@ import { debounce } from "lodash";
 import { useCallback, useEffect } from "react";
 import { useLibraryPageContext } from "../state-provider";
 
-export const useLibrarySearchbar = () => {
+export function useLibrarySearchbar() {
   const { setSearchTerm } = useLibraryPageContext();
 
   const debouncedSearch = useCallback(
@@ -18,12 +18,12 @@ export const useLibrarySearchbar = () => {
     };
   }, [debouncedSearch]);
 
-  const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  function handleSearchInput(e: React.ChangeEvent<HTMLInputElement>) {
     const searchTerm = e.target.value;
     debouncedSearch(searchTerm);
-  };
+  }
 
   return {
     handleSearchInput,
   };
-};
+}

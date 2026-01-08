@@ -1,5 +1,5 @@
 "use client";
-import { ArrowDownNarrowWideIcon } from "lucide-react";
+import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import {
   Select,
   SelectContent,
@@ -8,10 +8,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
-import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
+import { ArrowDownNarrowWideIcon } from "lucide-react";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 
-export default function LibrarySortMenu(): React.ReactNode {
+export function LibrarySortMenu() {
   const { handleSortChange } = useLibrarySortMenu();
   return (
     <div className="flex items-center" data-testid="sort-by-dropdown">

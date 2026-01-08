@@ -9,7 +9,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { uploadAgentFormSchema } from "./LibraryUploadAgentDialog";
 
-export const useLibraryUploadAgentDialog = () => {
+export function useLibraryUploadAgentDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const [agentObject, setAgentObject] = useState<Graph | null>(null);
@@ -143,4 +143,4 @@ export const useLibraryUploadAgentDialog = () => {
     form,
     agentObject,
   };
-};
+}

@@ -1,15 +1,13 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import LibrarySortMenu from "../LibrarySortMenu/LibrarySortMenu";
+import { LibrarySortMenu } from "../LibrarySortMenu/LibrarySortMenu";
 
-interface LibraryActionSubHeaderProps {
+interface Props {
   agentCount: number;
 }
 
-export default function LibraryActionSubHeader({
-  agentCount,
-}: LibraryActionSubHeaderProps) {
+export function LibraryActionSubHeader({ agentCount }: Props) {
   return (
     <div className="flex items-baseline justify-between">
       <div className="flex items-baseline gap-4">

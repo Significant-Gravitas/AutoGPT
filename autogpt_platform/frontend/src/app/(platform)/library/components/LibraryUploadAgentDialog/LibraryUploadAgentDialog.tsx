@@ -20,7 +20,7 @@ export const uploadAgentFormSchema = z.object({
   agentDescription: z.string(),
 });
 
-export default function LibraryUploadAgentDialog(): React.ReactNode {
+export default function LibraryUploadAgentDialog() {
   const { onSubmit, isUploading, isOpen, setIsOpen, form, agentObject } =
     useLibraryUploadAgentDialog();
 

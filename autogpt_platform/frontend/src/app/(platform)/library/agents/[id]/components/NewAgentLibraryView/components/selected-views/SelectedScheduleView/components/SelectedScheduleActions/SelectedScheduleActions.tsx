@@ -6,10 +6,9 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { EyeIcon, TrashIcon } from "@phosphor-icons/react";
-import { useState } from "react";
-import { AgentActionsDropdown } from "../../AgentActionsDropdown";
-import { useScheduleDetailHeader } from "../../RunDetailHeader/useScheduleDetailHeader";
-import { SelectedActionsWrap } from "../../SelectedActionsWrap";
+import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
+import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
+import { useSelectedScheduleActions } from "./useSelectedScheduleActions";
 
 type Props = {
   agent: LibraryAgent;
@@ -22,15 +21,13 @@ export function SelectedScheduleActions({
   scheduleId,
   onDeleted,
 }: Props) {
-  const { openInBuilderHref, deleteSchedule, isDeleting } =
-    useScheduleDetailHeader(agent.graph_id, scheduleId, agent.graph_version);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-
-  function handleDelete() {
-    deleteSchedule();
-    setShowDeleteDialog(false);
-    onDeleted?.();
-  }
+  const {
+    openInBuilderHref,
+    showDeleteDialog,
+    setShowDeleteDialog,
+    handleDelete,
+    isDeleting,
+  } = useSelectedScheduleActions({ agent, scheduleId, onDeleted });
 
   return (
     <>

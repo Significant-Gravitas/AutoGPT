@@ -1,7 +1,7 @@
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { useLibraryPageContext } from "../state-provider";
 
-export const useLibrarySortMenu = () => {
+export function useLibrarySortMenu() {
   const { setLibrarySort } = useLibraryPageContext();
 
   const handleSortChange = (value: LibraryAgentSort) => {
@@ -24,4 +24,4 @@ export const useLibrarySortMenu = () => {
     handleSortChange,
     getSortLabel,
   };
-};
+}

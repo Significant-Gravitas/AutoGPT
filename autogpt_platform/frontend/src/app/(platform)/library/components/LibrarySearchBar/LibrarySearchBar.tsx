@@ -4,7 +4,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useLibrarySearchbar } from "./useLibrarySearchbar";
 
-export default function LibrarySearchBar(): React.ReactNode {
+export function LibrarySearchBar() {
   const { handleSearchInput } = useLibrarySearchbar();
 
   return (

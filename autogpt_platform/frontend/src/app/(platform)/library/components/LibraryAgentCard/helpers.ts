@@ -37,10 +37,10 @@ export function updateFavoriteInQueries({
             ...page,
             data: {
               ...page.data,
-              agents: page.data.agents.map((agent: LibraryAgent) =>
-                agent.id === agentId
-                  ? { ...agent, is_favorite: newIsFavorite }
-                  : agent,
+              agents: page.data.agents.map((currentAgent: LibraryAgent) =>
+                currentAgent.id === agentId
+                  ? { ...currentAgent, is_favorite: newIsFavorite }
+                  : currentAgent,
               ),
             },
           };
@@ -66,7 +66,7 @@ export function updateFavoriteInQueries({
           (page) =>
             page.status === 200 &&
             page.data.agents.some(
-              (agent: LibraryAgent) => agent.id === agentId,
+              (currentAgent: LibraryAgent) => currentAgent.id === agentId,
             ),
         );
 
@@ -117,19 +117,17 @@ export function updateFavoriteInQueries({
           }
         }
       } else {
-        let removedCount = 0;
         return {
           ...oldData,
           pages: oldData.pages.map((page) => {
             if (page.status !== 200) return page;
 
             const filteredAgents = page.data.agents.filter(
-              (agent: LibraryAgent) => agent.id !== agentId,
+              (currentAgent: LibraryAgent) => currentAgent.id !== agentId,
             );
 
-            if (filteredAgents.length < page.data.agents.length) {
-              removedCount = 1;
-            }
+            const removedCount =
+              filteredAgents.length < page.data.agents.length ? 1 : 0;
 
             return {
               ...page,

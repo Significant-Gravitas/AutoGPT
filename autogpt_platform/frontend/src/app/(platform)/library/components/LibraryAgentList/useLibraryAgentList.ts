@@ -1,16 +1,16 @@
 "use client";
 
+import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import {
   getPaginatedTotalCount,
   getPaginationNextPageNumber,
   unpaginate,
 } from "@/app/api/helpers";
-import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
-import { useLibraryPageContext } from "../state-provider";
 import { useLibraryAgentsStore } from "@/hooks/useLibraryAgents/store";
+import { useLibraryPageContext } from "../state-provider";
 import { getInitialData } from "./helpers";
 
-export const useLibraryAgentList = () => {
+export function useLibraryAgentList() {
   const { searchTerm, librarySort } = useLibraryPageContext();
   const { agents: cachedAgents } = useLibraryAgentsStore();
 
@@ -48,4 +48,4 @@ export const useLibraryAgentList = () => {
     isFetchingNextPage,
     fetchNextPage,
   };
-};
+}

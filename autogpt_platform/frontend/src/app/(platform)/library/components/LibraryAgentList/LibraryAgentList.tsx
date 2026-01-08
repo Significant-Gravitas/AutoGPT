@@ -1,7 +1,7 @@
 "use client";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import LibraryActionSubHeader from "../LibraryActionSubHeader/LibraryActionSubHeader";
-import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
+import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
+import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
 export function LibraryAgentList() {

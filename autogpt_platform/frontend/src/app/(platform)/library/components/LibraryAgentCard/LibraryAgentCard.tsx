@@ -15,11 +15,11 @@ import { AgentCardMenu } from "./components/AgentCardMenu";
 import { FavoriteButton } from "./components/FavoriteButton";
 import { useLibraryAgentCard } from "./useLibraryAgentCard";
 
-interface LibraryAgentCardProps {
+interface Props {
   agent: LibraryAgent;
 }
 
-export default function LibraryAgentCard({ agent }: LibraryAgentCardProps) {
+export function LibraryAgentCard({ agent }: Props) {
   const { id, name, graph_id, can_access_graph, image_url } = agent;
 
   const {

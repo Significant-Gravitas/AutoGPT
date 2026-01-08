@@ -11,11 +11,11 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { updateFavoriteInQueries } from "./helpers";
 
-interface UseLibraryAgentCardProps {
+interface Props {
   agent: LibraryAgent;
 }
 
-export function useLibraryAgentCard({ agent }: UseLibraryAgentCardProps) {
+export function useLibraryAgentCard({ agent }: Props) {
   const { id, name, is_favorite, creator_image_url, marketplace_listing } =
     agent;
 
