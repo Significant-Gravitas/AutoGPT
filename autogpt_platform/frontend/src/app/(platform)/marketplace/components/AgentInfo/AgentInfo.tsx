@@ -304,7 +304,7 @@ export const AgentInfo = ({
             </div>
           ) : (
             <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
-              Version {version}
+              Version {version}.0
             </div>
           )}
         </div>

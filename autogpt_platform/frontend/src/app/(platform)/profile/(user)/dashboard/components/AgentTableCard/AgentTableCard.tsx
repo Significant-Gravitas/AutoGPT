@@ -18,6 +18,7 @@ export interface AgentTableCardProps {
   runs: number;
   rating: number;
   id: number;
+  listing_id?: string;
   onViewSubmission: (submission: StoreSubmission) => void;
 }
 
@@ -32,11 +33,12 @@ export const AgentTableCard = ({
   status,
   runs,
   rating,
+  listing_id,
   onViewSubmission,
 }: AgentTableCardProps) => {
   const onView = () => {
     onViewSubmission({
-      listing_id: "", // TODO: Add listing_id to props if needed
+      listing_id: listing_id || "",
       agent_id,
       agent_version,
       slug: "",

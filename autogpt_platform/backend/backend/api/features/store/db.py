@@ -1705,20 +1705,12 @@ async def review_store_submission(
 
         # Convert to Pydantic model for consistency
         return store_model.StoreSubmission(
-            listing_id=(
-                submission.StoreListing.id
-                if hasattr(submission, "storeListing") and submission.StoreListing
-                else ""
-            ),
+            listing_id=(submission.StoreListing.id if submission.StoreListing else ""),
             agent_id=submission.agentGraphId,
             agent_version=submission.agentGraphVersion,
             name=submission.name,
             sub_heading=submission.subHeading,
-            slug=(
-                submission.StoreListing.slug
-                if hasattr(submission, "storeListing") and submission.StoreListing
-                else ""
-            ),
+            slug=(submission.StoreListing.slug if submission.StoreListing else ""),
             description=submission.description,
             instructions=submission.instructions,
             image_urls=submission.imageUrls or [],

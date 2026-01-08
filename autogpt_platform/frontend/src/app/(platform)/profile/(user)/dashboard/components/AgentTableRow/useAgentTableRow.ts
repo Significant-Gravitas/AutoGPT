@@ -84,9 +84,14 @@ export const useAgentTableRow = ({
   };
 
   const handleDelete = () => {
-    // Use store_listing_version_id to delete the specific submission/version
-    const submissionId = store_listing_version_id || listing_id || agent_id;
-    onDeleteSubmission(submissionId);
+    // Backend only accepts StoreListingVersion IDs for deletion
+    if (!store_listing_version_id) {
+      console.error(
+        "Cannot delete submission: store_listing_version_id is required",
+      );
+      return;
+    }
+    onDeleteSubmission(store_listing_version_id);
   };
 
   return { handleView, handleDelete, handleEdit };
