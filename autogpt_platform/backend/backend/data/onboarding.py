@@ -96,6 +96,7 @@ async def reset_user_onboarding(user_id: str):
 
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
+    # get_user_onboarding guarantees the record exists via upsert
     onboarding = await get_user_onboarding(user_id)
     if data.walletShown:
         update["walletShown"] = data.walletShown
@@ -114,26 +115,12 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
 
-    # Build create_input manually to avoid type issues with Prisma update types
-    create_input = UserOnboardingCreateInput(
-        userId=user_id,
-        walletShown=data.walletShown if data.walletShown else False,
-        notified=(
-            list(set(data.notified + onboarding.notified))
-            if data.notified is not None
-            else []
-        ),
-        usageReason=data.usageReason,
-        integrations=data.integrations if data.integrations is not None else [],
-        otherIntegrations=data.otherIntegrations,
-        selectedStoreListingVersionId=data.selectedStoreListingVersionId,
-        agentInput=SafeJson(data.agentInput) if data.agentInput is not None else None,
-        onboardingAgentExecutionId=data.onboardingAgentExecutionId,
-    )
+    # The create branch is never taken since get_user_onboarding ensures the record exists,
+    # but upsert requires a create payload so we provide a minimal one
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data=UserOnboardingUpsertInput(
-            create=create_input,
+            create=UserOnboardingCreateInput(userId=user_id),
             update=update,
         ),
     )
