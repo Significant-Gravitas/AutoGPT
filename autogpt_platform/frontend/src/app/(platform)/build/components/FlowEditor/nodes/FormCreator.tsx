@@ -3,7 +3,7 @@ import React from "react";
 import { uiSchema } from "./uiSchema";
 import { useNodeStore } from "../../../stores/nodeStore";
 import { BlockUIType } from "../../types";
-import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
+import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 
 export const FormCreator = React.memo(
   ({
