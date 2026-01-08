@@ -1,10 +1,11 @@
 import { debounce } from "lodash";
 import { useCallback, useEffect } from "react";
-import { useLibraryPageContext } from "../state-provider";
 
-export function useLibrarySearchbar() {
-  const { setSearchTerm } = useLibraryPageContext();
+interface Props {
+  setSearchTerm: (value: string) => void;
+}
 
+export function useLibrarySearchbar({ setSearchTerm }: Props) {
   const debouncedSearch = useCallback(
     debounce((value: string) => {
       setSearchTerm(value);

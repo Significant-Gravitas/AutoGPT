@@ -11,8 +11,12 @@ import {
 import { ArrowDownNarrowWideIcon } from "lucide-react";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 
-export function LibrarySortMenu() {
-  const { handleSortChange } = useLibrarySortMenu();
+interface Props {
+  setLibrarySort: (value: LibraryAgentSort) => void;
+}
+
+export function LibrarySortMenu({ setLibrarySort }: Props) {
+  const { handleSortChange } = useLibrarySortMenu({ setLibrarySort });
   return (
     <div className="flex items-center" data-testid="sort-by-dropdown">
       <span className="hidden whitespace-nowrap sm:inline">sort by</span>

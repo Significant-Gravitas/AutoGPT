@@ -1,11 +1,15 @@
-import LibrarySearchBar from "../LibrarySearchBar/LibrarySearchBar";
+import { LibrarySearchBar } from "../LibrarySearchBar/LibrarySearchBar";
 import LibraryUploadAgentDialog from "../LibraryUploadAgentDialog/LibraryUploadAgentDialog";
 
-export function LibraryActionHeader() {
+interface Props {
+  setSearchTerm: (value: string) => void;
+}
+
+export function LibraryActionHeader({ setSearchTerm }: Props) {
   return (
     <>
       <div className="mb-[32px] hidden items-center justify-center gap-4 md:flex">
-        <LibrarySearchBar />
+        <LibrarySearchBar setSearchTerm={setSearchTerm} />
         <LibraryUploadAgentDialog />
       </div>
 
@@ -16,7 +20,7 @@ export function LibraryActionHeader() {
         </div>
 
         <div className="flex items-center justify-center">
-          <LibrarySearchBar />
+          <LibrarySearchBar setSearchTerm={setSearchTerm} />
         </div>
       </div>
     </>

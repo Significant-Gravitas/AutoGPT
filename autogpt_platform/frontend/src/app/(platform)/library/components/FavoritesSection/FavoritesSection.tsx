@@ -6,7 +6,7 @@ import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteS
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { HeartIcon } from "@phosphor-icons/react";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
-import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
+import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 
 export function FavoritesSection() {
   const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);

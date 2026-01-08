@@ -4,8 +4,12 @@ import { Input } from "@/components/atoms/Input/Input";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useLibrarySearchbar } from "./useLibrarySearchbar";
 
-export function LibrarySearchBar() {
-  const { handleSearchInput } = useLibrarySearchbar();
+interface Props {
+  setSearchTerm: (value: string) => void;
+}
+
+export function LibrarySearchBar({ setSearchTerm }: Props) {
+  const { handleSearchInput } = useLibrarySearchbar({ setSearchTerm });
 
   return (
     <div

@@ -1,13 +1,15 @@
 "use client";
 
+import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { Text } from "@/components/atoms/Text/Text";
 import { LibrarySortMenu } from "../LibrarySortMenu/LibrarySortMenu";
 
 interface Props {
   agentCount: number;
+  setLibrarySort: (value: LibraryAgentSort) => void;
 }
 
-export function LibraryActionSubHeader({ agentCount }: Props) {
+export function LibraryActionSubHeader({ agentCount, setLibrarySort }: Props) {
   return (
     <div className="flex items-baseline justify-between">
       <div className="flex items-baseline gap-4">
@@ -20,7 +22,7 @@ export function LibraryActionSubHeader({ agentCount }: Props) {
           {agentCount}
         </Text>
       </div>
-      <LibrarySortMenu />
+      <LibrarySortMenu setLibrarySort={setLibrarySort} />
     </div>
   );
 }
