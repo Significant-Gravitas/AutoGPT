@@ -16,6 +16,7 @@ import type {
   APIKeyPermission,
   Block,
   CreateAPIKeyResponse,
+  CreateOAuthAppRequest,
   CreatorDetails,
   CreatorsResponse,
   Credentials,
@@ -47,10 +48,14 @@ import type {
   NodeExecutionResult,
   NotificationPreference,
   NotificationPreferenceDTO,
+  OAuthApplication,
+  OAuthApplicationCreationResult,
+  OAuthAppsListResponse,
   OttoQuery,
   OttoResponse,
   ProfileDetails,
   RefundRequest,
+  RegenerateSecretResponse,
   ReviewSubmissionRequest,
   Schedule,
   ScheduleCreatable,
@@ -64,6 +69,7 @@ import type {
   StoreSubmissionsResponse,
   SubmissionStatus,
   TransactionHistory,
+  UpdateOAuthAppRequest,
   User,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
@@ -614,6 +620,43 @@ export default class BackendAPI {
     const url = `/store/admin/submissions/download/${storeListingVersionId}`;
 
     return this._get(url);
+  }
+
+  /////////////////////////////////////////
+  //////// OAuth Admin API ////////////////
+  /////////////////////////////////////////
+
+  getOAuthApps(params?: {
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<OAuthAppsListResponse> {
+    return this._get("/oauth/admin/apps", params);
+  }
+
+  getOAuthApp(appId: string): Promise<OAuthApplication> {
+    return this._get(`/oauth/admin/apps/${appId}`);
+  }
+
+  createOAuthApp(
+    request: CreateOAuthAppRequest,
+  ): Promise<OAuthApplicationCreationResult> {
+    return this._request("POST", "/oauth/admin/apps", request);
+  }
+
+  updateOAuthApp(
+    appId: string,
+    request: UpdateOAuthAppRequest,
+  ): Promise<OAuthApplication> {
+    return this._request("PATCH", `/oauth/admin/apps/${appId}`, request);
+  }
+
+  deleteOAuthApp(appId: string): Promise<void> {
+    return this._request("DELETE", `/oauth/admin/apps/${appId}`);
+  }
+
+  regenerateOAuthSecret(appId: string): Promise<RegenerateSecretResponse> {
+    return this._request("POST", `/oauth/admin/apps/${appId}/regenerate-secret`);
   }
 
   ////////////////////////////////////////

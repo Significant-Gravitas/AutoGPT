@@ -870,3 +870,213 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
         logger.info(f"Cleaned up {total} expired OAuth tokens: {deleted}")
 
     return deleted
+
+
+# ============================================================================
+# Admin Functions for OAuth Application Management
+# ============================================================================
+
+
+def generate_client_id() -> str:
+    """Generate a unique client ID"""
+    return f"agpt_client_{secrets.token_urlsafe(16)}"
+
+
+def generate_client_secret() -> tuple[str, str, str]:
+    """
+    Generate a client secret with its hash and salt.
+    Returns (plaintext_secret, hashed_secret, salt)
+    """
+    # Generate a secure random secret (32 bytes = 256 bits of entropy)
+    plaintext = f"agpt_secret_{secrets.token_urlsafe(32)}"
+
+    # Hash using Scrypt (same as API keys)
+    hashed, salt = keysmith.hash_key(plaintext)
+
+    return plaintext, hashed, salt
+
+
+class OAuthApplicationCreationResult(BaseModel):
+    """Result of creating an OAuth application (includes plaintext secret)"""
+
+    application: OAuthApplicationInfo
+    client_secret_plaintext: str = Field(
+        description="Plaintext client secret - shown only once"
+    )
+
+
+async def list_all_oauth_applications(
+    page: int = 1,
+    page_size: int = 20,
+    search: Optional[str] = None,
+) -> tuple[list[OAuthApplicationInfo], int]:
+    """
+    List all OAuth applications (admin function).
+
+    Returns a tuple of (applications, total_count).
+    """
+    where_clause = {}
+    if search:
+        where_clause["OR"] = [
+            {"name": {"contains": search, "mode": "insensitive"}},
+            {"clientId": {"contains": search, "mode": "insensitive"}},
+            {"description": {"contains": search, "mode": "insensitive"}},
+        ]
+
+    total = await PrismaOAuthApplication.prisma().count(where=where_clause)
+
+    apps = await PrismaOAuthApplication.prisma().find_many(
+        where=where_clause,
+        order={"createdAt": "desc"},
+        skip=(page - 1) * page_size,
+        take=page_size,
+    )
+
+    return [OAuthApplicationInfo.from_db(app) for app in apps], total
+
+
+async def create_oauth_application(
+    name: str,
+    redirect_uris: list[str],
+    scopes: list[APIPermission],
+    owner_id: str,
+    description: Optional[str] = None,
+    grant_types: Optional[list[str]] = None,
+) -> OAuthApplicationCreationResult:
+    """
+    Create a new OAuth application.
+
+    Returns the created application info along with the plaintext client secret
+    (which is only available at creation time).
+    """
+    if grant_types is None:
+        grant_types = ["authorization_code", "refresh_token"]
+
+    # Generate credentials
+    app_id = str(uuid.uuid4())
+    client_id = generate_client_id()
+    client_secret_plaintext, client_secret_hash, client_secret_salt = (
+        generate_client_secret()
+    )
+
+    # Create in database
+    app = await PrismaOAuthApplication.prisma().create(
+        data={
+            "id": app_id,
+            "name": name,
+            "description": description,
+            "clientId": client_id,
+            "clientSecret": client_secret_hash,
+            "clientSecretSalt": client_secret_salt,
+            "redirectUris": redirect_uris,
+            "grantTypes": grant_types,
+            "scopes": [s.value for s in scopes],
+            "ownerId": owner_id,
+            "isActive": True,
+        }
+    )
+
+    logger.info(f"Created OAuth application: {name} (#{app_id}) for user #{owner_id}")
+
+    return OAuthApplicationCreationResult(
+        application=OAuthApplicationInfo.from_db(app),
+        client_secret_plaintext=client_secret_plaintext,
+    )
+
+
+async def admin_update_oauth_application(
+    app_id: str,
+    *,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    redirect_uris: Optional[list[str]] = None,
+    scopes: Optional[list[APIPermission]] = None,
+    is_active: Optional[bool] = None,
+    logo_url: Optional[str] = None,
+) -> Optional[OAuthApplicationInfo]:
+    """
+    Update an OAuth application (admin function - can update any app).
+
+    Returns the updated app info, or None if app not found.
+    """
+    from prisma.types import OAuthApplicationUpdateInput
+
+    app = await PrismaOAuthApplication.prisma().find_unique(where={"id": app_id})
+    if not app:
+        return None
+
+    patch: OAuthApplicationUpdateInput = {}
+    if name is not None:
+        patch["name"] = name
+    if description is not None:
+        patch["description"] = description
+    if redirect_uris is not None:
+        patch["redirectUris"] = redirect_uris
+    if scopes is not None:
+        patch["scopes"] = [s.value for s in scopes]
+    if is_active is not None:
+        patch["isActive"] = is_active
+    if logo_url is not None:
+        patch["logoUrl"] = logo_url
+
+    if not patch:
+        return OAuthApplicationInfo.from_db(app)  # return unchanged
+
+    updated_app = await PrismaOAuthApplication.prisma().update(
+        where={"id": app_id},
+        data=patch,
+    )
+    return OAuthApplicationInfo.from_db(updated_app) if updated_app else None
+
+
+async def delete_oauth_application(app_id: str) -> bool:
+    """
+    Delete an OAuth application and all its associated tokens.
+
+    Returns True if the application was deleted, False if not found.
+    """
+    app = await PrismaOAuthApplication.prisma().find_unique(where={"id": app_id})
+    if not app:
+        return False
+
+    # Delete associated tokens first (cascading deletes should handle this,
+    # but let's be explicit)
+    await PrismaOAuthAuthorizationCode.prisma().delete_many(
+        where={"applicationId": app_id}
+    )
+    await PrismaOAuthAccessToken.prisma().delete_many(where={"applicationId": app_id})
+    await PrismaOAuthRefreshToken.prisma().delete_many(where={"applicationId": app_id})
+
+    # Delete the application
+    await PrismaOAuthApplication.prisma().delete(where={"id": app_id})
+
+    logger.info(f"Deleted OAuth application: {app.name} (#{app_id})")
+    return True
+
+
+async def regenerate_client_secret(app_id: str) -> Optional[str]:
+    """
+    Regenerate the client secret for an OAuth application.
+
+    Returns the new plaintext client secret, or None if app not found.
+    """
+    app = await PrismaOAuthApplication.prisma().find_unique(where={"id": app_id})
+    if not app:
+        return None
+
+    # Generate new credentials
+    client_secret_plaintext, client_secret_hash, client_secret_salt = (
+        generate_client_secret()
+    )
+
+    # Update in database
+    await PrismaOAuthApplication.prisma().update(
+        where={"id": app_id},
+        data={
+            "clientSecret": client_secret_hash,
+            "clientSecretSalt": client_secret_salt,
+        },
+    )
+
+    logger.info(f"Regenerated client secret for OAuth application: #{app_id}")
+    return client_secret_plaintext

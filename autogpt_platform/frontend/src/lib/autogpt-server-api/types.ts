@@ -1102,6 +1102,57 @@ export type AddUserCreditsResponse = {
   new_balance: number;
   transaction_key: string;
 };
+
+// OAuth Application Types
+
+export type OAuthApplication = {
+  id: string;
+  name: string;
+  description: string | null;
+  logo_url: string | null;
+  client_id: string;
+  redirect_uris: string[];
+  grant_types: string[];
+  scopes: string[];
+  owner_id: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OAuthApplicationCreationResult = {
+  application: OAuthApplication;
+  client_secret_plaintext: string;
+};
+
+export type OAuthAppsListResponse = {
+  applications: OAuthApplication[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
+export type CreateOAuthAppRequest = {
+  name: string;
+  description?: string;
+  redirect_uris: string[];
+  scopes: string[];
+  grant_types?: string[];
+  owner_id: string;
+};
+
+export type UpdateOAuthAppRequest = {
+  name?: string;
+  description?: string;
+  redirect_uris?: string[];
+  scopes?: string[];
+  is_active?: boolean;
+};
+
+export type RegenerateSecretResponse = {
+  client_secret: string;
+};
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

@@ -18,6 +18,7 @@ from prisma.errors import PrismaError
 
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.oauth_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -318,6 +319,11 @@ app.include_router(
 app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
+    prefix="/api/oauth",
+)
+app.include_router(
+    backend.api.features.admin.oauth_admin_routes.router,
+    tags=["v2", "admin", "oauth"],
     prefix="/api/oauth",
 )
 
