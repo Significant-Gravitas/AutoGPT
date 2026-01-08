@@ -119,12 +119,58 @@ async def list_library_agents(
             f"Retrieved {len(library_agents)} library agents for user #{user_id}"
         )
 
+        # Batch fetch StoreListings for all agents' graphs
+        graph_ids = {agent.agentGraphId for agent in library_agents if agent.AgentGraph}
+        store_listings_map: dict[str, prisma.models.StoreListing] = {}
+        profiles_map: dict[str, prisma.models.Profile] = {}
+
+        if graph_ids:
+            store_listings = await prisma.models.StoreListing.prisma().find_many(
+                where={
+                    "agentGraphId": {"in": list(graph_ids)},
+                    "isDeleted": False,
+                    "hasApprovedVersion": True,
+                },
+                include={"ActiveVersion": True},
+            )
+
+            # Build map of graph_id -> StoreListing
+            for listing in store_listings:
+                if listing.agentGraphId:
+                    store_listings_map[listing.agentGraphId] = listing
+
+            # Fetch profiles for store listing owners
+            owning_user_ids = {
+                listing.owningUserId
+                for listing in store_listings_map.values()
+                if listing.owningUserId
+            }
+            if owning_user_ids:
+                profiles = await prisma.models.Profile.prisma().find_many(
+                    where={"userId": {"in": list(owning_user_ids)}}
+                )
+                profiles_map = {profile.userId: profile for profile in profiles}
+
         # Only pass valid agents to the response
         valid_library_agents: list[library_model.LibraryAgent] = []
 
         for agent in library_agents:
             try:
-                library_agent = library_model.LibraryAgent.from_db(agent)
+                # Get store listing and profile for this agent's graph
+                store_listing = None
+                profile = None
+                if agent.AgentGraph and agent.agentGraphId in store_listings_map:
+                    store_listing = store_listings_map[agent.agentGraphId]
+                    if (
+                        store_listing
+                        and store_listing.owningUserId
+                        and store_listing.owningUserId in profiles_map
+                    ):
+                        profile = profiles_map[store_listing.owningUserId]
+
+                library_agent = library_model.LibraryAgent.from_db(
+                    agent, store_listing=store_listing, profile=profile
+                )
                 valid_library_agents.append(library_agent)
             except Exception as e:
                 # Skip this agent if there was an error
@@ -205,12 +251,58 @@ async def list_favorite_library_agents(
             f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
         )
 
+        # Batch fetch StoreListings for all agents' graphs
+        graph_ids = {agent.agentGraphId for agent in library_agents if agent.AgentGraph}
+        store_listings_map: dict[str, prisma.models.StoreListing] = {}
+        profiles_map: dict[str, prisma.models.Profile] = {}
+
+        if graph_ids:
+            store_listings = await prisma.models.StoreListing.prisma().find_many(
+                where={
+                    "agentGraphId": {"in": list(graph_ids)},
+                    "isDeleted": False,
+                    "hasApprovedVersion": True,
+                },
+                include={"ActiveVersion": True},
+            )
+
+            # Build map of graph_id -> StoreListing
+            for listing in store_listings:
+                if listing.agentGraphId:
+                    store_listings_map[listing.agentGraphId] = listing
+
+            # Fetch profiles for store listing owners
+            owning_user_ids = {
+                listing.owningUserId
+                for listing in store_listings_map.values()
+                if listing.owningUserId
+            }
+            if owning_user_ids:
+                profiles = await prisma.models.Profile.prisma().find_many(
+                    where={"userId": {"in": list(owning_user_ids)}}
+                )
+                profiles_map = {profile.userId: profile for profile in profiles}
+
         # Only pass valid agents to the response
         valid_library_agents: list[library_model.LibraryAgent] = []
 
         for agent in library_agents:
             try:
-                library_agent = library_model.LibraryAgent.from_db(agent)
+                # Get store listing and profile for this agent's graph
+                store_listing = None
+                profile = None
+                if agent.AgentGraph and agent.agentGraphId in store_listings_map:
+                    store_listing = store_listings_map[agent.agentGraphId]
+                    if (
+                        store_listing
+                        and store_listing.owningUserId
+                        and store_listing.owningUserId in profiles_map
+                    ):
+                        profile = profiles_map[store_listing.owningUserId]
+
+                library_agent = library_model.LibraryAgent.from_db(
+                    agent, store_listing=store_listing, profile=profile
+                )
                 valid_library_agents.append(library_agent)
             except Exception as e:
                 # Skip this agent if there was an error
