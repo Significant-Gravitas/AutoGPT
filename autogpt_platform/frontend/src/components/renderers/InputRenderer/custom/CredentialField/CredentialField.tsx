@@ -87,6 +87,7 @@ export const CredentialsField = (props: FieldProps) => {
         siblingInputs={hardcodedValues}
         showTitle={false}
         readOnly={formContext?.readOnly}
+        isOptional={!isRequired}
       />
 
       {/* Optional credentials toggle - only show in builder canvas, not run dialogs */}
