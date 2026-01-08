@@ -1,17 +1,25 @@
 "use client";
 
 import { getV1GetGraphVersion } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV2ListLibraryAgentsQueryKey,
+  useDeleteV2DeleteLibraryAgent,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ShowMoreText } from "@/components/molecules/ShowMoreText/ShowMoreText";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { exportAsJSONFile } from "@/lib/utils";
 import { formatDate } from "@/lib/utils/time";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
 import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
@@ -30,6 +38,41 @@ export function EmptyTasks({
   onScheduleCreated,
 }: Props) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeletingAgent, setIsDeletingAgent] = useState(false);
+
+  const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
+
+  async function handleDeleteAgent() {
+    if (!agent.id) return;
+
+    setIsDeletingAgent(true);
+
+    try {
+      await deleteAgent({ libraryAgentId: agent.id });
+
+      await queryClient.refetchQueries({
+        queryKey: getGetV2ListLibraryAgentsQueryKey(),
+      });
+
+      toast({ title: "Agent deleted" });
+      setShowDeleteDialog(false);
+      router.push("/library");
+    } catch (error: unknown) {
+      toast({
+        title: "Failed to delete agent",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingAgent(false);
+    }
+  }
 
   async function handleExport() {
     try {
@@ -147,9 +190,50 @@ export function EmptyTasks({
             <Button variant="secondary" size="small" onClick={handleExport}>
               Export agent to file
             </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              Delete agent
+            </Button>
           </div>
         </div>
       </div>
+
+      <Dialog
+        controlled={{
+          isOpen: showDeleteDialog,
+          set: setShowDeleteDialog,
+        }}
+        styling={{ maxWidth: "32rem" }}
+        title="Delete agent"
+      >
+        <Dialog.Content>
+          <div>
+            <Text variant="large">
+              Are you sure you want to delete this agent? This action cannot be
+              undone.
+            </Text>
+            <Dialog.Footer>
+              <Button
+                variant="secondary"
+                disabled={isDeletingAgent}
+                onClick={() => setShowDeleteDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteAgent}
+                loading={isDeletingAgent}
+              >
+                Delete Agent
+              </Button>
+            </Dialog.Footer>
+          </div>
+        </Dialog.Content>
+      </Dialog>
     </div>
   );
 }
