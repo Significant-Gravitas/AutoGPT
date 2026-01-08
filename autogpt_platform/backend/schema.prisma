@@ -53,6 +53,7 @@ model User {
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
+  BusinessUnderstanding UserBusinessUnderstanding?
   BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
@@ -121,17 +122,107 @@ model UserOnboarding {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model UserBusinessUnderstanding {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // User info
+  userName String?
+  jobTitle String?
+
+  // Business basics (string columns)
+  businessName String?
+  industry     String?
+  businessSize String? // "1-10", "11-50", "51-200", "201-1000", "1000+"
+  userRole     String? // Role in organization context (e.g., "decision maker", "implementer")
+
+  // Processes & activities (JSON arrays)
+  keyWorkflows    Json?
+  dailyActivities Json?
+
+  // Pain points & goals (JSON arrays)
+  painPoints      Json?
+  bottlenecks     Json?
+  manualTasks     Json?
+  automationGoals Json?
+
+  // Current tools (JSON arrays)
+  currentSoftware    Json?
+  existingAutomation Json?
+
+  additionalNotes String?
+
+  @@index([userId])
+}
+
 model BuilderSearchHistory {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
   searchQuery String
-  filter      String[]  @default([])
-  byCreator   String[]  @default([])
+  filter      String[] @default([])
+  byCreator   String[] @default([])
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////   CHAT SESSION TABLES   ///////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String?
+
+  // Session metadata
+  title       String?
+  credentials Json    @default("{}") // Map of provider -> credential metadata
+
+  // Rate limiting counters (stored as JSON maps)
+  successfulAgentRuns      Json @default("{}") // Map of graph_id -> count
+  successfulAgentSchedules Json @default("{}") // Map of graph_id -> count
+
+  // Usage tracking
+  totalPromptTokens     Int @default(0)
+  totalCompletionTokens Int @default(0)
+
+  Messages ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  sessionId String
+  Session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Message content
+  role         String // "user", "assistant", "system", "tool", "function"
+  content      String?
+  name         String?
+  toolCallId   String?
+  refusal      String?
+  toolCalls    Json? // List of tool calls for assistant messages
+  functionCall Json? // Deprecated but kept for compatibility
+
+  // Ordering within session
+  sequence Int
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, sequence])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -721,26 +812,26 @@ view StoreAgent {
   storeListingVersionId String
   updated_at            DateTime
 
-  slug                String
-  agent_name          String
-  agent_video         String?
-  agent_output_demo   String?
-  agent_image         String[]
+  slug              String
+  agent_name        String
+  agent_video       String?
+  agent_output_demo String?
+  agent_image       String[]
 
-  featured         Boolean                  @default(false)
-  creator_username String?
-  creator_avatar   String?
-  sub_heading      String
-  description      String
-  categories       String[]
-  search           Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
-  runs                Int
-  rating              Float
-  versions            String[]
-  agentGraphVersions  String[]
-  agentGraphId        String
-  is_available        Boolean                  @default(true)
-  useForOnboarding    Boolean                  @default(false)
+  featured           Boolean                  @default(false)
+  creator_username   String?
+  creator_avatar     String?
+  sub_heading        String
+  description        String
+  categories         String[]
+  search             Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+  runs               Int
+  rating             Float
+  versions           String[]
+  agentGraphVersions String[]
+  agentGraphId       String
+  is_available       Boolean                  @default(true)
+  useForOnboarding   Boolean                  @default(false)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -856,14 +947,14 @@ model StoreListingVersion {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // Content fields
-  name                String
-  subHeading          String
-  videoUrl            String?
-  agentOutputDemoUrl  String?
-  imageUrls           String[]
-  description         String
-  instructions        String?
-  categories          String[]
+  name               String
+  subHeading         String
+  videoUrl           String?
+  agentOutputDemoUrl String?
+  imageUrls          String[]
+  description        String
+  instructions       String?
+  categories         String[]
 
   isFeatured Boolean @default(false)
 
@@ -899,7 +990,6 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
-  @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
@@ -998,16 +1088,16 @@ model OAuthApplication {
   updatedAt DateTime @updatedAt
 
   // Application metadata
-  name               String
-  description        String?
-  logoUrl            String? // URL to app logo stored in GCS
-  clientId           String @unique
-  clientSecret       String // Hashed with Scrypt (same as API keys)
-  clientSecretSalt   String // Salt for Scrypt hashing
+  name             String
+  description      String?
+  logoUrl          String? // URL to app logo stored in GCS
+  clientId         String  @unique
+  clientSecret     String // Hashed with Scrypt (same as API keys)
+  clientSecretSalt String // Salt for Scrypt hashing
 
   // OAuth configuration
   redirectUris String[] // Allowed callback URLs
-  grantTypes   String[] @default(["authorization_code", "refresh_token"])
+  grantTypes   String[]           @default(["authorization_code", "refresh_token"])
   scopes       APIKeyPermission[] // Which permissions the app can request
 
   // Application management

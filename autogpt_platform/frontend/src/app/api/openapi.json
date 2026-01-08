@@ -939,12 +939,12 @@
         }
       }
     },
-    "/api/chat/sessions": {
+    "/api/chat/onboarding/sessions": {
       "post": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
-        "operationId": "postV2CreateSession",
+        "summary": "Create Onboarding Session",
+        "description": "Create a new onboarding chat session.\n\nInitiates a new chat session specifically for user onboarding,\nusing a specialized prompt that guides users through their first\nexperience with AutoGPT.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT.\n\nReturns:\n    CreateSessionResponse: Details of the created onboarding session.",
+        "operationId": "postV2CreateOnboardingSession",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -961,6 +961,167 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/onboarding/sessions/{session_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Onboarding Session",
+        "description": "Retrieve the details of an onboarding chat session.\n\nArgs:\n    session_id: The unique identifier for the onboarding session.\n    user_id: The optional authenticated user ID.\n\nReturns:\n    SessionDetailResponse: Details for the requested session.",
+        "operationId": "getV2GetOnboardingSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/onboarding/sessions/{session_id}/stream": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Onboarding Chat",
+        "description": "Stream onboarding chat responses for a session.\n\nUses the specialized onboarding system prompt to guide new users\nthrough their first experience with AutoGPT. Streams AI responses\nin real time over Server-Sent Events (SSE).\n\nArgs:\n    session_id: The onboarding session identifier.\n    request: Request body containing message and optional context.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "postV2StreamOnboardingChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StreamChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/sessions": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Sessions",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nordered by most recently updated.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "operationId": "getV2ListSessions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Create Session",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for either an authenticated or anonymous user.\n\nArgs:\n    user_id: The optional authenticated user ID parsed from the JWT. If missing, creates an anonymous session.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "operationId": "postV2CreateSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
       }
     },
     "/api/chat/sessions/{session_id}": {
@@ -1048,9 +1209,9 @@
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
         "tags": ["v2", "chat", "chat"],
-        "summary": "Stream Chat",
-        "description": "Stream chat responses for a session.\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
-        "operationId": "getV2StreamChat",
+        "summary": "Stream Chat Get",
+        "description": "Stream chat responses for a session (GET - legacy endpoint).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    message: The user's new message to process.\n    user_id: Optional authenticated user ID.\n    is_user_message: Whether the message is a user message.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "getV2StreamChatGet",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -1081,6 +1242,46 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Stream Chat Post",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "operationId": "postV2StreamChatPost",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StreamChatRequest" }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8017,6 +8218,20 @@
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
+      "ListSessionsResponse": {
+        "properties": {
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["sessions", "total"],
+        "title": "ListSessionsResponse",
+        "description": "Response model for listing chat sessions."
+      },
       "LogRawMetricRequest": {
         "properties": {
           "metric_name": {
@@ -9346,6 +9561,21 @@
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
       },
+      "SessionSummaryResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": { "type": "string", "title": "Created At" },
+          "updated_at": { "type": "string", "title": "Updated At" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "updated_at"],
+        "title": "SessionSummaryResponse",
+        "description": "Response model for a session summary (without messages)."
+      },
       "SetGraphActiveVersion": {
         "properties": {
           "active_graph_version": {
@@ -9884,6 +10114,30 @@
         "type": "object",
         "required": ["submissions", "pagination"],
         "title": "StoreSubmissionsResponse"
+      },
+      "StreamChatRequest": {
+        "properties": {
+          "message": { "type": "string", "title": "Message" },
+          "is_user_message": {
+            "type": "boolean",
+            "title": "Is User Message",
+            "default": true
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "StreamChatRequest",
+        "description": "Request model for streaming chat with optional context."
       },
       "SubmissionStatus": {
         "type": "string",
