@@ -76,12 +76,18 @@ export const useRunInputDialog = ({
   }, [credentialsSchema]);
 
   const handleManualRun = async () => {
+    // Filter out incomplete credentials (those without a valid id)
+    // RJSF auto-populates const values (provider, type) but not id field
+    const validCredentials = Object.fromEntries(
+      Object.entries(credentialValues).filter(([_, cred]) => cred && cred.id),
+    );
+
     await executeGraph({
       graphId: flowID ?? "",
       graphVersion: flowVersion || null,
       data: {
         inputs: inputValues,
-        credentials_inputs: credentialValues,
+        credentials_inputs: validCredentials,
         source: "builder",
       },
     });

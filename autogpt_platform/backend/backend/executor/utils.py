@@ -275,7 +275,12 @@ async def _validate_node_input_credentials(
                 ):
                     field_value = node_input_mask[field_name]
                 elif field_name in node.input_default:
-                    field_value = node.input_default[field_name]
+                    # For optional credentials, don't use input_default - treat as missing
+                    # This prevents stale credential IDs from failing validation
+                    if node.credentials_optional:
+                        field_value = None
+                    else:
+                        field_value = node.input_default[field_name]
 
                 # Check if credentials are missing (None, empty, or not present)
                 if field_value is None or (
@@ -554,11 +559,13 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input, nodes_to_skip = await _construct_starting_node_execution_input(
-        graph=graph,
-        user_id=user_id,
-        graph_inputs=graph_inputs,
-        nodes_input_masks=nodes_input_masks,
+    starting_nodes_input, nodes_to_skip = (
+        await _construct_starting_node_execution_input(
+            graph=graph,
+            user_id=user_id,
+            graph_inputs=graph_inputs,
+            nodes_input_masks=nodes_input_masks,
+        )
     )
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip

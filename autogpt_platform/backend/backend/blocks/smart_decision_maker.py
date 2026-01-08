@@ -603,9 +603,25 @@ class SmartDecisionMakerBlock(Block):
         graph_exec_id: str,
         node_exec_id: str,
         user_id: str,
+        nodes_to_skip: set[str] | None = None,
         **kwargs,
     ) -> BlockOutput:
         tool_functions = await self._create_tool_node_signatures(node_id)
+
+        # Filter out tools for nodes that should be skipped (e.g., missing optional credentials)
+        if nodes_to_skip:
+            tool_functions = [
+                tf
+                for tf in tool_functions
+                if tf.get("function", {}).get("_sink_node_id") not in nodes_to_skip
+            ]
+
+        if not tool_functions:
+            raise ValueError(
+                "No available tools to execute - all downstream nodes are unavailable "
+                "(possibly due to missing optional credentials)"
+            )
+
         yield "tool_functions", json.dumps(tool_functions)
 
         conversation_history = input_data.conversation_history or []

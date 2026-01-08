@@ -2,6 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AutoGPT Agent Server",
+    "summary": "AutoGPT Agent Server",
     "description": "This server is used to execute agents that are created by the AutoGPT system.",
     "version": "0.1"
   },
@@ -5477,6 +5478,7 @@
       "APIKeyPermission": {
         "type": "string",
         "enum": [
+          "IDENTITY",
           "EXECUTE_GRAPH",
           "READ_GRAPH",
           "EXECUTE_BLOCK",

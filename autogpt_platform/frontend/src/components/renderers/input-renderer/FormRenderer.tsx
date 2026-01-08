@@ -13,6 +13,7 @@ type FormContextType = {
   uiType?: BlockUIType;
   showHandles?: boolean;
   size?: "small" | "medium" | "large";
+  showOptionalToggle?: boolean;
 };
 
 type FormRendererProps = {

@@ -22,6 +22,8 @@ export const CredentialsField = (props: FieldProps) => {
   } = props;
 
   const nodeId = formContext.nodeId;
+  // Only show the optional toggle when editing blocks in the builder canvas
+  const showOptionalToggle = formContext.showOptionalToggle !== false && nodeId;
 
   const { credentialsOptional, setCredentialsOptional } = useNodeStore(
     useShallow((state) => ({
@@ -72,7 +74,9 @@ export const CredentialsField = (props: FieldProps) => {
           disabled={false}
           label="Credential"
           placeholder={
-            credentialsOptional ? "Select credential (optional)" : "Select credential"
+            credentialsOptional
+              ? "Select credential (optional)"
+              : "Select credential"
           }
         />
       )}
@@ -99,20 +103,24 @@ export const CredentialsField = (props: FieldProps) => {
         )}
       </div>
 
-      {/* Optional credentials toggle */}
-      <div className="flex items-center gap-2 mt-1">
-        <Switch
-          id={`credentials-optional-${nodeId}`}
-          checked={credentialsOptional}
-          onCheckedChange={(checked) => setCredentialsOptional(nodeId, checked)}
-        />
-        <label
-          htmlFor={`credentials-optional-${nodeId}`}
-          className="text-xs text-gray-500 cursor-pointer"
-        >
-          Optional - skip block if not configured
-        </label>
-      </div>
+      {/* Optional credentials toggle - only show in builder canvas, not run dialogs */}
+      {showOptionalToggle && (
+        <div className="mt-1 flex items-center gap-2">
+          <Switch
+            id={`credentials-optional-${nodeId}`}
+            checked={credentialsOptional}
+            onCheckedChange={(checked) =>
+              setCredentialsOptional(nodeId, checked)
+            }
+          />
+          <label
+            htmlFor={`credentials-optional-${nodeId}`}
+            className="cursor-pointer text-xs text-gray-500"
+          >
+            Optional - skip block if not configured
+          </label>
+        </div>
+      )}
     </div>
   );
 };
