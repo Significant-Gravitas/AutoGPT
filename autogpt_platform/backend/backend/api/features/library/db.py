@@ -489,7 +489,7 @@ async def update_agent_version_in_library(
     agent_graph_version: int,
 ) -> library_model.LibraryAgent:
     """
-    Updates the agent version in the library if useGraphIsActiveVersion is True.
+    Updates the agent version in the library for any agent owned by the user.
 
     Args:
         user_id: Owner of the LibraryAgent.
@@ -498,6 +498,7 @@ async def update_agent_version_in_library(
 
     Raises:
         DatabaseError: If there's an error with the update.
+        NotFoundError: If no library agent is found for this user and agent.
     """
     logger.debug(
         f"Updating agent version in library for user #{user_id}, "
@@ -508,7 +509,6 @@ async def update_agent_version_in_library(
             where={
                 "userId": user_id,
                 "agentGraphId": agent_graph_id,
-                "useGraphIsActiveVersion": True,
             },
         )
         lib = await prisma.models.LibraryAgent.prisma().update(
@@ -825,6 +825,7 @@ async def add_store_agent_to_library(
                     }
                 },
                 "isCreatedByUser": False,
+                "useGraphIsActiveVersion": False,
                 "settings": SafeJson(
                     _initialize_graph_settings(graph_model).model_dump()
                 ),
