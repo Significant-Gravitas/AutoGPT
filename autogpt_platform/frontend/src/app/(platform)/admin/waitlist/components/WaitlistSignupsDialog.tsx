@@ -19,7 +19,6 @@ import {
 } from "@/components/__legacy__/ui/table";
 import {
   getWaitlistSignups,
-  type WaitlistSignup,
   type WaitlistSignupListResponse,
 } from "../actions";
 import { useToast } from "@/components/molecules/Toast/use-toast";

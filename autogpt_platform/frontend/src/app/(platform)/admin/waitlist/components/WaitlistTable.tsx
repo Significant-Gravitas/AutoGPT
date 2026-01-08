@@ -149,7 +149,7 @@ export function WaitlistTable() {
                   <div className="flex gap-2">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="small"
                       onClick={() => setViewingSignups(waitlist.id)}
                       title="View signups"
                     >
@@ -157,7 +157,7 @@ export function WaitlistTable() {
                     </Button>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="small"
                       onClick={() => setEditingWaitlist(waitlist)}
                       title="Edit"
                     >
@@ -165,7 +165,7 @@ export function WaitlistTable() {
                     </Button>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="small"
                       onClick={() => handleDelete(waitlist.id)}
                       title="Delete"
                     >
