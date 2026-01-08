@@ -17,14 +17,12 @@ export function generateUiSchemaForCustomFields(
         const customFieldId = findCustomFieldId(propSchema);
 
         if (customFieldId) {
-          // Set ui:field to route to the custom field component
           uiSchema[key] = {
             ...(uiSchema[key] as object),
             "ui:field": customFieldId,
           };
         }
 
-        // Recursively handle nested objects
         if (
           propSchema.type === "object" &&
           propSchema.properties &&
@@ -40,7 +38,6 @@ export function generateUiSchemaForCustomFields(
           };
         }
 
-        // Handle array items
         if (propSchema.type === "array" && propSchema.items) {
           const itemsSchema = propSchema.items as RJSFSchema;
           if (itemsSchema && typeof itemsSchema === "object") {
@@ -53,7 +50,6 @@ export function generateUiSchemaForCustomFields(
                 },
               };
             } else if (itemsSchema.properties) {
-              // Recursively handle array item properties
               const itemsUiSchema = generateUiSchemaForCustomFields(
                 itemsSchema,
                 ((uiSchema[key] as UiSchema)?.items as UiSchema) || {},
@@ -73,4 +69,3 @@ export function generateUiSchemaForCustomFields(
 
   return uiSchema;
 }
-
