@@ -78,7 +78,7 @@ async def test_chatsession_db_storage():
     # Create session with messages including assistant message
     s = ChatSession.new(user_id=None)
     s.messages = messages  # Contains user, assistant, and tool messages
-
+    assert s.session_id is not None, "Session id is not set"
     # Upsert to save to both cache and DB
     s = await upsert_chat_session(s)
 
