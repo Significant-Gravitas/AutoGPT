@@ -680,6 +680,10 @@ export default class BackendAPI {
     });
   }
 
+  getMyWaitlistMemberships(): Promise<string[]> {
+    return this._get("/store/waitlist/my-memberships");
+  }
+
   ////////////////////////////////////////
   //////////// V2 LIBRARY API ////////////
   ////////////////////////////////////////

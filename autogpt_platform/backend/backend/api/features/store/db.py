@@ -2016,6 +2016,21 @@ async def get_waitlist() -> list[store_model.StoreWaitlistEntry]:
         raise DatabaseError("Failed to fetch waitlists") from e
 
 
+async def get_user_waitlist_memberships(user_id: str) -> list[str]:
+    """Get all waitlist IDs that a user has joined."""
+    try:
+        user = await prisma.models.User.prisma().find_unique(
+            where={"id": user_id},
+            include={"joinedWaitlists": True},
+        )
+        if not user or not user.joinedWaitlists:
+            return []
+        return [w.id for w in user.joinedWaitlists]
+    except Exception as e:
+        logger.error(f"Error fetching user waitlist memberships: {e}")
+        raise DatabaseError("Failed to fetch waitlist memberships") from e
+
+
 async def add_user_to_waitlist(
     waitlist_id: str, user_id: str | None, email: str | None
 ) -> store_model.StoreWaitlistEntry:
@@ -2342,7 +2357,8 @@ async def link_waitlist_to_listing_admin(
 
         waitlist = await prisma.models.WaitlistEntry.prisma().update(
             where={"id": waitlist_id},
-            data={"storeListingId": store_listing_id},  # type: ignore[arg-type]
+            # TODO: fix this properly in prisma by making sure this is setable. surely theres somewhere else we've done something like this
+            data={"storeListingId": store_listing_id},
             include={"joinedUsers": True},
         )
 

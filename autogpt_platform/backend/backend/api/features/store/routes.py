@@ -96,6 +96,18 @@ async def get_waitlist():
     return store_model.StoreWaitlistsAllResponse(listings=waitlists)
 
 
+@router.get(
+    "/waitlist/my-memberships",
+    summary="Get waitlist IDs the current user has joined",
+    tags=["store", "private"],
+)
+async def get_my_waitlist_memberships(
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
+) -> list[str]:
+    """Returns list of waitlist IDs the authenticated user has joined."""
+    return await store_db.get_user_waitlist_memberships(user_id)
+
+
 @router.post(
     path="/waitlist/{waitlist_id}/join",
     summary="Add self to the agent waitlist",

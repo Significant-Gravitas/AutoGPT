@@ -13,7 +13,8 @@ import { StoreWaitlistEntry } from "@/lib/autogpt-server-api/types";
 import { useWaitlistSection } from "./useWaitlistSection";
 
 export function WaitlistSection() {
-  const { waitlists, isLoading, hasError } = useWaitlistSection();
+  const { waitlists, joinedWaitlistIds, isLoading, hasError, markAsJoined } =
+    useWaitlistSection();
   const [selectedWaitlist, setSelectedWaitlist] =
     useState<StoreWaitlistEntry | null>(null);
   const [joiningWaitlist, setJoiningWaitlist] =
@@ -32,6 +33,11 @@ export function WaitlistSection() {
       setJoiningWaitlist(selectedWaitlist);
       setSelectedWaitlist(null);
     }
+  }
+
+  function handleJoinSuccess(waitlistId: string) {
+    markAsJoined(waitlistId);
+    setJoiningWaitlist(null);
   }
 
   // Don't render if loading, error, or no waitlists
@@ -71,6 +77,7 @@ export function WaitlistSection() {
                   subHeading={waitlist.subHeading}
                   description={waitlist.description}
                   imageUrl={waitlist.imageUrls[0] || null}
+                  isMember={joinedWaitlistIds.has(waitlist.waitlist_id)}
                   onCardClick={() => handleCardClick(waitlist)}
                   onJoinClick={() => handleJoinClick(waitlist)}
                 />
@@ -88,6 +95,7 @@ export function WaitlistSection() {
               subHeading={waitlist.subHeading}
               description={waitlist.description}
               imageUrl={waitlist.imageUrls[0] || null}
+              isMember={joinedWaitlistIds.has(waitlist.waitlist_id)}
               onCardClick={() => handleCardClick(waitlist)}
               onJoinClick={() => handleJoinClick(waitlist)}
             />
@@ -99,6 +107,7 @@ export function WaitlistSection() {
       {selectedWaitlist && (
         <WaitlistDetailModal
           waitlist={selectedWaitlist}
+          isMember={joinedWaitlistIds.has(selectedWaitlist.waitlist_id)}
           onClose={() => setSelectedWaitlist(null)}
           onJoin={handleJoinFromDetail}
         />
@@ -109,6 +118,7 @@ export function WaitlistSection() {
         <JoinWaitlistModal
           waitlist={joiningWaitlist}
           onClose={() => setJoiningWaitlist(null)}
+          onSuccess={() => handleJoinSuccess(joiningWaitlist.waitlist_id)}
         />
       )}
     </div>

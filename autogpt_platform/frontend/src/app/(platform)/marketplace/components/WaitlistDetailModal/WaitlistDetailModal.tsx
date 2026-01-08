@@ -9,16 +9,18 @@ import {
   DialogTitle,
 } from "@/components/__legacy__/ui/dialog";
 import { StoreWaitlistEntry } from "@/lib/autogpt-server-api/types";
-import { X } from "lucide-react";
+import { Check } from "lucide-react";
 
 interface WaitlistDetailModalProps {
   waitlist: StoreWaitlistEntry;
+  isMember?: boolean;
   onClose: () => void;
   onJoin: () => void;
 }
 
 export function WaitlistDetailModal({
   waitlist,
+  isMember = false,
   onClose,
   onJoin,
 }: WaitlistDetailModalProps) {
@@ -26,17 +28,7 @@ export function WaitlistDetailModal({
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[700px]">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <span>{waitlist.name}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="h-8 w-8 p-0"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </DialogTitle>
+          <DialogTitle>{waitlist.name}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -117,12 +109,22 @@ export function WaitlistDetailModal({
           )}
 
           {/* Join Button */}
-          <Button
-            onClick={onJoin}
-            className="w-full rounded-full bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-          >
-            Join waitlist
-          </Button>
+          {isMember ? (
+            <Button
+              disabled
+              className="w-full rounded-full bg-green-600 text-white hover:bg-green-600 dark:bg-green-700 dark:hover:bg-green-700"
+            >
+              <Check className="mr-2 h-4 w-4" />
+              You&apos;re on the waitlist
+            </Button>
+          ) : (
+            <Button
+              onClick={onJoin}
+              className="w-full rounded-full bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+            >
+              Join waitlist
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

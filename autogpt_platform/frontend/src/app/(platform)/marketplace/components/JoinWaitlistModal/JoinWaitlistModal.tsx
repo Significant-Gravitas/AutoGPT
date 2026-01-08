@@ -21,11 +21,13 @@ import { Check } from "lucide-react";
 interface JoinWaitlistModalProps {
   waitlist: StoreWaitlistEntry;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
 export function JoinWaitlistModal({
   waitlist,
   onClose,
+  onSuccess,
 }: JoinWaitlistModalProps) {
   const { user } = useSupabaseStore();
   const [email, setEmail] = useState("");
@@ -47,6 +49,7 @@ export function JoinWaitlistModal({
 
       // Close after a short delay to show success state
       setTimeout(() => {
+        onSuccess?.();
         onClose();
       }, 1500);
     } catch (error) {

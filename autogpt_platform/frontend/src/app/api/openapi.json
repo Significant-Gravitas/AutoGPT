@@ -6064,6 +6064,32 @@
         }
       }
     },
+    "/api/store/waitlist/my-memberships": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Get waitlist IDs the current user has joined",
+        "description": "Returns list of waitlist IDs the authenticated user has joined.",
+        "operationId": "getV2Get waitlist ids the current user has joined",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "type": "string" },
+                  "type": "array",
+                  "title": "Response Getv2Get Waitlist Ids The Current User Has Joined"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/store/waitlist/{waitlist_id}/join": {
       "post": {
         "tags": ["v2", "store", "public"],
@@ -6088,9 +6114,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [{ "type": "string" }, { "type": "null" }],
-                "description": "Email address for unauthenticated users",
-                "title": "Email"
+                "$ref": "#/components/schemas/Body_postV2Add_self_to_the_agent_waitlist"
               }
             }
           }
@@ -6861,6 +6885,17 @@
         "type": "object",
         "required": ["store_listing_version_id"],
         "title": "Body_postV2Add marketplace agent"
+      },
+      "Body_postV2Add_self_to_the_agent_waitlist": {
+        "properties": {
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email",
+            "description": "Email address for unauthenticated users"
+          }
+        },
+        "type": "object",
+        "title": "Body_postV2Add self to the agent waitlist"
       },
       "Body_postV2Execute_a_preset": {
         "properties": {
@@ -12223,7 +12258,7 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Agentoutputdemourl"
           },
-          "status": { "type": "string", "title": "Status" },
+          "status": { "$ref": "#/components/schemas/WaitlistExternalStatus" },
           "votes": { "type": "integer", "title": "Votes" },
           "signupCount": { "type": "integer", "title": "Signupcount" },
           "storeListingId": {
@@ -12282,6 +12317,11 @@
         "required": ["name", "slug", "subHeading", "description"],
         "title": "WaitlistCreateRequest",
         "description": "Request model for creating a new waitlist."
+      },
+      "WaitlistExternalStatus": {
+        "type": "string",
+        "enum": ["DONE", "NOT_STARTED", "CANCELED", "WORK_IN_PROGRESS"],
+        "title": "WaitlistExternalStatus"
       },
       "WaitlistSignup": {
         "properties": {

@@ -2,12 +2,14 @@
 
 import Image from "next/image";
 import { Button } from "@/components/atoms/Button/Button";
+import { Check } from "lucide-react";
 
 interface WaitlistCardProps {
   name: string;
   subHeading: string;
   description: string;
   imageUrl: string | null;
+  isMember?: boolean;
   onCardClick: () => void;
   onJoinClick: (e: React.MouseEvent) => void;
 }
@@ -17,12 +19,15 @@ export function WaitlistCard({
   subHeading,
   description,
   imageUrl,
+  isMember = false,
   onCardClick,
   onJoinClick,
 }: WaitlistCardProps) {
   function handleJoinClick(e: React.MouseEvent) {
     e.stopPropagation();
-    onJoinClick(e);
+    if (!isMember) {
+      onJoinClick(e);
+    }
   }
 
   return (
@@ -79,12 +84,22 @@ export function WaitlistCard({
 
         {/* Join Waitlist Button */}
         <div className="mt-4 w-full pb-4">
-          <Button
-            onClick={handleJoinClick}
-            className="w-full rounded-full bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-          >
-            Join waitlist
-          </Button>
+          {isMember ? (
+            <Button
+              disabled
+              className="w-full rounded-full bg-green-600 text-white hover:bg-green-600 dark:bg-green-700 dark:hover:bg-green-700"
+            >
+              <Check className="mr-2 h-4 w-4" />
+              On the waitlist
+            </Button>
+          ) : (
+            <Button
+              onClick={handleJoinClick}
+              className="w-full rounded-full bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+            >
+              Join waitlist
+            </Button>
+          )}
         </div>
       </div>
     </div>
