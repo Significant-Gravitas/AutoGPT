@@ -8,7 +8,9 @@ Firecrawl scrapes a website to extract comprehensive data while bypassing blocke
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Firecrawl's scraping API to extract content from a single URL. It handles JavaScript rendering, bypasses anti-bot measures, and can return content in multiple formats including markdown, HTML, and screenshots.
+
+Configure output formats, filter to main content only, and set wait times for dynamic pages. The block returns comprehensive results including extracted content, links found on the page, and optional change tracking data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,7 +39,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Article Extraction**: Scrape news articles or blog posts to extract clean, readable content.
+
+**Price Monitoring**: Regularly scrape product pages to track price changes over time.
+
+**Content Backup**: Create markdown backups of important web pages for offline reference.
 <!-- END MANUAL -->
 
 ---

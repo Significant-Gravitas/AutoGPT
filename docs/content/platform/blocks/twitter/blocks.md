@@ -8,7 +8,9 @@ This block retrieves a list of users blocked by the authenticating user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to retrieve a paginated list of users that the authenticated account has blocked. It authenticates using OAuth 2.0 with the required scopes (users.read, block.read) and sends a request to Twitter's blocked users endpoint.
+
+The response includes user IDs and usernames by default, with optional expansions to include additional data like pinned tweets. Pagination is supported through tokens, allowing retrieval of large block lists in batches of up to 1,000 users per request.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -32,7 +34,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Block List Audit**: Review your block list periodically to identify accounts you may want to unblock or to analyze blocking patterns.
+
+**Safety Monitoring**: Track blocked accounts as part of a harassment monitoring workflow, documenting problematic accounts.
+
+**Account Migration**: Export your block list when setting up a new account or for backup purposes.
 <!-- END MANUAL -->
 
 ---

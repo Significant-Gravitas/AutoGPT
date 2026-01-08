@@ -8,7 +8,9 @@ This block gets a list of users muted by the authenticating user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block connects to the Twitter API v2 via Tweepy to retrieve all users that the authenticated account has muted. It uses OAuth 2.0 authentication with appropriate scopes and returns paginated results with user IDs, usernames, and optional expanded data.
+
+The mute list is returned in batches (default 100, up to 1,000 per page), with pagination tokens for navigating large lists. Unlike blocking, muted users can still see and interact with your content—they're simply hidden from your timeline.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -33,7 +35,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Timeline Cleanup**: Review which accounts you've muted to decide if you want to unmute any or convert mutes to blocks.
+
+**Noise Reduction Audit**: Analyze your mute list to understand what types of content you're filtering from your feed.
+
+**Account Management**: Export your mute list for backup or to apply similar muting patterns to another account.
 <!-- END MANUAL -->
 
 ---
@@ -48,7 +54,9 @@ This block mutes a specified Twitter user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends a mute request to the Twitter API v2 for a specified user ID. The authenticated user will no longer see tweets from the muted account in their timeline, but the muted user is not notified and can still view and interact with your content.
+
+The mute action is performed using Tweepy's client interface with OAuth 2.0 authentication. The block returns a success indicator confirming whether the mute was applied.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -64,7 +72,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Filtering**: Mute accounts that post frequently about topics you want to temporarily avoid without unfollowing.
+
+**Event Management**: Mute accounts live-tweeting events you can't attend to avoid spoilers.
+
+**Conversation Management**: Mute accounts during heated discussions without blocking them permanently.
 <!-- END MANUAL -->
 
 ---
@@ -79,7 +91,9 @@ This block unmutes a specified Twitter user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends an unmute request to the Twitter API v2 for a specified user ID. Once unmuted, tweets from that account will appear in your timeline again as normal.
+
+The unmute action uses Tweepy's client interface with OAuth 2.0 authentication. The block returns a success indicator confirming whether the mute was removed.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -95,7 +109,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Post-Event Restore**: Unmute accounts after an event ends that you were avoiding spoilers for.
+
+**Periodic Review**: Unmute accounts as part of a scheduled review of your mute list.
+
+**Relationship Repair**: Restore visibility of accounts after cooling-off periods from disagreements.
 <!-- END MANUAL -->
 
 ---

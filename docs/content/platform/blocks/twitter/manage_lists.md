@@ -8,7 +8,9 @@ This block creates a new Twitter List for the authenticated user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to create a new Twitter List under your account. You can specify the list name, description, and whether it should be public or private.
+
+The block authenticates using OAuth 2.0 with list write permissions and sends a POST request to create the list. Returns the new list's ID and URL upon successful creation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated List Setup**: Programmatically create lists as part of onboarding workflows or project initialization.
+
+**Campaign Organization**: Create dedicated lists for tracking accounts related to specific marketing campaigns.
+
+**Research Projects**: Set up new lists to organize accounts for research or monitoring initiatives.
 <!-- END MANUAL -->
 
 ---
@@ -42,7 +48,9 @@ This block deletes a specified Twitter List owned by the authenticated user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to permanently delete a Twitter List that you own. The list and all its member associations are removed and cannot be recovered.
+
+The block authenticates using OAuth 2.0 with list write permissions and sends a DELETE request. Only lists you own can be deleted. Returns a success indicator confirming the deletion.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -58,7 +66,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Account Cleanup**: Remove outdated or unused lists as part of regular account maintenance.
+
+**Project Completion**: Delete temporary lists created for campaigns or projects that have concluded.
+
+**Privacy Management**: Remove lists that are no longer needed to reduce your public profile footprint.
 <!-- END MANUAL -->
 
 ---
@@ -73,7 +85,9 @@ This block updates a specified Twitter List owned by the authenticated user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to update the metadata of a Twitter List you own. You can modify the list name and description without affecting the list's members.
+
+The block authenticates using OAuth 2.0 with list write permissions and sends a PUT request with the updated fields. Returns a success indicator confirming the changes were applied.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -91,7 +105,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**List Rebranding**: Update list names and descriptions to better reflect their evolving purpose.
+
+**Seasonal Updates**: Modify list descriptions to indicate current focus areas or time periods.
+
+**Organization Improvement**: Rename lists to follow consistent naming conventions across your account.
 <!-- END MANUAL -->
 
 ---

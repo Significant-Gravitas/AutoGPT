@@ -8,7 +8,9 @@ Query a Notion database with optional filtering and sorting, returning structure
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries a Notion database using the Notion API. It retrieves entries with optional filtering by property values and sorting. The block requires your Notion integration to have access to the database.
+
+Results include all property values for each entry, the entry IDs for further operations, and the total count. The database connection must be shared with your integration from Notion.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +36,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Task Management**: Query a Notion task database to find items with a specific status or assigned to a particular person.
+
+**Content Pipeline**: Read entries from a content calendar database to identify posts scheduled for today or this week.
+
+**CRM Sync**: Fetch customer records from a Notion database to sync with other systems or trigger workflows.
 <!-- END MANUAL -->
 
 ---

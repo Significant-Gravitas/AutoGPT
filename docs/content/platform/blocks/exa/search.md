@@ -8,7 +8,9 @@ Searches the web using Exa's advanced search API
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Exa's advanced search API to find web content. Unlike traditional search engines, Exa offers neural search that understands semantic meaning, making it excellent for finding specific types of content. You can choose between keyword search (traditional), neural search (semantic understanding), or fast search.
+
+The block supports powerful filtering by domain, date ranges, content categories (companies, research papers, news, etc.), and text patterns. Results include URLs, titles, and optionally full content extraction.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -43,7 +45,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Competitive Research**: Search for companies in a specific industry, filtered by recent news or funding announcements.
+
+**Content Curation**: Find relevant articles and research papers on specific topics for newsletters or content aggregation.
+
+**Lead Generation**: Search for companies matching specific criteria (industry, size, recent activity) for sales prospecting.
 <!-- END MANUAL -->
 
 ---

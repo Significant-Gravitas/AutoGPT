@@ -8,7 +8,9 @@ Search billions of GitHub repos, docs, and Stack Overflow for relevant code exam
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Exa's specialized code search API to find relevant code examples from GitHub repositories, official documentation, and Stack Overflow. The search is optimized for code context, returning formatted snippets with source references.
+
+The block returns code snippets along with metadata including the source URL, search time, and token counts. You can control response size with the tokens_num parameter to balance comprehensiveness with cost.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -31,7 +33,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**API Integration Examples**: Find real-world code examples showing how to integrate with specific APIs or libraries.
+
+**Debugging Assistance**: Search for code patterns related to error messages or specific programming challenges.
+
+**Learning New Technologies**: Discover implementation examples when learning a new framework or programming language.
 <!-- END MANUAL -->
 
 ---

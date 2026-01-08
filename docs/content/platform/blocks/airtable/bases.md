@@ -8,7 +8,9 @@ Create or find a base in Airtable
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new Airtable base in a specified workspace, or finds an existing one with the same name. When creating, you can optionally define initial tables and their fields to set up the schema.
+
+Enable find_existing to search for a base with the same name before creating a new one, preventing duplicates in your workspace.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Project Setup**: Automatically create new bases when projects start with predefined table structures.
+
+**Template Deployment**: Deploy standardized base templates across teams or clients.
+
+**Multi-Tenant Apps**: Create separate bases for each customer or project programmatically.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ List all bases in Airtable
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a list of all Airtable bases accessible to your connected account. It returns basic information about each base including ID, name, and permission level.
+
+Results are paginated; use the offset output to retrieve additional pages if there are more bases than returned in a single call.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -63,7 +71,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Base Discovery**: Find available bases for building dynamic dropdowns or navigation.
+
+**Inventory Management**: List all bases in an organization for auditing or documentation.
+
+**Cross-Base Operations**: Enumerate bases to perform operations across multiple databases.
 <!-- END MANUAL -->
 
 ---

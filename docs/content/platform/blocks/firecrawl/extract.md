@@ -8,7 +8,9 @@ Firecrawl crawls websites to extract comprehensive data while bypassing blockers
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Firecrawl's extraction API to pull structured data from web pages based on a prompt or schema. It crawls the specified URLs and uses AI to extract information matching your requirements.
+
+Define the data structure you want using a JSON schema for precise extraction, or use natural language prompts for flexible extraction. Wildcards in URLs allow extracting data from multiple pages matching a pattern.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Product Data Extraction**: Extract structured product information (prices, specs, reviews) from e-commerce sites.
+
+**Contact Scraping**: Pull business contact information from company websites in a structured format.
+
+**Data Pipeline Input**: Automatically extract and structure web data for analysis or database population.
 <!-- END MANUAL -->
 
 ---

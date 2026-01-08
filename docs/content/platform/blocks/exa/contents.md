@@ -8,7 +8,9 @@ Retrieves document contents using Exa's contents API
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves full content from web pages using Exa's contents API. You can provide URLs directly or document IDs from previous searches. The API supports live crawling to fetch fresh content and can extract text, highlights, and AI-generated summaries.
+
+The block supports subpage crawling to gather related content and offers various content retrieval options including full text extraction, relevant highlights, and customizable summary generation. Results are formatted for easy use with LLMs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -38,7 +40,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Aggregation**: Retrieve full article content from multiple URLs for analysis or summarization.
+
+**Competitive Research**: Crawl competitor websites to extract product information, pricing, or feature details.
+
+**Data Enrichment**: Fetch detailed content from URLs discovered through Exa searches to build comprehensive datasets.
 <!-- END MANUAL -->
 
 ---

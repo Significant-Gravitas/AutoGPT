@@ -8,7 +8,9 @@ This block assigns a reviewer to a specified GitHub pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block requests a code review from a specific user on a GitHub pull request. It uses the GitHub API to add the specified username to the list of requested reviewers, triggering a notification to that user.
+
+The reviewer must have access to the repository. Organization members can typically be assigned as reviewers on any repository they have at least read access to.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -25,7 +27,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Code Review Assignment**: Automatically assign reviewers based on the files changed or the PR author.
+
+**Round-Robin Reviews**: Distribute code review load evenly across team members.
+
+**Expertise-Based Routing**: Assign reviewers who are experts in the specific area of code being modified.
 <!-- END MANUAL -->
 
 ---
@@ -40,7 +46,9 @@ This block lists all reviewers for a specified GitHub pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the list of requested reviewers for a GitHub pull request. It queries the GitHub API to fetch all users who have been requested to review the PR, returning their usernames and profile URLs.
+
+This includes both pending review requests and users who have already submitted reviews.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -57,7 +65,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Review Status Monitoring**: Check which reviewers have been assigned to a PR and send reminders to those who haven't responded.
+
+**Workflow Validation**: Verify that required reviewers have been assigned before a PR can be merged.
+
+**Team Dashboard**: Display reviewer assignments across multiple PRs for team visibility.
 <!-- END MANUAL -->
 
 ---
@@ -72,7 +84,9 @@ This block lists all pull requests for a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block fetches all open pull requests from a GitHub repository. It queries the GitHub API and returns a list of PRs with their titles and URLs, outputting both individual PRs and a complete list.
+
+The block returns open pull requests by default, allowing you to monitor pending code changes in a repository.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -89,7 +103,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**PR Dashboard**: Create a dashboard showing all open pull requests across your repositories.
+
+**Merge Queue Monitoring**: Track pending PRs to prioritize code reviews and identify bottlenecks.
+
+**Stale PR Detection**: List PRs to identify those that have been open too long and need attention.
 <!-- END MANUAL -->
 
 ---
@@ -104,7 +122,9 @@ This block creates a new pull request on a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new pull request on a GitHub repository. It uses the GitHub API to submit a PR from your source branch (head) to the target branch (base), with the specified title and description.
+
+For cross-repository PRs, format the head branch as "username:branch". The branches must exist and have divergent commits for the PR to be created successfully.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -125,7 +145,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Releases**: Create PRs automatically when a release branch is ready to merge to main.
+
+**Dependency Updates**: Programmatically create PRs for dependency updates after testing passes.
+
+**Feature Flags**: Automatically create PRs to enable feature flags in configuration files.
 <!-- END MANUAL -->
 
 ---
@@ -140,7 +164,9 @@ This block reads the body, title, user, and changes of a specified GitHub pull r
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block reads the details of a GitHub pull request including its title, description, author, and optionally the code diff. It fetches this information via the GitHub API using your credentials.
+
+When include_pr_changes is enabled, the block also retrieves the full diff of all changes in the PR, which can be useful for code review automation or analysis.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -160,7 +186,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Code Review**: Read PR content and changes to perform automated code analysis or send to AI for review.
+
+**Changelog Generation**: Extract PR titles and descriptions to automatically compile release notes.
+
+**PR Summarization**: Read PR details to generate summaries for stakeholder updates.
 <!-- END MANUAL -->
 
 ---
@@ -175,7 +205,9 @@ This block unassigns a reviewer from a specified GitHub pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes a reviewer from a GitHub pull request's review request list. It uses the GitHub API to remove the specified user from pending reviewers, which stops further review notifications to that user.
+
+This is useful for reassigning reviews or removing reviewers who are unavailable.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -192,7 +224,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Reviewer Reassignment**: Remove unavailable reviewers and replace them with available team members.
+
+**Load Balancing**: Unassign reviewers who have too many pending reviews.
+
+**Vacation Coverage**: Automatically remove reviewers who are out of office.
 <!-- END MANUAL -->
 
 ---

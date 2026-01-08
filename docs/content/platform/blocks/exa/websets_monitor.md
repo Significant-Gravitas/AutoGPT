@@ -8,7 +8,9 @@ Create automated monitors to keep websets updated with fresh data on a schedule
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a scheduled monitor that automatically updates a webset on a cron schedule. Monitors can either search for new items matching criteria or refresh existing item content and enrichments.
+
+Configure the cron expression for your desired frequency (daily, weekly, etc.) and choose between search behavior to find new items or refresh behavior to update existing data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -42,7 +44,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Continuous Lead Generation**: Schedule daily searches to find new companies matching your criteria.
+
+**News Monitoring**: Set up monitors to discover fresh articles on topics of interest.
+
+**Data Freshness**: Schedule periodic refreshes to keep enrichment data current.
 <!-- END MANUAL -->
 
 ---
@@ -57,7 +63,9 @@ Delete a monitor from a webset
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block permanently deletes a monitor, stopping all future scheduled runs. Any data already collected by the monitor remains in the webset.
+
+Use this to clean up monitors that are no longer needed or to stop scheduled operations before deleting a webset.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -74,7 +82,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Project Completion**: Delete monitors when monitoring campaigns or projects conclude.
+
+**Cost Management**: Remove monitors that are no longer providing value to reduce costs.
+
+**Configuration Cleanup**: Delete old monitors before creating updated replacements.
 <!-- END MANUAL -->
 
 ---
@@ -89,7 +101,9 @@ Get the details and status of a webset monitor
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves detailed information about a monitor including its configuration, schedule, current status, and information about the last run.
+
+Use this to verify monitor settings, check when the next run is scheduled, or review results from recent executions.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -116,7 +130,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Schedule Verification**: Check when monitors are scheduled to run next.
+
+**Performance Review**: Examine last run details to assess monitor effectiveness.
+
+**Configuration Audit**: Retrieve monitor settings for documentation or troubleshooting.
 <!-- END MANUAL -->
 
 ---
@@ -131,7 +149,9 @@ List all monitors with optional webset filtering
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a paginated list of all monitors, optionally filtered by webset. Results include basic monitor information such as status, schedule, and next run time.
+
+Use this to get an overview of all active monitors or find monitors associated with a specific webset.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -152,7 +172,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Monitor Dashboard**: Build dashboards showing all active monitors and their schedules.
+
+**Webset Management**: Find monitors associated with websets before making changes.
+
+**Activity Overview**: Review all scheduled monitoring activity across your account.
 <!-- END MANUAL -->
 
 ---
@@ -167,7 +191,9 @@ Update a monitor's status, schedule, or metadata
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block modifies an existing monitor's configuration. You can enable, disable, or pause monitors, change their schedule, update the timezone, or modify metadata.
+
+Changes take effect immediately. Disabling a monitor stops future scheduled runs until re-enabled.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -191,7 +217,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Schedule Changes**: Adjust monitor frequency based on data velocity or business needs.
+
+**Pause/Resume**: Temporarily pause monitors during maintenance or when not needed.
+
+**Status Management**: Enable or disable monitors programmatically based on conditions.
 <!-- END MANUAL -->
 
 ---

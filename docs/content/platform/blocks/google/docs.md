@@ -8,7 +8,9 @@ Append Markdown content to the end of a Google Doc with full formatting - ideal 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block appends Markdown content to the end of a Google Doc and automatically converts it to native Google Docs formatting using the Google Docs API. It supports headers, bold, italic, links, lists, and code formatting.
+
+Set add_newline to true to insert a line break before the appended content. The document is returned for chaining with other document operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**AI Report Generation**: Append LLM-generated analysis or summaries to existing report documents with proper formatting.
+
+**Content Aggregation**: Continuously add formatted content from multiple sources to a running document.
+
+**Meeting Notes**: Append AI-transcribed and formatted meeting notes to shared team documents.
 <!-- END MANUAL -->
 
 ---
@@ -42,7 +48,9 @@ Append plain text to the end of a Google Doc (no formatting applied)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block appends unformatted text to the end of a Google Doc using the Google Docs API. Unlike the Markdown version, text is inserted exactly as provided without any formatting interpretation.
+
+The block finds the document's end index and inserts the text there, with an optional newline prefix. This is useful for log entries, raw data, or when formatting is handled elsewhere.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -61,7 +69,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Activity Logging**: Append timestamped log entries to document-based activity logs.
+
+**Data Capture**: Add raw data or transcript text that will be formatted later.
+
+**Simple Notes**: Quickly add text notes without worrying about formatting.
 <!-- END MANUAL -->
 
 ---
@@ -76,7 +88,9 @@ Create a new Google Doc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new Google Doc in the user's Google Drive using the Google Docs API. You specify a title for the document and optionally provide initial text content.
+
+The newly created document is returned with its ID and URL, allowing immediate access and chaining to other document operations like formatting or sharing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -95,7 +109,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Report Templates**: Create new documents for each report cycle with standardized titles.
+
+**Dynamic Document Generation**: Generate personalized documents for customers or projects.
+
+**Workflow Automation**: Create documents as part of onboarding or project kickoff workflows.
 <!-- END MANUAL -->
 
 ---
@@ -110,7 +128,9 @@ Delete a range of content from a Google Doc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes content from a Google Doc by specifying start and end index positions using the Google Docs API. Index positions are 1-based (index 0 is reserved for a section break).
+
+Use the Get Structure block first to find the correct index positions for content you want to delete. The deletion operation shifts all subsequent content to fill the gap.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -129,7 +149,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Cleanup**: Remove outdated sections or placeholder text from templates.
+
+**Document Restructuring**: Delete sections as part of document reorganization workflows.
+
+**Revision Management**: Remove draft content before finalizing documents.
 <!-- END MANUAL -->
 
 ---
@@ -144,7 +168,9 @@ Export a Google Doc to PDF, Word, text, or other formats
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block exports a Google Doc to various formats (PDF, DOCX, ODT) using the Google Drive API's export functionality. The exported content is returned as base64-encoded data for binary formats.
+
+The export preserves document formatting as closely as possible in the target format. PDF exports are ideal for final distribution, while DOCX exports enable further editing in Microsoft Word.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -163,7 +189,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Report Distribution**: Export finalized reports as PDF for email distribution or archival.
+
+**Cross-Platform Sharing**: Export to Word format for recipients who don't use Google Docs.
+
+**Backup Creation**: Create periodic PDF exports of important documents for offline storage.
 <!-- END MANUAL -->
 
 ---
@@ -178,7 +208,9 @@ Find and replace plain text in a Google Doc (no formatting applied to replacemen
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block performs a find-and-replace operation across the entire Google Doc using the Google Docs API. It searches for all occurrences of the specified text and replaces them with the provided replacement text.
+
+The replacement preserves the surrounding formatting but does not apply any new formatting to the replacement text. Case-matching is configurable.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -198,7 +230,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Template Population**: Replace placeholder tokens like {{NAME}} with actual values in document templates.
+
+**Batch Updates**: Update company names, dates, or other text across multiple documents.
+
+**Error Correction**: Fix common typos or outdated terminology across documents.
 <!-- END MANUAL -->
 
 ---
@@ -213,7 +249,9 @@ Apply formatting (bold, italic, color, etc.) to text in a Google Doc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block applies text formatting to a specific range within a Google Doc using the Google Docs API. You specify start and end indexes and choose formatting options like bold, italic, underline, font size, and text color.
+
+Use the Get Structure block to identify the correct index positions. Multiple formatting options can be applied simultaneously in a single request.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -237,7 +275,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Highlight Important Content**: Apply bold or color formatting to emphasize key findings or action items.
+
+**Conditional Formatting**: Format text based on workflow conditions (e.g., red for overdue items).
+
+**Document Styling**: Apply consistent formatting to generated content that matches brand guidelines.
 <!-- END MANUAL -->
 
 ---
@@ -252,7 +294,9 @@ Get metadata about a Google Doc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves document metadata from a Google Doc using the Google Docs API. It returns information including the document title, unique ID, current revision ID, and the URL for accessing the document.
+
+This metadata is useful for tracking document versions, building document inventories, or generating links for sharing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -272,7 +316,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Document Inventory**: Gather metadata from multiple documents for tracking and cataloging.
+
+**Version Monitoring**: Track revision IDs to detect when documents have been modified.
+
+**Link Generation**: Extract document URLs for sharing via email or other channels.
 <!-- END MANUAL -->
 
 ---
@@ -287,7 +335,9 @@ Get document structure with index positions for precise editing operations
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block analyzes a Google Doc's structure and returns detailed information about content segments with their index positions using the Google Docs API. Use flat mode for a simple list of segments or detailed mode for full hierarchical structure.
+
+The index positions are essential for precise editing operations like formatting, deletion, or insertion at specific locations within the document.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -306,7 +356,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Position Discovery**: Find correct index positions before performing insert or delete operations.
+
+**Document Analysis**: Understand document structure for content extraction or manipulation.
+
+**Navigation Aid**: Map document sections to enable targeted content operations.
 <!-- END MANUAL -->
 
 ---
@@ -321,7 +375,9 @@ Insert formatted Markdown at a specific position in a Google Doc - ideal for LLM
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block inserts Markdown content at a specific index position within a Google Doc, converting the Markdown to native Google Docs formatting using the Google Docs API. Index 1 inserts at the document start.
+
+The Markdown parser handles headers, bold, italic, links, lists, and code formatting. This enables inserting AI-generated content with proper formatting at precise document locations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -340,7 +396,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Insertion**: Insert AI-generated sections at specific locations in templates.
+
+**Document Assembly**: Build documents by inserting formatted content blocks at designated positions.
+
+**Dynamic Reports**: Insert data-driven formatted content at specific sections of report templates.
 <!-- END MANUAL -->
 
 ---
@@ -355,7 +415,9 @@ Insert a page break into a Google Doc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block inserts a page break at a specified index position in a Google Doc using the Google Docs API. Setting index to 0 inserts at the end of the document.
+
+Page breaks force subsequent content to start on a new page, useful for separating document sections for printing or PDF generation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -373,7 +435,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Report Formatting**: Add page breaks between major sections of generated reports.
+
+**Print Preparation**: Insert page breaks to control page layout before PDF export.
+
+**Document Structure**: Separate document chapters or sections for better readability.
 <!-- END MANUAL -->
 
 ---
@@ -388,7 +454,9 @@ Insert plain text at a specific position in a Google Doc (no formatting applied)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block inserts unformatted text at a specific index position within a Google Doc using the Google Docs API. Index 1 inserts at the document start.
+
+Unlike the Markdown insert, text is inserted exactly as provided without any formatting interpretation, preserving surrounding document formatting.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -407,7 +475,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Insertion**: Insert raw data values at specific positions in documents.
+
+**Template Variables**: Insert variable values at designated template positions.
+
+**Sequential Content**: Add text entries to specific locations in running documents.
 <!-- END MANUAL -->
 
 ---
@@ -422,7 +494,9 @@ Insert a table into a Google Doc, optionally with content and Markdown formattin
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block inserts a table into a Google Doc at a specified position using the Google Docs API. You can create empty tables by specifying row/column counts, or provide a 2D array of cell content to create pre-populated tables.
+
+Cell content can optionally be formatted as Markdown, enabling rich formatting like bold headers or links within table cells.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -444,7 +518,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Presentation**: Insert tables to display structured data from APIs or databases.
+
+**Report Tables**: Add summary tables with metrics, comparisons, or status information.
+
+**Template Tables**: Create table structures that get populated with dynamic content.
 <!-- END MANUAL -->
 
 ---
@@ -459,7 +537,9 @@ Read text content from a Google Doc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extracts the plain text content from a Google Doc using the Google Docs API. It returns the document's text content without formatting information, along with the document title.
+
+Use this for content analysis, text processing, or feeding document content to AI models for summarization or other processing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -477,7 +557,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Extraction**: Read document text for processing, analysis, or AI summarization.
+
+**Search and Index**: Extract text from documents for full-text search indexing.
+
+**Content Migration**: Read document content to transform or migrate to other systems.
 <!-- END MANUAL -->
 
 ---
@@ -492,7 +576,9 @@ Replace entire Google Doc content with formatted Markdown - ideal for LLM/AI out
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block clears all existing content from a Google Doc and replaces it with new formatted Markdown content using the Google Docs API. The Markdown is converted to native Google Docs formatting.
+
+This is ideal for completely regenerating document content from AI-generated Markdown output.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -510,7 +596,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Document Regeneration**: Completely replace document content with newly generated AI output.
+
+**Content Refresh**: Update recurring documents with fresh content while preserving the document.
+
+**Template Reset**: Clear and repopulate template documents for new projects or periods.
 <!-- END MANUAL -->
 
 ---
@@ -525,7 +615,9 @@ Find text and replace it with formatted Markdown - ideal for LLM/AI output and t
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block finds specific text (like a placeholder token) in a Google Doc and replaces it with formatted Markdown content using the Google Docs API. The Markdown is converted to native Google Docs formatting.
+
+Use this for template systems where placeholders like {{SECTION}} are replaced with AI-generated formatted content.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -545,7 +637,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Smart Templates**: Replace placeholder tokens with AI-generated formatted content in templates.
+
+**Dynamic Sections**: Populate document sections with contextual formatted content.
+
+**Mail Merge Plus**: Advanced mail merge with formatted content replacement, not just plain text.
 <!-- END MANUAL -->
 
 ---
@@ -560,7 +656,9 @@ Replace a specific index range in a Google Doc with formatted Markdown - ideal f
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block replaces content between specific start and end index positions with formatted Markdown content using the Google Docs API. The existing content in the range is deleted and replaced with the new formatted content.
+
+Use Get Structure to find the correct index positions. This enables precise replacement of specific document sections with new formatted content.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -580,7 +678,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Section Updates**: Replace specific document sections with updated content while preserving the rest.
+
+**Targeted Regeneration**: Regenerate specific portions of documents with new AI-generated content.
+
+**Incremental Updates**: Update identified sections of recurring reports without affecting other areas.
 <!-- END MANUAL -->
 
 ---
@@ -595,7 +697,9 @@ Make a Google Doc public or private
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block modifies the sharing permissions of a Google Doc using the Google Drive API to make it publicly accessible or private. You can set the access level to reader (view only) or commenter.
+
+When made public, anyone with the link can access the document according to the specified role. The share link is returned for distribution.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -615,7 +719,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Public Publishing**: Make finalized documents publicly accessible for broad distribution.
+
+**Access Toggle**: Automate switching document access based on workflow stages.
+
+**Link Sharing**: Generate shareable links for documents that don't require individual access grants.
 <!-- END MANUAL -->
 
 ---
@@ -630,7 +738,9 @@ Share a Google Doc with specific users
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block shares a Google Doc with specific users by email address using the Google Drive API. You can set the permission level (reader, writer, commenter) and optionally send a notification email with a custom message.
+
+Leave the email blank to just generate a shareable link. The block returns the share link for easy distribution.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -652,7 +762,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Collaboration**: Share generated documents with stakeholders automatically after creation.
+
+**Workflow Notifications**: Share documents and notify recipients as part of approval workflows.
+
+**Client Delivery**: Share completed deliverables with clients including notification messages.
 <!-- END MANUAL -->
 
 ---

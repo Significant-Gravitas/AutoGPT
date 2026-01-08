@@ -8,7 +8,9 @@ Get all items from a webset in bulk (with configurable limits)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all items from a webset in a single operation, automatically handling pagination internally. You can specify a maximum number of items and choose whether to include enrichments and full content.
+
+Use this for batch processing when you need all webset data at once rather than paginating through results manually.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Batch Processing**: Retrieve all webset items for bulk analysis or processing in external systems.
+
+**Data Export**: Get complete webset data for integration with other tools or databases.
+
+**Full Dataset Analysis**: Analyze entire webset contents when pagination isn't practical.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ Delete a specific item from a webset
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block permanently removes a specific item from a webset. The item and all its enrichment data are deleted and cannot be recovered.
+
+Use this to clean up irrelevant results, remove duplicates, or curate webset contents by removing items that don't meet your quality standards.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -63,7 +71,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Curation**: Remove irrelevant or low-quality items to improve webset accuracy.
+
+**Duplicate Removal**: Delete duplicate entries discovered during review.
+
+**Compliance**: Remove items that shouldn't be included for legal or policy reasons.
 <!-- END MANUAL -->
 
 ---
@@ -78,7 +90,9 @@ Get items added since a cursor - enables incremental processing without reproces
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves only items added to a webset since your last check, identified by a cursor. This enables efficient incremental processing without re-fetching previously processed items.
+
+Save the returned next_cursor for subsequent calls to implement continuous incremental processing of new webset additions.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -100,7 +114,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Incremental Processing**: Process only new webset items in scheduled workflows without duplicating work.
+
+**Real-Time Pipelines**: Build efficient pipelines that react to new data without full dataset scans.
+
+**Change Detection**: Track what's new in websets for alerting or notification systems.
 <!-- END MANUAL -->
 
 ---
@@ -115,7 +133,9 @@ Get a specific item from a webset by its ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves detailed information about a specific webset item including its content, entity data, and enrichments. Use this when you need complete data for a particular item.
+
+The block returns the full item record with all available data, timestamps, and any enrichment results that have been applied.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -139,7 +159,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Detail View**: Fetch complete item data for display in detail views or profiles.
+
+**Enrichment Review**: Retrieve item with enrichments to verify data extraction quality.
+
+**Reference Lookup**: Get specific items by ID for cross-referencing or validation.
 <!-- END MANUAL -->
 
 ---
@@ -154,7 +178,9 @@ List items in a webset with pagination support
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a paginated list of items from a webset. You control page size and can optionally wait for items if the webset is still processing.
+
+Use pagination cursors to iterate through large websets efficiently. Each page returns items along with metadata about whether more pages exist.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -178,7 +204,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Paginated Display**: Build UIs that display webset items with pagination controls.
+
+**Streaming Processing**: Process webset items in manageable batches to avoid memory issues.
+
+**Controlled Iteration**: Step through large websets methodically for thorough analysis.
 <!-- END MANUAL -->
 
 ---
@@ -193,7 +223,9 @@ Get a summary of webset items without retrieving all data
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a lightweight summary of webset items including total count, entity type, available enrichment columns, and optional sample items. It's efficient for getting an overview without fetching full data.
+
+Use this to understand webset contents at a glance, check enrichment availability, or get sample data for validation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -213,7 +245,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Quick Overview**: Get webset statistics and samples without loading all data.
+
+**Schema Discovery**: Check what enrichment columns are available before building exports.
+
+**Validation**: Review sample items to verify webset quality before full processing.
 <!-- END MANUAL -->
 
 ---

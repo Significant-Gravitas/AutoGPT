@@ -8,7 +8,9 @@ This block will output the contents of the compass transcription.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block triggers when a Compass AI transcription is received. It outputs the transcription text content, enabling workflows that process voice input or meeting transcripts from Compass AI.
+
+The transcription is output as a string for downstream processing, analysis, or storage.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -19,7 +21,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Voice Command Processing**: Trigger workflows from voice commands transcribed by Compass AI.
+
+**Meeting Automation**: Process meeting transcripts to extract action items or summaries.
+
+**Transcription Analysis**: Analyze transcribed content for sentiment, topics, or key information.
 <!-- END MANUAL -->
 
 ---

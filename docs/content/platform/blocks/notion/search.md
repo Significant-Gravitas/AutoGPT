@@ -8,7 +8,9 @@ Search your Notion workspace for pages and databases by text query.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches across your Notion workspace using the Notion Search API. It finds pages and databases matching your query text, with optional filtering by type (page or database).
+
+Results include titles, types, URLs, and metadata for each match. Leave the query empty to retrieve all accessible pages and databases. Pagination is handled automatically up to the specified limit.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +31,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Discovery**: Find relevant pages in your workspace based on keywords or topics.
+
+**Database Lookup**: Search for specific databases to use in subsequent operations.
+
+**Knowledge Retrieval**: Search your Notion workspace to find answers or related documentation.
 <!-- END MANUAL -->
 
 ---

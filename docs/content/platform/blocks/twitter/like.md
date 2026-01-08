@@ -8,7 +8,9 @@ This block gets information about tweets liked by a user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve tweets that a specified user has liked. Results are returned in reverse chronological order (most recently liked first) with pagination support.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and location details. Returns tweet IDs, text content, author information, and complete tweet data objects.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -46,7 +48,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Interest Analysis**: Analyze a user's liked tweets to understand their interests, preferences, and sentiment.
+
+**Content Discovery**: Find high-quality content by examining tweets liked by influencers in your niche.
+
+**Engagement Research**: Study what types of content resonate with your target audience based on their likes.
 <!-- END MANUAL -->
 
 ---
@@ -61,7 +67,9 @@ This block gets information about users who liked a tweet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve a paginated list of users who have liked a specific tweet. Results include user IDs, usernames, and optionally expanded profile data.
+
+The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pagination support for tweets with many likes. Expansions can include pinned tweet data for each user who liked the tweet.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -87,7 +95,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Engagement Analysis**: Identify who is engaging with your content to understand your audience better.
+
+**Influencer Identification**: Find influential users who liked your tweet for potential outreach or collaboration.
+
+**Community Discovery**: Discover potential community members or customers by analyzing who engages with relevant content.
 <!-- END MANUAL -->
 
 ---
@@ -102,7 +114,9 @@ This block likes a tweet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to like a tweet on behalf of the authenticated user. The like is public—the tweet author and others can see that you liked the tweet.
+
+The block authenticates using OAuth 2.0 with like write permissions and sends a POST request to add a like to the specified tweet. Returns a success indicator confirming the like was added.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -118,7 +132,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Engagement Automation**: Like tweets from accounts you want to engage with to increase visibility and interaction.
+
+**Content Appreciation**: Automatically like tweets that mention your brand positively or use specific hashtags.
+
+**Community Building**: Like tweets from community members to acknowledge their contributions and encourage further engagement.
 <!-- END MANUAL -->
 
 ---
@@ -133,7 +151,9 @@ This block unlikes a tweet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to remove a like from a tweet. The unlike action is processed silently—the tweet author is not specifically notified that you unliked.
+
+The block authenticates using OAuth 2.0 with like write permissions and sends a DELETE request to remove the like from the specified tweet. Returns a success indicator confirming the like was removed.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -149,7 +169,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Like Cleanup**: Remove likes from tweets you no longer want associated with your account.
+
+**Content Review**: Unlike tweets after reviewing them and determining they don't align with your values.
+
+**Engagement Adjustment**: Adjust your like history as part of curating your public engagement profile.
 <!-- END MANUAL -->
 
 ---

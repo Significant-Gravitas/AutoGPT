@@ -8,7 +8,9 @@ Post to Facebook using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Ayrshare's social media API to publish content to Facebook Pages. It supports text posts, images, videos, carousels (2-10 items), Reels, and Stories, with features like audience targeting by age and country, location tagging, and scheduling.
+
+The block authenticates through Ayrshare and leverages the Meta Graph API to handle various Facebook-specific formats. Advanced options include draft mode for Meta Business Suite, custom link previews, and video thumbnails. Results include post IDs for tracking engagement.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -52,7 +54,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Product Launches**: Create carousel posts showcasing multiple product images with links to purchase pages.
+
+**Event Promotion**: Share event details with age-targeted reach and location tagging for local business events.
+
+**Short-Form Video**: Automatically publish Reels with custom thumbnails to maximize video content reach.
 <!-- END MANUAL -->
 
 ---

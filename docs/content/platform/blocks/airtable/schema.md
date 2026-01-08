@@ -8,7 +8,9 @@ Add a new field to an Airtable table
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds a new field to an existing Airtable table using the Airtable API. Specify the field type (text, email, URL, etc.), name, and optional description and configuration options.
+
+The field is created immediately and becomes available for use in all records. Returns the created field object with its assigned ID.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Schema Evolution**: Add new fields to tables as application requirements grow.
+
+**Dynamic Forms**: Create fields based on user configuration or form builder settings.
+
+**Data Integration**: Add fields to capture data from newly integrated external systems.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ Create a new table in an Airtable base
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new table in an Airtable base with the specified name and optional field definitions. Each field definition includes name, type, and type-specific options.
+
+The table is created with the defined schema and is immediately ready for use. Returns the created table object with its ID.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -64,7 +72,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Application Scaffolding**: Create tables programmatically when setting up new application modules.
+
+**Multi-Tenant Setup**: Generate customer-specific tables dynamically.
+
+**Feature Expansion**: Add new tables as features are enabled or installed.
 <!-- END MANUAL -->
 
 ---
@@ -79,7 +91,9 @@ Get the complete schema of an Airtable base
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the complete schema of an Airtable base, including all tables, their fields, field types, and views. This metadata is essential for building dynamic integrations that need to understand table structure.
+
+The schema includes field configurations, validation rules, and relationship definitions between tables.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -96,7 +110,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Schema Discovery**: Understand table structure for building dynamic forms or queries.
+
+**Documentation**: Generate documentation of database schema automatically.
+
+**Migration Planning**: Analyze schema before migrating data to other systems.
 <!-- END MANUAL -->
 
 ---
@@ -111,7 +129,9 @@ Update field properties in an Airtable table
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates properties of an existing field in an Airtable table. You can modify the field name and description. Note that field type cannot be changed after creation.
+
+Changes take effect immediately across all records and views that use the field.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -131,7 +151,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Field Renaming**: Update field names to match evolving terminology or standards.
+
+**Documentation Updates**: Add or update field descriptions for better team understanding.
+
+**Schema Maintenance**: Keep field metadata current as application requirements change.
 <!-- END MANUAL -->
 
 ---
@@ -146,7 +170,9 @@ Update table properties
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates table properties in an Airtable base. You can change the table name, description, and date dependency settings. Changes apply immediately and affect all users accessing the table.
+
+This is useful for maintaining table metadata and organizing your base structure.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -166,7 +192,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Table Organization**: Rename tables to follow naming conventions or reflect current usage.
+
+**Description Management**: Update table descriptions for documentation purposes.
+
+**Configuration Updates**: Modify table settings like date dependencies as requirements change.
 <!-- END MANUAL -->
 
 ---

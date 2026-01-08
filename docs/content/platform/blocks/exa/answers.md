@@ -8,7 +8,9 @@ Get an LLM answer to a question informed by Exa search results
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends your question to the Exa Answer API, which performs a semantic search across billions of web pages to find relevant information. The API then uses an LLM to synthesize the search results into a coherent answer with citations.
+
+The block returns both the generated answer and the source citations that informed it. You can optionally include full text content from the search results for more comprehensive answers.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Research Assistance**: Get quick, sourced answers to complex questions without manually searching multiple websites.
+
+**Fact Verification**: Verify claims or statements by getting answers backed by real web sources with citations.
+
+**Content Creation**: Generate research-backed content by asking questions about topics and using the cited sources.
 <!-- END MANUAL -->
 
 ---

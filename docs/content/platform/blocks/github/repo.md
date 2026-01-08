@@ -8,7 +8,9 @@ This block creates a new file in a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new file in a GitHub repository using the GitHub Contents API. It commits the file with the specified content to the chosen branch (or the default branch if not specified).
+
+The commit message can be customized, and the block returns the URL of the created file along with the commit SHA for tracking purposes.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +31,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Deployment**: Automatically add configuration files to repositories during project setup.
+
+**Documentation Generation**: Create markdown files or documentation pages programmatically.
+
+**Template Deployment**: Add boilerplate files like LICENSE, .gitignore, or CI configs to repositories.
 <!-- END MANUAL -->
 
 ---
@@ -44,7 +50,9 @@ This block creates a new GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new GitHub repository under your account using the GitHub API. You can configure visibility (public/private), add a description, and optionally initialize with a README and .gitignore file based on common templates.
+
+The block returns both the web URL for viewing the repository and the clone URL for git operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -65,7 +73,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Project Bootstrapping**: Automatically create repositories with standard configuration when starting new projects.
+
+**Template Deployment**: Create pre-configured repositories from templates for team members.
+
+**Automated Workflows**: Generate repositories programmatically as part of onboarding or project management workflows.
 <!-- END MANUAL -->
 
 ---
@@ -80,7 +92,9 @@ This block deletes a specified branch.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block deletes a specified branch from a GitHub repository using the GitHub References API. The branch is permanently removed, so use with caution—this cannot be undone without re-pushing the branch.
+
+Protected branches cannot be deleted unless protection rules are first removed.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -97,7 +111,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Post-Merge Cleanup**: Automatically delete feature branches after they've been merged.
+
+**Stale Branch Management**: Clean up old or abandoned branches to keep the repository tidy.
+
+**CI/CD Automation**: Delete temporary branches created during build or deployment processes.
 <!-- END MANUAL -->
 
 ---
@@ -112,7 +130,9 @@ This block lists all branches for a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all branches from a GitHub repository. It queries the GitHub API and returns each branch with its name and a URL to browse the files at that branch.
+
+This provides visibility into all development streams in a repository.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -129,7 +149,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Branch Inventory**: Create a dashboard showing all active branches across repositories.
+
+**Naming Convention Validation**: Check branch names against team conventions.
+
+**Active Development Tracking**: Monitor which branches exist to track parallel development efforts.
 <!-- END MANUAL -->
 
 ---
@@ -144,7 +168,9 @@ This block lists recent discussions for a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block fetches recent discussions from a GitHub repository using the GitHub GraphQL API. Discussions are a forum-style feature for community conversations separate from issues and PRs.
+
+You can limit the number of discussions retrieved with the num_discussions parameter.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -162,7 +188,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Community Monitoring**: Track community discussions to identify popular topics or user concerns.
+
+**Q&A Automation**: Monitor discussions for questions that can be answered automatically.
+
+**Content Aggregation**: Collect discussion topics for community newsletters or summaries.
 <!-- END MANUAL -->
 
 ---
@@ -177,7 +207,9 @@ This block lists all releases for a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all releases from a GitHub repository. Releases are versioned packages of your software that may include release notes, binaries, and source code archives.
+
+The block returns release information including names and URLs, outputting both individual releases and a complete list.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -194,7 +226,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Version Tracking**: Monitor releases across dependencies to stay current with updates.
+
+**Changelog Compilation**: Gather release information for documentation or announcement purposes.
+
+**Dependency Monitoring**: Track when new versions of libraries your project depends on are released.
 <!-- END MANUAL -->
 
 ---
@@ -209,7 +245,9 @@ This block lists all users who have starred a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the list of users who have starred a GitHub repository. Stars are a way for users to bookmark or show appreciation for repositories.
+
+Each stargazer entry includes their username and a link to their GitHub profile.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -226,7 +264,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Community Engagement**: Identify and thank users who have starred your repository.
+
+**Growth Analytics**: Track repository popularity over time by monitoring star growth.
+
+**User Research**: Analyze who is interested in your project based on their profiles.
 <!-- END MANUAL -->
 
 ---
@@ -241,7 +283,9 @@ This block lists all tags for a specified GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all git tags from a GitHub repository. Tags are typically used to mark release points or significant milestones in the repository history.
+
+Each tag includes its name and a URL to browse the repository files at that tag.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -258,7 +302,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Version Enumeration**: List all versions of a project to check for available updates.
+
+**Release Verification**: Confirm that tags exist for expected release versions.
+
+**Historical Code Access**: Find tags to access the codebase at specific historical points.
 <!-- END MANUAL -->
 
 ---
@@ -273,7 +321,9 @@ This block creates a new branch from a specified source branch.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new branch in a GitHub repository based on an existing source branch. It uses the GitHub References API to create a new ref pointing to the same commit as the source branch.
+
+The new branch immediately contains all the code from the source branch at the time of creation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -291,7 +341,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Feature Branch Creation**: Automatically create feature branches from main when work begins.
+
+**Release Preparation**: Create release branches from development when ready to stabilize.
+
+**Hotfix Workflows**: Quickly create hotfix branches from production for urgent fixes.
 <!-- END MANUAL -->
 
 ---
@@ -306,7 +360,9 @@ This block reads the content of a specified file from a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block reads the contents of a file from a GitHub repository using the Contents API. You can specify which branch to read from, defaulting to the repository's default branch.
+
+The block returns both the decoded text content (for text files) and the raw base64-encoded content, along with the file size.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -326,7 +382,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Reading**: Fetch configuration files from repositories for processing or validation.
+
+**Code Analysis**: Read source files for automated analysis, linting, or documentation generation.
+
+**Version Comparison**: Compare file contents across different branches or versions.
 <!-- END MANUAL -->
 
 ---
@@ -341,7 +401,9 @@ This block reads the content of a specified folder from a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block lists the contents of a folder in a GitHub repository. It returns separate outputs for files and directories found in the specified path, allowing you to explore the repository structure.
+
+You can specify which branch to read from; it defaults to master if not specified.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -360,7 +422,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Repository Exploration**: Browse repository structure to understand project organization.
+
+**File Discovery**: Find specific file types in directories for batch processing.
+
+**Directory Monitoring**: Check for expected files in specific locations.
 <!-- END MANUAL -->
 
 ---
@@ -375,7 +441,9 @@ This block updates an existing file in a GitHub repository.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates an existing file in a GitHub repository using the Contents API. It creates a new commit with the updated file content. The block automatically handles the required SHA of the existing file.
+
+You can customize the commit message and specify which branch to update.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -396,7 +464,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Updates**: Programmatically update configuration files in repositories.
+
+**Version Bumping**: Automatically update version numbers in package files.
+
+**Documentation Sync**: Update documentation files based on code changes.
 <!-- END MANUAL -->
 
 ---

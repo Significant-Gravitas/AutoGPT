@@ -8,7 +8,9 @@ Create a new page in Notion. Requires EITHER a parent_page_id OR parent_database
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new page in Notion using the Notion API. You can create pages as children of existing pages or as entries in a database. The parent must be accessible to your integration.
+
+Content can be provided as markdown, which gets converted to Notion blocks. For database pages, you can set additional properties like Status or Priority. Optionally add an emoji icon to the page.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Meeting Notes**: Automatically create meeting notes pages from calendar events with template content.
+
+**Task Creation**: Add new entries to a task database when issues are created in other systems.
+
+**Content Publishing**: Create draft pages in a content calendar from AI-generated or imported content.
 <!-- END MANUAL -->
 
 ---

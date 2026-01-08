@@ -8,7 +8,9 @@ Read a Notion page by its ID and return its raw JSON.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a Notion page by its ID using the Notion API. The page must be accessible to your connected integration, which requires sharing the page with your integration from within Notion.
+
+The block returns the raw JSON representation of the page, including all properties, metadata, and block IDs. This format is useful for programmatic processing or when you need full access to page data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,7 +26,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Extraction**: Read page properties and metadata for analysis or migration to other systems.
+
+**Automation Triggers**: Check page properties to decide what actions to take in a workflow.
+
+**Content Backup**: Retrieve full page data for archival or backup purposes.
 <!-- END MANUAL -->
 
 ---

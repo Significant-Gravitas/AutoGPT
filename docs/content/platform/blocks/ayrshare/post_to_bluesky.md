@@ -8,7 +8,9 @@ Post to Bluesky using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Ayrshare's social media API to publish content to Bluesky. It handles text posts (up to 300 characters), images (up to 4), and video content with support for scheduling, accessibility features like alt text, and link shortening.
+
+The block authenticates through your Ayrshare credentials and sends the post data to Ayrshare's unified API, which then publishes to Bluesky. It returns post identifiers and status information upon completion, or error details if the operation fails.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -36,7 +38,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Cross-Platform Publishing**: Automatically share content across Bluesky and other social networks from a single workflow.
+
+**Scheduled Content Calendar**: Queue up posts with specific publishing times to maintain consistent presence on Bluesky.
+
+**Visual Content Sharing**: Share image galleries with accessibility-friendly alt text for photo-focused content strategies.
 <!-- END MANUAL -->
 
 ---

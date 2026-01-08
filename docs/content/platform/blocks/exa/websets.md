@@ -8,7 +8,9 @@ Cancel all operations being performed on a Webset
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block cancels all running operations (searches, enrichments) on a webset. The webset transitions to an idle state and any in-progress operations are stopped.
+
+The block is useful for stopping long-running operations that are no longer needed or when you need to modify the webset configuration. Items already processed before cancellation are retained.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Resource Management**: Stop expensive operations on websets that are no longer needed.
+
+**Configuration Updates**: Cancel operations before making changes to webset settings.
+
+**Error Recovery**: Stop problematic operations and restart with corrected parameters.
 <!-- END MANUAL -->
 
 ---
@@ -42,7 +48,9 @@ Create a new webset or return existing one by external_id (idempotent operation)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block implements idempotent webset creation using an external ID. If a webset with the given external_id already exists, it returns that webset. Otherwise, it creates a new one.
+
+This pattern prevents duplicate websets when workflows retry or run multiple times. The block indicates whether the webset was newly created or already existed.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -62,7 +70,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Idempotent Workflows**: Safely re-run workflows without creating duplicate websets.
+
+**External System Integration**: Map websets to IDs from your own systems for easy reference.
+
+**Retry-Safe Operations**: Handle workflow retries gracefully by reusing existing websets.
 <!-- END MANUAL -->
 
 ---
@@ -77,7 +89,9 @@ Create a new Exa Webset for persistent web search collections with optional wait
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new Exa Webset, a persistent collection that stores web search results. You define a search query, entity type, and optional criteria that items must meet. The webset continuously evaluates potential matches against your criteria.
+
+The block supports advanced features like scoped searches (searching within specific imports or other websets), enrichments for extracting structured data, and relationship-based "hop" searches. You can wait for initial results or return immediately for asynchronous processing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -115,7 +129,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Generation**: Create websets to find companies or people matching specific criteria for sales outreach.
+
+**Competitive Intelligence**: Build persistent collections tracking competitors, market entrants, or industry news.
+
+**Research Databases**: Compile curated collections of articles, papers, or resources on specific topics.
 <!-- END MANUAL -->
 
 ---
@@ -130,7 +148,9 @@ Delete a Webset and all its items
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block permanently deletes a webset and all of its items, searches, enrichments, and monitors. The operation cannot be undone.
+
+Use this to clean up websets that are no longer needed or to remove test data. The block accepts either the Exa-generated ID or your custom external_id.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -149,7 +169,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Cleanup Operations**: Remove completed or abandoned websets to maintain organization.
+
+**Data Management**: Delete websets containing outdated or irrelevant data.
+
+**Cost Control**: Remove unused websets to prevent unnecessary storage costs.
 <!-- END MANUAL -->
 
 ---
@@ -164,7 +188,9 @@ Retrieve a Webset by ID or external ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves detailed information about a specific webset including its status, configured searches, enrichments, and monitors.
+
+The block returns the webset's current state, metadata, and timestamps. Use this to check webset configuration or monitor status before performing operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -188,7 +214,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Review**: Retrieve webset details to verify settings before making changes.
+
+**Status Checking**: Check the current status and configuration of a webset.
+
+**Workflow Integration**: Fetch webset information for use in downstream workflow steps.
 <!-- END MANUAL -->
 
 ---
@@ -203,7 +233,9 @@ List all Websets with pagination support
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a paginated list of all your websets. Results include basic webset information and can be paginated through using cursor tokens.
+
+Use this to discover existing websets, find specific websets by browsing, or build management interfaces for your webset collections.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -223,7 +255,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Inventory Management**: List all websets to understand your current data collections.
+
+**Bulk Operations**: Iterate through websets to perform batch updates or cleanup.
+
+**Dashboard Building**: Retrieve webset listings for management dashboards or reporting.
 <!-- END MANUAL -->
 
 ---
@@ -238,7 +274,9 @@ Preview how a search query will be interpreted before creating a webset. Helps u
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block analyzes your search query and shows how Exa will interpret it before you create a webset. It reveals the detected entity type, generated criteria, and available enrichment columns.
+
+Use this to refine your query and understand what results to expect. The block also provides suggestions for improving your query for better results.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -262,7 +300,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Query Optimization**: Test and refine search queries before committing to webset creation.
+
+**Entity Validation**: Verify that Exa correctly detects the entity type for your use case.
+
+**Enrichment Planning**: Discover available enrichment columns to plan data extraction.
 <!-- END MANUAL -->
 
 ---
@@ -277,7 +319,9 @@ Update metadata for an existing Webset
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates the metadata associated with an existing webset. Metadata is stored as key-value pairs and can be used to organize, tag, or annotate websets.
+
+Setting metadata to null clears all existing metadata. This operation does not affect the webset's items, searches, or enrichments.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -298,7 +342,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Tagging Systems**: Add tags or labels to websets for organization and filtering.
+
+**Project Association**: Link websets to specific projects or campaigns via metadata.
+
+**Workflow State**: Store workflow-related state or flags in webset metadata.
 <!-- END MANUAL -->
 
 ---
@@ -313,7 +361,9 @@ Check if webset is ready for next operation - enables conditional workflow branc
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block checks if a webset is idle (no running operations) and optionally has a minimum number of items. It returns a boolean ready status along with a recommendation for the next action.
+
+Use this block for conditional workflow branching to decide whether to proceed with processing, wait for more results, or add additional searches.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -335,7 +385,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Workflow Gating**: Only proceed with data processing when webset has enough items.
+
+**Conditional Branching**: Route workflow based on webset readiness for different scenarios.
+
+**Polling Logic**: Implement smart polling by checking readiness before fetching items.
 <!-- END MANUAL -->
 
 ---
@@ -350,7 +404,9 @@ Get a quick status overview of a webset
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block returns a lightweight status overview of a webset without retrieving full item data. It includes counts for items, searches, enrichments, and monitors along with the current processing status.
+
+Use this for quick status checks and monitoring without the overhead of retrieving complete webset details or items.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -373,7 +429,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Dashboards**: Display webset status in monitoring dashboards.
+
+**Health Checks**: Verify websets are active and processing as expected.
+
+**Lightweight Polling**: Check status without fetching full webset data.
 <!-- END MANUAL -->
 
 ---
@@ -388,7 +448,9 @@ Get a comprehensive summary of a webset with samples and statistics
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block generates a comprehensive summary of a webset including statistics, sample items, and detailed breakdowns of searches and enrichments. It provides an overview useful for reporting and analysis.
+
+You can control what to include in the summary such as sample items, search details, and enrichment details to balance comprehensiveness with response size.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -418,7 +480,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Executive Reporting**: Generate summaries of webset collections for stakeholder reports.
+
+**Quality Review**: Review sample items and statistics to assess webset quality.
+
+**Progress Tracking**: Monitor webset growth and activity through periodic summaries.
 <!-- END MANUAL -->
 
 ---

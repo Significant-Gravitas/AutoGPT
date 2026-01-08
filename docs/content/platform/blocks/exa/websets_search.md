@@ -8,7 +8,9 @@ Cancel a running webset search
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block stops a running search operation on a webset. Items already found before cancellation are retained in the webset.
+
+Use this when a search is taking too long, returning unexpected results, or is no longer needed. The block returns the number of items found before cancellation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -28,7 +30,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Resource Control**: Stop searches that are taking longer than expected.
+
+**Query Refinement**: Cancel searches to adjust query and restart with better parameters.
+
+**Partial Results**: Stop searches early when you have enough items for your needs.
 <!-- END MANUAL -->
 
 ---
@@ -43,7 +49,9 @@ Add a new search to an existing webset to find more items
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds a new search to an existing webset to expand its contents. You define the search query, target count, and how results should integrate with existing items (append, override, or merge).
+
+Searches support scoped and exclusion sources, criteria validation, and relationship-based "hop" searches to find related entities.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -81,7 +89,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Webset Expansion**: Add more items to existing websets with new or refined queries.
+
+**Multi-Criteria Collection**: Run multiple searches with different criteria to build comprehensive datasets.
+
+**Iterative Building**: Progressively expand websets based on analysis of initial results.
 <!-- END MANUAL -->
 
 ---
@@ -96,7 +108,9 @@ Find existing search by query or create new - prevents duplicate searches in wor
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block implements idempotent search creation. If a search with the same query already exists in the webset, it returns that search. Otherwise, it creates a new one.
+
+Use this pattern to prevent duplicate searches when workflows retry or run multiple times with the same parameters.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -121,7 +135,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Retry-Safe Workflows**: Safely handle workflow retries without creating duplicate searches.
+
+**Deduplication**: Avoid running the same search multiple times when called from different workflow branches.
+
+**Efficient Operations**: Skip search creation when results from identical queries already exist.
 <!-- END MANUAL -->
 
 ---
@@ -136,7 +154,9 @@ Get the status and details of a webset search
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves detailed information about a webset search including its query, criteria, progress, and recall estimation.
+
+Use this to monitor search progress, verify search configuration, or investigate search behavior when results don't match expectations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -164,7 +184,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Progress Tracking**: Monitor search completion and items found during long-running operations.
+
+**Configuration Review**: Retrieve search details to verify criteria and settings are correct.
+
+**Debugging**: Investigate search configuration when results don't match expectations.
 <!-- END MANUAL -->
 
 ---

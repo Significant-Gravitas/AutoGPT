@@ -8,7 +8,9 @@ Read a Notion page and convert it to Markdown format with proper formatting for 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block reads a Notion page and converts its content to Markdown format. It handles Notion's block structure and rich text, translating headings, lists, links, bold, italic, and other formatting into standard Markdown.
+
+The conversion preserves the document structure while making the content portable and usable in other contexts. Optionally include the page title as a top-level header in the output.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -26,7 +28,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Export**: Export Notion pages as Markdown for use in static site generators or documentation tools.
+
+**AI Processing**: Convert Notion content to Markdown for LLM processing, summarization, or analysis.
+
+**Cross-Platform Publishing**: Use Notion as a CMS and export content as Markdown for blogs or wikis.
 <!-- END MANUAL -->
 
 ---

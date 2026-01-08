@@ -8,7 +8,9 @@ This block retrieves a list of users who purchased tickets to a Twitter Space.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve a list of users who purchased tickets to a ticketed Twitter Space. Only the Space creator or hosts can access buyer information.
+
+The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, usernames, and optionally expanded profile data. This is useful for managing ticketed events and understanding your paying audience.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Audience Management**: Track who purchased tickets to manage attendee lists and send follow-ups.
+
+**Revenue Tracking**: Monitor ticket buyers for ticketed Spaces to understand revenue and audience composition.
+
+**Exclusive Content Delivery**: Identify ticket buyers to provide exclusive content or resources to paid attendees.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ This block retrieves information about a single Twitter Space.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve detailed information about a specific Twitter Space by its ID. Returns Space metadata including title, state, host information, and timing details.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports expansions for additional data about creators, hosts, speakers, and topics. Works for both live and scheduled Spaces.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -83,7 +91,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Space Monitoring**: Check the status and details of a specific Space you're interested in or hosting.
+
+**Event Tracking**: Monitor when a scheduled Space goes live or verify its current state.
+
+**Analytics Preparation**: Gather Space metadata before or after an event for reporting and analysis.
 <!-- END MANUAL -->
 
 ---
@@ -98,7 +110,9 @@ This block retrieves tweets shared in a Twitter Space.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve tweets that were shared during a Twitter Space. This includes tweets pinned or shared by hosts and speakers during the live audio session.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and referenced tweets. Returns tweet IDs, text content, and complete tweet data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -131,7 +145,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Curation**: Collect tweets shared during a Space to create summaries or follow-up content.
+
+**Resource Compilation**: Gather links and resources shared during educational or informational Spaces.
+
+**Event Documentation**: Archive tweets from important Spaces for reference or community sharing.
 <!-- END MANUAL -->
 
 ---
@@ -146,7 +164,9 @@ This block retrieves information about multiple Twitter Spaces.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve information about multiple Twitter Spaces in a single request. You can look up Spaces by their IDs or by creator user IDs, making it efficient for batch operations.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports expansions for additional data about creators, hosts, speakers, and topics. Returns arrays of Space IDs, titles, and complete Space data objects.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -183,7 +203,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Creator Monitoring**: Track all Spaces hosted by specific creators or influencers you follow.
+
+**Batch Analysis**: Retrieve information about multiple Spaces at once for comparative analysis.
+
+**Schedule Tracking**: Monitor upcoming Spaces from multiple accounts to plan your participation.
 <!-- END MANUAL -->
 
 ---

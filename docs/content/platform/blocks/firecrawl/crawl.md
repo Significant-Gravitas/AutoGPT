@@ -8,7 +8,9 @@ Firecrawl crawls websites to extract comprehensive data while bypassing blockers
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Firecrawl's API to crawl multiple pages of a website starting from a given URL. It navigates through links, handling JavaScript rendering and bypassing anti-bot measures to extract clean content from each page.
+
+Configure the crawl depth with the limit parameter, choose output formats (markdown, HTML, or raw HTML), and optionally filter to main content only. The block supports caching with configurable max age and wait times for dynamic content.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,7 +39,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Documentation Indexing**: Crawl entire documentation sites to build searchable knowledge bases or training data.
+
+**Competitor Research**: Extract content from competitor websites for market analysis and comparison.
+
+**Content Archival**: Systematically archive website content for backup or compliance purposes.
 <!-- END MANUAL -->
 
 ---

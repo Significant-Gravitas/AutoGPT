@@ -42,7 +42,9 @@ Handles conditional logic based on comparison operators
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block compares two values using standard operators (==, !=, >, <, >=, <=) and routes data based on the result. The comparison result determines which output receives data: yes_output for true conditions, no_output for false.
+
+Optionally specify yes_value and no_value to output different data than the input values. If not specified, value1 is used as the output value.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -64,7 +66,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Threshold Checks**: Route workflow differently when values exceed limits (e.g., order total > $100 triggers approval).
+
+**Status Validation**: Check if a status equals "complete" or "error" to branch workflow logic.
+
+**Numeric Comparisons**: Compare scores, counts, or metrics to conditionally trigger actions.
 <!-- END MANUAL -->
 
 ---
@@ -110,7 +116,9 @@ This block samples data from a given dataset using various sampling methods.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extracts a sample from a dataset using various methods: random sampling, systematic sampling (every nth item), or top-N selection. Advanced options include stratified sampling by key, weighted sampling, and cluster sampling.
+
+Configure sample_size to control how many items to select. Use random_seed for reproducible results. The accumulate option collects data before sampling, useful when processing streaming inputs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -134,7 +142,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**A/B Testing**: Randomly sample users or records for testing different workflow paths.
+
+**Representative Subsets**: Extract stratified samples from large datasets for analysis or testing.
+
+**Performance Testing**: Select a smaller sample from large data for workflow development and debugging.
 <!-- END MANUAL -->
 
 ---
@@ -149,7 +161,9 @@ Handles conditional logic based on comparison operators
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block checks if an input matches a specified value and routes data accordingly. When the input equals the value, data flows to yes_output; otherwise, it goes to no_output.
+
+Use yes_value and no_value to specify what data to output in each case. This provides a simple equality check for branching workflow logic.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -170,7 +184,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Category Routing**: Route items to different processing paths based on their category or type.
+
+**Feature Flags**: Check if a feature flag equals "enabled" to conditionally execute new functionality.
+
+**Status Handling**: Branch workflow based on specific status values like "pending", "approved", or "rejected".
 <!-- END MANUAL -->
 
 ---
@@ -185,7 +203,9 @@ Initializes a Pinecone index
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block initializes or connects to a Pinecone vector database index. Specify the index name, vector dimension, and distance metric (cosine, euclidean, or dot product) for new indexes.
+
+For serverless deployment, configure the cloud provider and region. The block returns the initialized index name for use with insert and query operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -206,7 +226,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**RAG Pipeline Setup**: Initialize a vector index for storing document embeddings in retrieval-augmented generation.
+
+**Semantic Search**: Set up a vector database for similarity search across products, documents, or media.
+
+**Knowledge Base**: Create a searchable vector store for FAQ answers or support documentation.
 <!-- END MANUAL -->
 
 ---
@@ -221,7 +245,9 @@ Upload data to a Pinecone index
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uploads vectors and associated text chunks to a Pinecone index. Each chunk is paired with its embedding vector, and optional metadata can be attached for filtering during queries.
+
+Use namespaces to organize vectors into logical groups within the same index. The upsert operation adds new vectors or updates existing ones with matching IDs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -241,7 +267,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Document Indexing**: Store document chunks with their embeddings for later semantic search.
+
+**Knowledge Ingestion**: Add FAQ entries, product descriptions, or support articles to a searchable index.
+
+**Memory Storage**: Store conversation history or agent memories as searchable vectors.
 <!-- END MANUAL -->
 
 ---
@@ -256,7 +286,9 @@ Queries a Pinecone index
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches a Pinecone index for vectors similar to a query vector. Specify top_k to control how many results to return, and use namespace to search within a specific partition.
+
+Results include similarity scores and optionally the vector values and metadata. Combined results aggregate the text chunks for easy use in RAG pipelines.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -279,7 +311,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Semantic Search**: Find the most relevant documents or answers based on meaning, not just keywords.
+
+**RAG Context**: Retrieve relevant context passages to augment LLM prompts with domain-specific knowledge.
+
+**Similar Content**: Find products, articles, or media similar to a reference item.
 <!-- END MANUAL -->
 
 ---

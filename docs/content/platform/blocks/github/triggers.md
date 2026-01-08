@@ -8,7 +8,9 @@ This block triggers on GitHub Discussions events. Great for syncing Q&A to Disco
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a webhook subscription to GitHub Discussions events using the GitHub Webhooks API. When a discussion event occurs (created, edited, answered, etc.), GitHub sends a webhook payload that triggers your workflow.
+
+The block parses the webhook payload and extracts discussion details including the title, body, category, state, and the user who triggered the event. Note that GitHub Discussions must be enabled on the repository.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,7 +39,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Discord Sync**: Post new discussions to Discord channels to keep the community engaged across platforms.
+
+**Auto-Responder**: Automatically respond to common questions in discussions with helpful resources.
+
+**Q&A Routing**: Route discussion questions to the appropriate team members based on category or content.
 <!-- END MANUAL -->
 
 ---
@@ -52,7 +58,9 @@ This block triggers on GitHub issues events. Useful for automated triage, notifi
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a webhook subscription to GitHub Issues events. When an issue event occurs (opened, closed, labeled, assigned, etc.), GitHub sends a webhook payload that triggers your workflow.
+
+The block extracts issue details including the title, body, labels, assignees, state, and the user who triggered the event. Use this for automated triage, notifications, and issue management workflows.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -81,7 +89,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Triage**: Automatically label new issues based on keywords in title or description.
+
+**Welcome Messages**: Send welcome messages to first-time contributors when they open their first issue.
+
+**Slack Notifications**: Post notifications to Slack when issues are opened or closed.
 <!-- END MANUAL -->
 
 ---
@@ -96,7 +108,9 @@ This block triggers on pull request events and outputs the event type and payloa
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a webhook subscription to GitHub Pull Request events. When a PR event occurs (opened, closed, merged, review requested, etc.), GitHub sends a webhook payload that triggers your workflow.
+
+The block extracts PR details including the number, URL, and full pull request object. This enables automated code review, CI/CD pipelines, and notification workflows.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -120,7 +134,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Code Review**: Trigger AI-powered code review when new PRs are opened.
+
+**CI/CD Automation**: Start builds and tests when PRs are created or updated.
+
+**Reviewer Assignment**: Automatically assign reviewers based on files changed or PR author.
 <!-- END MANUAL -->
 
 ---
@@ -135,7 +153,9 @@ This block triggers on GitHub release events. Perfect for automating announcemen
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a webhook subscription to GitHub Release events. When a release event occurs (published, created, edited, etc.), GitHub sends a webhook payload that triggers your workflow.
+
+The block extracts release details including tag name, release name, release notes, prerelease flag, and associated assets. Use this to automate announcements and deployment workflows.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -164,7 +184,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Release Announcements**: Post release announcements to Discord, Twitter, or Slack when new versions are published.
+
+**Changelog Distribution**: Automatically send release notes to mailing lists or documentation sites.
+
+**Deployment Triggers**: Initiate deployment workflows when releases are published.
 <!-- END MANUAL -->
 
 ---
@@ -179,7 +203,9 @@ This block triggers on GitHub star events. Useful for celebrating milestones (e.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a webhook subscription to GitHub Star events. When someone stars or unstars your repository, GitHub sends a webhook payload that triggers your workflow.
+
+The block extracts star details including the timestamp, current star count, repository name, and the user who starred. Use this to track engagement and celebrate milestones.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -204,7 +230,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Milestone Celebrations**: Announce when your repository reaches star milestones (100, 1k, 10k stars).
+
+**Engagement Tracking**: Log star events to track repository popularity over time.
+
+**Thank You Messages**: Send personalized thank you messages to users who star your repository.
 <!-- END MANUAL -->
 
 ---

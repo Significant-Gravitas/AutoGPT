@@ -8,7 +8,9 @@ This block retrieves information about a specified Twitter List.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve detailed information about a specific Twitter List by its ID. Returns list metadata including name, description, member count, follower count, and privacy status.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports expansions to include owner profile data. Works for both public lists and private lists you own or follow.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -49,7 +51,11 @@ You can see things like:
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**List Verification**: Verify a list exists and check its current details before performing operations on it.
+
+**List Discovery**: Retrieve information about interesting lists to decide whether to follow them.
+
+**Analytics Preparation**: Gather list metadata for reporting or analysis purposes.
 <!-- END MANUAL -->
 
 ---
@@ -64,7 +70,9 @@ This block retrieves all Lists owned by a specified Twitter user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve all Twitter Lists created by a specific user. Results include list IDs, names, and detailed metadata with pagination support for users with many lists.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports expansions to include owner profile data. Only returns public lists unless querying your own account.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -106,7 +114,11 @@ You can see things like:
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**List Discovery**: Find all public lists created by influencers or thought leaders in your industry.
+
+**Account Audit**: Review all lists you own to identify ones to update or delete.
+
+**Competitive Analysis**: Discover how competitors organize their Twitter following through their public lists.
 <!-- END MANUAL -->
 
 ---

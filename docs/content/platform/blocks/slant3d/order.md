@@ -8,7 +8,9 @@ Cancel an existing order
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block cancels an existing order in the Slant3D system using the order ID. The cancellation request is sent to the Slant3D API and returns a status message confirming the cancellation.
+
+Orders can only be cancelled before they enter production. Check order status before attempting cancellation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,7 +26,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Customer Cancellations**: Allow customers to cancel orders through your interface.
+
+**Error Recovery**: Cancel orders placed with incorrect details or specifications.
+
+**Order Management**: Implement cancellation functionality in order management dashboards.
 <!-- END MANUAL -->
 
 ---
@@ -39,7 +45,9 @@ Create a new print order
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new 3D print order through the Slant3D API. Provide customer shipping details and a list of items to print (STL files with specifications). Each item includes file URL, quantity, and filament selection.
+
+The block returns the Slant3D order ID which you can use for tracking and status updates.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -57,7 +65,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**E-Commerce Integration**: Automatically submit 3D print orders from your online store.
+
+**Custom Product Fulfillment**: Create orders for on-demand 3D printed products.
+
+**Automated Manufacturing**: Trigger print orders based on inventory levels or customer requests.
 <!-- END MANUAL -->
 
 ---
@@ -72,7 +84,9 @@ Get order cost estimate
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calculates a cost estimate for a potential order without actually placing it. Provide the same details as a create order request, and receive a breakdown of printing and shipping costs.
+
+Use this for price quotes before customers commit to orders.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -92,7 +106,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Price Quoting**: Provide customers with accurate pricing before they commit to orders.
+
+**Budget Planning**: Calculate costs for batch orders or production runs.
+
+**Comparison Shopping**: Get estimates to compare with other printing services.
 <!-- END MANUAL -->
 
 ---
@@ -107,7 +125,9 @@ Get shipping cost estimate
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calculates shipping costs for a potential order based on the destination and items. It provides an estimate before placing the full order.
+
+Use this to display shipping costs at checkout or calculate delivery options for customers.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -126,7 +146,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Checkout Display**: Show shipping costs to customers before they complete orders.
+
+**International Pricing**: Calculate shipping for different destinations to optimize pricing.
+
+**Cost Breakdown**: Provide transparent shipping cost breakdowns to customers.
 <!-- END MANUAL -->
 
 ---
@@ -141,7 +165,9 @@ Get all orders for the account
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all orders associated with your Slant3D account. It returns a list of orders with their current status and details.
+
+Use this for order management dashboards or to sync order data with your systems.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -152,7 +178,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Order Dashboard**: Build dashboards showing all orders and their current status.
+
+**Sync Operations**: Regularly sync Slant3D orders with your internal order management system.
+
+**Reporting**: Generate reports on order volume and status distribution.
 <!-- END MANUAL -->
 
 ---
@@ -167,7 +197,9 @@ Track order status and shipping
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the current status and shipping tracking information for a specific order. It returns the order status and any available tracking numbers.
+
+Use this to provide customers with real-time order status updates.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -184,7 +216,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Order Status Page**: Display current order status to customers on your website.
+
+**Shipping Notifications**: Get tracking numbers to send shipping notifications to customers.
+
+**Customer Support**: Look up order status quickly for customer service inquiries.
 <!-- END MANUAL -->
 
 ---

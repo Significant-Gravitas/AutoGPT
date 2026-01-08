@@ -8,7 +8,9 @@ Create records in an Airtable table
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates new records in an Airtable table using the Airtable API. Each record is specified with a fields object containing field names and values. You can create up to 10 records in a single call.
+
+Enable typecast to automatically convert string values to appropriate field types (dates, numbers, etc.). The block returns the created records with their assigned IDs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Import**: Bulk import data from external sources into Airtable tables.
+
+**Form Submissions**: Create records from form submissions or API integrations.
+
+**Workflow Output**: Save workflow results or processed data to Airtable for tracking.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ Delete records from an Airtable table
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block deletes records from an Airtable table by their record IDs. You can delete up to 10 records in a single call. The operation is permanent and cannot be undone.
+
+Provide an array of record IDs to delete. Using the table ID instead of the name is recommended for reliability.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -63,7 +71,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Cleanup**: Remove outdated or duplicate records from tables.
+
+**Workflow Cleanup**: Delete temporary records after processing is complete.
+
+**Batch Removal**: Remove multiple records that match certain criteria.
 <!-- END MANUAL -->
 
 ---
@@ -78,7 +90,9 @@ Get a single record from Airtable
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a single record from an Airtable table by its ID. The record includes all field values and metadata like creation time. Enable normalize_output to ensure all fields are included with proper empty values.
+
+Optionally include field metadata for type information and configuration details about each field.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -101,7 +115,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Detail View**: Fetch complete record data for display or detailed processing.
+
+**Record Lookup**: Retrieve specific records by ID from webhook payloads or references.
+
+**Data Validation**: Check record contents before performing updates or related operations.
 <!-- END MANUAL -->
 
 ---
@@ -116,7 +134,9 @@ List records from an Airtable table
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries records from an Airtable table with optional filtering, sorting, and pagination. Use Airtable formulas to filter records and specify sort order by field and direction.
+
+Results can be limited, paginated with offsets, and restricted to specific fields. Enable normalize_output for consistent field values across records.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -144,7 +164,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Report Generation**: Query records with filters to build reports or dashboards.
+
+**Data Export**: Fetch records matching criteria for export to other systems.
+
+**Batch Processing**: List records to process in subsequent workflow steps.
 <!-- END MANUAL -->
 
 ---
@@ -159,7 +183,9 @@ Update records in an Airtable table
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates existing records in an Airtable table. Each record update requires the record ID and a fields object with the values to update. Only specified fields are modified; other fields remain unchanged.
+
+Enable typecast to automatically convert string values to appropriate types. You can update up to 10 records per call.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -178,7 +204,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Updates**: Update record status fields as workflows progress.
+
+**Data Enrichment**: Add computed or fetched data to existing records.
+
+**Batch Modifications**: Update multiple records based on processed results.
 <!-- END MANUAL -->
 
 ---

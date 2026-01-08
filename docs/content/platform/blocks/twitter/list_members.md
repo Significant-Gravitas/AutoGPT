@@ -8,7 +8,9 @@ This block adds a specified user to a Twitter List owned by the authenticated us
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to add a user to a Twitter List that you own. The added user will appear in the list's member roster and their tweets will show in the list timeline.
+
+The block authenticates using OAuth 2.0 with list write permissions. Only the list owner can add members. The target user does not need to approve being added to public lists.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -25,7 +27,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**List Curation**: Build curated lists by adding relevant accounts you discover.
+
+**Community Organization**: Add new community members or contributors to tracking lists.
+
+**Research Lists**: Add accounts to research lists for ongoing monitoring projects.
 <!-- END MANUAL -->
 
 ---
@@ -40,7 +46,9 @@ This block retrieves the members of a specified Twitter List.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve all members of a specific Twitter List. Results include user IDs, usernames, and optionally expanded profile data with pagination support.
+
+The block uses Tweepy with OAuth 2.0 authentication. Works for public lists and private lists you own or are a member of. Returns member data in batches of up to 100 users.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -66,7 +74,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Audience Analysis**: Analyze the composition of curated lists to understand target audiences.
+
+**List Export**: Export list members for analysis or to recreate lists on other platforms.
+
+**Member Verification**: Check if specific users are members of a particular list.
 <!-- END MANUAL -->
 
 ---
@@ -81,7 +93,9 @@ This block retrieves all Lists that a specified user is a member of.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve all Lists that include a specific user as a member. This shows which curated lists have added this account.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports expansions for list owner data. Returns paginated results with list IDs and metadata. Only returns public lists unless querying your own memberships.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -122,7 +136,11 @@ You can see things like:
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Influence Analysis**: Discover what curated lists include an influencer or competitor.
+
+**Profile Research**: Understand how others categorize a specific account.
+
+**Visibility Assessment**: See which lists feature your own account for reputation tracking.
 <!-- END MANUAL -->
 
 ---
@@ -137,7 +155,9 @@ This block removes a specified user from a Twitter List owned by the authenticat
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to remove a user from a Twitter List that you own. The removed user will no longer appear in the list and their tweets won't show in the list timeline.
+
+The block authenticates using OAuth 2.0 with list write permissions. Only the list owner can remove members. The removed user is not notified.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -154,7 +174,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**List Maintenance**: Remove inactive or irrelevant accounts from your curated lists.
+
+**Quality Control**: Remove accounts that no longer meet the list's criteria or purpose.
+
+**List Cleanup**: Periodically clean up lists by removing accounts that have changed focus.
 <!-- END MANUAL -->
 
 ---

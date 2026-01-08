@@ -8,7 +8,9 @@ This block retrieves tweets from a specified Twitter list.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve tweets posted by members of a specific Twitter List. Results include all tweets from list members in reverse chronological order, providing a curated timeline based on the list's membership.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author profiles, and referenced tweets. Pagination allows retrieving large volumes of list content in batches of up to 100 tweets.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -44,7 +46,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Industry News Aggregation**: Retrieve tweets from curated industry expert lists to create automated news digests.
+
+**Topic Monitoring**: Monitor tweets from lists focused on specific topics like AI, crypto, or sports for trend analysis.
+
+**Content Curation**: Pull tweets from influencer lists to identify high-quality content for sharing or engagement.
 <!-- END MANUAL -->
 
 ---

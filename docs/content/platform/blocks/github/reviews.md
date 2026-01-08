@@ -8,7 +8,9 @@ Creates a comment object for use with GitHub blocks. Note: For review comments, 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a structured comment object that can be used with GitHub review blocks. It formats the comment data according to GitHub API requirements, including file path, body text, and position information.
+
+For review comments, only path, body, and position fields are used. The side, start_line, and start_side fields are only applicable for standalone PR comments, not review comments.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Code Review**: Generate comment objects for automated review systems that analyze code changes.
+
+**Batch Comments**: Create multiple comment objects to submit together in a single review.
+
+**Template Responses**: Build reusable comment templates for common code review feedback patterns.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ This block creates a review on a GitHub pull request with optional inline commen
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a code review on a GitHub pull request using the Reviews API. Reviews can include a summary comment and optionally inline comments on specific lines of code in the diff.
+
+You can create reviews as drafts (pending) for later submission, or post them immediately with an action: COMMENT for neutral feedback, APPROVE to approve the changes, or REQUEST_CHANGES to block merging until addressed.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -68,7 +76,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Code Review**: Submit AI-generated code reviews with inline comments on specific lines.
+
+**Review Workflows**: Create structured reviews as part of automated CI/CD pipelines.
+
+**Approval Automation**: Automatically approve PRs that pass all automated checks and criteria.
 <!-- END MANUAL -->
 
 ---
@@ -83,7 +95,9 @@ This block gets all review comments from a GitHub pull request or from a specifi
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves review comments from a GitHub pull request. Review comments are inline comments made on specific lines of code during code review, distinct from general issue-style comments.
+
+You can get all review comments on the PR, or filter to comments from a specific review by providing the review ID. Each comment includes metadata like the file path, line number, author, and comment body.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -102,7 +116,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Review Analysis**: Extract all review comments to analyze feedback patterns or generate summaries.
+
+**Comment Tracking**: Monitor which review feedback has been addressed by comparing comments to code changes.
+
+**Documentation**: Collect review discussions for documentation or knowledge base purposes.
 <!-- END MANUAL -->
 
 ---
@@ -117,7 +135,9 @@ This block lists all reviews for a specified GitHub pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all reviews submitted on a GitHub pull request. It returns information about each review including the reviewer, their verdict (approve, request changes, or comment), and the review body.
+
+Use this to check approval status, see who has reviewed, or analyze the review history of a pull request.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -135,7 +155,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Approval Status Check**: Verify that required reviewers have approved before proceeding with merge.
+
+**Review Metrics**: Track review participation and response times across team members.
+
+**Merge Readiness**: Check review states to determine if a PR meets merge requirements.
 <!-- END MANUAL -->
 
 ---
@@ -150,7 +174,9 @@ This block resolves or unresolves a review discussion thread on a GitHub pull re
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block resolves or unresolves a review discussion thread on a GitHub pull request using the GraphQL API. Resolved discussions are collapsed in the GitHub UI, indicating the feedback has been addressed.
+
+Specify the comment ID of the thread to resolve. Set resolve to true to mark as resolved, or false to reopen the discussion.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -169,7 +195,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Resolution**: Mark discussions as resolved when automated systems verify the feedback was addressed.
+
+**Review Cleanup**: Bulk resolve outdated discussions that no longer apply after significant refactoring.
+
+**Review Management**: Programmatically manage discussion states as part of review workflows.
 <!-- END MANUAL -->
 
 ---
@@ -184,7 +214,9 @@ This block submits a pending (draft) review on a GitHub pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block submits a pending (draft) review on a GitHub pull request. Draft reviews allow you to compose multiple inline comments before publishing them together as a cohesive review.
+
+When submitting, choose the review event: COMMENT for general feedback, APPROVE to approve the PR, or REQUEST_CHANGES to request modifications before merging.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -204,7 +236,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Batch Review Submission**: Build up multiple comments in a draft, then submit them all at once.
+
+**Review Finalization**: Complete the review process after adding all inline comments and deciding on the verdict.
+
+**Two-Phase Review**: Create draft reviews for internal review before officially submitting to the PR author.
 <!-- END MANUAL -->
 
 ---

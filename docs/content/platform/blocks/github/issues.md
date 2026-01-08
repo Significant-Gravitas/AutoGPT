@@ -105,7 +105,9 @@ This block lists all comments for a specified GitHub issue or pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all comments from a GitHub issue or pull request via the GitHub API. It authenticates using your GitHub credentials and fetches the complete comment history, returning both individual comments and a list of all comments with their metadata.
+
+Each comment includes the comment ID, body text, author username, and a direct URL to the comment on GitHub.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -122,7 +124,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Conversation Analysis**: Extract all comments from an issue to analyze the discussion or generate a summary of the conversation.
+
+**Comment Monitoring**: Track all responses on specific issues to monitor team communication or customer feedback.
+
+**Audit Trails**: Collect comment history for compliance or documentation purposes.
 <!-- END MANUAL -->
 
 ---
@@ -300,7 +306,9 @@ This block updates a comment on a specified GitHub issue or pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates an existing comment on a GitHub issue or pull request. You can identify the comment to update using either the direct comment URL, or a combination of the issue URL and comment ID. The block sends a PATCH request to the GitHub API to replace the comment's content.
+
+The updated comment retains its original author and timestamp context while replacing the body text with your new content.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -320,7 +328,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Updates**: Modify a pinned status comment to reflect current progress on an issue.
+
+**Bot Maintenance**: Update automated bot comments with new information instead of creating duplicate comments.
+
+**Error Corrections**: Fix typos or incorrect information in previously posted comments.
 <!-- END MANUAL -->
 
 ---

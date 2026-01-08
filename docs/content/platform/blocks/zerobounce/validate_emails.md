@@ -8,7 +8,9 @@ Validate emails
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the ZeroBounce API to validate email addresses for deliverability. It checks if an email is valid, invalid, catch-all, spamtrap, abuse, or disposable. Optionally provide an IP address for additional validation context.
+
+The response includes detailed status information, SMTP provider, and recommendation on whether to send emails to that address.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -25,7 +27,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**List Cleaning**: Validate email lists before campaigns to reduce bounce rates.
+
+**Lead Qualification**: Verify lead email addresses as part of intake workflows.
+
+**Form Validation**: Check email validity in real-time during user registration or contact form submissions.
 <!-- END MANUAL -->
 
 ---

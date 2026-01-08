@@ -8,7 +8,9 @@ Add a new column with a header. Can add at the end or insert at a specific posit
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds a new column to a Google Sheet with a specified header name. You can add the column at the end or insert it before a specific column position. If you provide a default value, all existing data rows will be populated with that value.
+
+The block uses the Google Sheets API to perform the insertion, shifting existing columns to the right when inserting in the middle.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -31,7 +33,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Schema Evolution**: Add new data fields to existing tracking sheets as requirements change.
+
+**Status Tracking**: Add a "Status" or "Processed" column to mark items as they flow through a workflow.
+
+**Data Enhancement**: Add computed or lookup columns to enrich existing datasets.
 <!-- END MANUAL -->
 
 ---
@@ -46,7 +52,9 @@ Add a dropdown list (data validation) to cells. Useful for enforcing valid input
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds data validation rules to a cell range using the Google Sheets API, creating dropdown menus with predefined options. You can enforce strict validation (reject invalid inputs) or show warnings for non-list values.
+
+The dropdown arrow appears in cells when enabled, providing users with a list of valid choices.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -68,7 +76,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Tracking**: Add status dropdowns (Pending, In Progress, Complete) to task tracking sheets.
+
+**Data Entry Control**: Restrict input options to valid categories, departments, or product types.
+
+**Survey Forms**: Create structured input fields with predefined response options.
 <!-- END MANUAL -->
 
 ---
@@ -83,7 +95,9 @@ Add a note to a cell in a Google Sheet
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds a text note to a specific cell using the Google Sheets API. Notes appear when hovering over a cell and provide additional context without affecting cell values.
+
+Notes are useful for documentation, explanations, or audit trails that shouldn't modify the underlying data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -103,7 +117,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Audit Trail**: Add notes documenting who modified data and when.
+
+**Data Documentation**: Explain calculation logic or data sources for specific cells.
+
+**Error Flagging**: Mark cells with notes explaining validation issues or anomalies.
 <!-- END MANUAL -->
 
 ---
@@ -118,7 +136,9 @@ Append or Add a single row to the end of a Google Sheet. The row is added after 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block appends a new row to the end of a Google Sheet after the last row containing data. You provide values as a list that maps to columns in order. The value_input_option controls whether values are parsed (like formulas or dates) or stored as raw text.
+
+This is ideal for continuously adding records to a log or database-style sheet.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -138,7 +158,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Capture**: Append new leads from forms or webhooks to a sales tracking sheet.
+
+**Event Logging**: Add timestamped entries to an activity log or audit trail.
+
+**Data Collection**: Continuously gather data points from sensors, APIs, or user submissions.
 <!-- END MANUAL -->
 
 ---
@@ -153,7 +177,9 @@ This block performs multiple operations on a Google Sheets spreadsheet in a sing
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block combines multiple spreadsheet operations into a single API call using the Google Sheets API's batch update functionality. This is more efficient than making separate calls for each operation.
+
+Operations execute in order and can include various actions like formatting, data validation, and protection. The batch fails if any operation fails.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -171,7 +197,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Bulk Setup**: Apply multiple formatting rules, validations, and protections when setting up new sheets.
+
+**Performance Optimization**: Reduce API calls by batching multiple updates together.
+
+**Atomic Updates**: Ensure multiple related changes succeed or fail together.
 <!-- END MANUAL -->
 
 ---
@@ -186,7 +216,9 @@ This block clears data from a specified range in a Google Sheets spreadsheet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes all values from a specified cell range using the Google Sheets API. The cells remain but their contents are deleted, preserving any formatting.
+
+Use A1 notation (e.g., "A1:D10" or "Sheet1!B2:C5") to specify the range to clear.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -204,7 +236,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Reset**: Clear data areas before importing fresh data from external sources.
+
+**Template Preparation**: Reset input areas of templates before distributing new copies.
+
+**Periodic Cleanup**: Clear temporary or staging data areas as part of scheduled workflows.
 <!-- END MANUAL -->
 
 ---
@@ -219,7 +255,9 @@ Copy a sheet from one spreadsheet to another.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block copies an entire sheet (tab) from one Google Spreadsheet to another using the Google Sheets API. The copied sheet includes all data, formatting, formulas, and structure.
+
+The new sheet is added to the destination spreadsheet with a potentially modified name if a sheet with the same name already exists.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -240,7 +278,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Template Distribution**: Copy template sheets to individual project or client spreadsheets.
+
+**Report Consolidation**: Copy data sheets from multiple sources into a master spreadsheet.
+
+**Backup Creation**: Copy important sheets to backup spreadsheets for archival.
 <!-- END MANUAL -->
 
 ---
@@ -255,7 +297,9 @@ Create a named range to reference cells by name instead of A1 notation.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a named range in a Google Spreadsheet using the Google Sheets API. Named ranges allow you to reference cells by descriptive names instead of A1 notation, making formulas more readable.
+
+Named ranges can be used in formulas across the spreadsheet and make maintenance easier when data locations change.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -276,7 +320,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Formula Clarity**: Create named ranges like "SalesData" or "TaxRate" for clearer formulas.
+
+**Dynamic References**: Define named ranges that formulas reference, simplifying updates.
+
+**Data Source Setup**: Create named ranges for areas that serve as data sources for charts or lookups.
 <!-- END MANUAL -->
 
 ---
@@ -291,7 +339,9 @@ This block creates a new Google Sheets spreadsheet with specified sheets.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a brand new Google Sheets spreadsheet with a specified title and optional sheet names. The spreadsheet is created in the user's Google Drive and immediately accessible via the returned URL.
+
+The spreadsheet output can be chained to other Sheets blocks for immediate data population.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -311,7 +361,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Report Generation**: Create new spreadsheets for periodic reports with dedicated sheets for different data sections.
+
+**Project Setup**: Automatically create project tracking spreadsheets with pre-defined sheet structures.
+
+**Data Export**: Create new spreadsheets to export data from other systems for sharing.
 <!-- END MANUAL -->
 
 ---
@@ -326,7 +380,9 @@ Delete a column by header name or column letter.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes an entire column from a Google Sheet using the Google Sheets API. You can specify the column by its header name or column letter (A, B, C, etc.).
+
+All data in the column is permanently deleted and subsequent columns shift left to fill the gap.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -345,7 +401,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Schema Cleanup**: Remove deprecated or unused columns from data sheets.
+
+**Data Reduction**: Delete columns containing sensitive or unnecessary information before sharing.
+
+**Structure Maintenance**: Remove temporary calculation columns after processing.
 <!-- END MANUAL -->
 
 ---
@@ -360,7 +420,9 @@ Delete specific rows from a Google Sheet by their row indices. Works well with F
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes specific rows from a Google Sheet by their 1-based row indices using the Google Sheets API. It handles multiple deletions efficiently by processing from bottom to top to maintain correct indices.
+
+Works seamlessly with the Filter Rows block output to delete rows matching specific criteria.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -380,7 +442,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Cleanup**: Delete rows with invalid or incomplete data identified by filtering.
+
+**Record Removal**: Remove processed or archived records from active sheets.
+
+**Conditional Deletion**: Delete rows matching specific criteria like outdated entries or cancelled items.
 <!-- END MANUAL -->
 
 ---
@@ -395,7 +461,9 @@ Export a Google Sheet as CSV data
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block exports data from a Google Sheet as a CSV-formatted string using the Google Sheets API. You can choose whether to include headers and specify which sheet to export.
+
+The CSV data can be used for integration with other systems, file downloads, or data processing pipelines.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -415,7 +483,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**System Integration**: Export data as CSV for import into external systems or databases.
+
+**File Distribution**: Generate CSV exports for email attachments or file downloads.
+
+**Data Backup**: Create periodic CSV backups of spreadsheet data.
 <!-- END MANUAL -->
 
 ---
@@ -430,7 +502,9 @@ Filter rows in a Google Sheet based on a column condition. Returns matching rows
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block filters rows in a Google Sheet based on conditions applied to a specific column using the Google Sheets API. Supports operators like equals, not_equals, contains, is_empty, and is_not_empty.
+
+Returns matching rows along with their original 1-based row indices, making it easy to chain with delete or update operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -455,7 +529,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Conditional Processing**: Filter rows by status to process only pending or active items.
+
+**Data Extraction**: Extract rows matching specific criteria for reports or analysis.
+
+**Cleanup Preparation**: Identify rows to delete based on conditions like empty values or specific statuses.
 <!-- END MANUAL -->
 
 ---
@@ -470,7 +548,9 @@ Find text in a Google Sheets spreadsheet. Returns locations and count of occurre
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches for text across a Google Spreadsheet using the Google Sheets API. You can search entire spreadsheets or specific sheets/ranges, with options for case matching and whole-cell matching.
+
+Returns the locations (sheet, row, column) of all matches or just the first one, along with the total count.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -495,7 +575,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Validation**: Find specific values to verify data presence or locate errors.
+
+**Position Lookup**: Find where specific text appears to determine update locations.
+
+**Audit Checks**: Search for specific terms across spreadsheets for compliance verification.
 <!-- END MANUAL -->
 
 ---
@@ -510,7 +594,9 @@ This block finds and replaces text in a Google Sheets spreadsheet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block performs find-and-replace operations across a Google Spreadsheet using the Google Sheets API. You can target all sheets or specific ones, with options for case matching and whole-cell matching.
+
+Returns the number of replacements made, enabling verification of the operation's scope.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -532,7 +618,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Standardization**: Replace variations of terms with standardized values.
+
+**Batch Updates**: Update company names, status values, or codes across entire spreadsheets.
+
+**Error Correction**: Fix systematic typos or outdated values across all sheets.
 <!-- END MANUAL -->
 
 ---
@@ -547,7 +637,9 @@ Format a range in a Google Sheet (sheet optional)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block applies visual formatting to cell ranges in a Google Sheet using the Google Sheets API. Options include background color, text color, bold, italic, and font size.
+
+Formatting enhances readability and can highlight important data or create visual structure in reports.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -570,7 +662,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Header Styling**: Format header rows with bold text and background colors.
+
+**Conditional Highlighting**: Apply colors to highlight important values or warnings.
+
+**Report Presentation**: Style sheets for professional presentation before sharing.
 <!-- END MANUAL -->
 
 ---
@@ -585,7 +681,9 @@ Extract all values from a specific column. Useful for getting a list of emails, 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extracts all values from a specific column in a Google Sheet using the Google Sheets API. You can reference the column by header name or column letter, with options to skip empty cells and include/exclude headers.
+
+Returns values as a list for easy iteration or processing in subsequent blocks.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -608,7 +706,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Email Lists**: Extract email column values for sending notifications or marketing.
+
+**ID Processing**: Get all IDs from a column to process records individually.
+
+**Data Validation**: Extract values to check against allowed lists or external databases.
 <!-- END MANUAL -->
 
 ---
@@ -623,7 +725,9 @@ Get notes from cells in a Google Sheet
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves cell notes from a specified range in a Google Sheet using the Google Sheets API. Notes are the comments that appear when hovering over cells.
+
+Returns a list of notes with their cell locations, useful for extracting documentation or audit information.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -643,7 +747,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Audit Extraction**: Retrieve notes documenting changes or approvals for compliance reports.
+
+**Documentation Review**: Gather explanatory notes for documentation or training purposes.
+
+**Quality Check**: Review cells with notes to identify items requiring attention.
 <!-- END MANUAL -->
 
 ---
@@ -658,7 +766,9 @@ Get a specific row by its index. Returns both list and dict formats.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a specific row from a Google Sheet by its 1-based row index using the Google Sheets API. The row data is returned both as a list (ordered values) and as a dictionary with header names as keys.
+
+The dictionary format makes it easy to access specific fields by name rather than position.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -678,7 +788,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Record Retrieval**: Fetch a specific record by its row number for display or processing.
+
+**Sequential Processing**: Get rows one at a time in a loop for individual processing.
+
+**Verification**: Retrieve specific rows to verify data or confirm updates.
 <!-- END MANUAL -->
 
 ---
@@ -693,7 +807,9 @@ Get row count and dimensions of a Google Sheet. Useful for knowing where data en
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block analyzes a Google Sheet to determine its dimensions using the Google Sheets API. It returns total row count, data rows (excluding header), the last row with data, and column count.
+
+This information is essential for determining loop boundaries or validating data presence.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -716,7 +832,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Loop Boundaries**: Determine how many rows to iterate through when processing data.
+
+**Empty Check**: Verify if a sheet has data before attempting to process it.
+
+**Progress Tracking**: Track how many records exist for reporting or dashboards.
 <!-- END MANUAL -->
 
 ---
@@ -731,7 +851,9 @@ Get unique values from a column. Useful for building dropdown options or finding
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extracts unique values from a column in a Google Sheet using the Google Sheets API. Optionally includes counts for each value and can sort results by frequency.
+
+Useful for discovering data categories, building dynamic dropdown lists, or analyzing data distribution.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -754,7 +876,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Dynamic Dropdowns**: Build dropdown options from actual data values in the sheet.
+
+**Category Analysis**: Discover all unique categories or types in a dataset.
+
+**Data Quality**: Identify unexpected values or typos by reviewing unique entries.
 <!-- END MANUAL -->
 
 ---
@@ -769,7 +895,9 @@ Import CSV data into a Google Sheet
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block imports CSV-formatted data into a Google Sheet using the Google Sheets API. You can specify the target sheet, starting cell, and whether to clear existing data first.
+
+The CSV string is parsed and written to the sheet, enabling data import from external sources or API responses.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -791,7 +919,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Import**: Import CSV data from external APIs or file uploads into Google Sheets.
+
+**Bulk Updates**: Replace sheet data with fresh CSV exports from other systems.
+
+**Migration**: Transfer data from CSV-based systems into Google Sheets.
 <!-- END MANUAL -->
 
 ---
@@ -806,7 +938,9 @@ Insert a single row at a specific position. Existing rows shift down.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block inserts a row at a specific position in a Google Sheet using the Google Sheets API. Existing rows at and below the insertion point shift down to make room.
+
+Use value_input_option to control whether values are parsed (USER_ENTERED) or stored as-is (RAW).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -827,7 +961,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Priority Insertion**: Insert high-priority items at the top of lists.
+
+**Ordered Data Entry**: Add new records at specific positions to maintain sorting.
+
+**Template Rows**: Insert pre-formatted rows at designated positions.
 <!-- END MANUAL -->
 
 ---
@@ -842,7 +980,9 @@ List all named ranges in a spreadsheet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all named ranges defined in a Google Spreadsheet using the Google Sheets API. Returns each range's name, ID, and the cell range it references.
+
+Useful for discovering available named ranges or auditing spreadsheet configuration.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -860,7 +1000,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Discovery**: List available named ranges to understand spreadsheet structure.
+
+**Formula Building**: Get named range names for building formulas programmatically.
+
+**Audit Documentation**: Generate documentation of named ranges for spreadsheet templates.
 <!-- END MANUAL -->
 
 ---
@@ -875,7 +1019,9 @@ Look up a row by finding a value in a specific column. Returns the first matchin
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block performs a lookup operation similar to VLOOKUP—it finds a row where a specific column matches your search value, then returns that row's data. You can return all columns or just specific ones.
+
+This is useful for database-style lookups where you need to find a record by ID, email, or any unique identifier.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -900,7 +1046,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Customer Lookup**: Find customer details by email address or customer ID.
+
+**Inventory Check**: Look up product information by SKU or product name.
+
+**Configuration Retrieval**: Fetch settings for a specific entity from a configuration sheet.
 <!-- END MANUAL -->
 
 ---
@@ -915,7 +1065,9 @@ Create, delete, or copy sheets (sheet optional)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block manages sheets (tabs) within a Google Spreadsheet using the Google Sheets API. Operations include creating new sheets, deleting existing sheets, or copying sheets within the same spreadsheet.
+
+Use this to dynamically organize spreadsheet structure as part of workflows.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -936,7 +1088,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Dynamic Structure**: Create new sheets for each month, project, or category as needed.
+
+**Template Duplication**: Copy template sheets for new data entry cycles.
+
+**Cleanup Operations**: Delete outdated or temporary sheets after processing.
 <!-- END MANUAL -->
 
 ---
@@ -951,7 +1107,9 @@ This block retrieves metadata about a Google Sheets spreadsheet including sheet 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves spreadsheet metadata using the Google Sheets API, including title, sheet names, sheet IDs, and properties like row/column counts and frozen rows.
+
+Useful for understanding spreadsheet structure before performing operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -968,7 +1126,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Structure Discovery**: Get sheet names and IDs before performing sheet-specific operations.
+
+**Validation**: Verify spreadsheet structure matches expectations before data operations.
+
+**Dynamic Routing**: Determine which sheets exist to route data appropriately.
 <!-- END MANUAL -->
 
 ---
@@ -983,7 +1145,9 @@ Protect a cell range or entire sheet from editing.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds protection to cell ranges or entire sheets using the Google Sheets API. Protected ranges can either block editing completely or show warnings while still allowing edits.
+
+Use this to prevent accidental changes to important formulas, headers, or reference data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1005,7 +1169,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Formula Protection**: Protect cells containing critical formulas from accidental modification.
+
+**Header Lock**: Prevent changes to header rows that could break data processing.
+
+**Reference Data**: Protect lookup tables or configuration values from unauthorized changes.
 <!-- END MANUAL -->
 
 ---
@@ -1053,7 +1221,9 @@ Remove duplicate rows based on specified columns. Keeps either the first or last
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block identifies and removes duplicate rows from a Google Sheet using the Google Sheets API. You can specify which columns to check for duplicates and whether to keep the first or last occurrence.
+
+Case sensitivity is configurable for text comparisons.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1076,7 +1246,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Deduplication**: Clean up sheets containing duplicate entries from multiple data sources.
+
+**Import Cleanup**: Remove duplicates after importing data from external systems.
+
+**List Maintenance**: Keep email lists or contact lists free of duplicate entries.
 <!-- END MANUAL -->
 
 ---
@@ -1091,7 +1265,9 @@ Make a Google Spreadsheet public or private
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block modifies the sharing settings of a Google Spreadsheet using the Google Drive API to make it publicly accessible or private. You can set the access level to reader or commenter.
+
+When made public, anyone with the link can access the spreadsheet. The share link is returned for distribution.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1111,7 +1287,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Public Dashboards**: Make report spreadsheets publicly viewable for stakeholders.
+
+**Resource Sharing**: Publish reference data or templates for public access.
+
+**Access Control**: Toggle between public and private access based on workflow stages.
 <!-- END MANUAL -->
 
 ---
@@ -1126,7 +1306,9 @@ Share a Google Spreadsheet with users or get shareable link
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block shares a Google Spreadsheet with specific users by email address using the Google Drive API. You can set permission levels (reader, writer, commenter) and optionally send notification emails with custom messages.
+
+Leave the email blank to just generate a shareable link.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1148,7 +1330,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Collaboration**: Share generated reports with stakeholders automatically.
+
+**Team Onboarding**: Grant access to project spreadsheets for new team members.
+
+**Client Delivery**: Share completed deliverables with clients including notification messages.
 <!-- END MANUAL -->
 
 ---
@@ -1163,7 +1349,9 @@ Sort a Google Sheet by one or two columns. The sheet is sorted in-place.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sorts data in a Google Sheet by one or two columns using the Google Sheets API. You can specify ascending or descending order for each column and whether to preserve a header row.
+
+Sorting is performed in-place, modifying the sheet directly.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1186,7 +1374,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Report Organization**: Sort data by date, priority, or status before generating reports.
+
+**Data Presentation**: Organize data alphabetically or numerically for better readability.
+
+**Processing Order**: Sort items by priority to process high-priority items first.
 <!-- END MANUAL -->
 
 ---
@@ -1201,7 +1393,9 @@ Update a single cell in a Google Sheets spreadsheet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates a single cell in a Google Sheet using the Google Sheets API. Use A1 notation to specify the cell (e.g., "A1" or "Sheet1!B2").
+
+Use value_input_option to control whether values are parsed (USER_ENTERED) or stored as-is (RAW).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1221,7 +1415,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Updates**: Update a status cell when processing completes.
+
+**Timestamp Recording**: Write timestamps to cells marking when records were processed.
+
+**Single Value Updates**: Change individual values like totals, flags, or configuration settings.
 <!-- END MANUAL -->
 
 ---
@@ -1236,7 +1434,9 @@ Update a specific row by its index. Can use list or dict format for values.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates an entire row in a Google Sheet by its 1-based row index using the Google Sheets API. You can provide values as an ordered list or as a dictionary with header names as keys.
+
+The dictionary format is convenient when you only need to update specific columns.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1257,7 +1457,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Record Updates**: Update specific records identified by row index after lookup.
+
+**Batch Field Updates**: Change multiple fields in a row simultaneously.
+
+**Processing Results**: Write results back to source rows after processing.
 <!-- END MANUAL -->
 
 ---

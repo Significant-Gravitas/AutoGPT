@@ -8,7 +8,9 @@ Firecrawl maps a website to extract all the links.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Firecrawl's mapping API to discover all links on a website without extracting full content. It quickly scans the site structure and returns a comprehensive list of URLs found.
+
+The block is useful for understanding site architecture before performing targeted scraping or for building site maps. Results include both the raw list of links and structured results with titles and descriptions.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -25,7 +27,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Site Audit**: Map all pages on a website to identify broken links, orphan pages, or SEO issues.
+
+**Crawl Planning**: Discover site structure before deciding which pages to scrape in detail.
+
+**Content Discovery**: Find all blog posts, product pages, or documentation entries on a site.
 <!-- END MANUAL -->
 
 ---

@@ -8,7 +8,9 @@ Post to X / Twitter using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Ayrshare's API to publish content to X (formerly Twitter). It supports standard tweets (280 characters, or 25,000 for Premium users), threads, polls, quote tweets, and replies, with up to 4 media attachments including video with subtitles.
+
+The block authenticates through Ayrshare and handles X-specific features like automatic thread breaking using double newlines, thread numbering, per-post media attachments, and long-form video uploads (with approval). Poll options and duration can be configured for engagement posts.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -48,7 +50,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Thread Publishing**: Automatically format and publish long-form content as numbered thread sequences.
+
+**Engagement Polls**: Create polls to gather audience feedback or drive interaction with scheduled posting.
+
+**Reply Automation**: Build workflows that automatically respond to mentions or engage in conversations.
 <!-- END MANUAL -->
 
 ---

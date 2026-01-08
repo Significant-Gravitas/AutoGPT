@@ -8,7 +8,9 @@ Wait for a webset enrichment to complete with progress tracking
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block polls an enrichment operation until it completes or times out. It checks status at configurable intervals and can include sample results when done.
+
+Use this to block workflow execution until enrichments finish, enabling sequential operations that depend on enrichment data being available.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +36,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Sequential Processing**: Wait for enrichments to complete before proceeding to export or analysis.
+
+**Data Validation**: Ensure enrichments finish and review samples before continuing workflow.
+
+**Synchronous Workflows**: Convert async enrichment operations to blocking calls for simpler logic.
 <!-- END MANUAL -->
 
 ---
@@ -49,7 +55,9 @@ Wait for a specific webset search to complete with progress tracking
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block polls a webset search operation until it completes or times out. It provides progress information including items found, items analyzed, and completion percentage.
+
+Use this when you need search results before proceeding with downstream operations like enrichments or exports.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -75,7 +83,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Search Completion**: Wait for initial webset population before accessing items.
+
+**Progress Monitoring**: Track search progress in long-running operations.
+
+**Sequential Workflows**: Ensure searches complete before starting enrichments.
 <!-- END MANUAL -->
 
 ---
@@ -90,7 +102,9 @@ Wait for a webset to reach a specific status with progress tracking
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block polls a webset until it reaches a target status (idle, completed, or running). It uses exponential backoff for efficient polling and provides detailed progress information.
+
+Use this for general-purpose waiting on webset operations when you don't need to track a specific search or enrichment.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -117,7 +131,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Workflow Orchestration**: Wait for all webset operations to complete before next workflow steps.
+
+**Idle State Detection**: Ensure webset is fully idle before making configuration changes.
+
+**Completion Gates**: Block workflow until webset reaches a specific readiness state.
 <!-- END MANUAL -->
 
 ---

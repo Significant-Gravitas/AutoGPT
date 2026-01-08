@@ -8,7 +8,9 @@ Firecrawl searches the web for the given query.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Firecrawl's search API to find web pages matching your query and optionally extract their content. It performs a web search and can return results with full page content in your chosen format.
+
+Configure the number of results to return, output formats (markdown, HTML, raw HTML), and caching behavior. The wait_for parameter allows time for JavaScript-heavy pages to fully render before extraction.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +31,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Research Automation**: Search for topics and automatically extract content from relevant pages for analysis.
+
+**Lead Generation**: Find companies or contacts matching specific criteria across the web.
+
+**Content Aggregation**: Gather articles, reviews, or information on specific topics from multiple sources.
 <!-- END MANUAL -->
 
 ---

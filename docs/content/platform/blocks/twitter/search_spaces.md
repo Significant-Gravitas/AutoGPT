@@ -8,7 +8,9 @@ This block searches for Twitter Spaces based on specified terms.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to search for Twitter Spaces (live audio conversations) matching a search term. Results can be filtered by state (live, scheduled, or all) and include Space metadata like title, host information, and participant counts.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports expansions to include additional data about creators, hosts, speakers, invited users, and topics. Returns paginated results with Space IDs, titles, and host information.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -50,7 +52,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Event Discovery**: Find live or upcoming Spaces about topics you're interested in to join or monitor.
+
+**Industry Monitoring**: Track Spaces related to your industry to stay informed about discussions and trends.
+
+**Competitor Analysis**: Search for Spaces hosted by competitors to understand their community engagement strategies.
 <!-- END MANUAL -->
 
 ---

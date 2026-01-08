@@ -8,7 +8,9 @@ Get keyword suggestions from DataForSEO Labs Google API
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block calls the DataForSEO Labs Google Keyword Suggestions API to generate keyword ideas based on a seed keyword. It provides search volume, competition metrics, CPC data, and keyword difficulty scores for each suggestion.
+
+Configure location and language targeting to get region-specific results. Optional SERP and clickstream data provide additional insights into search behavior and click patterns.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -33,7 +35,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Planning**: Generate blog post and article ideas based on keyword suggestions with high search volume.
+
+**SEO Strategy**: Discover new keyword opportunities to target based on competition and difficulty metrics.
+
+**PPC Campaigns**: Find keywords for advertising campaigns using CPC and competition data.
 <!-- END MANUAL -->
 
 ---
@@ -48,7 +54,9 @@ Extract individual fields from a KeywordSuggestion object
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extracts individual fields from a KeywordSuggestion object returned by the Keyword Suggestions block. It decomposes the suggestion into separate outputs for easier use in workflows.
+
+Each field including keyword text, search volume, competition level, CPC, difficulty score, and optional SERP/clickstream data becomes available as individual outputs for downstream processing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -70,7 +78,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Keyword Filtering**: Extract search volume and difficulty to filter keywords meeting specific thresholds.
+
+**Data Analysis**: Access individual metrics for comparison, sorting, or custom scoring algorithms.
+
+**Report Generation**: Pull specific fields like CPC and competition for SEO or PPC reports.
 <!-- END MANUAL -->
 
 ---

@@ -8,7 +8,9 @@ This block creates a new event in Google Calendar with customizable parameters.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates events in Google Calendar via the Google Calendar API. It handles various event parameters including timing, location, guest invitations, Google Meet links, and recurring schedules. The block authenticates using your connected Google account credentials.
+
+When you specify guests, they receive email invitations (if notifications are enabled). The Google Meet option adds a video conference link to the event automatically.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +36,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Meeting Scheduling**: Create calendar events when appointments are booked through a form or scheduling system.
+
+**Event Reminders**: Schedule events with custom reminder notifications for team deadlines or milestones.
+
+**Team Coordination**: Create recurring meetings with Google Meet links when onboarding new team members.
 <!-- END MANUAL -->
 
 ---
@@ -49,7 +55,9 @@ Retrieves upcoming events from a Google Calendar with filtering options
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block fetches upcoming events from Google Calendar using the Calendar API. It retrieves events within a specified time range, with options to filter by search term or exclude declined events. Pagination support allows handling large numbers of events.
+
+Events are returned with details like title, time, location, and attendees. Use 'primary' as the calendar_id to access your main calendar.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -73,7 +81,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Daily Briefings**: Fetch today's events to generate a morning summary or prepare for upcoming meetings.
+
+**Schedule Conflicts**: Check for overlapping events before scheduling new appointments.
+
+**Meeting Preparation**: Retrieve upcoming meetings to pre-load relevant documents or send reminders.
 <!-- END MANUAL -->
 
 ---

@@ -8,7 +8,9 @@ Get detailed person data with Apollo API, including email reveal
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block enriches person data using Apollo's API. You can look up by Apollo person ID for best accuracy, or match by name plus company information, LinkedIn URL, or email address.
+
+Returns comprehensive contact details including email addresses (if available), job title, company information, and social profiles.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -33,7 +35,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Contact Enrichment**: Get full contact details from partial information like name and company.
+
+**Email Discovery**: Find verified email addresses for outreach campaigns.
+
+**Profile Completion**: Fill in missing contact details in your CRM or database.
 <!-- END MANUAL -->
 
 ---

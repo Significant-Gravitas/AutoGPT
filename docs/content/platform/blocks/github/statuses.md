@@ -8,7 +8,9 @@ Creates a new commit status in a GitHub repository
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a commit status using the GitHub Status API. Commit statuses are simpler than check runs and appear as colored indicators (pending yellow, success green, failure red, error red) on commits and pull requests.
+
+Provide a context label to differentiate this status from others, an optional target URL for detailed results, and a description. Multiple statuses can exist on the same commit with different context labels.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +31,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**External CI Integration**: Report build status from CI systems that don't have native GitHub integration.
+
+**Deployment Tracking**: Set commit statuses to indicate deployment state (pending, deployed, failed).
+
+**Required Status Checks**: Create statuses that GitHub branch protection rules require before merging.
 <!-- END MANUAL -->
 
 ---

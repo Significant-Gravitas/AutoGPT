@@ -46,7 +46,9 @@ Deletes a personal label in Todoist
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block permanently removes a personal label from Todoist using the label's unique ID. The deletion is processed through the Todoist REST API and removes the label from all tasks it was assigned to.
+
+The operation is irreversible, so any tasks previously tagged with this label will lose that categorization after deletion.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -62,7 +64,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Label Cleanup**: Remove obsolete labels when reorganizing your task management system.
+
+**Workflow Automation**: Delete temporary labels after a project phase is complete.
+
+**Bulk Management**: Remove labels as part of a larger cleanup workflow.
 <!-- END MANUAL -->
 
 ---
@@ -112,7 +118,9 @@ Gets all shared labels from Todoist
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all shared labels that exist across collaborative projects in your Todoist account. Shared labels are labels that appear on tasks in projects shared with other users.
+
+The API returns a list of label names that are currently in use across shared projects, enabling cross-project label management.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -123,7 +131,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Collaboration Audit**: Review which labels are being used across shared projects.
+
+**Label Consistency**: Ensure consistent labeling conventions across team projects.
+
+**Cross-Project Analytics**: Analyze label usage patterns in collaborative workspaces.
 <!-- END MANUAL -->
 
 ---
@@ -166,7 +178,9 @@ Removes all instances of a shared label
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes a shared label by name from all tasks across all shared projects. Unlike deleting a personal label, this operation targets labels by name rather than ID since shared labels are name-based.
+
+The removal affects all instances of the label across collaborative projects, untagging every task that had this label applied.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -182,7 +196,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Deprecate Labels**: Remove labels that are no longer part of your workflow conventions.
+
+**Team Cleanup**: Remove shared labels when reorganizing cross-project categorization.
+
+**Merge Labels**: Remove a duplicate label after migrating tasks to a standardized label.
 <!-- END MANUAL -->
 
 ---
@@ -197,7 +215,9 @@ Renames all instances of a shared label
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block renames a shared label across all tasks in all shared projects. It takes the existing label name and a new name, then updates every instance where that label appears.
+
+The rename is atomic across the entire account, ensuring consistent label naming in collaborative environments.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -214,7 +234,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Standardize Naming**: Rename labels to follow consistent naming conventions.
+
+**Rebrand Categories**: Update label names when workflow terminology changes.
+
+**Fix Typos**: Correct misspelled labels across all shared projects.
 <!-- END MANUAL -->
 
 ---
@@ -229,7 +253,9 @@ Updates a personal label in Todoist
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block modifies an existing personal label's properties using the Todoist API. You can update the label's name, display order, color, and favorite status.
+
+Only the fields you provide are updated; omitted fields retain their current values. The label ID is required to identify which label to modify.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -249,7 +275,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Visual Organization**: Change label colors to create visual groupings of related labels.
+
+**Priority Adjustment**: Update favorite status to surface frequently used labels.
+
+**Reorganization**: Modify label order to reflect current workflow priorities.
 <!-- END MANUAL -->
 
 ---

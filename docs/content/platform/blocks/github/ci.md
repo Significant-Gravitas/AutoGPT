@@ -8,7 +8,9 @@ This block gets CI results for a commit or PR, with optional search for specific
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves CI check results for a specific commit or pull request using the GitHub Checks API. It aggregates results from all CI checks, providing an overall status summary along with individual check details.
+
+Optionally search through CI logs using regex patterns to find specific errors or warnings. You can filter by check name to focus on particular CI jobs. The block returns comprehensive results including pass/fail counts and matched log lines.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -35,7 +37,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**CI Status Monitoring**: Check the overall CI status of commits or PRs before merging or deploying.
+
+**Error Diagnosis**: Search CI logs for specific error patterns to quickly identify why builds are failing.
+
+**Automated PR Validation**: Verify all required checks pass before automatically proceeding with merge or deployment workflows.
 <!-- END MANUAL -->
 
 ---

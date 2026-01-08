@@ -8,7 +8,9 @@ This block retrieves information about a specified Twitter user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve detailed information about a single user. You can look up users either by their unique Twitter ID or by their username (handle). The block uses Tweepy with OAuth 2.0 authentication.
+
+Optional expansions allow you to include additional data such as the user's pinned tweet. The response includes profile information like display name, bio, follower count, and profile image URL based on the user_fields selected.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -31,7 +33,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Profile Verification**: Look up a user's profile to verify their identity or check their account details before engaging.
+
+**User Research**: Gather information about a specific account for competitive analysis or influencer research.
+
+**Account Validation**: Verify that a username or user ID exists and is active before performing other operations.
 <!-- END MANUAL -->
 
 ---
@@ -46,7 +52,9 @@ This block retrieves information about multiple Twitter users.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve detailed information about multiple users in a single request. You can look up users by their Twitter IDs or usernames (handles), making it efficient for batch operations.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports expansions for additional data like pinned tweets. Returns arrays of user IDs, usernames, display names, and complete user data objects.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -69,7 +77,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Batch Profile Lookup**: Retrieve profile information for a list of users at once, such as all participants in a conversation.
+
+**Influencer Analysis**: Gather profile data for multiple influencers in a specific niche for comparison.
+
+**Follow List Enrichment**: Get detailed information about accounts in your following or followers list.
 <!-- END MANUAL -->
 
 ---

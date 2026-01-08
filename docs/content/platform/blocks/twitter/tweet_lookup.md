@@ -8,7 +8,9 @@ This block retrieves information about a specific Tweet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve detailed information about a specific tweet by its ID. Returns tweet content, author information, engagement metrics, and any requested expanded data.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author profile, location, poll results, and referenced tweets. Useful for analyzing individual tweets or verifying tweet content.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -43,7 +45,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Verification**: Retrieve a specific tweet to verify its content, author, or current engagement metrics.
+
+**Thread Analysis**: Look up individual tweets in a thread to analyze specific parts of a conversation.
+
+**Link Processing**: Fetch tweet details when processing shared Twitter links in your workflows.
 <!-- END MANUAL -->
 
 ---
@@ -58,7 +64,9 @@ This block retrieves information about multiple Tweets.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve detailed information about multiple tweets in a single request. Accepts up to 100 tweet IDs and returns comprehensive data for all of them efficiently.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author profiles, and referenced tweets. Returns arrays of tweet IDs, text content, author information, and complete tweet data objects.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -93,7 +101,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Batch Processing**: Efficiently retrieve data for multiple tweets at once, such as all tweets in a thread.
+
+**Content Analysis**: Analyze multiple tweets for sentiment, engagement patterns, or content classification.
+
+**Report Generation**: Gather data on multiple tweets for creating engagement reports or content audits.
 <!-- END MANUAL -->
 
 ---

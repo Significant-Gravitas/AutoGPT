@@ -8,7 +8,9 @@ Add new memories to Mem0 with user segmentation
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block integrates with Mem0, a memory layer service that stores and retrieves information across conversations. When you add a memory, the content is stored with the user's context and can optionally be segmented by run or agent, allowing for scoped memory retrieval later.
+
+The block accepts either plain text or structured message objects (like those from AI blocks). You can attach metadata to memories for better organization and filtering. Memories persist across workflow executions, enabling your agents to "remember" past interactions.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -29,7 +31,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Personalized Assistants**: Store user preferences, past interactions, or learned information so your AI agent can provide personalized responses in future conversations.
+
+**Context Carryover**: Save important details from one workflow run (like customer issues or project context) to reference in subsequent runs without asking the user again.
+
+**Knowledge Building**: Accumulate facts and insights over time, creating a growing knowledge base that improves your agent's helpfulness with each interaction.
 <!-- END MANUAL -->
 
 ---
@@ -44,7 +50,9 @@ Adds a new key-value pair to a dictionary. If no dictionary is provided, a new o
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds one or more key-value pairs to a dictionary. If you don't provide an existing dictionary, it creates a new one. You can add entries one at a time using the key/value fields, or add multiple entries at once using the entries field.
+
+The block outputs the updated dictionary with all new entries added. This is useful for building up structured data objects as your workflow progresses, collecting information from multiple sources into a single data structure.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -63,7 +71,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Building API Payloads**: Construct complex JSON objects by adding fields from different workflow branches before sending to an API.
+
+**Aggregating Form Data**: Collect user inputs from multiple form fields into a single structured object for processing or storage.
+
+**Creating Configuration Objects**: Build up settings or configuration dictionaries dynamically based on conditional logic in your workflow.
 <!-- END MANUAL -->
 
 ---
@@ -78,7 +90,9 @@ Adds a new entry to a list. The entry can be of any type. If no list is provided
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block appends items to a list or creates a new list if none is provided. You can add a single entry or multiple entries at once. The optional position parameter lets you insert items at a specific index rather than appending to the end.
+
+Items can be of any type—strings, numbers, dictionaries, or other lists. This flexibility makes the block useful for building up collections of data as your workflow processes multiple items or accumulates results.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -97,7 +111,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Collecting Search Results**: Accumulate items from paginated API responses into a single list for batch processing or display.
+
+**Building Email Recipients**: Gather email addresses from various sources into a recipient list before sending a message.
+
+**Aggregating Errors**: Collect validation errors or warnings from multiple checks into a list for consolidated error reporting.
 <!-- END MANUAL -->
 
 ---
@@ -112,7 +130,9 @@ Block for date input.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a date picker input field for users interacting with your agent. When the agent runs, users see a calendar widget to select a date, which is then passed to your workflow in YYYY-MM-DD format.
+
+The block is part of the Agent Input family, allowing you to collect structured input from users at runtime rather than hardcoding values. This makes your agents interactive and reusable for different scenarios.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -132,7 +152,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Appointment Scheduling**: Let users select a date for booking appointments, meetings, or reservations through your agent.
+
+**Report Generation**: Allow users to specify a date range start or end point for generating custom reports.
+
+**Deadline Setting**: Enable users to set due dates for tasks or projects when creating them through your workflow.
 <!-- END MANUAL -->
 
 ---
@@ -147,7 +171,9 @@ Block for dropdown text selection.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a dropdown selection input for users interacting with your agent. You define the available options using placeholder_values, and users select one option from the list at runtime.
+
+This is ideal when you want to constrain user input to a predefined set of choices, ensuring valid input and simplifying the user experience. The selected value is passed to downstream blocks in your workflow.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -168,7 +194,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Service Selection**: Let users choose from available service tiers (Basic, Pro, Enterprise) when configuring their request.
+
+**Language Selection**: Allow users to select their preferred language from a list of supported options.
+
+**Category Filtering**: Enable users to select a category (Sales, Support, Billing) to route their inquiry appropriately.
 <!-- END MANUAL -->
 
 ---
@@ -183,7 +213,9 @@ Block for file upload input (string path for example).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a file upload input for users interacting with your agent. Users can upload files which are stored temporarily and passed to your workflow as a file path reference.
+
+By default, the block outputs a file path string that other blocks can use to access the uploaded file. The optional base64 mode converts the file content to base64 encoding, though using file paths is generally recommended for better performance with large files.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -204,7 +236,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Document Processing**: Accept PDF or Word documents from users for analysis, summarization, or data extraction.
+
+**Image Upload**: Allow users to upload images for processing, resizing, or AI-based analysis.
+
+**Data Import**: Enable users to upload CSV or Excel files to import data into your workflow for processing.
 <!-- END MANUAL -->
 
 ---
@@ -219,7 +255,9 @@ Block for selecting a file from Google Drive.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block integrates with Google Drive to let users select files directly from their connected Drive account. The Google Drive file picker appears at runtime, allowing users to browse and select files without manually copying file IDs or URLs.
+
+You can configure which file types to display (documents, spreadsheets, presentations) using the allowed_views option. The block outputs the selected file's metadata including its ID, name, and URL for use by other Google-integrated blocks.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -241,7 +279,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Document Workflow**: Let users select a Google Doc to read, analyze, or append content to without knowing the file ID.
+
+**Spreadsheet Data Import**: Allow users to pick a Google Sheet to import data from for processing or analysis.
+
+**File Organization**: Enable users to select folders or files for bulk operations like moving, copying, or organizing content.
 <!-- END MANUAL -->
 
 ---
@@ -291,7 +333,9 @@ Block for long text input (multi-line).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a multi-line text area input for users interacting with your agent. Unlike the short text input, this displays a larger text area suitable for paragraphs, descriptions, or any content that may span multiple lines.
+
+The block is ideal for collecting longer-form content like messages, descriptions, or code snippets from users at runtime. The text is passed as-is to downstream blocks in your workflow.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -311,7 +355,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Feedback Collection**: Accept detailed user feedback, reviews, or comments that may require multiple paragraphs.
+
+**Content Submission**: Let users submit articles, blog posts, or documentation content for processing or publication.
+
+**Query Input**: Allow users to enter complex questions or prompts for AI processing that require detailed context.
 <!-- END MANUAL -->
 
 ---
@@ -326,7 +374,9 @@ Block for number input.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a numeric input field for users interacting with your agent. The input validates that the user enters a valid integer, preventing text or invalid values from being submitted.
+
+This is useful when you need numeric parameters like quantities, counts, limits, or any integer value from users at runtime. The number is passed to downstream blocks for use in calculations or configurations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -346,7 +396,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Quantity Selection**: Let users specify how many items to process, order, or generate.
+
+**Pagination Control**: Allow users to specify page numbers or result limits for data retrieval.
+
+**Threshold Setting**: Enable users to set numeric thresholds or limits for alerts, filtering, or processing logic.
 <!-- END MANUAL -->
 
 ---
@@ -399,7 +453,9 @@ Block for short text input (single-line).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a single-line text input field for users interacting with your agent. It's designed for brief text entries like names, titles, URLs, or short responses.
+
+The input displays as a standard text field and passes the entered text to downstream blocks. Use this for collecting concise information that doesn't require multiple lines or extensive formatting.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -419,7 +475,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Name Collection**: Gather user names, company names, or project names for personalization.
+
+**Search Queries**: Accept search terms or keywords from users to drive search functionality.
+
+**URL Input**: Let users provide URLs for websites, APIs, or resources to process in your workflow.
 <!-- END MANUAL -->
 
 ---
@@ -434,7 +494,9 @@ Block for table data input with customizable headers.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a tabular data input interface for users interacting with your agent. Users can enter data in a spreadsheet-like table format with customizable column headers.
+
+The table input is ideal for structured data entry where users need to provide multiple records with consistent fields. The block outputs the data as a list of dictionaries, with each row becoming a dictionary where column headers are keys.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -455,7 +517,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Bulk Data Entry**: Let users input multiple records at once, like a list of contacts with name, email, and phone columns.
+
+**Order Processing**: Accept line items for an order with product, quantity, and price columns.
+
+**Task Lists**: Allow users to submit multiple tasks with columns for title, assignee, and priority.
 <!-- END MANUAL -->
 
 ---
@@ -470,7 +536,9 @@ Block for time input.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a time picker input for users interacting with your agent. Users select a time (hours, minutes, and optionally seconds) which is passed to your workflow in HH:MM:SS format.
+
+The time picker provides a user-friendly interface for selecting times without requiring users to type in a specific format. This ensures valid time values and improves the user experience.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -490,7 +558,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Appointment Scheduling**: Let users specify a time for meetings, calls, or appointments.
+
+**Reminder Setting**: Allow users to set reminder times for notifications or alerts.
+
+**Shift Configuration**: Enable users to define start or end times for work shifts or availability windows.
 <!-- END MANUAL -->
 
 ---
@@ -505,7 +577,9 @@ Block for boolean toggle input.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block provides a boolean toggle (on/off switch) input for users interacting with your agent. Users simply click to toggle between true and false states, making yes/no decisions quick and error-free.
+
+The toggle is ideal for binary choices like enabling features, confirming actions, or setting preferences. The boolean value is passed to downstream blocks for conditional logic.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -525,7 +599,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Feature Flags**: Let users enable or disable optional features in your workflow.
+
+**Confirmation Toggles**: Require users to acknowledge terms, confirm destructive actions, or opt into notifications.
+
+**Mode Selection**: Allow users to switch between modes like "test mode" vs "production mode" or "verbose" vs "quiet" output.
 <!-- END MANUAL -->
 
 ---
@@ -540,7 +618,9 @@ Checks if a dictionary is empty.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block checks whether a dictionary has any entries and returns a boolean result. An empty dictionary (no key-value pairs) returns true, while a dictionary with any entries returns false.
+
+This is useful for conditional logic where you need to verify if data was returned from an API, if user input was provided, or if a collection process yielded any results.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -556,7 +636,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Response Validation**: Check if an API returned an empty response before processing data.
+
+**Input Verification**: Verify that user-provided form data contains at least one field before submission.
+
+**Conditional Processing**: Skip processing steps when no matching data was found in a search or filter operation.
 <!-- END MANUAL -->
 
 ---
@@ -571,7 +655,9 @@ Stores the input file in the temporary directory.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block takes a file from various sources (URL, data URI, or local path) and stores it in a temporary directory for use by other blocks in your workflow. This normalizes file handling regardless of the original source.
+
+The block outputs a file path that other blocks can use to access the stored file. The optional base64 output mode is available but file paths are recommended for better performance with large files.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -588,7 +674,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**URL File Download**: Fetch a file from a URL and make it available for local processing by other blocks.
+
+**Data URI Conversion**: Convert base64-encoded data URIs (like from a web form) into accessible file paths.
+
+**File Normalization**: Standardize file access across different input sources (URLs, uploads, local files) for consistent downstream processing.
 <!-- END MANUAL -->
 
 ---
@@ -603,7 +693,9 @@ Lookup the given key in the input dictionary/object/list and return the value.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extracts a value from a dictionary (object) or list using a key or index. If the key exists, the value is output through the "output" pin. If the key is missing, the original input is output through the "missing" pin.
+
+This enables safe data access with built-in handling for missing keys, preventing workflow errors when expected data isn't present. You can use string keys for dictionaries or integer indices for lists.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -621,7 +713,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**API Response Parsing**: Extract specific fields (like "data" or "results") from API response objects.
+
+**Configuration Access**: Retrieve settings from a configuration dictionary by key name.
+
+**User Data Extraction**: Pull specific user attributes (name, email, preferences) from a user profile object.
 <!-- END MANUAL -->
 
 ---
@@ -636,7 +732,9 @@ Finds the index of the value in the list.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches a list for a specific value and returns its position (index). If found, it outputs the zero-based index and sets "found" to true. If not found, it outputs the original value through "not_found_value" and sets "found" to false.
+
+This enables conditional logic based on list membership and helps locate items for subsequent list operations like replacement or removal.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -655,7 +753,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Duplicate Detection**: Check if an item already exists in a list before adding it.
+
+**Status Lookup**: Find if a value is in a list of valid states or allowed values.
+
+**Position Finding**: Locate an item's position for subsequent operations like updates or removals.
 <!-- END MANUAL -->
 
 ---
@@ -670,7 +772,9 @@ Retrieve all memories from Mem0 with optional conversation filtering
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all stored memories from Mem0 for the current user context. You can filter results by categories or metadata, and scope the retrieval to the current run or agent using the limit options.
+
+Memories are returned as a list that your workflow can iterate through. This is useful for reviewing accumulated knowledge, debugging what your agent has learned, or aggregating past interactions for analysis.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -690,7 +794,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Context Review**: Retrieve all memories at the start of a session to understand what your agent already knows about a user.
+
+**Memory Export**: Collect all stored memories for backup, analysis, or migration to another system.
+
+**Memory Management**: List all memories to identify outdated or incorrect information that needs updating.
 <!-- END MANUAL -->
 
 ---
@@ -705,7 +813,9 @@ Retrieve the latest memory from Mem0 with optional key filtering
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the most recently stored memory from Mem0. You can filter by categories, metadata, or conversation ID to find the latest relevant memory. The block indicates whether a memory was found and returns it if available.
+
+This is useful for quickly accessing the last piece of information stored without iterating through all memories, such as checking the most recent user preference or the last conversation topic.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -727,7 +837,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Conversation Continuity**: Retrieve the last topic discussed to provide context when resuming a conversation.
+
+**Status Tracking**: Get the most recent status update or progress report stored during a workflow.
+
+**Quick Recall**: Access the last user preference or setting without loading the full memory history.
 <!-- END MANUAL -->
 
 ---
@@ -742,7 +856,9 @@ Returns the element at the given index.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves an item from a list at a specific index position. It uses zero-based indexing (first item is 0) and supports negative indices for accessing items from the end (e.g., -1 for the last item).
+
+If the index is out of range, the block outputs an error. This is useful for accessing specific elements without iterating through the entire list.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -759,7 +875,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**First/Last Item Access**: Get the first item (index 0) or last item (index -1) from a list of results.
+
+**Ordered Selection**: Access a specific position in a ranked list, like the second-highest score or third most recent entry.
+
+**Array Unpacking**: Extract individual elements from a fixed-structure list where each position has a known meaning.
 <!-- END MANUAL -->
 
 ---
@@ -808,7 +928,9 @@ Pause execution and wait for human approval or modification of data
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block pauses workflow execution and presents data to a human reviewer for approval. The workflow waits until the human approves or rejects the data, then routes to the corresponding output. If editable is enabled, the reviewer can modify the data before approving.
+
+This enables human oversight at critical points in automated workflows, ensuring important decisions have human verification before proceeding.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -828,7 +950,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Moderation**: Review AI-generated content before publishing to ensure quality and appropriateness.
+
+**Approval Workflows**: Require manager approval for actions like large purchases, access requests, or configuration changes.
+
+**Quality Assurance**: Let reviewers verify data transformations or calculations before they're committed to production systems.
 <!-- END MANUAL -->
 
 ---
@@ -843,7 +969,9 @@ Given a code string, this block allows the verification and installation of a bl
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block allows dynamic installation of new block types into the system from Python code. The code is verified for safety and correctness before installation. Once installed, the new block becomes available for use in workflows.
+
+This enables extensibility by allowing custom blocks to be added without modifying the core system, though it requires the code to follow the block specification format.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -859,7 +987,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Custom Integrations**: Install blocks that connect to proprietary or internal APIs not covered by built-in blocks.
+
+**Dynamic Workflows**: Allow administrators to extend workflow capabilities without redeploying the entire system.
+
+**Experimental Features**: Test new block implementations before formally adding them to the block library.
 <!-- END MANUAL -->
 
 ---
@@ -874,7 +1006,9 @@ Checks if a list is empty.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block checks whether a list contains any items and returns a boolean result. An empty list (no elements) returns true, while a list with any elements returns false.
+
+This is useful for conditional logic where you need to verify if search results were found, if items are available for processing, or if a collection has any entries to iterate over.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -890,7 +1024,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Search Result Handling**: Check if a search returned any results before processing, displaying "no results found" when empty.
+
+**Batch Processing Guard**: Verify that a list has items before starting a batch operation to avoid empty iterations.
+
+**Conditional Messaging**: Send different notifications based on whether pending items exist or the queue is empty.
 <!-- END MANUAL -->
 
 ---
@@ -936,7 +1074,9 @@ Print the given text to the console, this is used for a debugging purpose.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block outputs the provided data to the server console log and passes it through as output. It's primarily used for debugging workflows by allowing you to inspect values at any point in the data flow.
+
+The block accepts any data type and both prints it for debugging visibility and forwards it to downstream blocks, making it easy to insert into existing connections without disrupting the workflow.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -953,7 +1093,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Workflow Debugging**: Insert at any point to inspect what data is flowing through that connection during testing.
+
+**Variable Inspection**: Log the values of variables or API responses to understand what your workflow is receiving.
+
+**Progress Tracking**: Add print statements at key stages to monitor workflow progress in the server logs.
 <!-- END MANUAL -->
 
 ---
@@ -968,7 +1112,9 @@ Removes a key-value pair from a dictionary.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes a key-value pair from a dictionary by specifying the key. The updated dictionary without that entry is output. Optionally, you can retrieve the value that was removed by enabling return_value.
+
+If the key doesn't exist in the dictionary, the operation may error or return the dictionary unchanged depending on the implementation. This is useful for cleaning up data or extracting and removing values in one step.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -987,7 +1133,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Cleaning**: Remove sensitive fields (like passwords or tokens) from data before logging or storing.
+
+**Pop Pattern**: Extract and remove a value from a dictionary in a single operation, like dequeuing items.
+
+**Object Trimming**: Remove unnecessary or deprecated fields from configuration objects before processing.
 <!-- END MANUAL -->
 
 ---
@@ -1002,7 +1152,9 @@ Removes an item from a list by value or index.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes an item from a list either by value (remove first occurrence) or by index (remove at specific position). Negative indices are supported for removal from the end. Optionally, the removed item can be returned.
+
+This provides flexibility for both "remove this specific item" and "remove the item at this position" use cases in a single block.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1022,7 +1174,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Queue Processing**: Pop items from the front of a list to process them one at a time (FIFO queue).
+
+**Exclusion Lists**: Remove specific values from a list, like filtering out certain options or invalid entries.
+
+**Stack Operations**: Pop items from the end of a list for last-in-first-out processing.
 <!-- END MANUAL -->
 
 ---
@@ -1037,7 +1193,9 @@ Replaces the value for a specified key in a dictionary.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block updates the value for an existing key in a dictionary. The old value is replaced with the new one, and the updated dictionary is output. The block also returns the old value that was replaced.
+
+This is useful for updating specific fields in a data object while preserving all other fields, or for tracking what value was changed during an update operation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1056,7 +1214,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Updates**: Change the status field in a record from "pending" to "completed" while preserving all other data.
+
+**Configuration Changes**: Update a single setting in a configuration object without rebuilding the entire config.
+
+**Field Transformations**: Replace a raw value with a processed or formatted version while tracking the original.
 <!-- END MANUAL -->
 
 ---
@@ -1071,7 +1233,9 @@ Replaces an item at the specified index.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block replaces an item at a specific position in a list with a new value. It uses zero-based indexing and supports negative indices for accessing positions from the end. The old item that was replaced is also returned.
+
+This is useful for updating specific elements in an ordered list without rebuilding the entire list or losing other elements.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1090,7 +1254,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**List Updates**: Replace an outdated entry in a list with updated information while keeping other entries intact.
+
+**Correction Workflows**: Fix a specific item in a results list after validation identifies an error at a known position.
+
+**Value Swapping**: Replace placeholder values in a list with computed or fetched actual values at known positions.
 <!-- END MANUAL -->
 
 ---
@@ -1105,7 +1273,9 @@ Reverses the order of elements in a list
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block takes a list and returns a new list with all elements in reverse order. The first element becomes the last, and the last element becomes the first. The original list is not modified.
+
+This is useful for changing the processing order of items or displaying lists in a different order than they were collected.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1121,7 +1291,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Chronological Reversal**: Display the most recent items first when data was collected oldest-to-newest.
+
+**Processing Order Change**: Process a stack of items last-in-first-out by reversing a first-in-first-out list.
+
+**Display Formatting**: Reverse leaderboard rankings to show from lowest to highest or vice versa.
 <!-- END MANUAL -->
 
 ---
@@ -1136,7 +1310,9 @@ Search memories in Mem0 by user
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches through stored memories using a natural language query. It uses semantic search to find memories that are relevant to your query, not just exact matches. Results can be filtered by categories or metadata.
+
+The search is performed against the Mem0 memory store and returns memories ranked by relevance to your query. This enables intelligent recall of past information based on meaning rather than keywords.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1157,7 +1333,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Contextual Recall**: Search for memories related to a user's current question to provide informed, contextual responses.
+
+**Knowledge Retrieval**: Find previously stored facts or insights that are relevant to a new task or decision.
+
+**Conversation History**: Search past interactions to recall what was discussed about a specific topic or person.
 <!-- END MANUAL -->
 
 ---
@@ -1204,7 +1384,9 @@ This block is used to convert a value to a universal type.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block converts values between common data types: string, number, boolean, list, and dictionary. It handles type coercion intelligently—for example, converting the string "true" to boolean true, or the string "42" to the number 42.
+
+This is useful when data from different sources needs to be in a consistent type for processing, comparison, or API requirements.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1221,7 +1403,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**API Compatibility**: Convert string inputs to numbers or booleans as required by specific API parameters.
+
+**User Input Processing**: Transform user-entered text values into appropriate types for calculations or logic.
+
+**Data Normalization**: Standardize mixed-type data from various sources into consistent types for processing.
 <!-- END MANUAL -->
 
 ---
@@ -1236,7 +1422,9 @@ Parses XML using gravitasml to tokenize and coverts it to dict
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block parses XML content and converts it into a dictionary structure that can be easily navigated and processed in workflows. It uses the gravitasml library to tokenize the XML and produces a nested dictionary matching the XML hierarchy.
+
+This makes XML data accessible using standard dictionary operations, allowing you to extract values, iterate over elements, and process XML-based API responses or data files.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -1252,7 +1440,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**API Response Processing**: Parse XML responses from SOAP APIs or legacy systems to extract the data you need.
+
+**Configuration File Reading**: Read XML configuration files and convert them to dictionaries for easy access.
+
+**Data Import**: Transform XML data exports from other systems into a format suitable for your workflow processing.
 <!-- END MANUAL -->
 
 ---

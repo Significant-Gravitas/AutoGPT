@@ -40,7 +40,9 @@ Create draft emails in Gmail with automatic HTML detection and proper text forma
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a draft email in Gmail without sending it. The draft is saved to your Drafts folder where you can review and send it manually. The block automatically detects HTML content or you can explicitly set the content type.
+
+Plain text emails preserve natural formatting without forced line breaks. HTML emails support rich formatting. File attachments are supported by providing file paths.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -62,7 +64,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Email Review Workflow**: Create draft emails for human review before sending important communications.
+
+**Newsletter Preparation**: Build email drafts with dynamic content that can be finalized before distribution.
+
+**Template Saving**: Save email templates as drafts for quick access and reuse.
 <!-- END MANUAL -->
 
 ---
@@ -77,7 +83,9 @@ Create draft replies to Gmail threads with automatic HTML detection and proper t
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a draft reply within an existing email thread. The draft maintains proper threading so your reply appears in the conversation. Use replyAll to respond to all original recipients, or specify custom recipients.
+
+The block preserves the thread context and adds proper email headers for threading. Draft replies can be reviewed in Gmail before sending.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -105,7 +113,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Support Response Preparation**: Draft replies to customer inquiries for review before sending.
+
+**Approval Workflows**: Create reply drafts that require manager approval before being sent.
+
+**Scheduled Responses**: Prepare replies to be reviewed and sent at appropriate times.
 <!-- END MANUAL -->
 
 ---
@@ -120,7 +132,9 @@ Forward Gmail messages to other recipients with automatic HTML detection and pro
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block forwards an existing Gmail message to new recipients. The original message content is preserved and can include attachments from the original email. You can add your own message before the forwarded content.
+
+The block handles proper email threading and formatting, prepending "Fwd:" to the subject unless you specify a custom subject.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -146,7 +160,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Email Escalation**: Automatically forward emails matching certain criteria to managers or specialists.
+
+**Team Distribution**: Forward important updates to relevant team members based on content.
+
+**Record Keeping**: Forward copies of important communications to an archive address.
 <!-- END MANUAL -->
 
 ---
@@ -161,7 +179,9 @@ Get the authenticated user's Gmail profile details including email address and m
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves profile information for the authenticated Gmail user via the Gmail API. It returns the email address, total message count, thread count, and storage usage statistics.
+
+This is useful for verifying which account is connected and gathering basic mailbox statistics.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -172,7 +192,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Account Verification**: Confirm which Gmail account is connected before performing operations.
+
+**Usage Monitoring**: Check storage usage and message counts for mailbox management.
+
+**Multi-Account Workflows**: Get the current user's email address to route workflows appropriately.
 <!-- END MANUAL -->
 
 ---
@@ -187,7 +211,9 @@ Get a full Gmail thread by ID
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a complete Gmail thread (email conversation) by its thread ID. It returns all messages in the thread with decoded bodies, allowing you to read the full conversation history.
+
+The thread includes all messages, their senders, timestamps, and content, making it easy to analyze entire email conversations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -203,7 +229,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Checking if a recipient replied in an existing conversation.
+**Conversation Analysis**: Read an entire email thread to understand the full context of a discussion.
+
+**Reply Detection**: Check if a recipient has responded within a conversation thread.
+
+**Thread Summarization**: Gather all messages in a thread for AI-powered summarization.
 <!-- END MANUAL -->
 
 ---
@@ -309,7 +339,9 @@ Reply to Gmail threads with automatic HTML detection and proper text formatting.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends a reply directly within an existing Gmail thread. Unlike the draft reply block, this immediately sends the message. The reply maintains proper threading and appears in the conversation.
+
+Use replyAll to respond to all recipients, or specify custom recipients. The block handles email headers and threading automatically.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -337,7 +369,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Automatically respond "Thanks, see you then" to a scheduling email while keeping the conversation tidy.
+**Auto-Acknowledgments**: Automatically send acknowledgment replies to incoming support requests.
+
+**Scheduled Follow-ups**: Reply to threads with follow-up messages at appropriate times.
+
+**Conversation Continuity**: Respond to ongoing threads while keeping all messages organized.
 <!-- END MANUAL -->
 
 ---

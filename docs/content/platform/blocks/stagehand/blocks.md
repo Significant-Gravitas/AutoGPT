@@ -8,7 +8,9 @@ Interact with a web page by performing actions on a web page. Use it to build se
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Stagehand with Browserbase to perform web actions using AI-powered element detection. Actions like click, fill, type, scroll, and select are described in natural language and executed reliably even if the page structure changes.
+
+Configure timeouts for DOM settlement and page loading. Variables can be passed to actions for dynamic data entry.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -33,7 +35,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Form Automation**: Fill out web forms, submit applications, or complete checkout flows.
+
+**Self-Healing Scrapers**: Build automations that adapt to website changes without breaking.
+
+**Testing Workflows**: Automate testing of web applications with resilient element targeting.
 <!-- END MANUAL -->
 
 ---
@@ -48,7 +54,9 @@ Extract structured data from a webpage.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Stagehand with Browserbase to extract data from web pages using natural language instructions. Describe what data you want to extract, and the AI identifies and returns the matching content.
+
+Supports searching within iframes and configurable timeouts for dynamic content that loads after the initial page render.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -69,7 +77,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Scraping**: Extract product details, prices, or contact information from websites.
+
+**Competitive Intelligence**: Pull data from competitor pages for analysis and monitoring.
+
+**Research Automation**: Gather information from multiple web sources for research workflows.
 <!-- END MANUAL -->
 
 ---
@@ -84,7 +96,9 @@ Find suggested actions for your workflows
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block analyzes a web page to discover available actions based on natural language instructions. It returns XPath selectors, action methods, and descriptions for elements matching your query.
+
+Use this to explore a page's interactive elements before building automated workflows.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -108,7 +122,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Workflow Discovery**: Identify available actions on a page before building automations.
+
+**Dynamic Navigation**: Discover clickable elements for pages with changing layouts.
+
+**Automation Development**: Build robust automation workflows by understanding page structure.
 <!-- END MANUAL -->
 
 ---

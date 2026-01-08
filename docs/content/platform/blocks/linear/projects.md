@@ -8,7 +8,9 @@ Searches for projects on Linear
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches for projects in Linear using a text query. It queries the Linear GraphQL API to find projects matching the search term.
+
+Returns a list of projects with their details for further use in workflows.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,7 +26,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Project Discovery**: Find projects by name to use in issue creation or queries.
+
+**Portfolio Overview**: Search for projects to build portfolio dashboards.
+
+**Dynamic Forms**: Populate project dropdowns in custom interfaces.
 <!-- END MANUAL -->
 
 ---

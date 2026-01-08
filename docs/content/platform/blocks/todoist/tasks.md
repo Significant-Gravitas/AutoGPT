@@ -115,7 +115,9 @@ Get an active task from Todoist
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a single active task from Todoist using the task's unique ID. It queries the Todoist REST API and returns comprehensive task details including content, description, due dates, labels, and project association.
+
+Only active (uncompleted) tasks can be retrieved; closed tasks are not accessible through this endpoint.
 <!-- END MANUAL -->
 
 ### Inputs

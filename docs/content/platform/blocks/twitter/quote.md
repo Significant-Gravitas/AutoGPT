@@ -8,7 +8,9 @@ This block gets quote tweets for a specific tweet.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve tweets that quote a specific tweet. Quote tweets are retweets with added commentary, allowing users to share the original tweet while adding their own thoughts.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and location details. Returns paginated results with tweet IDs, text content, and complete tweet data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -45,7 +47,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Sentiment Analysis**: Analyze how users are commenting on your tweets through quote tweets to understand sentiment.
+
+**Engagement Monitoring**: Track quote tweets to identify discussions and conversations sparked by your content.
+
+**Influencer Discovery**: Find users who quote-tweet your content to identify potential advocates or collaborators.
 <!-- END MANUAL -->
 
 ---

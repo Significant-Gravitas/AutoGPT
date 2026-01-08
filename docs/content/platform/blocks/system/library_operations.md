@@ -8,7 +8,9 @@ Add an agent from the store to your personal library
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block copies an agent from the public store into your personal library using its store_listing_version_id. Optionally provide a custom agent_name to rename it in your library.
+
+The block returns the library entry ID and agent graph ID, which can be used to execute the agent or manage your library.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Agent Provisioning**: Automatically add recommended agents to a user's library.
+
+**Onboarding Flows**: Set up a user's library with starter agents during onboarding.
+
+**Dynamic Agent Access**: Add agents on-demand when users request specific capabilities.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ List all agents in your personal library
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves all agents stored in your personal library. Use search_query to filter by name, and limit/page for pagination through large libraries.
+
+Results include each agent's metadata and are output both as a complete list and individually for iteration.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -67,7 +75,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Agent Selection**: Display available agents for users to choose from in a workflow.
+
+**Library Management**: Build interfaces for users to manage and organize their agent library.
+
+**Agent Inventory**: Check what agents are available before deciding which to execute.
 <!-- END MANUAL -->
 
 ---

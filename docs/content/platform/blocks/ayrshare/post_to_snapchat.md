@@ -8,7 +8,9 @@ Post to Snapchat using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Ayrshare's API to publish video content to Snapchat. Snapchat only supports video content, with three destination options: Stories (24-hour ephemeral content), Saved Stories (persistent Stories), and Spotlight (public discovery feed).
+
+The block authenticates through Ayrshare and uploads video content with optional custom thumbnails. Videos can be scheduled for future publishing and support approval workflows for content review before going live.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -37,7 +39,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Ephemeral Marketing**: Share time-sensitive promotions or behind-the-scenes content that creates urgency through 24-hour Stories.
+
+**Public Discovery**: Post engaging video content to Spotlight to reach new audiences beyond your followers.
+
+**Scheduled Story Series**: Plan and schedule a sequence of video Stories for product launches or events.
 <!-- END MANUAL -->
 
 ---

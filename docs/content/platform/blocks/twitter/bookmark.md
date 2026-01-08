@@ -8,7 +8,9 @@ This block bookmarks a tweet on Twitter.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to add a tweet to the authenticated user's bookmarks. The bookmark is private and only visible to you—the tweet author is not notified.
+
+The block authenticates using OAuth 2.0 with bookmark write permissions and sends a POST request to add the specified tweet ID to your bookmarks. Returns a success indicator confirming the bookmark was added.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,7 +26,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Curation**: Save interesting tweets for later reading or to compile into a newsletter or blog post.
+
+**Research Collection**: Bookmark tweets containing valuable information or sources for ongoing research projects.
+
+**Reference Library**: Build a collection of useful tips, tutorials, or resource links shared on Twitter.
 <!-- END MANUAL -->
 
 ---
@@ -39,7 +45,9 @@ This block retrieves bookmarked tweets from Twitter.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve tweets that the authenticated user has bookmarked. Results are returned in reverse chronological order (most recently bookmarked first) with pagination support.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and location details. Returns tweet IDs, text content, author information, and complete tweet data objects.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -76,7 +84,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Review**: Process your bookmarked tweets to extract and organize information you've saved.
+
+**Bookmark Cleanup**: Review and categorize bookmarks to identify content to keep, share, or remove.
+
+**Reading List Management**: Retrieve bookmarked tweets to create a structured reading list or export to another system.
 <!-- END MANUAL -->
 
 ---
@@ -91,7 +103,9 @@ This block removes a bookmark from a tweet on Twitter.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to remove a tweet from the authenticated user's bookmarks. The operation is private—no one else is notified that you unbookmarked the tweet.
+
+The block authenticates using OAuth 2.0 with bookmark write permissions and sends a DELETE request to remove the specified tweet ID from your bookmarks. Returns a success indicator confirming the bookmark was removed.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -107,7 +121,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Bookmark Cleanup**: Remove tweets you've already read or that are no longer relevant from your bookmarks.
+
+**Content Processing**: Automatically remove bookmarks after extracting or processing the content.
+
+**List Management**: Maintain a manageable bookmark collection by removing older or processed items.
 <!-- END MANUAL -->
 
 ---

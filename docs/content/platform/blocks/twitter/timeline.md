@@ -8,7 +8,9 @@ This block retrieves the authenticated user's home timeline.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve the authenticated user's home timeline—tweets from accounts they follow and their own tweets. Results are returned in reverse chronological order with optional filtering by time range.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports extensive expansions to include additional data like media, author information, and referenced tweets. Pagination allows retrieving large timelines in batches of up to 100 tweets.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -50,7 +52,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Digest**: Create automated summaries of your timeline for daily or weekly review.
+
+**Trend Detection**: Monitor your timeline for emerging topics or conversations among accounts you follow.
+
+**Engagement Automation**: Process timeline content to identify tweets worth engaging with or responding to.
 <!-- END MANUAL -->
 
 ---
@@ -65,7 +71,9 @@ This block retrieves Tweets mentioning a specific user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve tweets that @mention a specific user. Results include replies to the user's tweets, direct mentions, and tagged responses from other accounts.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports time-based filtering and pagination. Expansions allow including additional data like media, author information, and referenced tweets. Returns tweet IDs, text, author information, and complete tweet data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -108,7 +116,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Mention Monitoring**: Track all mentions of your account for customer service or community management.
+
+**Engagement Response**: Identify mentions that require responses or engagement for timely replies.
+
+**Sentiment Analysis**: Analyze mentions to understand how users are talking about you or your brand.
 <!-- END MANUAL -->
 
 ---
@@ -123,7 +135,9 @@ This block retrieves Tweets composed by a single user.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries the Twitter API v2 to retrieve tweets posted by a specific user. Results include original tweets, replies, and retweets from that user's timeline in reverse chronological order.
+
+The block uses Tweepy with OAuth 2.0 authentication and supports time-based filtering and pagination. Expansions allow including additional data like media, mentioned users, and referenced tweets. Returns tweet IDs, text content, and complete tweet data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -166,7 +180,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Competitor Monitoring**: Track tweets from competitor accounts to understand their messaging and strategy.
+
+**Content Archiving**: Archive tweets from specific accounts for research or compliance purposes.
+
+**Influencer Analysis**: Analyze posting patterns and content from influencers in your industry.
 <!-- END MANUAL -->
 
 ---

@@ -8,7 +8,9 @@ Block to attach an audio file to a video file using moviepy.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block combines a video file with an audio file using the moviepy library. The audio track is attached to the video, optionally with volume adjustment via the volume parameter (1.0 = original volume).
+
+Input files can be URLs, data URIs, or local paths. The output can be returned as either a file path or base64 data URI.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Add Voiceover**: Combine generated voiceover audio with video content for narrated videos.
+
+**Background Music**: Add music tracks to silent videos or replace existing audio.
+
+**Audio Replacement**: Swap the audio track of a video for localization or accessibility.
 <!-- END MANUAL -->
 
 ---
@@ -42,7 +48,9 @@ Block to loop a video to a given duration or number of repeats.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extends a video by repeating it to reach a target duration or number of loops. Set duration to specify the total length in seconds, or use n_loops to repeat the video a specific number of times.
+
+The looped video is seamlessly concatenated and can be output as a file path or base64 data URI.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -61,7 +69,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Background Videos**: Loop short clips to match the duration of longer audio or content.
+
+**GIF-Like Content**: Create seamlessly looping video content for social media.
+
+**Filler Content**: Extend short video clips to meet minimum duration requirements.
 <!-- END MANUAL -->
 
 ---
@@ -76,7 +88,9 @@ Block to get the duration of a media file.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block analyzes a media file and returns its duration in seconds. Set is_video to true for video files or false for audio files to ensure proper parsing.
+
+The input can be a URL, data URI, or local file path. The duration is returned as a float for precise timing calculations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -93,7 +107,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Video Processing Prep**: Get video duration before deciding how to loop, trim, or synchronize it.
+
+**Audio Matching**: Determine audio length to generate matching-length video content.
+
+**Content Validation**: Verify that uploaded media meets duration requirements.
 <!-- END MANUAL -->
 
 ---

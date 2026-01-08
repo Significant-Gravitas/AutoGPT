@@ -8,7 +8,9 @@ Receive webhook notifications for Exa webset events
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block acts as a webhook receiver for Exa webset events. When events occur on your websets (like new items found, searches completed, or enrichments finished), Exa sends notifications to this webhook endpoint.
+
+The block can filter events by webset ID and event type. It parses incoming webhook payloads and outputs structured event data including the event type, affected webset, and event-specific details.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Real-Time Processing**: Trigger workflows automatically when new items are added to websets without polling.
+
+**Alert Systems**: Receive instant notifications when webset searches find new relevant results.
+
+**Integration Pipelines**: Build event-driven integrations that react to webset changes in real time.
 <!-- END MANUAL -->
 
 ---

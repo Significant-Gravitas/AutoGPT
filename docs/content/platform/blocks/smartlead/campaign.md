@@ -8,7 +8,9 @@ Add a lead to a campaign in SmartLead
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block adds up to 100 leads to an existing SmartLead campaign using the SmartLead API. Each lead includes contact details and optional custom fields for personalization.
+
+Configure upload settings to control duplicate handling and campaign status. The response includes counts for successful uploads, duplicates, and invalid entries.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -32,7 +34,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Import**: Bulk import leads from CRM exports, web forms, or enrichment services.
+
+**Campaign Automation**: Automatically add qualifying leads to outreach campaigns.
+
+**Multi-Source Aggregation**: Consolidate leads from multiple sources into unified campaigns.
 <!-- END MANUAL -->
 
 ---
@@ -47,7 +53,9 @@ Create a campaign in SmartLead
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a new email campaign in SmartLead using the SmartLead API. Provide a campaign name and the block returns the created campaign's ID and metadata.
+
+Use the campaign ID with other SmartLead blocks to add leads, configure sequences, and manage the campaign.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -65,7 +73,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Dynamic Campaigns**: Create campaigns programmatically for different products or segments.
+
+**Workflow Automation**: Spin up new outreach campaigns as part of sales or marketing workflows.
+
+**Campaign Templating**: Create campaigns from templates with standardized configurations.
 <!-- END MANUAL -->
 
 ---
@@ -80,7 +92,9 @@ Save sequences within a campaign
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block saves email sequences to an existing SmartLead campaign. Sequences define the email content, timing, and follow-up structure for the campaign's outreach.
+
+Each sequence includes the email subject, body, and delay settings for automated follow-up emails.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -98,7 +112,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Email Automation**: Define multi-step email sequences for nurturing leads.
+
+**A/B Testing**: Create variant sequences to test different messaging approaches.
+
+**Campaign Configuration**: Set up complete outreach flows programmatically.
 <!-- END MANUAL -->
 
 ---

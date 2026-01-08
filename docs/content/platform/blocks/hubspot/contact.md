@@ -8,7 +8,9 @@ Manages HubSpot contacts - create, update, and retrieve contact information
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block interacts with the HubSpot CRM API to manage contact records. It supports creating new contacts, updating existing contacts, and retrieving contacts by email address.
+
+Contact data includes standard properties like email, first name, last name, phone, and any custom properties defined in your HubSpot account.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Capture**: Create contacts automatically from form submissions or integrations.
+
+**Contact Updates**: Update contact information when customers change their details.
+
+**CRM Lookup**: Retrieve contact details for personalization or workflow decisions.
 <!-- END MANUAL -->
 
 ---

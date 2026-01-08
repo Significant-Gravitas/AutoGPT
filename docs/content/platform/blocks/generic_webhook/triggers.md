@@ -8,7 +8,9 @@ This block will output the contents of the generic input for the webhook.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates a webhook endpoint that receives and outputs any incoming HTTP payload. When external services send data to this webhook URL, the block triggers and outputs the complete payload as a dictionary.
+
+Constants can be configured to pass additional static values alongside the dynamic webhook data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -25,7 +27,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**External Integrations**: Receive data from any third-party service that supports webhooks.
+
+**Custom Triggers**: Create custom workflow triggers from external systems or internal tools.
+
+**Event Processing**: Capture and process events from IoT devices, payment processors, or notification services.
 <!-- END MANUAL -->
 
 ---

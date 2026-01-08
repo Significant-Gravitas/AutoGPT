@@ -8,7 +8,9 @@ Get related keywords from DataForSEO Labs Google API
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the DataForSEO Labs Google Related Keywords API to find semantically related keywords based on a seed keyword. It returns keywords that share similar search intent or topic relevance.
+
+The depth parameter controls the breadth of the search, with higher values returning exponentially more related keywords. Results include search metrics, competition data, and optional SERP/clickstream information.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -34,7 +36,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Topic Clustering**: Group related keywords to build comprehensive content clusters around a topic.
+
+**Semantic SEO**: Discover LSI (latent semantic indexing) keywords to improve content relevance.
+
+**Keyword Expansion**: Expand targeting beyond exact match to capture related search traffic.
 <!-- END MANUAL -->
 
 ---
@@ -49,7 +55,9 @@ Extract individual fields from a RelatedKeyword object
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block extracts individual fields from a RelatedKeyword object returned by the Related Keywords block. It separates the compound object into distinct outputs for workflow integration.
+
+Outputs include the keyword text, search volume, competition score, CPC, keyword difficulty, and any SERP or clickstream data that was requested in the original search.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -71,7 +79,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Keyword Prioritization**: Extract metrics to rank related keywords by opportunity score.
+
+**Content Optimization**: Access keyword difficulty and search volume for content planning decisions.
+
+**Competitive Analysis**: Pull competition and CPC data to assess keyword viability.
 <!-- END MANUAL -->
 
 ---

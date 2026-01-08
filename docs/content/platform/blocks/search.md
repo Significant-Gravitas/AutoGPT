@@ -39,7 +39,9 @@ This block searches for local businesses using Google Maps API.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Google Maps Places API to search for businesses and locations based on a query. Configure radius (up to 50km) to limit the search area and max_results (up to 60) to control how many places are returned.
+
+Each place result includes name, address, rating, reviews, and geographic coordinates for integration with mapping or navigation workflows.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -57,7 +59,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Generation**: Find businesses in a specific area for sales outreach.
+
+**Competitive Analysis**: Search for competitors in target locations to analyze their presence and ratings.
+
+**Local SEO**: Gather data on local businesses for market research or directory building.
 <!-- END MANUAL -->
 
 ---

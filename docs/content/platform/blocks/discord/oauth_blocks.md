@@ -8,7 +8,9 @@ Gets information about the currently authenticated Discord user using OAuth2 cre
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Discord's OAuth2 API to retrieve information about the currently authenticated user. It requires valid OAuth2 credentials that have been obtained through Discord's authorization flow with the `identify` scope.
+
+The block queries the Discord `/users/@me` endpoint and returns the user's profile information including their unique ID, username, avatar, and customization settings like banner and accent color.
 <!-- END MANUAL -->
 
 ### Outputs
@@ -23,7 +25,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**User Authentication**: Verify user identity after OAuth login to personalize experiences or grant access.
+
+**Profile Integration**: Display Discord user information in external applications or dashboards.
+
+**Account Linking**: Connect Discord accounts with other services using the unique user ID.
 <!-- END MANUAL -->
 
 ---

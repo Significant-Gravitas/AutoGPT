@@ -8,7 +8,9 @@ Post to Threads using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Ayrshare's API to publish content to Threads (Meta's text-based social platform). It supports text posts (up to 500 characters with one hashtag), images, videos, and carousels (up to 20 items), with automatic link previews when no media is attached.
+
+The block authenticates through Meta's API via Ayrshare. Content can mention users via @handle syntax, be scheduled for future publishing, and include approval workflows for content review.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -35,7 +37,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Thought Leadership**: Share quick insights, opinions, or industry commentary in a conversational format.
+
+**Cross-Platform Text Content**: Automatically syndicate text-based content from other platforms to Threads.
+
+**Community Engagement**: Post discussion prompts or responses to engage with your Threads audience.
 <!-- END MANUAL -->
 
 ---

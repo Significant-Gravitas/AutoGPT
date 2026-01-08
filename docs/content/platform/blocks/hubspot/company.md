@@ -8,7 +8,9 @@ Manages HubSpot companies - create, update, and retrieve company information
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block interacts with the HubSpot CRM API to manage company records. It supports three operations: create new companies, update existing companies, and retrieve company information by domain.
+
+Company data is passed as a dictionary with standard HubSpot company properties like name, domain, industry, and custom properties.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -27,7 +29,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Enrichment**: Create or update company records when new leads come in from forms or integrations.
+
+**Data Sync**: Keep company information synchronized between HubSpot and other business systems.
+
+**Account Management**: Retrieve company details to personalize communications or trigger workflows.
 <!-- END MANUAL -->
 
 ---

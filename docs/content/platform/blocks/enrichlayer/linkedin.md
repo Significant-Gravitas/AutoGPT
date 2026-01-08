@@ -8,7 +8,9 @@ Fetch LinkedIn profile data using Enrichlayer
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves comprehensive LinkedIn profile data using Enrichlayer's API. Provide a LinkedIn profile URL to fetch details including work history, education, skills, and contact information.
+
+Configure caching options for performance and optionally include additional data like inferred salary, personal email, or social media links.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -32,7 +34,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Enrichment**: Enrich sales leads with detailed professional background information.
+
+**Recruitment Research**: Gather candidate information for hiring and outreach workflows.
+
+**Contact Discovery**: Find contact details associated with LinkedIn profiles.
 <!-- END MANUAL -->
 
 ---
@@ -47,7 +53,9 @@ Get LinkedIn profile pictures using Enrichlayer
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the profile picture URL for a LinkedIn profile using Enrichlayer's API. Provide the LinkedIn profile URL to get a direct link to the user's profile photo.
+
+The returned URL can be used for display, download, or further image processing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -63,7 +71,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**CRM Enhancement**: Add profile photos to contact records for visual identification.
+
+**Personalized Outreach**: Include profile pictures in personalized email or message templates.
+
+**Identity Verification**: Retrieve profile photos for manual identity verification workflows.
 <!-- END MANUAL -->
 
 ---
@@ -78,7 +90,9 @@ Look up LinkedIn profiles by person information using Enrichlayer
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block finds LinkedIn profiles by matching person details like name, company, and title using Enrichlayer's API. Provide first name and company domain as minimum inputs, with optional last name, location, and title for better matching.
+
+Enable similarity checks and profile enrichment for more detailed results.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -100,7 +114,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Lead Discovery**: Find LinkedIn profiles for leads when you only have name and company.
+
+**Contact Matching**: Match CRM contacts to their LinkedIn profiles for enrichment.
+
+**Prospecting**: Discover LinkedIn profiles of people at target companies.
 <!-- END MANUAL -->
 
 ---
@@ -115,7 +133,9 @@ Look up LinkedIn profiles by role in a company using Enrichlayer
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block finds LinkedIn profiles by role title and company using Enrichlayer's API. Specify a role like CEO, CTO, or VP of Sales along with the company name to find matching profiles.
+
+Enable enrich_profile to automatically fetch full profile data for the matched result.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -133,7 +153,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Decision Maker Discovery**: Find key decision makers at target companies for sales outreach.
+
+**Executive Research**: Look up C-suite executives for account-based marketing.
+
+**Org Chart Building**: Map leadership at companies by looking up specific roles.
 <!-- END MANUAL -->
 
 ---

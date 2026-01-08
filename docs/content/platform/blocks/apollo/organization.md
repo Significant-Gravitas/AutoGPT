@@ -8,7 +8,9 @@ Search for organizations in Apollo
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches the Apollo database for organizations using various filters like employee count, location, and keywords. Apollo maintains a comprehensive database of company information for sales and marketing purposes.
+
+Results can be filtered by headquarters location, excluded locations, industry keywords, and specific Apollo organization IDs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -45,7 +47,11 @@ To find IDs, identify the values for organization_id when you call this endpoint
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Market Research**: Find companies matching specific criteria for market analysis.
+
+**Lead List Building**: Build targeted lists of companies for outbound sales campaigns.
+
+**Competitive Intelligence**: Research competitors and similar companies in your market.
 <!-- END MANUAL -->
 
 ---

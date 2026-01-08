@@ -8,7 +8,9 @@ Creates a new thread in a Discord channel.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Discord API with a bot token to create a new thread in a specified channel. Threads can be public or private (private requires Boost Level 2+).
+
+Configure auto-archive duration and optionally send an initial message when the thread is created.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -31,7 +33,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Support Tickets**: Create threads for individual support conversations to keep channels organized.
+
+**Discussion Topics**: Automatically create threads for new topics or announcements.
+
+**Project Channels**: Spin up discussion threads for specific tasks or features.
 <!-- END MANUAL -->
 
 ---
@@ -46,7 +52,9 @@ Resolves Discord channel names to IDs and vice versa.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block resolves Discord channel identifiers, converting between channel names and IDs. It queries the Discord API to find the channel and returns comprehensive information including server details.
+
+Useful for workflows that receive channel names but need IDs for other Discord operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -67,7 +75,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Dynamic Routing**: Look up channel IDs to route messages to user-specified channels by name.
+
+**Validation**: Verify channel existence before attempting to send messages.
+
+**Workflow Setup**: Get channel details during workflow configuration.
 <!-- END MANUAL -->
 
 ---
@@ -82,7 +94,9 @@ Gets information about a Discord user by their ID.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves information about a Discord user by their ID. It queries the Discord API and returns profile details including username, display name, avatar, and account creation date.
+
+The user must be visible to your bot (share a server with your bot).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -104,7 +118,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**User Profiling**: Get user details to personalize responses or create user profiles.
+
+**Mention Resolution**: Look up user information when processing mentions in messages.
+
+**Activity Logging**: Retrieve user details for logging or analytics purposes.
 <!-- END MANUAL -->
 
 ---
@@ -150,7 +168,9 @@ Replies to a specific Discord message.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends a reply to a specific Discord message, creating a threaded reply that references the original message. Optionally mention the original author to notify them.
+
+The reply appears linked to the original message in Discord's UI, maintaining conversation context.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -170,7 +190,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Conversation Bots**: Reply to user questions maintaining conversation context.
+
+**Support Responses**: Respond to support requests by replying to the original message.
+
+**Interactive Commands**: Reply to command messages with results or confirmations.
 <!-- END MANUAL -->
 
 ---
@@ -185,7 +209,9 @@ Sends a direct message to a Discord user using their user ID.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends a direct message to a Discord user. It opens a DM channel with the user (if not already open) and sends the message. The user must allow DMs from server members or share a server with your bot.
+
+Returns the message ID of the sent DM for tracking purposes.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -203,7 +229,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Private Notifications**: Send private alerts or notifications to specific users.
+
+**Welcome Messages**: DM new server members with welcome information.
+
+**Verification Systems**: Send verification codes or instructions via DM.
 <!-- END MANUAL -->
 
 ---
@@ -218,7 +248,9 @@ Sends a rich embed message to a Discord channel.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block sends a rich embed message to a Discord channel. Embeds support formatted content with titles, descriptions, colors, images, thumbnails, author sections, footers, and structured fields.
+
+Configure the embed's appearance with colors, images, and multiple fields for organized information display.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -244,7 +276,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Updates**: Send formatted status updates with colors and structured information.
+
+**Data Displays**: Present data in organized embed fields for easy reading.
+
+**Announcements**: Create visually appealing announcements with images and branding.
 <!-- END MANUAL -->
 
 ---
@@ -259,7 +295,9 @@ Sends a file attachment to a Discord channel.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uploads and sends a file attachment to a Discord channel. It supports various file types including images, documents, and other media. Files can be provided as URLs, data URIs, or local paths.
+
+Optionally include a message along with the file attachment.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -280,7 +318,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Report Sharing**: Send generated reports or documents to Discord channels.
+
+**Image Posting**: Share images from workflows or external sources.
+
+**Backup Distribution**: Share backup files or exports with team channels.
 <!-- END MANUAL -->
 
 ---

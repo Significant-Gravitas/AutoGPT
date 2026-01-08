@@ -8,7 +8,9 @@ Search for people in Apollo
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block searches Apollo's database for people based on job titles, seniority, location, company, and other criteria. It's designed for finding prospects and contacts for sales and marketing.
+
+Enable enrich_info to get detailed contact information including verified email addresses (costs more credits).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -59,7 +61,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Prospecting**: Find decision-makers at target companies for outbound sales.
+
+**Recruiting**: Search for candidates with specific titles and experience.
+
+**ABM Campaigns**: Build contact lists at specific accounts for account-based marketing.
 <!-- END MANUAL -->
 
 ---

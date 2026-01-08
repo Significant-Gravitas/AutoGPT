@@ -8,7 +8,9 @@ Manages HubSpot engagements - sends emails and tracks engagement metrics
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block manages HubSpot engagements including sending emails and tracking engagement metrics. Use send_email to send emails through HubSpot, or track_engagement to retrieve engagement history for a contact.
+
+Engagement tracking returns metrics like email opens, clicks, and other interactions within a specified timeframe.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -28,7 +30,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Outreach**: Send personalized emails to contacts based on triggers or workflows.
+
+**Engagement Scoring**: Track contact engagement to prioritize outreach efforts.
+
+**Follow-Up Automation**: Trigger follow-up actions based on engagement metrics.
 <!-- END MANUAL -->
 
 ---

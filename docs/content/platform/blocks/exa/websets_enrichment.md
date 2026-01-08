@@ -8,7 +8,9 @@ Cancel a running enrichment operation
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block stops a running enrichment operation on a webset. Items already enriched before cancellation retain their enrichment data, but remaining items will not be processed.
+
+Use this when an enrichment is taking too long, producing unexpected results, or is no longer needed. The block returns the approximate number of items enriched before cancellation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -28,7 +30,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Cost Control**: Stop enrichments that are exceeding budget or taking too long.
+
+**Error Handling**: Cancel enrichments producing incorrect results to fix configuration.
+
+**Priority Changes**: Stop lower-priority enrichments to free resources for urgent tasks.
 <!-- END MANUAL -->
 
 ---
@@ -43,7 +49,9 @@ Create enrichments to extract additional structured data from webset items
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates an enrichment task that extracts specific data from each webset item using AI. You define what to extract via a description, and the enrichment runs against all current and future items in the webset.
+
+Enrichments support various output formats including text, dates, numbers, and predefined options. You can apply enrichments to existing items immediately or configure them to run only on new items.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -75,7 +83,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Data Extraction**: Extract specific fields like founding dates, employee counts, or contact info from company profiles.
+
+**Classification**: Categorize items into predefined buckets using the options format.
+
+**Sentiment Analysis**: Analyze sentiment or tone from article content or reviews.
 <!-- END MANUAL -->
 
 ---
@@ -90,7 +102,9 @@ Delete an enrichment from a webset
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block removes an enrichment configuration from a webset. The enrichment will no longer be applied to new items, but existing enrichment data on items is not deleted.
+
+Use this to clean up enrichments that are no longer needed or to remove misconfigured enrichments before creating corrected ones.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -108,7 +122,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Configuration Cleanup**: Remove enrichments that are no longer relevant to your data needs.
+
+**Reconfiguration**: Delete misconfigured enrichments before creating corrected replacements.
+
+**Cost Optimization**: Remove unnecessary enrichments to reduce processing costs on new items.
 <!-- END MANUAL -->
 
 ---
@@ -123,7 +141,9 @@ Get the status and details of a webset enrichment
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves detailed information about a specific enrichment including its configuration, current status, and processing progress.
+
+Use this to monitor enrichment progress, verify configuration, or troubleshoot issues with enrichment results. Returns the full enrichment specification along with timestamps.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -149,7 +169,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Progress Monitoring**: Check enrichment status to monitor completion of large batch operations.
+
+**Configuration Verification**: Retrieve enrichment details to verify settings before making changes.
+
+**Debugging**: Investigate enrichment configuration when results don't match expectations.
 <!-- END MANUAL -->
 
 ---
@@ -164,7 +188,9 @@ Update an existing enrichment configuration
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block modifies an existing enrichment's configuration. You can update the description, output format, available options, or metadata without recreating the enrichment.
+
+Changes apply to future items; existing enrichment data is not reprocessed unless you explicitly re-run the enrichment on existing items.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -190,7 +216,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Refinement**: Improve enrichment descriptions based on initial results to get better extractions.
+
+**Option Updates**: Add or modify options for classification enrichments as needs evolve.
+
+**Metadata Management**: Update enrichment metadata for organization or tracking purposes.
 <!-- END MANUAL -->
 
 ---

@@ -8,7 +8,9 @@ Post to TikTok using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Ayrshare's API to publish content to TikTok. It supports video posts and image slideshows (up to 35 images), with extensive options for content labeling including AI-generated disclosure, branded content, and brand organic content tags.
+
+The block connects to TikTok's API through Ayrshare with controls for visibility, duet/stitch permissions, comment settings, auto-music, and thumbnail selection. Videos can be posted as drafts for final review, and scheduled for future publishing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -46,7 +48,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Creator Content Pipeline**: Automate video uploads with proper AI disclosure labels and visibility settings for content creators.
+
+**Brand Campaigns**: Publish branded content with proper disclosure labels to maintain FTC compliance and platform guidelines.
+
+**Image Slideshow Posts**: Create TikTok slideshows from product images or photo series with automatic cover selection.
 <!-- END MANUAL -->
 
 ---

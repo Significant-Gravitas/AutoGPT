@@ -8,7 +8,9 @@ Generate videos using FAL AI models.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block generates videos from text prompts using FAL.ai's video generation models including Mochi, Luma Dream Machine, and Veo3. Describe the video you want to create, and the AI generates it.
+
+The generated video URL is returned along with progress logs for monitoring longer generation jobs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -26,7 +28,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Creation**: Generate video clips for social media, ads, or creative projects.
+
+**Visualization**: Create visual representations of concepts, products, or stories.
+
+**Prototyping**: Generate video mockups for creative ideation and storyboarding.
 <!-- END MANUAL -->
 
 ---

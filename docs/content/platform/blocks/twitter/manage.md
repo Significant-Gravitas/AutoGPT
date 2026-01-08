@@ -8,7 +8,9 @@ This block deletes a tweet on Twitter.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to permanently delete a tweet from the authenticated user's account. The deletion is immediate and cannot be undone.
+
+The block authenticates using OAuth 2.0 with tweet write permissions and sends a DELETE request for the specified tweet ID. Only the tweet's author can delete their own tweets. Returns a success indicator confirming the deletion.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -24,7 +26,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Cleanup**: Remove outdated tweets that contain incorrect information or expired promotions.
+
+**Error Correction**: Delete tweets with typos or mistakes before reposting corrected versions.
+
+**Reputation Management**: Remove tweets that may no longer align with your brand messaging or values.
 <!-- END MANUAL -->
 
 ---
@@ -39,7 +45,9 @@ This block posts a tweet on Twitter.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to publish a new tweet from the authenticated user's account. The tweet can include text, media attachments, polls, location tags, and quote references.
+
+The block supports advanced features like restricting replies to mentioned users or followers only, posting exclusively for Super Followers, and threading by replying to existing tweets. Returns the created tweet's ID and URL on success.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -61,7 +69,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Automated Publishing**: Schedule and post tweets automatically based on content calendars or triggers.
+
+**Bot Responses**: Create bots that post helpful information or automated responses.
+
+**Content Distribution**: Automatically share new blog posts, product updates, or announcements on Twitter.
 <!-- END MANUAL -->
 
 ---
@@ -76,7 +88,9 @@ This block searches all public Tweets in Twitter history.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses the Twitter API v2 via Tweepy to search for public tweets matching a query. The search supports Twitter's advanced query syntax including boolean operators, hashtags, mentions, and filters for engagement metrics.
+
+Results can be filtered by time range (start/end times), sorted by recency or relevance, and paginated for retrieving large result sets. The block supports expansions to include additional data like media, author information, and referenced tweets.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -117,7 +131,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Brand Monitoring**: Search for mentions of your brand, products, or key terms to monitor sentiment and engagement.
+
+**Competitor Analysis**: Track competitor mentions and campaigns to understand market positioning.
+
+**Trend Research**: Search for trending topics or hashtags to identify opportunities for engagement or content creation.
 <!-- END MANUAL -->
 
 ---

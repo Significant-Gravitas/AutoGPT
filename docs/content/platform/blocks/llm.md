@@ -8,7 +8,9 @@ Creates an AI‑generated 30‑second advert (text + images)
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block generates video advertisements by combining AI-generated visuals with narrated scripts. Line breaks in the script create scene transitions. Choose from various voices and background music options.
+
+Optionally provide your own images via input_media_urls, or let the AI generate visuals. The finished video is returned as a URL for download or embedding.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -30,7 +32,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Product Marketing**: Create quick promotional videos for products or services.
+
+**Social Media Ads**: Generate short video ads for social media advertising campaigns.
+
+**Content Automation**: Automatically create video ads from product descriptions or scripts.
 <!-- END MANUAL -->
 
 ---
@@ -45,7 +51,9 @@ Uses AI to evaluate natural language conditions and provide conditional outputs
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses an LLM to evaluate natural language conditions that can't be expressed with simple comparisons. Describe the condition in plain English, and the AI determines if it's true or false for the given input.
+
+The result routes data to yes_output or no_output, enabling intelligent branching based on meaning, sentiment, or complex criteria.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -67,7 +75,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Sentiment Routing**: Route messages differently based on whether they express frustration or satisfaction.
+
+**Content Moderation**: Check if content contains inappropriate material or policy violations.
+
+**Intent Detection**: Determine if a user message is a question, complaint, or request.
 <!-- END MANUAL -->
 
 ---
@@ -118,7 +130,9 @@ Generate and edit custom images using Google's Nano-Banana model from Gemini 2.5
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Google's Gemini Nano-Banana models for image generation and editing. Provide a text prompt describing the desired image, and optionally include reference images for style guidance or modification.
+
+Configure aspect ratio to match your needs and choose between JPG or PNG output format. The generated image is returned as a URL.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -138,7 +152,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Product Visualization**: Generate product images with different backgrounds or settings.
+
+**Creative Content**: Create unique images for marketing, social media, or presentations.
+
+**Image Modification**: Edit existing images by providing them as references with modification prompts.
 <!-- END MANUAL -->
 
 ---
@@ -153,7 +171,9 @@ Edit images using BlackForest Labs' Flux Kontext models. Provide a prompt and op
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses BlackForest Labs' Flux Kontext models for context-aware image editing. Describe the desired edit in the prompt, and optionally provide an input image to modify.
+
+Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Set a seed for reproducible results across multiple runs.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -173,7 +193,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Style Transfer**: Transform images to match different artistic styles or moods.
+
+**Object Editing**: Add, remove, or modify specific elements in existing images.
+
+**Background Changes**: Replace or modify image backgrounds while preserving subjects.
 <!-- END MANUAL -->
 
 ---
@@ -188,7 +212,9 @@ Generate images using various AI models through a unified interface
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block generates images from text prompts using your choice of AI models including Flux and Recraft. Select the image size (square, landscape, portrait, wide, or tall) and visual style to match your needs.
+
+The unified interface allows switching between models without changing your workflow, making it easy to compare results or adapt to different use cases.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -212,7 +238,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Content Creation**: Generate images for blog posts, articles, or social media.
+
+**Marketing Visuals**: Create product images, banners, or promotional graphics.
+
+**Illustration**: Generate custom illustrations for presentations or documents.
 <!-- END MANUAL -->
 
 ---
@@ -266,7 +296,9 @@ This block generates music using Meta's MusicGen model on Replicate.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses Meta's MusicGen model to generate original music from text descriptions. Describe the desired music style, mood, and instruments in the prompt, and the AI creates a matching audio track.
+
+Configure duration, temperature (for variety), and output format. Higher temperature produces more diverse results, while lower values stay closer to typical patterns.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -290,7 +322,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Video Soundtracks**: Generate background music for videos, podcasts, or presentations.
+
+**Content Creation**: Create original music for social media or marketing content.
+
+**Prototyping**: Quickly generate music concepts for creative projects.
 <!-- END MANUAL -->
 
 ---
@@ -305,7 +341,9 @@ Turns a screenshot into an engaging, avatar‑narrated video advert.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates video advertisements featuring a screenshot with AI-generated narration. Provide the screenshot URL and narration script, and the block generates a video with voice and background music.
+
+Choose from various voices and music tracks. The video showcases the screenshot while the AI narrator reads your script.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -326,7 +364,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**App Demos**: Create narrated demonstrations of software features from screenshots.
+
+**Product Tours**: Turn product screenshots into engaging video walkthroughs.
+
+**Tutorial Videos**: Generate instructional videos from step-by-step screenshots.
 <!-- END MANUAL -->
 
 ---
@@ -341,7 +383,9 @@ Creates a shortform video using revid.ai
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates short-form videos from scripts using revid.ai. Format scripts with line breaks for scene changes and use [brackets] to guide visual generation. Text outside brackets becomes narration.
+
+Choose video style (stock video, moving images, or AI-generated), voice, background music, and generation presets. The finished video URL is returned for download or sharing.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -368,7 +412,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Social Media Content**: Create TikTok, Reels, or Shorts content automatically.
+
+**Explainer Videos**: Generate short educational or promotional videos.
+
+**Content Repurposing**: Convert written content into engaging short-form video.
 <!-- END MANUAL -->
 
 ---
@@ -502,7 +550,9 @@ Generate or refactor code using OpenAI's Codex (Responses API).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block uses OpenAI's Codex model optimized for code generation and refactoring. Provide a prompt describing the code you need, and optionally a system prompt with coding guidelines or context.
+
+Configure reasoning_effort to control how much the model "thinks" before responding. The block returns generated code along with any reasoning the model produced.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -524,7 +574,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Code Automation**: Generate boilerplate code, functions, or entire modules from descriptions.
+
+**Refactoring**: Transform existing code to follow different patterns or conventions.
+
+**Code Completion**: Fill in missing implementation details based on signatures or comments.
 <!-- END MANUAL -->
 
 ---
@@ -580,7 +634,9 @@ This block runs Ideogram models with both simple and advanced settings.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block generates images using Ideogram's models (V1, V2, V3) which excel at rendering text within images. Configure aspect ratio, style type, and optionally enable MagicPrompt for enhanced results.
+
+Advanced options include upscaling, custom color palettes, and negative prompts to exclude unwanted elements. Set a seed for reproducible generation.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -605,7 +661,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Text-Heavy Graphics**: Create images with logos, signs, or text overlays.
+
+**Marketing Materials**: Generate promotional images with clear, readable text.
+
+**Social Media Graphics**: Create quote images, announcements, or branded content with text.
 <!-- END MANUAL -->
 
 ---
@@ -620,7 +680,9 @@ Query Perplexity's sonar models with real-time web search capabilities and recei
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block queries Perplexity's sonar models which combine LLM capabilities with real-time web search. Responses include source citations as annotations, providing verifiable references for the information.
+
+Choose from different sonar model variants including deep-research for comprehensive analysis. The block returns both the response text and structured citation data.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -640,7 +702,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Research Automation**: Get answers to questions with verifiable sources for fact-checking.
+
+**Current Events**: Query real-time information that LLMs with static training data can't provide.
+
+**Competitive Intelligence**: Research companies, products, or markets with cited sources.
 <!-- END MANUAL -->
 
 ---
@@ -655,7 +721,9 @@ Uses AI to intelligently decide what tool to use.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block enables agentic behavior by letting an LLM decide which tools to use based on the prompt. Connect tool outputs to feed back results, creating autonomous reasoning loops.
+
+Configure agent_mode_max_iterations to control loop behavior: 0 for single decisions, -1 for infinite looping, or a positive number for max iterations. The block outputs tool calls or a finished message.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -684,7 +752,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Autonomous Agents**: Build agents that can independently decide which tools to use for tasks.
+
+**Dynamic Workflows**: Create workflows that adapt their execution path based on AI decisions.
+
+**Multi-Tool Orchestration**: Let AI coordinate multiple tools to accomplish complex goals.
 <!-- END MANUAL -->
 
 ---
@@ -699,7 +771,9 @@ Converts text to speech using the Unreal Speech API
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block converts text into natural-sounding speech using Unreal Speech API. Provide the text content and optionally select a specific voice ID to customize the audio output.
+
+The generated audio is returned as an MP3 URL that can be downloaded, played, or used as input for video creation blocks.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -716,7 +790,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Voiceover Generation**: Create narration audio for videos, presentations, or tutorials.
+
+**Accessibility**: Convert written content to audio for visually impaired users.
+
+**Audio Content**: Generate podcast intros, announcements, or automated phone messages.
 <!-- END MANUAL -->
 
 ---

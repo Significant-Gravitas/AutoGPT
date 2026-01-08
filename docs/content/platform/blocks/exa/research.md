@@ -8,7 +8,9 @@ Create research task with optional waiting - explores web and synthesizes findin
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block creates an asynchronous research task using Exa's Research API. The API autonomously explores the web, searches for relevant information, and synthesizes findings into a comprehensive report with citations.
+
+You can choose from different model tiers (fast, standard, pro) depending on your speed vs. depth requirements. The block supports structured output via JSON Schema and can optionally wait for completion to return results immediately.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -36,7 +38,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Market Research**: Automatically research market trends, competitors, or industry developments with cited sources.
+
+**Due Diligence**: Conduct comprehensive background research on companies, people, or technologies.
+
+**Content Research**: Gather research on topics for articles, reports, or presentations with proper citations.
 <!-- END MANUAL -->
 
 ---
@@ -51,7 +57,9 @@ Get status and results of a research task
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves the current status and results of a previously created research task. You can check whether the research is still running, completed, or failed.
+
+When the research is complete, the block returns the full output content along with cost breakdown including searches performed, pages crawled, and tokens used. You can also optionally retrieve the detailed event log of research operations.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -81,7 +89,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Status Monitoring**: Check progress of long-running research tasks that were started asynchronously.
+
+**Result Retrieval**: Fetch completed research results from tasks started earlier in your workflow.
+
+**Cost Tracking**: Review the cost breakdown of completed research for budgeting and optimization.
 <!-- END MANUAL -->
 
 ---
@@ -96,7 +108,9 @@ List all research tasks with pagination support
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block retrieves a list of all your research tasks, ordered by creation time with newest first. It supports pagination for handling large numbers of tasks.
+
+The block returns basic information about each task including its ID, status, instructions, and timestamps. Use this to find specific research tasks or monitor all ongoing research activities.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -116,7 +130,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Research Management**: View all active and completed research tasks for project management.
+
+**Task Discovery**: Find previously created research tasks to retrieve their results or check status.
+
+**Activity Auditing**: Review research activity history for compliance or reporting purposes.
 <!-- END MANUAL -->
 
 ---
@@ -131,7 +149,9 @@ Wait for a research task to complete with configurable timeout
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block polls a research task until it completes or times out. It periodically checks the task status at configurable intervals and returns the final results when done.
+
+The block is useful when you need to block workflow execution until research completes. It returns whether the operation timed out, allowing you to handle incomplete research gracefully.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -155,7 +175,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Sequential Workflows**: Ensure research completes before proceeding to dependent workflow steps.
+
+**Synchronous Integration**: Convert asynchronous research into synchronous operations for simpler workflow logic.
+
+**Timeout Handling**: Implement research with graceful timeout handling for time-sensitive applications.
 <!-- END MANUAL -->
 
 ---
