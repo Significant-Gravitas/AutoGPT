@@ -1,10 +1,10 @@
 import datetime
 from typing import List
 
-from backend.data.model import User
 import prisma.enums
 import pydantic
 
+from backend.data.model import User
 from backend.util.models import Pagination
 
 
@@ -237,3 +237,79 @@ class StoreWaitlistEntry(pydantic.BaseModel):
 
 class StoreWaitlistsAllResponse(pydantic.BaseModel):
     listings: list[StoreWaitlistEntry]
+
+
+# Admin Waitlist Models
+
+
+class WaitlistCreateRequest(pydantic.BaseModel):
+    """Request model for creating a new waitlist."""
+
+    name: str
+    slug: str
+    subHeading: str
+    description: str
+    categories: list[str] = []
+    imageUrls: list[str] = []
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+
+
+class WaitlistUpdateRequest(pydantic.BaseModel):
+    """Request model for updating a waitlist."""
+
+    name: str | None = None
+    slug: str | None = None
+    subHeading: str | None = None
+    description: str | None = None
+    categories: list[str] | None = None
+    imageUrls: list[str] | None = None
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+    status: str | None = None  # WaitlistExternalStatus enum value
+    storeListingId: str | None = None  # Link to a store listing
+
+
+class WaitlistAdminResponse(pydantic.BaseModel):
+    """Admin response model with full waitlist details including internal data."""
+
+    id: str
+    createdAt: str
+    updatedAt: str
+    slug: str
+    name: str
+    subHeading: str
+    description: str
+    categories: list[str]
+    imageUrls: list[str]
+    videoUrl: str | None = None
+    agentOutputDemoUrl: str | None = None
+    status: prisma.enums.WaitlistExternalStatus
+    votes: int
+    signupCount: int  # Total count of joinedUsers + unafilliatedEmailUsers
+    storeListingId: str | None = None
+    owningUserId: str
+
+
+class WaitlistSignup(pydantic.BaseModel):
+    """Individual signup entry for a waitlist."""
+
+    type: str  # "user" or "email"
+    userId: str | None = None
+    email: str | None = None
+    username: str | None = None  # For user signups
+
+
+class WaitlistSignupListResponse(pydantic.BaseModel):
+    """Response model for listing waitlist signups."""
+
+    waitlistId: str
+    signups: list[WaitlistSignup]
+    totalCount: int
+
+
+class WaitlistAdminListResponse(pydantic.BaseModel):
+    """Response model for listing all waitlists (admin view)."""
+
+    waitlists: list[WaitlistAdminResponse]
+    totalCount: int

@@ -232,6 +232,7 @@ enum NotificationType {
   REFUND_PROCESSED
   AGENT_APPROVED
   AGENT_REJECTED
+  WAITLIST_LAUNCH
 }
 
 model NotificationEvent {
@@ -937,7 +938,9 @@ enum WaitlistExternalStatus {
 }
 
 model WaitlistEntry {
-  id String @id @default(uuid())
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   storeListingId String?
   StoreListing   StoreListing? @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
@@ -1137,4 +1140,23 @@ model OAuthRefreshToken {
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
+}
+
+// APScheduler tables - managed by APScheduler, not Prisma
+model apscheduler_jobs {
+  id            String  @id @db.VarChar(191)
+  next_run_time Float?
+  job_state     Bytes
+
+  @@index([next_run_time])
+  @@ignore
+}
+
+model apscheduler_jobs_batched_notifications {
+  id            String  @id @db.VarChar(191)
+  next_run_time Float?
+  job_state     Bytes
+
+  @@index([next_run_time])
+  @@ignore
 }

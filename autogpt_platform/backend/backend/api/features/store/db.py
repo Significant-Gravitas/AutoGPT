@@ -23,6 +23,7 @@ from backend.data.notifications import (
     AgentApprovalData,
     AgentRejectionData,
     NotificationEventModel,
+    WaitlistLaunchData,
 )
 from backend.notifications.notifications import queue_notification_async
 from backend.util.exceptions import DatabaseError
@@ -1706,6 +1707,28 @@ async def review_store_submission(
                 # Don't fail the review process if email sending fails
                 pass
 
+        # Notify waitlist users if this is an approval and has a linked waitlist
+        if is_approved and submission.StoreListing:
+            try:
+                frontend_base_url = (
+                    settings.config.frontend_base_url
+                    or settings.config.platform_base_url
+                )
+                store_agent = (
+                    await prisma.models.StoreAgent.prisma().find_first_or_raise(
+                        where={"storeListingVersionId": submission.id}
+                    )
+                )
+                store_url = f"{frontend_base_url}/marketplace/agent/{store_agent.creator_username}/{store_agent.slug}"
+                await notify_waitlist_users_on_launch(
+                    store_listing_id=submission.StoreListing.id,
+                    agent_name=submission.name,
+                    store_url=store_url,
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify waitlist users on agent approval: {e}")
+                # Don't fail the approval process
+
         # Convert to Pydantic model for consistency
         return store_model.StoreSubmission(
             agent_id=submission.agentGraphId,
@@ -1960,32 +1983,34 @@ async def get_agent_as_admin(
 
 
 async def get_waitlist() -> list[store_model.StoreWaitlistEntry]:
-    """Get all waitlists."""
+    """Get all active waitlists for public display."""
     try:
         waitlists = await prisma.models.WaitlistEntry.prisma().find_many(
-            where={"isDeleted": False},
-            order=[{"createdAt": "desc"}],
+            where=prisma.types.WaitlistEntryWhereInput(isDeleted=False),
         )
 
-        # order them by votes before returning without vote counts to the frontend
-        sorted_list = sorted(waitlists, key=lambda x: x.votes, reverse=True)
+        # Filter out closed/done waitlists and sort by votes (descending)
+        excluded_statuses = {
+            prisma.enums.WaitlistExternalStatus.CANCELED,
+            prisma.enums.WaitlistExternalStatus.DONE,
+        }
+        active_waitlists = [w for w in waitlists if w.status not in excluded_statuses]
+        sorted_list = sorted(active_waitlists, key=lambda x: x.votes, reverse=True)
 
-        lists = [
+        return [
             store_model.StoreWaitlistEntry(
-                name=waitlist.name,
-                description=waitlist.description,
-                waitlist_id=waitlist.waitlistId,
+                waitlist_id=waitlist.id,
                 slug=waitlist.slug,
+                name=waitlist.name,
                 subHeading=waitlist.subHeading,
+                videoUrl=waitlist.videoUrl,
+                agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
                 imageUrls=waitlist.imageUrls or [],
+                description=waitlist.description,
                 categories=waitlist.categories,
             )
             for waitlist in sorted_list
-            if waitlist.status != prisma.enums.WaitlistExternalStatus.CANCELED
-            and waitlist.status != prisma.enums.WaitlistExternalStatus.DONE
         ]
-
-        return lists
     except Exception as e:
         logger.error(f"Error fetching waitlists: {e}")
         raise DatabaseError("Failed to fetch waitlists") from e
@@ -1993,68 +2018,429 @@ async def get_waitlist() -> list[store_model.StoreWaitlistEntry]:
 
 async def add_user_to_waitlist(
     waitlist_id: str, user_id: str | None, email: str | None
-):
-    """Add a user to a waitlist."""
-    logger.debug(f"Adding user {user_id} to waitlist {waitlist_id}")
+) -> store_model.StoreWaitlistEntry:
+    """
+    Add a user to a waitlist.
+
+    For logged-in users: connects via joinedUsers relation
+    For anonymous users: adds email to unafilliatedEmailUsers array
+    """
+    logger.debug(f"Adding user {user_id or email} to waitlist {waitlist_id}")
+
+    if not user_id and not email:
+        raise ValueError("Either user_id or email must be provided")
 
     try:
+        # Find the waitlist
         waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
-            where={"id": waitlist_id}
+            where={"id": waitlist_id},
+            include={"joinedUsers": True},
         )
 
         if not waitlist:
             raise ValueError(f"Waitlist {waitlist_id} not found")
 
-        # Check if user is already in the waitlist
-        existing_entry = None
+        if waitlist.isDeleted:
+            raise ValueError(f"Waitlist {waitlist_id} is no longer available")
+
+        if waitlist.status in [
+            prisma.enums.WaitlistExternalStatus.CANCELED,
+            prisma.enums.WaitlistExternalStatus.DONE,
+        ]:
+            raise ValueError(f"Waitlist {waitlist_id} is closed")
+
         if user_id:
-            existing_entry = await prisma.models.WaitlistEntry.prisma().find_first(
-                where={
-                    "waitlistId": waitlist_id,
-                    "userId": user_id,
-                    "isDeleted": False,
-                }
-            )
+            # Check if user already joined
+            joined_user_ids = [u.id for u in (waitlist.joinedUsers or [])]
+            if user_id in joined_user_ids:
+                # Already joined - return waitlist info
+                logger.debug(f"User {user_id} already joined waitlist {waitlist_id}")
+            else:
+                # Connect user to waitlist
+                await prisma.models.WaitlistEntry.prisma().update(
+                    where={"id": waitlist_id},
+                    data={"joinedUsers": {"connect": [{"id": user_id}]}},
+                )
+                logger.info(f"User {user_id} joined waitlist {waitlist_id}")
+
+            # If user was previously in email list, remove them
+            if email and email in (waitlist.unafilliatedEmailUsers or []):
+                updated_emails: list[str] = [
+                    e for e in (waitlist.unafilliatedEmailUsers or []) if e != email
+                ]
+                await prisma.models.WaitlistEntry.prisma().update(
+                    where={"id": waitlist_id},
+                    data={"unafilliatedEmailUsers": updated_emails},
+                )
         elif email:
-            existing_entry = await prisma.models.WaitlistEntry.prisma().find_first(
-                where={
-                    "waitlistId": waitlist_id,
-                    "email": email,
-                    "isDeleted": False,
-                }
-            )
-
-        if existing_entry:
-            # convert emails to user if appropriate
-            raise NotImplementedError(
-                "Implment the capibility to convert email based waitlist entries to user based ones and remove the email based waitlist entry."
-            )
-
-        # Create new waitlist entry
-        new_entry = await prisma.models.WaitlistEntry.prisma().create(
-            data=prisma.types.WaitlistEntryCreateInput(
-                waitlistId=waitlist_id,
-                userId=user_id,
-                email=email,
-                name="",
-                description="",
-                slug="",
-                subHeading="",
-                imageUrls=[],
-                categories=[],
-            )
-        )
+            # Add email to unaffiliated list if not already present
+            current_emails: list[str] = list(waitlist.unafilliatedEmailUsers or [])
+            if email not in current_emails:
+                current_emails.append(email)
+                await prisma.models.WaitlistEntry.prisma().update(
+                    where={"id": waitlist_id},
+                    data={"unafilliatedEmailUsers": current_emails},
+                )
+                logger.info(f"Email {email} added to waitlist {waitlist_id}")
+            else:
+                logger.debug(f"Email {email} already on waitlist {waitlist_id}")
 
         return store_model.StoreWaitlistEntry(
-            name=new_entry.name,
-            description=new_entry.description,
-            waitlist_id=new_entry.waitlistId,
-            slug=new_entry.slug,
-            subHeading=new_entry.subHeading,
-            imageUrls=new_entry.imageUrls or [],
-            categories=new_entry.categories,
+            waitlist_id=waitlist.id,
+            slug=waitlist.slug,
+            name=waitlist.name,
+            subHeading=waitlist.subHeading,
+            videoUrl=waitlist.videoUrl,
+            agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
+            imageUrls=waitlist.imageUrls or [],
+            description=waitlist.description,
+            categories=waitlist.categories,
         )
 
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Error adding user to waitlist: {e}")
         raise DatabaseError("Failed to add user to waitlist") from e
+
+
+# ============== Admin Waitlist Functions ==============
+
+
+def _waitlist_to_admin_response(
+    waitlist: prisma.models.WaitlistEntry,
+) -> store_model.WaitlistAdminResponse:
+    """Convert a WaitlistEntry to WaitlistAdminResponse."""
+    joined_count = len(waitlist.joinedUsers) if waitlist.joinedUsers else 0
+    email_count = (
+        len(waitlist.unafilliatedEmailUsers) if waitlist.unafilliatedEmailUsers else 0
+    )
+
+    return store_model.WaitlistAdminResponse(
+        id=waitlist.id,
+        createdAt=waitlist.createdAt.isoformat() if waitlist.createdAt else "",
+        updatedAt=waitlist.updatedAt.isoformat() if waitlist.updatedAt else "",
+        slug=waitlist.slug,
+        name=waitlist.name,
+        subHeading=waitlist.subHeading,
+        description=waitlist.description,
+        categories=waitlist.categories,
+        imageUrls=waitlist.imageUrls or [],
+        videoUrl=waitlist.videoUrl,
+        agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
+        status=waitlist.status or prisma.enums.WaitlistExternalStatus.NOT_STARTED,
+        votes=waitlist.votes,
+        signupCount=joined_count + email_count,
+        storeListingId=waitlist.storeListingId,
+        owningUserId=waitlist.owningUserId,
+    )
+
+
+async def create_waitlist_admin(
+    admin_user_id: str,
+    data: store_model.WaitlistCreateRequest,
+) -> store_model.WaitlistAdminResponse:
+    """Create a new waitlist (admin only)."""
+    logger.info(f"Admin {admin_user_id} creating waitlist: {data.name}")
+
+    try:
+        waitlist = await prisma.models.WaitlistEntry.prisma().create(
+            data=prisma.types.WaitlistEntryCreateInput(
+                name=data.name,
+                slug=data.slug,
+                subHeading=data.subHeading,
+                description=data.description,
+                categories=data.categories,
+                imageUrls=data.imageUrls,
+                videoUrl=data.videoUrl,
+                agentOutputDemoUrl=data.agentOutputDemoUrl,
+                owningUserId=admin_user_id,
+                status=prisma.enums.WaitlistExternalStatus.NOT_STARTED,
+            ),
+            include={"joinedUsers": True},
+        )
+
+        return _waitlist_to_admin_response(waitlist)
+    except Exception as e:
+        logger.error(f"Error creating waitlist: {e}")
+        raise DatabaseError("Failed to create waitlist") from e
+
+
+async def get_waitlists_admin() -> store_model.WaitlistAdminListResponse:
+    """Get all waitlists with admin details."""
+    try:
+        waitlists = await prisma.models.WaitlistEntry.prisma().find_many(
+            where=prisma.types.WaitlistEntryWhereInput(isDeleted=False),
+            include={"joinedUsers": True},
+            order={"createdAt": "desc"},
+        )
+
+        return store_model.WaitlistAdminListResponse(
+            waitlists=[_waitlist_to_admin_response(w) for w in waitlists],
+            totalCount=len(waitlists),
+        )
+    except Exception as e:
+        logger.error(f"Error fetching waitlists for admin: {e}")
+        raise DatabaseError("Failed to fetch waitlists") from e
+
+
+async def get_waitlist_admin(
+    waitlist_id: str,
+) -> store_model.WaitlistAdminResponse:
+    """Get a single waitlist with admin details."""
+    try:
+        waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
+            where={"id": waitlist_id},
+            include={"joinedUsers": True},
+        )
+
+        if not waitlist:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        if waitlist.isDeleted:
+            raise ValueError(f"Waitlist {waitlist_id} has been deleted")
+
+        return _waitlist_to_admin_response(waitlist)
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching waitlist {waitlist_id}: {e}")
+        raise DatabaseError("Failed to fetch waitlist") from e
+
+
+async def update_waitlist_admin(
+    waitlist_id: str,
+    data: store_model.WaitlistUpdateRequest,
+) -> store_model.WaitlistAdminResponse:
+    """Update a waitlist (admin only)."""
+    logger.info(f"Updating waitlist {waitlist_id}")
+
+    try:
+        # Build update data from non-None fields
+        update_data: dict[str, typing.Any] = {}
+
+        if data.name is not None:
+            update_data["name"] = data.name
+        if data.slug is not None:
+            update_data["slug"] = data.slug
+        if data.subHeading is not None:
+            update_data["subHeading"] = data.subHeading
+        if data.description is not None:
+            update_data["description"] = data.description
+        if data.categories is not None:
+            update_data["categories"] = data.categories
+        if data.imageUrls is not None:
+            update_data["imageUrls"] = data.imageUrls
+        if data.videoUrl is not None:
+            update_data["videoUrl"] = data.videoUrl
+        if data.agentOutputDemoUrl is not None:
+            update_data["agentOutputDemoUrl"] = data.agentOutputDemoUrl
+        if data.status is not None:
+            update_data["status"] = prisma.enums.WaitlistExternalStatus(data.status)
+        if data.storeListingId is not None:
+            update_data["storeListingId"] = data.storeListingId
+
+        if not update_data:
+            # No updates, just return current data
+            return await get_waitlist_admin(waitlist_id)
+
+        waitlist = await prisma.models.WaitlistEntry.prisma().update(
+            where={"id": waitlist_id},
+            data=prisma.types.WaitlistEntryUpdateInput(**update_data),
+            include={"joinedUsers": True},
+        )
+
+        if not waitlist:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        return _waitlist_to_admin_response(waitlist)
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating waitlist {waitlist_id}: {e}")
+        raise DatabaseError("Failed to update waitlist") from e
+
+
+async def delete_waitlist_admin(waitlist_id: str) -> bool:
+    """Soft delete a waitlist (admin only)."""
+    logger.info(f"Soft deleting waitlist {waitlist_id}")
+
+    try:
+        waitlist = await prisma.models.WaitlistEntry.prisma().update(
+            where={"id": waitlist_id},
+            data={"isDeleted": True},
+        )
+
+        return waitlist is not None
+    except Exception as e:
+        logger.error(f"Error deleting waitlist {waitlist_id}: {e}")
+        raise DatabaseError("Failed to delete waitlist") from e
+
+
+async def get_waitlist_signups_admin(
+    waitlist_id: str,
+) -> store_model.WaitlistSignupListResponse:
+    """Get all signups for a waitlist (admin only)."""
+    try:
+        waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
+            where={"id": waitlist_id},
+            include={"joinedUsers": True},
+        )
+
+        if not waitlist:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        signups: list[store_model.WaitlistSignup] = []
+
+        # Add user signups
+        for user in waitlist.joinedUsers or []:
+            signups.append(
+                store_model.WaitlistSignup(
+                    type="user",
+                    userId=user.id,
+                    email=user.email,
+                    username=user.name,
+                )
+            )
+
+        # Add email signups
+        for email in waitlist.unafilliatedEmailUsers or []:
+            signups.append(
+                store_model.WaitlistSignup(
+                    type="email",
+                    email=email,
+                )
+            )
+
+        return store_model.WaitlistSignupListResponse(
+            waitlistId=waitlist_id,
+            signups=signups,
+            totalCount=len(signups),
+        )
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching signups for waitlist {waitlist_id}: {e}")
+        raise DatabaseError("Failed to fetch waitlist signups") from e
+
+
+async def link_waitlist_to_listing_admin(
+    waitlist_id: str,
+    store_listing_id: str,
+) -> store_model.WaitlistAdminResponse:
+    """Link a waitlist to a store listing (admin only)."""
+    logger.info(f"Linking waitlist {waitlist_id} to listing {store_listing_id}")
+
+    try:
+        # Verify the store listing exists
+        listing = await prisma.models.StoreListing.prisma().find_unique(
+            where={"id": store_listing_id}
+        )
+
+        if not listing:
+            raise ValueError(f"Store listing {store_listing_id} not found")
+
+        waitlist = await prisma.models.WaitlistEntry.prisma().update(
+            where={"id": waitlist_id},
+            data={"storeListingId": store_listing_id},  # type: ignore[arg-type]
+            include={"joinedUsers": True},
+        )
+
+        if not waitlist:
+            raise ValueError(f"Waitlist {waitlist_id} not found")
+
+        return _waitlist_to_admin_response(waitlist)
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.error(f"Error linking waitlist to listing: {e}")
+        raise DatabaseError("Failed to link waitlist to listing") from e
+
+
+async def notify_waitlist_users_on_launch(
+    store_listing_id: str,
+    agent_name: str,
+    store_url: str,
+) -> int:
+    """
+    Notify all users on waitlists linked to a store listing when the agent is launched.
+
+    Args:
+        store_listing_id: The ID of the store listing that was approved
+        agent_name: The name of the approved agent
+        store_url: The URL to the agent's store page
+
+    Returns:
+        The number of notifications sent
+    """
+    logger.info(f"Notifying waitlist users for store listing {store_listing_id}")
+
+    try:
+        # Find all waitlists linked to this store listing
+        waitlists = await prisma.models.WaitlistEntry.prisma().find_many(
+            where={
+                "storeListingId": store_listing_id,
+                "isDeleted": False,
+            },
+            include={"joinedUsers": True},
+        )
+
+        if not waitlists:
+            logger.info(f"No waitlists found for store listing {store_listing_id}")
+            return 0
+
+        notification_count = 0
+        launched_at = datetime.now(tz=timezone.utc)
+
+        for waitlist in waitlists:
+            # Notify registered users
+            for user in waitlist.joinedUsers or []:
+                try:
+                    notification_data = WaitlistLaunchData(
+                        agent_name=agent_name,
+                        waitlist_name=waitlist.name,
+                        store_url=store_url,
+                        launched_at=launched_at,
+                    )
+
+                    notification_event = NotificationEventModel[WaitlistLaunchData](
+                        user_id=user.id,
+                        type=prisma.enums.NotificationType.WAITLIST_LAUNCH,
+                        data=notification_data,
+                    )
+
+                    await queue_notification_async(notification_event)
+                    notification_count += 1
+                except Exception as e:
+                    logger.error(
+                        f"Failed to send waitlist launch notification to user {user.id}: {e}"
+                    )
+
+            # Note: For unaffiliated email users, you would need to send emails directly
+            # since they don't have user IDs for the notification system.
+            # This could be done via a separate email service.
+            # For now, we log these for potential manual follow-up or future implementation.
+            if waitlist.unafilliatedEmailUsers:
+                logger.info(
+                    f"Waitlist {waitlist.id} has {len(waitlist.unafilliatedEmailUsers)} "
+                    f"unaffiliated email users that need email notifications"
+                )
+
+            # Update waitlist status to DONE
+            await prisma.models.WaitlistEntry.prisma().update(
+                where={"id": waitlist.id},
+                data={"status": prisma.enums.WaitlistExternalStatus.DONE},
+            )
+            logger.info(f"Updated waitlist {waitlist.id} status to DONE")
+
+        logger.info(
+            f"Sent {notification_count} waitlist launch notifications for store listing {store_listing_id}"
+        )
+        return notification_count
+
+    except Exception as e:
+        logger.error(
+            f"Error notifying waitlist users for store listing {store_listing_id}: {e}"
+        )
+        # Don't raise - we don't want to fail the approval process
+        return 0

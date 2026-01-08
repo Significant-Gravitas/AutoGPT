@@ -211,6 +211,22 @@ class AgentRejectionData(BaseNotificationData):
         return value
 
 
+class WaitlistLaunchData(BaseNotificationData):
+    """Notification data for when an agent from a waitlist is launched."""
+
+    agent_name: str
+    waitlist_name: str
+    store_url: str
+    launched_at: datetime
+
+    @field_validator("launched_at")
+    @classmethod
+    def validate_timezone(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
+
 NotificationData = Annotated[
     Union[
         AgentRunData,

@@ -1102,6 +1102,86 @@ export type AddUserCreditsResponse = {
   new_balance: number;
   transaction_key: string;
 };
+
+// Waitlist Admin Types
+export type WaitlistAdminResponse = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  slug: string;
+  name: string;
+  subHeading: string;
+  description: string;
+  categories: string[];
+  imageUrls: string[];
+  videoUrl: string | null;
+  agentOutputDemoUrl: string | null;
+  status: string;
+  votes: number;
+  signupCount: number;
+  storeListingId: string | null;
+  owningUserId: string;
+};
+
+export type WaitlistAdminListResponse = {
+  waitlists: WaitlistAdminResponse[];
+  totalCount: number;
+};
+
+export type WaitlistSignup = {
+  type: "user" | "email";
+  userId: string | null;
+  email: string | null;
+  username: string | null;
+};
+
+export type WaitlistSignupListResponse = {
+  waitlistId: string;
+  signups: WaitlistSignup[];
+  totalCount: number;
+};
+
+export type WaitlistCreateRequest = {
+  name: string;
+  slug: string;
+  subHeading: string;
+  description: string;
+  categories?: string[];
+  imageUrls?: string[];
+  videoUrl?: string | null;
+  agentOutputDemoUrl?: string | null;
+};
+
+export type WaitlistUpdateRequest = {
+  name?: string;
+  slug?: string;
+  subHeading?: string;
+  description?: string;
+  categories?: string[];
+  imageUrls?: string[];
+  videoUrl?: string | null;
+  agentOutputDemoUrl?: string | null;
+  status?: string;
+  storeListingId?: string | null;
+};
+
+// Public Waitlist Types
+export type StoreWaitlistEntry = {
+  waitlist_id: string;
+  slug: string;
+  name: string;
+  subHeading: string;
+  description: string;
+  categories: string[];
+  imageUrls: string[];
+  videoUrl: string | null;
+  agentOutputDemoUrl: string | null;
+};
+
+export type StoreWaitlistsAllResponse = {
+  listings: StoreWaitlistEntry[];
+};
+
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

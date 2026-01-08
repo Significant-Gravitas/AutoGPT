@@ -5,9 +5,9 @@ import urllib.parse
 from typing import Literal
 
 import autogpt_libs.auth
-from autogpt_libs.auth.dependencies import get_optional_user_id
 import fastapi
 import fastapi.responses
+from autogpt_libs.auth.dependencies import get_optional_user_id
 
 import backend.data.graph
 import backend.util.json
@@ -90,10 +90,10 @@ async def update_or_create_profile(
 )
 async def get_waitlist():
     """
-    Get the agent waitlist details.
+    Get all active waitlists for public display.
     """
-    waitlist = await store_db.get_waitlist()
-    return waitlist
+    waitlists = await store_db.get_waitlist()
+    return store_model.StoreWaitlistsAllResponse(listings=waitlists)
 
 
 @router.post(
@@ -106,7 +106,7 @@ async def add_self_to_waitlist(
     user_id: str | None = fastapi.Security(get_optional_user_id),
     waitlist_id: str = fastapi.Path(..., description="The ID of the waitlist to join"),
     email: str | None = fastapi.Body(
-        default=None, description="Email address for unauthenticated users"
+        default=None, embed=True, description="Email address for unauthenticated users"
     ),
 ):
     """
