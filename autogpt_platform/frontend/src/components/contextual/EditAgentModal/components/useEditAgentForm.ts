@@ -60,15 +60,7 @@ export const useEditAgentForm = ({
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListMySubmissionsQueryKey(),
-        });
-      },
-    },
-  });
+  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission();
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -139,6 +131,11 @@ export const useEditAgentForm = ({
           description: "Your agent submission has been updated successfully.",
           duration: 3000,
           variant: "default",
+        });
+
+        // Invalidate submissions query to refresh the data
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListMySubmissionsQueryKey(),
         });
 
         // Call onSuccess and explicitly close the modal

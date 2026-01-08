@@ -692,7 +692,7 @@ async def delete_store_submission(
 
         # Prevent deletion of approved submissions
         if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
-            raise store_exceptions.SubmissionNotFoundError(
+            raise store_exceptions.InvalidOperationError(
                 "Cannot delete approved submissions"
             )
 

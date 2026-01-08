@@ -41,15 +41,16 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   );
 
   // Get user's submissions - only fetch if user is the creator
-  const { data: submissionsData } = useGetV2ListMySubmissions(
-    { page: 1, page_size: 50 },
-    {
-      query: {
-        // Only fetch if user is the creator
-        enabled: !!(user?.id && agent?.owner_user_id === user.id),
+  const { data: submissionsData, isLoading: isSubmissionsLoading } =
+    useGetV2ListMySubmissions(
+      { page: 1, page_size: 50 },
+      {
+        query: {
+          // Only fetch if user is the creator
+          enabled: !!(user?.id && agent?.owner_user_id === user.id),
+        },
       },
-    },
-  );
+    );
 
   const updateToLatestMutation = usePatchV2UpdateLibraryAgent({
     mutation: {
@@ -79,7 +80,9 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   // Check if marketplace has a newer version than user's current version
   const marketplaceUpdateInfo = React.useMemo(() => {
     const storeAgent = okData(storeAgentData) as any;
-    if (!agent) {
+
+    // If agent data is not available or submissions are still loading, don't show publish button
+    if (!agent || isSubmissionsLoading) {
       return {
         hasUpdate: false,
         latestVersion: undefined,
@@ -146,7 +149,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       isUserCreator,
       hasPublishUpdate,
     };
-  }, [agent, storeAgentData, user, submissionsData]);
+  }, [agent, storeAgentData, user, submissionsData, isSubmissionsLoading]);
 
   const handlePublishUpdate = () => {
     setModalOpen(true);
