@@ -20,6 +20,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.exceptions import BlockExecutionError
 from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
@@ -246,7 +247,11 @@ class AIShortformVideoCreatorBlock(Block):
             await asyncio.sleep(10)
 
         logger.error("Video creation timed out")
-        raise TimeoutError("Video creation timed out")
+        raise BlockExecutionError(
+            message="Video creation timed out",
+            block_name=self.name,
+            block_id=self.id,
+        )
 
     def __init__(self):
         super().__init__(
@@ -422,7 +427,11 @@ class AIAdMakerVideoCreatorBlock(Block):
             await asyncio.sleep(10)
 
         logger.error("Video creation timed out")
-        raise TimeoutError("Video creation timed out")
+        raise BlockExecutionError(
+            message="Video creation timed out",
+            block_name=self.name,
+            block_id=self.id,
+        )
 
     def __init__(self):
         super().__init__(
@@ -599,7 +608,11 @@ class AIScreenshotToVideoAdBlock(Block):
             await asyncio.sleep(10)
 
         logger.error("Video creation timed out")
-        raise TimeoutError("Video creation timed out")
+        raise BlockExecutionError(
+            message="Video creation timed out",
+            block_name=self.name,
+            block_id=self.id,
+        )
 
     def __init__(self):
         super().__init__(

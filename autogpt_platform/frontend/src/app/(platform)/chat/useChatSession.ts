@@ -11,6 +11,7 @@ import {
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { storage, Key } from "@/services/storage/local-storage";
 import { isValidUUID } from "@/app/(platform)/chat/helpers";
+import { okData } from "@/app/api/helpers";
 
 interface UseChatSessionArgs {
   urlSessionId?: string | null;
@@ -70,6 +71,7 @@ export function useChatSession({
   } = useGetV2GetSession(sessionId || "", {
     query: {
       enabled: !!sessionId,
+      select: okData,
       staleTime: Infinity, // Never mark as stale
       refetchOnMount: false, // Don't refetch on component mount
       refetchOnWindowFocus: false, // Don't refetch when window regains focus
@@ -81,9 +83,8 @@ export function useChatSession({
   const { mutateAsync: claimSessionMutation } = usePatchV2SessionAssignUser();
 
   const session = useMemo(() => {
-    if (sessionData?.status === 200) {
-      return sessionData.data;
-    }
+    if (sessionData) return sessionData;
+
     if (sessionId && justCreatedSessionIdRef.current === sessionId) {
       return {
         id: sessionId,

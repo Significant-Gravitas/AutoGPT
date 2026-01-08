@@ -5,7 +5,7 @@ import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { Button } from "@/components/atoms/Button/Button";
 import { ClockIcon, PlayIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { FormRenderer } from "@/components/renderers/input-renderer/FormRenderer";
+import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import { useRunInputDialog } from "./useRunInputDialog";
 import { CronSchedulerDialog } from "../CronSchedulerDialog/CronSchedulerDialog";
 

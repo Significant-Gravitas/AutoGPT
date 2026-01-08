@@ -2,6 +2,11 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.library.db import (
+    add_store_agent_to_library,
+    list_library_agents,
+)
+from backend.api.features.store.db import get_store_agent_details, get_store_agents
 from backend.data import db
 from backend.data.analytics import (
     get_accuracy_trends_and_alerts,
@@ -13,6 +18,7 @@ from backend.data.execution import (
     get_block_error_stats,
     get_child_graph_executions,
     get_execution_kv_data,
+    get_execution_outputs_by_node_exec_id,
     get_frequently_executed_graphs,
     get_graph_execution_meta,
     get_graph_executions,
@@ -60,8 +66,6 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.server.v2.library.db import add_store_agent_to_library, list_library_agents
-from backend.server.v2.store.db import get_store_agent_details, get_store_agents
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -147,6 +151,7 @@ class DatabaseManager(AppService):
     update_graph_execution_stats = _(update_graph_execution_stats)
     upsert_execution_input = _(upsert_execution_input)
     upsert_execution_output = _(upsert_execution_output)
+    get_execution_outputs_by_node_exec_id = _(get_execution_outputs_by_node_exec_id)
     get_execution_kv_data = _(get_execution_kv_data)
     set_execution_kv_data = _(set_execution_kv_data)
     get_block_error_stats = _(get_block_error_stats)
@@ -277,6 +282,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_integrations = d.get_user_integrations
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output
+    get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
     update_graph_execution_stats = d.update_graph_execution_stats
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch

@@ -367,10 +367,13 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     )
 
     # Setup mock returns
+    # The function returns (graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip)
+    nodes_to_skip: set[str] = set()
     mock_validate.return_value = (
         mock_graph,
         starting_nodes_input,
         compiled_nodes_input_masks,
+        nodes_to_skip,
     )
     mock_prisma.is_connected.return_value = True
     mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)

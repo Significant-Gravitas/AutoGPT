@@ -13,7 +13,7 @@ from prisma.models import PendingHumanReview
 from prisma.types import PendingHumanReviewUpdateInput
 from pydantic import BaseModel
 
-from backend.server.v2.executions.review.model import (
+from backend.api.features.executions.review.model import (
     PendingHumanReviewModel,
     SafeJsonData,
 )
@@ -100,7 +100,7 @@ async def get_or_create_human_review(
         return None
     else:
         return ReviewResult(
-            data=review.payload if review.status == ReviewStatus.APPROVED else None,
+            data=review.payload,
             status=review.status,
             message=review.reviewMessage or "",
             processed=review.processed,

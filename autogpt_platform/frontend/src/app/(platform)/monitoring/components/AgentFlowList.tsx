@@ -54,7 +54,7 @@ export const AgentFlowList = ({
 
         <div className="flex items-center">
           {/* Split "Create" button */}
-          <Button variant="outline" className="rounded-r-none" asChild>
+          <Button variant="outline" className="rounded-r-none">
             <Link href="/build">Create</Link>
           </Button>
           <Dialog>
