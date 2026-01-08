@@ -10,11 +10,7 @@ from backend.data.understanding import (
 )
 
 from .base import BaseTool
-from .models import (
-    ErrorResponse,
-    ToolResponseBase,
-    UnderstandingUpdatedResponse,
-)
+from .models import ErrorResponse, ToolResponseBase, UnderstandingUpdatedResponse
 
 logger = logging.getLogger(__name__)
 

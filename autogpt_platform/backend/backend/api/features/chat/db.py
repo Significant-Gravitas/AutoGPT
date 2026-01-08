@@ -6,7 +6,11 @@ from typing import Any
 
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from prisma.types import ChatSessionUpdateInput
+from prisma.types import (
+    ChatMessageCreateInput,
+    ChatSessionCreateInput,
+    ChatSessionUpdateInput,
+)
 
 from backend.util.json import SafeJson
 
@@ -30,13 +34,13 @@ async def create_chat_session(
     user_id: str | None,
 ) -> PrismaChatSession:
     """Create a new chat session in the database."""
-    data = {
-        "id": session_id,
-        "userId": user_id,
-        "credentials": SafeJson({}),
-        "successfulAgentRuns": SafeJson({}),
-        "successfulAgentSchedules": SafeJson({}),
-    }
+    data = ChatSessionCreateInput(
+        id=session_id,
+        userId=user_id,
+        credentials=SafeJson({}),
+        successfulAgentRuns=SafeJson({}),
+        successfulAgentSchedules=SafeJson({}),
+    )
     return await PrismaChatSession.prisma().create(
         data=data,
         include={"Messages": True},
@@ -90,24 +94,17 @@ async def add_chat_message(
     function_call: dict[str, Any] | None = None,
 ) -> PrismaChatMessage:
     """Add a message to a chat session."""
-    data: dict[str, Any] = {
-        "Session": {"connect": {"id": session_id}},
-        "role": role,
-        "sequence": sequence,
-    }
-
-    if content is not None:
-        data["content"] = content
-    if name is not None:
-        data["name"] = name
-    if tool_call_id is not None:
-        data["toolCallId"] = tool_call_id
-    if refusal is not None:
-        data["refusal"] = refusal
-    if tool_calls is not None:
-        data["toolCalls"] = SafeJson(tool_calls)
-    if function_call is not None:
-        data["functionCall"] = SafeJson(function_call)
+    data = ChatMessageCreateInput(
+        Session={"connect": {"id": session_id}},
+        role=role,
+        sequence=sequence,
+        content=content,
+        name=name,
+        toolCallId=tool_call_id,
+        refusal=refusal,
+        toolCalls=SafeJson(tool_calls) if tool_calls is not None else None,
+        functionCall=SafeJson(function_call) if function_call is not None else None,
+    )
 
     # Update session's updatedAt timestamp
     await PrismaChatSession.prisma().update(
@@ -129,24 +126,25 @@ async def add_chat_messages_batch(
 
     created_messages = []
     for i, msg in enumerate(messages):
-        data: dict[str, Any] = {
-            "Session": {"connect": {"id": session_id}},
-            "role": msg["role"],
-            "sequence": start_sequence + i,
-        }
-
-        if msg.get("content") is not None:
-            data["content"] = msg["content"]
-        if msg.get("name") is not None:
-            data["name"] = msg["name"]
-        if msg.get("tool_call_id") is not None:
-            data["toolCallId"] = msg["tool_call_id"]
-        if msg.get("refusal") is not None:
-            data["refusal"] = msg["refusal"]
-        if msg.get("tool_calls") is not None:
-            data["toolCalls"] = SafeJson(msg["tool_calls"])
-        if msg.get("function_call") is not None:
-            data["functionCall"] = SafeJson(msg["function_call"])
+        data = ChatMessageCreateInput(
+            Session={"connect": {"id": session_id}},
+            role=msg["role"],
+            sequence=start_sequence + i,
+            content=msg.get("content"),
+            name=msg.get("name"),
+            toolCallId=msg.get("tool_call_id"),
+            refusal=msg.get("refusal"),
+            toolCalls=(
+                SafeJson(msg["tool_calls"])
+                if msg.get("tool_calls") is not None
+                else None
+            ),
+            functionCall=(
+                SafeJson(msg["function_call"])
+                if msg.get("function_call") is not None
+                else None
+            ),
+        )
 
         created = await PrismaChatMessage.prisma().create(data=data)
         created_messages.append(created)
