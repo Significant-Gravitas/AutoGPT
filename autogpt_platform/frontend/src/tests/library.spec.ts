@@ -85,6 +85,9 @@ test.describe("Library", () => {
     const allAgents = await libraryPage.getAgents();
     expect(allAgents.length).toBeGreaterThan(0);
 
+    const initialAgentCount = await libraryPage.getAgentCount();
+    expect(initialAgentCount).toBeGreaterThan(0);
+
     const firstAgent = allAgents[0];
     await libraryPage.searchAgents(firstAgent.name);
     await libraryPage.waitForAgentsToLoad();
@@ -122,8 +125,8 @@ test.describe("Library", () => {
     await libraryPage.clearSearch();
     await libraryPage.waitForAgentsToLoad();
 
-    const clearedSearchResults = await libraryPage.getAgents();
-    test.expect(clearedSearchResults.length).toEqual(allAgents.length);
+    const clearedSearchCount = await libraryPage.getAgentCount();
+    test.expect(clearedSearchCount).toEqual(initialAgentCount);
 
     const clearedSearchValue = await libraryPage.getSearchValue();
     test.expect(clearedSearchValue).toBe("");

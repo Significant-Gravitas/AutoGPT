@@ -1,240 +1,43 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { getQueryClient } from "@/lib/react-query/queryClient";
-import { CaretCircleRightIcon, HeartIcon } from "@phosphor-icons/react";
-import { InfiniteData } from "@tanstack/react-query";
+import { CaretCircleRightIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import NextLink from "next/link";
-import { useEffect, useState } from "react";
 
-import {
-  getV2ListFavoriteLibraryAgentsResponse,
-  getV2ListLibraryAgentsResponse,
-  usePatchV2UpdateLibraryAgent,
-} from "@/app/api/__generated__/endpoints/library/library";
-import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { okData } from "@/app/api/helpers";
 import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Link } from "@/components/atoms/Link/Link";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { AgentCardMenu } from "./components/AgentCardMenu";
+import { FavoriteButton } from "./components/FavoriteButton";
+import { useLibraryAgentCard } from "./useLibraryAgentCard";
 
 interface LibraryAgentCardProps {
   agent: LibraryAgent;
 }
 
-export default function LibraryAgentCard({
-  agent: {
-    id,
-    name,
-    description,
-    graph_id,
-    can_access_graph,
+export default function LibraryAgentCard({ agent }: LibraryAgentCardProps) {
+  const { id, name, graph_id, can_access_graph, image_url } = agent;
+
+  const {
+    isFromMarketplace,
+    isAgentFavoritingEnabled,
+    isFavorite,
+    profile,
     creator_image_url,
-    image_url,
-    is_favorite,
-    marketplace_listing,
-  },
-}: LibraryAgentCardProps) {
-  const isFromMarketplace = Boolean(marketplace_listing);
-  const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
-  const [isFavorite, setIsFavorite] = useState(is_favorite);
-  const { toast } = useToast();
-  const queryClient = getQueryClient();
-  const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent();
-
-  const { data: profile } = useGetV2GetUserProfile({
-    query: {
-      select: okData,
-    },
-  });
-
-  // Sync local state with prop when it changes (e.g., after query invalidation)
-  useEffect(() => {
-    setIsFavorite(is_favorite);
-  }, [is_favorite]);
-
-  const updateQueryData = (newIsFavorite: boolean) => {
-    // Update the agent in all library agent queries
-    queryClient.setQueriesData(
-      { queryKey: ["/api/library/agents"] },
-      (
-        oldData:
-          | InfiniteData<getV2ListLibraryAgentsResponse, number | undefined>
-          | undefined,
-      ) => {
-        if (!oldData?.pages) return oldData;
-
-        return {
-          ...oldData,
-          pages: oldData.pages.map((page) => {
-            if (page.status !== 200) return page;
-
-            return {
-              ...page,
-              data: {
-                ...page.data,
-                agents: page.data.agents.map((agent: LibraryAgent) =>
-                  agent.id === id
-                    ? { ...agent, is_favorite: newIsFavorite }
-                    : agent,
-                ),
-              },
-            };
-          }),
-        };
-      },
-    );
-
-    // Update or remove from favorites query based on new state
-    queryClient.setQueriesData(
-      { queryKey: ["/api/library/agents/favorites"] },
-      (
-        oldData:
-          | InfiniteData<
-              getV2ListFavoriteLibraryAgentsResponse,
-              number | undefined
-            >
-          | undefined,
-      ) => {
-        if (!oldData?.pages) return oldData;
-
-        if (newIsFavorite) {
-          // Add to favorites if not already there
-          const exists = oldData.pages.some(
-            (page) =>
-              page.status === 200 &&
-              page.data.agents.some((agent: LibraryAgent) => agent.id === id),
-          );
-
-          if (!exists) {
-            const firstPage = oldData.pages[0];
-            if (firstPage?.status === 200) {
-              const updatedAgent = {
-                id,
-                name,
-                description,
-                graph_id,
-                can_access_graph,
-                creator_image_url,
-                image_url,
-                is_favorite: true,
-              };
-
-              return {
-                ...oldData,
-                pages: [
-                  {
-                    ...firstPage,
-                    data: {
-                      ...firstPage.data,
-                      agents: [updatedAgent, ...firstPage.data.agents],
-                      pagination: {
-                        ...firstPage.data.pagination,
-                        total_items: firstPage.data.pagination.total_items + 1,
-                      },
-                    },
-                  },
-                  ...oldData.pages.slice(1).map((page) =>
-                    page.status === 200
-                      ? {
-                          ...page,
-                          data: {
-                            ...page.data,
-                            pagination: {
-                              ...page.data.pagination,
-                              total_items: page.data.pagination.total_items + 1,
-                            },
-                          },
-                        }
-                      : page,
-                  ),
-                ],
-              };
-            }
-          }
-        } else {
-          // Remove from favorites
-          let removedCount = 0;
-          return {
-            ...oldData,
-            pages: oldData.pages.map((page) => {
-              if (page.status !== 200) return page;
-
-              const filteredAgents = page.data.agents.filter(
-                (agent: LibraryAgent) => agent.id !== id,
-              );
-
-              if (filteredAgents.length < page.data.agents.length) {
-                removedCount = 1;
-              }
-
-              return {
-                ...page,
-                data: {
-                  ...page.data,
-                  agents: filteredAgents,
-                  pagination: {
-                    ...page.data.pagination,
-                    total_items:
-                      page.data.pagination.total_items - removedCount,
-                  },
-                },
-              };
-            }),
-          };
-        }
-
-        return oldData;
-      },
-    );
-  };
-
-  const handleToggleFavorite = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!isAgentFavoritingEnabled) return;
-
-    const newIsFavorite = !isFavorite;
-
-    setIsFavorite(newIsFavorite);
-    updateQueryData(newIsFavorite);
-
-    try {
-      await updateLibraryAgent({
-        libraryAgentId: id,
-        data: { is_favorite: newIsFavorite },
-      });
-
-      toast({
-        title: newIsFavorite ? "Added to favorites" : "Removed from favorites",
-        description: `${name} has been ${newIsFavorite ? "added to" : "removed from"} your favorites.`,
-      });
-    } catch {
-      setIsFavorite(!newIsFavorite);
-      updateQueryData(!newIsFavorite);
-
-      toast({
-        title: "Error",
-        description: "Failed to update favorite status. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
+    handleToggleFavorite,
+  } = useLibraryAgentCard({ agent });
 
   return (
     <div
       data-testid="library-agent-card"
       data-agent-id={id}
-      className="group inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
+      className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
     >
+      <AgentCardMenu agent={agent} />
       <NextLink href={`/library/agents/${id}`} className="w-full flex-shrink-0">
         <div className="flex items-center gap-2 px-4 pt-3">
           <Avatar className="h-4 w-4 rounded-full">
@@ -256,29 +59,10 @@ export default function LibraryAgentCard({
           </Text>
         </div>
         {isAgentFavoritingEnabled && (
-          <button
+          <FavoriteButton
+            isFavorite={isFavorite}
             onClick={handleToggleFavorite}
-            className={cn(
-              "rounded-full bg-white/90 p-2 backdrop-blur-sm transition-all duration-200",
-              "hover:scale-110 hover:bg-white",
-              "focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2",
-              !isFavorite && "opacity-0 group-hover:opacity-100",
-            )}
-            aria-label={
-              isFavorite ? "Remove from favorites" : "Add to favorites"
-            }
-          >
-            <HeartIcon
-              size={20}
-              weight={isFavorite ? "fill" : "regular"}
-              className={cn(
-                "transition-colors duration-200",
-                isFavorite
-                  ? "text-red-500"
-                  : "text-gray-600 hover:text-red-500",
-              )}
-            />
-          </button>
+          />
         )}
       </NextLink>
 
@@ -315,8 +99,9 @@ export default function LibraryAgentCard({
             <Image
               src={image_url}
               alt={`${name} preview image`}
-              fill
-              className="h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small object-cover"
+              width={107}
+              height={58}
+              className="flex-shrink-0 rounded-small object-cover"
             />
           )}
         </Link>
