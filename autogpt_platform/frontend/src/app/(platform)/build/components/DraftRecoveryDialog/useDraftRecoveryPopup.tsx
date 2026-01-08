@@ -9,6 +9,7 @@ export const useDraftRecoveryPopup = (isInitialLoadComplete: boolean) => {
     savedAt,
     nodeCount,
     edgeCount,
+    diff,
     loadDraft: onLoad,
     discardDraft: onDiscard,
   } = useDraftManager(isInitialLoadComplete);
@@ -54,6 +55,7 @@ export const useDraftRecoveryPopup = (isInitialLoadComplete: boolean) => {
     isOpen,
     nodeCount,
     edgeCount,
+    diff,
     savedAt,
     onLoad,
     onDiscard,

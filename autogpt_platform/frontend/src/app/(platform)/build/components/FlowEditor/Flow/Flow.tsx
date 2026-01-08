@@ -97,6 +97,9 @@ export const Flow = () => {
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
+          onNodeContextMenu={(event) => {
+            event.preventDefault();
+          }}
           maxZoom={2}
           minZoom={0.1}
           onDragOver={onDragOver}
