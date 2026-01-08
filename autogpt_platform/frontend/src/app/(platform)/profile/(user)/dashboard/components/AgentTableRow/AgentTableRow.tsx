@@ -88,7 +88,6 @@ export const AgentTableRow = ({
     listing_id,
   });
 
-  // Only allow modifying PENDING submissions
   const canModify = status === SubmissionStatus.PENDING;
 
   return (

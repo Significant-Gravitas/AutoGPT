@@ -133,7 +133,6 @@ export const useEditAgentForm = ({
           variant: "default",
         });
 
-        // Invalidate submissions query to refresh the data
         queryClient.invalidateQueries({
           queryKey: getGetV2ListMySubmissionsQueryKey(),
         });

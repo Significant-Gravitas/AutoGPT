@@ -81,7 +81,6 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   const marketplaceUpdateInfo = React.useMemo(() => {
     const storeAgent = okData(storeAgentData) as any;
 
-    // If agent data is not available or submissions are still loading, don't show publish button
     if (!agent || isSubmissionsLoading) {
       return {
         hasUpdate: false,
@@ -91,7 +90,6 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       };
     }
 
-    // Check if current user is the creator/owner of this agent
     const isUserCreator = agent?.owner_user_id === user?.id;
 
     // Check if there's a pending submission for this specific agent version
@@ -105,7 +103,6 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
           submission.status === "PENDING",
       );
 
-    // If no marketplace data (agent not published), show publish button for creators
     if (!storeAgent) {
       return {
         hasUpdate: false,
