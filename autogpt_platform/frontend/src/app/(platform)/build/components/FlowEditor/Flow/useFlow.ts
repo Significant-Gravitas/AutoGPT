@@ -121,6 +121,14 @@ export const useFlow = () => {
     if (customNodes.length > 0) {
       useNodeStore.getState().setNodes([]);
       addNodes(customNodes);
+
+      // Sync hardcoded values with handle IDs.
+      // If a key–value field has a key without a value, the backend omits it from hardcoded values.
+      // But if a handleId exists for that key, it causes inconsistency.
+      // This ensures hardcoded values stay in sync with handle IDs.
+      customNodes.forEach((node) => {
+        useNodeStore.getState().syncHardcodedValuesWithHandleIds(node.id);
+      });
     }
   }, [customNodes, addNodes]);
 
