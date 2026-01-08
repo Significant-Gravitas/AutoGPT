@@ -28,6 +28,8 @@ export function PlatformLayoutContent({
         {navbar}
         {adminBanner}
         <section className="flex-1">{pageContent}</section>
+        {/* ChatDrawer must always be rendered to maintain consistent hook count */}
+        <ChatDrawer />
       </main>
     );
   }
