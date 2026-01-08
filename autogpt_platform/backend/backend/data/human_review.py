@@ -10,7 +10,11 @@ from typing import Optional
 
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
-from prisma.types import PendingHumanReviewUpdateInput
+from prisma.types import (
+    PendingHumanReviewCreateInput,
+    PendingHumanReviewUpdateInput,
+    PendingHumanReviewUpsertInput,
+)
 from pydantic import BaseModel
 
 from backend.api.features.executions.review.model import (
@@ -66,20 +70,20 @@ async def get_or_create_human_review(
         # Upsert - get existing or create new review
         review = await PendingHumanReview.prisma().upsert(
             where={"nodeExecId": node_exec_id},
-            data={
-                "create": {
-                    "userId": user_id,
-                    "nodeExecId": node_exec_id,
-                    "graphExecId": graph_exec_id,
-                    "graphId": graph_id,
-                    "graphVersion": graph_version,
-                    "payload": SafeJson(input_data),
-                    "instructions": message,
-                    "editable": editable,
-                    "status": ReviewStatus.WAITING,
-                },
-                "update": {},  # Do nothing on update - keep existing review as is
-            },
+            data=PendingHumanReviewUpsertInput(
+                create=PendingHumanReviewCreateInput(
+                    userId=user_id,
+                    nodeExecId=node_exec_id,
+                    graphExecId=graph_exec_id,
+                    graphId=graph_id,
+                    graphVersion=graph_version,
+                    payload=SafeJson(input_data),
+                    instructions=message,
+                    editable=editable,
+                    status=ReviewStatus.WAITING,
+                ),
+                update={},  # Do nothing on update - keep existing review as is
+            ),
         )
 
         logger.info(

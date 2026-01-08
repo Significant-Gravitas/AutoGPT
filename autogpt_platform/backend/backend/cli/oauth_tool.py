@@ -42,6 +42,7 @@ from urllib.parse import urlparse
 import click
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
+from prisma.types import OAuthApplicationCreateInput
 
 keysmith = APIKeySmith()
 
@@ -147,7 +148,7 @@ def format_sql_insert(creds: dict) -> str:
 
     sql = f"""
 -- ============================================================
--- OAuth Application: {creds['name']}
+-- OAuth Application: {creds["name"]}
 -- Generated: {now_iso} UTC
 -- ============================================================
 
@@ -167,14 +168,14 @@ INSERT INTO "OAuthApplication" (
   "isActive"
 )
 VALUES (
-  '{creds['id']}',
+  '{creds["id"]}',
   NOW(),
   NOW(),
-  '{creds['name']}',
-  {f"'{creds['description']}'" if creds['description'] else 'NULL'},
-  '{creds['client_id']}',
-  '{creds['client_secret_hash']}',
-  '{creds['client_secret_salt']}',
+  '{creds["name"]}',
+  {f"'{creds['description']}'" if creds["description"] else "NULL"},
+  '{creds["client_id"]}',
+  '{creds["client_secret_hash"]}',
+  '{creds["client_secret_salt"]}',
   ARRAY{redirect_uris_pg}::TEXT[],
   ARRAY{grant_types_pg}::TEXT[],
   ARRAY{scopes_pg}::"APIKeyPermission"[],
@@ -186,8 +187,8 @@ VALUES (
 -- ⚠️ IMPORTANT: Save these credentials securely!
 -- ============================================================
 --
--- Client ID:     {creds['client_id']}
--- Client Secret: {creds['client_secret_plaintext']}
+-- Client ID:     {creds["client_id"]}
+-- Client Secret: {creds["client_secret_plaintext"]}
 --
 -- ⚠️ The client secret is shown ONLY ONCE!
 -- ⚠️ Store it securely and share only with the application developer.
@@ -200,7 +201,7 @@ VALUES (
 -- To verify the application was created:
 -- SELECT "clientId", name, scopes, "redirectUris", "isActive"
 -- FROM "OAuthApplication"
--- WHERE "clientId" = '{creds['client_id']}';
+-- WHERE "clientId" = '{creds["client_id"]}';
 """
     return sql
 
@@ -834,19 +835,19 @@ async def create_test_app_in_db(
 
     # Insert into database
     app = await OAuthApplication.prisma().create(
-        data={
-            "id": creds["id"],
-            "name": creds["name"],
-            "description": creds["description"],
-            "clientId": creds["client_id"],
-            "clientSecret": creds["client_secret_hash"],
-            "clientSecretSalt": creds["client_secret_salt"],
-            "redirectUris": creds["redirect_uris"],
-            "grantTypes": creds["grant_types"],
-            "scopes": creds["scopes"],
-            "ownerId": owner_id,
-            "isActive": True,
-        }
+        data=OAuthApplicationCreateInput(
+            id=creds["id"],
+            name=creds["name"],
+            description=creds["description"],
+            clientId=creds["client_id"],
+            clientSecret=creds["client_secret_hash"],
+            clientSecretSalt=creds["client_secret_salt"],
+            redirectUris=creds["redirect_uris"],
+            grantTypes=creds["grant_types"],
+            scopes=creds["scopes"],
+            ownerId=owner_id,
+            isActive=True,
+        )
     )
 
     click.echo(f"✓ Created test OAuth application: {app.clientId}")

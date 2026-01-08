@@ -27,6 +27,13 @@ from prisma.models import OAuthApplication as PrismaOAuthApplication
 from prisma.models import OAuthAuthorizationCode as PrismaOAuthAuthorizationCode
 from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
+from prisma.types import (
+    OAuthAccessTokenCreateInput,
+    OAuthApplicationCreateInput,
+    OAuthAuthorizationCodeCreateInput,
+    OAuthRefreshTokenCreateInput,
+    UserCreateInput,
+)
 
 from backend.api.rest_api import app
 
@@ -48,11 +55,11 @@ def test_user_id() -> str:
 async def test_user(server, test_user_id: str):
     """Create a test user in the database."""
     await PrismaUser.prisma().create(
-        data={
-            "id": test_user_id,
-            "email": f"oauth-test-{test_user_id}@example.com",
-            "name": "OAuth Test User",
-        }
+        data=UserCreateInput(
+            id=test_user_id,
+            email=f"oauth-test-{test_user_id}@example.com",
+            name="OAuth Test User",
+        )
     )
 
     yield test_user_id
@@ -77,22 +84,22 @@ async def test_oauth_app(test_user: str):
     client_secret_hash, client_secret_salt = keysmith.hash_key(client_secret_plaintext)
 
     await PrismaOAuthApplication.prisma().create(
-        data={
-            "id": app_id,
-            "name": "Test OAuth App",
-            "description": "Test application for integration tests",
-            "clientId": client_id,
-            "clientSecret": client_secret_hash,
-            "clientSecretSalt": client_secret_salt,
-            "redirectUris": [
+        data=OAuthApplicationCreateInput(
+            id=app_id,
+            name="Test OAuth App",
+            description="Test application for integration tests",
+            clientId=client_id,
+            clientSecret=client_secret_hash,
+            clientSecretSalt=client_secret_salt,
+            redirectUris=[
                 "https://example.com/callback",
                 "http://localhost:3000/callback",
             ],
-            "grantTypes": ["authorization_code", "refresh_token"],
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH, APIKeyPermission.READ_GRAPH],
-            "ownerId": test_user,
-            "isActive": True,
-        }
+            grantTypes=["authorization_code", "refresh_token"],
+            scopes=[APIKeyPermission.EXECUTE_GRAPH, APIKeyPermission.READ_GRAPH],
+            ownerId=test_user,
+            isActive=True,
+        )
     )
 
     yield {
@@ -296,19 +303,19 @@ async def inactive_oauth_app(test_user: str):
     client_secret_hash, client_secret_salt = keysmith.hash_key(client_secret_plaintext)
 
     await PrismaOAuthApplication.prisma().create(
-        data={
-            "id": app_id,
-            "name": "Inactive OAuth App",
-            "description": "Inactive test application",
-            "clientId": client_id,
-            "clientSecret": client_secret_hash,
-            "clientSecretSalt": client_secret_salt,
-            "redirectUris": ["https://example.com/callback"],
-            "grantTypes": ["authorization_code", "refresh_token"],
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "ownerId": test_user,
-            "isActive": False,  # Inactive!
-        }
+        data=OAuthApplicationCreateInput(
+            id=app_id,
+            name="Inactive OAuth App",
+            description="Inactive test application",
+            clientId=client_id,
+            clientSecret=client_secret_hash,
+            clientSecretSalt=client_secret_salt,
+            redirectUris=["https://example.com/callback"],
+            grantTypes=["authorization_code", "refresh_token"],
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            ownerId=test_user,
+            isActive=False,  # Inactive!
+        )
     )
 
     yield {
@@ -699,14 +706,14 @@ async def test_token_authorization_code_expired(
     now = datetime.now(timezone.utc)
 
     await PrismaOAuthAuthorizationCode.prisma().create(
-        data={
-            "code": expired_code,
-            "applicationId": test_oauth_app["id"],
-            "userId": test_user,
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "redirectUri": test_oauth_app["redirect_uri"],
-            "expiresAt": now - timedelta(hours=1),  # Already expired
-        }
+        data=OAuthAuthorizationCodeCreateInput(
+            code=expired_code,
+            applicationId=test_oauth_app["id"],
+            userId=test_user,
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            redirectUri=test_oauth_app["redirect_uri"],
+            expiresAt=now - timedelta(hours=1),  # Already expired
+        )
     )
 
     response = await client.post(
@@ -942,13 +949,13 @@ async def test_token_refresh_expired(
     now = datetime.now(timezone.utc)
 
     await PrismaOAuthRefreshToken.prisma().create(
-        data={
-            "token": expired_token_hash,
-            "applicationId": test_oauth_app["id"],
-            "userId": test_user,
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "expiresAt": now - timedelta(days=1),  # Already expired
-        }
+        data=OAuthRefreshTokenCreateInput(
+            token=expired_token_hash,
+            applicationId=test_oauth_app["id"],
+            userId=test_user,
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            expiresAt=now - timedelta(days=1),  # Already expired
+        )
     )
 
     response = await client.post(
@@ -980,14 +987,14 @@ async def test_token_refresh_revoked(
     now = datetime.now(timezone.utc)
 
     await PrismaOAuthRefreshToken.prisma().create(
-        data={
-            "token": revoked_token_hash,
-            "applicationId": test_oauth_app["id"],
-            "userId": test_user,
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "expiresAt": now + timedelta(days=30),  # Not expired
-            "revokedAt": now - timedelta(hours=1),  # But revoked
-        }
+        data=OAuthRefreshTokenCreateInput(
+            token=revoked_token_hash,
+            applicationId=test_oauth_app["id"],
+            userId=test_user,
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            expiresAt=now + timedelta(days=30),  # Not expired
+            revokedAt=now - timedelta(hours=1),  # But revoked
+        )
     )
 
     response = await client.post(
@@ -1013,19 +1020,19 @@ async def other_oauth_app(test_user: str):
     client_secret_hash, client_secret_salt = keysmith.hash_key(client_secret_plaintext)
 
     await PrismaOAuthApplication.prisma().create(
-        data={
-            "id": app_id,
-            "name": "Other OAuth App",
-            "description": "Second test application",
-            "clientId": client_id,
-            "clientSecret": client_secret_hash,
-            "clientSecretSalt": client_secret_salt,
-            "redirectUris": ["https://other.example.com/callback"],
-            "grantTypes": ["authorization_code", "refresh_token"],
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "ownerId": test_user,
-            "isActive": True,
-        }
+        data=OAuthApplicationCreateInput(
+            id=app_id,
+            name="Other OAuth App",
+            description="Second test application",
+            clientId=client_id,
+            clientSecret=client_secret_hash,
+            clientSecretSalt=client_secret_salt,
+            redirectUris=["https://other.example.com/callback"],
+            grantTypes=["authorization_code", "refresh_token"],
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            ownerId=test_user,
+            isActive=True,
+        )
     )
 
     yield {
@@ -1052,13 +1059,13 @@ async def test_token_refresh_wrong_application(
     now = datetime.now(timezone.utc)
 
     await PrismaOAuthRefreshToken.prisma().create(
-        data={
-            "token": token_hash,
-            "applicationId": test_oauth_app["id"],  # Belongs to test_oauth_app
-            "userId": test_user,
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "expiresAt": now + timedelta(days=30),
-        }
+        data=OAuthRefreshTokenCreateInput(
+            token=token_hash,
+            applicationId=test_oauth_app["id"],  # Belongs to test_oauth_app
+            userId=test_user,
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            expiresAt=now + timedelta(days=30),
+        )
     )
 
     # Try to use it with `other_oauth_app`
@@ -1267,19 +1274,19 @@ async def test_validate_access_token_fails_when_app_disabled(
     client_secret_hash, client_secret_salt = keysmith.hash_key(client_secret_plaintext)
 
     await PrismaOAuthApplication.prisma().create(
-        data={
-            "id": app_id,
-            "name": "App To Be Disabled",
-            "description": "Test app for disabled validation",
-            "clientId": client_id,
-            "clientSecret": client_secret_hash,
-            "clientSecretSalt": client_secret_salt,
-            "redirectUris": ["https://example.com/callback"],
-            "grantTypes": ["authorization_code"],
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "ownerId": test_user,
-            "isActive": True,
-        }
+        data=OAuthApplicationCreateInput(
+            id=app_id,
+            name="App To Be Disabled",
+            description="Test app for disabled validation",
+            clientId=client_id,
+            clientSecret=client_secret_hash,
+            clientSecretSalt=client_secret_salt,
+            redirectUris=["https://example.com/callback"],
+            grantTypes=["authorization_code"],
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            ownerId=test_user,
+            isActive=True,
+        )
     )
 
     # Create an access token directly in the database
@@ -1288,13 +1295,13 @@ async def test_validate_access_token_fails_when_app_disabled(
     now = datetime.now(timezone.utc)
 
     await PrismaOAuthAccessToken.prisma().create(
-        data={
-            "token": token_hash,
-            "applicationId": app_id,
-            "userId": test_user,
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH],
-            "expiresAt": now + timedelta(hours=1),
-        }
+        data=OAuthAccessTokenCreateInput(
+            token=token_hash,
+            applicationId=app_id,
+            userId=test_user,
+            scopes=[APIKeyPermission.EXECUTE_GRAPH],
+            expiresAt=now + timedelta(hours=1),
+        )
     )
 
     # Token should be valid while app is active
@@ -1561,19 +1568,19 @@ async def test_revoke_token_from_different_app_fails_silently(
     )
 
     await PrismaOAuthApplication.prisma().create(
-        data={
-            "id": app2_id,
-            "name": "Second Test OAuth App",
-            "description": "Second test application for cross-app revocation test",
-            "clientId": app2_client_id,
-            "clientSecret": app2_client_secret_hash,
-            "clientSecretSalt": app2_client_secret_salt,
-            "redirectUris": ["https://other-app.com/callback"],
-            "grantTypes": ["authorization_code", "refresh_token"],
-            "scopes": [APIKeyPermission.EXECUTE_GRAPH, APIKeyPermission.READ_GRAPH],
-            "ownerId": test_user,
-            "isActive": True,
-        }
+        data=OAuthApplicationCreateInput(
+            id=app2_id,
+            name="Second Test OAuth App",
+            description="Second test application for cross-app revocation test",
+            clientId=app2_client_id,
+            clientSecret=app2_client_secret_hash,
+            clientSecretSalt=app2_client_secret_salt,
+            redirectUris=["https://other-app.com/callback"],
+            grantTypes=["authorization_code", "refresh_token"],
+            scopes=[APIKeyPermission.EXECUTE_GRAPH, APIKeyPermission.READ_GRAPH],
+            ownerId=test_user,
+            isActive=True,
+        )
     )
 
     # App 2 tries to revoke App 1's access token

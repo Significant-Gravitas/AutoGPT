@@ -7,7 +7,11 @@ import prisma
 import pydantic
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
-from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
+from prisma.types import (
+    UserOnboardingCreateInput,
+    UserOnboardingUpdateInput,
+    UserOnboardingUpsertInput,
+)
 
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
@@ -110,12 +114,13 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
 
+    create_input = UserOnboardingCreateInput(userId=user_id, **update)
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
-        data={
-            "create": {"userId": user_id, **update},
-            "update": update,
-        },
+        data=UserOnboardingUpsertInput(
+            create=create_input,
+            update=update,
+        ),
     )
 
 

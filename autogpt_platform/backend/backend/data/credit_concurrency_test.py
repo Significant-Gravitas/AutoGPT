@@ -14,6 +14,11 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, User, UserBalance
+from prisma.types import (
+    UserBalanceCreateInput,
+    UserBalanceUpsertInput,
+    UserCreateInput,
+)
 
 from backend.data.credit import POSTGRES_INT_MAX, UsageTransactionMetadata, UserCredit
 from backend.util.exceptions import InsufficientBalanceError
@@ -28,11 +33,11 @@ async def create_test_user(user_id: str) -> None:
     """Create a test user with initial balance."""
     try:
         await User.prisma().create(
-            data={
-                "id": user_id,
-                "email": f"test-{user_id}@example.com",
-                "name": f"Test User {user_id[:8]}",
-            }
+            data=UserCreateInput(
+                id=user_id,
+                email=f"test-{user_id}@example.com",
+                name=f"Test User {user_id[:8]}",
+            )
         )
     except UniqueViolationError:
         # User already exists, continue
@@ -41,7 +46,10 @@ async def create_test_user(user_id: str) -> None:
     # Ensure UserBalance record exists
     await UserBalance.prisma().upsert(
         where={"userId": user_id},
-        data={"create": {"userId": user_id, "balance": 0}, "update": {"balance": 0}},
+        data=UserBalanceUpsertInput(
+            create=UserBalanceCreateInput(userId=user_id, balance=0),
+            update={"balance": 0},
+        ),
     )
 
 
@@ -108,9 +116,9 @@ async def test_concurrent_spends_same_user(server: SpinTestServer):
         transactions = await CreditTransaction.prisma().find_many(
             where={"userId": user_id, "type": prisma.enums.CreditTransactionType.USAGE}
         )
-        assert (
-            len(transactions) == 10
-        ), f"Expected 10 transactions, got {len(transactions)}"
+        assert len(transactions) == 10, (
+            f"Expected 10 transactions, got {len(transactions)}"
+        )
 
     finally:
         await cleanup_test_user(user_id)
@@ -321,9 +329,9 @@ async def test_onboarding_reward_idempotency(server: SpinTestServer):
                 "transactionKey": f"REWARD-{user_id}-WELCOME",
             }
         )
-        assert (
-            len(transactions) == 1
-        ), f"Expected 1 reward transaction, got {len(transactions)}"
+        assert len(transactions) == 1, (
+            f"Expected 1 reward transaction, got {len(transactions)}"
+        )
 
     finally:
         await cleanup_test_user(user_id)
@@ -342,10 +350,10 @@ async def test_integer_overflow_protection(server: SpinTestServer):
         # First, set balance near max
         await UserBalance.prisma().upsert(
             where={"userId": user_id},
-            data={
-                "create": {"userId": user_id, "balance": max_int - 100},
-                "update": {"balance": max_int - 100},
-            },
+            data=UserBalanceUpsertInput(
+                create=UserBalanceCreateInput(userId=user_id, balance=max_int - 100),
+                update={"balance": max_int - 100},
+            ),
         )
 
         # Try to add more than possible - should clamp to POSTGRES_INT_MAX
@@ -358,9 +366,9 @@ async def test_integer_overflow_protection(server: SpinTestServer):
 
         # Balance should be clamped to max_int, not overflowed
         final_balance = await credit_system.get_credits(user_id)
-        assert (
-            final_balance == max_int
-        ), f"Balance should be clamped to {max_int}, got {final_balance}"
+        assert final_balance == max_int, (
+            f"Balance should be clamped to {max_int}, got {final_balance}"
+        )
 
         # Verify transaction was created with clamped amount
         transactions = await CreditTransaction.prisma().find_many(
@@ -371,9 +379,9 @@ async def test_integer_overflow_protection(server: SpinTestServer):
             order={"createdAt": "desc"},
         )
         assert len(transactions) > 0, "Transaction should be created"
-        assert (
-            transactions[0].runningBalance == max_int
-        ), "Transaction should show clamped balance"
+        assert transactions[0].runningBalance == max_int, (
+            "Transaction should show clamped balance"
+        )
 
     finally:
         await cleanup_test_user(user_id)
@@ -432,9 +440,9 @@ async def test_high_concurrency_stress(server: SpinTestServer):
 
         # Verify final balance
         final_balance = await credit_system.get_credits(user_id)
-        assert (
-            final_balance == expected_balance
-        ), f"Expected {expected_balance}, got {final_balance}"
+        assert final_balance == expected_balance, (
+            f"Expected {expected_balance}, got {final_balance}"
+        )
         assert final_balance >= 0, "Balance went negative!"
 
     finally:
@@ -507,7 +515,7 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
         sorted_timings = sorted(timings.items(), key=lambda x: x[1]["start"])
         print("\nExecution order by start time:")
         for i, (label, timing) in enumerate(sorted_timings):
-            print(f"  {i+1}. {label}: {timing['start']:.4f} -> {timing['end']:.4f}")
+            print(f"  {i + 1}. {label}: {timing['start']:.4f} -> {timing['end']:.4f}")
 
         # Check for overlap (true concurrency) vs serialization
         overlaps = []
@@ -533,9 +541,9 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
         print(f"Successful: {len(successful)}, Failed: {len(failed)}")
 
         # All should succeed since 150 - (10 + 20 + 30) = 90 > 0
-        assert (
-            len(successful) == 3
-        ), f"Expected all 3 to succeed, got {len(successful)} successes: {results}"
+        assert len(successful) == 3, (
+            f"Expected all 3 to succeed, got {len(successful)} successes: {results}"
+        )
         assert final_balance == 90, f"Expected balance 90, got {final_balance}"
 
         # Check transaction timestamps to confirm database-level serialization
@@ -546,7 +554,7 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
         print("\nDatabase transaction order (by createdAt):")
         for i, tx in enumerate(transactions):
             print(
-                f"  {i+1}. Amount {tx.amount}, Running balance: {tx.runningBalance}, Created: {tx.createdAt}"
+                f"  {i + 1}. Amount {tx.amount}, Running balance: {tx.runningBalance}, Created: {tx.createdAt}"
             )
 
         # Verify running balances are chronologically consistent (ordered by createdAt)
@@ -575,38 +583,38 @@ async def test_concurrent_multiple_spends_sufficient_balance(server: SpinTestSer
 
         # Verify all balances are valid intermediate states
         for balance in actual_balances:
-            assert (
-                balance in expected_possible_balances
-            ), f"Invalid balance {balance}, expected one of {expected_possible_balances}"
+            assert balance in expected_possible_balances, (
+                f"Invalid balance {balance}, expected one of {expected_possible_balances}"
+            )
 
         # Final balance should always be 90 (150 - 60)
-        assert (
-            min(actual_balances) == 90
-        ), f"Final balance should be 90, got {min(actual_balances)}"
+        assert min(actual_balances) == 90, (
+            f"Final balance should be 90, got {min(actual_balances)}"
+        )
 
         # The final transaction should always have balance 90
         # The other transactions should have valid intermediate balances
-        assert (
-            90 in actual_balances
-        ), f"Final balance 90 should be in actual_balances: {actual_balances}"
+        assert 90 in actual_balances, (
+            f"Final balance 90 should be in actual_balances: {actual_balances}"
+        )
 
         # All balances should be >= 90 (the final state)
-        assert all(
-            balance >= 90 for balance in actual_balances
-        ), f"All balances should be >= 90, got {actual_balances}"
+        assert all(balance >= 90 for balance in actual_balances), (
+            f"All balances should be >= 90, got {actual_balances}"
+        )
 
         # CRITICAL: Transactions are atomic but can complete in any order
         # What matters is that all running balances are valid intermediate states
         # Each balance should be between 90 (final) and 140 (after first transaction)
         for balance in actual_balances:
-            assert (
-                90 <= balance <= 140
-            ), f"Balance {balance} is outside valid range [90, 140]"
+            assert 90 <= balance <= 140, (
+                f"Balance {balance} is outside valid range [90, 140]"
+            )
 
         # Final balance (minimum) should always be 90
-        assert (
-            min(actual_balances) == 90
-        ), f"Final balance should be 90, got {min(actual_balances)}"
+        assert min(actual_balances) == 90, (
+            f"Final balance should be 90, got {min(actual_balances)}"
+        )
 
     finally:
         await cleanup_test_user(user_id)
@@ -707,7 +715,7 @@ async def test_prove_database_locking_behavior(server: SpinTestServer):
 
             for i, result in enumerate(sorted_results):
                 print(
-                    f"   {i+1}. {result['label']}: DB operation took {result['db_duration']:.4f}s"
+                    f"   {i + 1}. {result['label']}: DB operation took {result['db_duration']:.4f}s"
                 )
 
             # Check if any operations overlapped at the database level
@@ -722,9 +730,9 @@ async def test_prove_database_locking_behavior(server: SpinTestServer):
         print(f"\n💰 Final balance: {final_balance}")
 
         if len(successful) == 3:
-            assert (
-                final_balance == 0
-            ), f"If all succeeded, balance should be 0, got {final_balance}"
+            assert final_balance == 0, (
+                f"If all succeeded, balance should be 0, got {final_balance}"
+            )
             print(
                 "✅ CONCLUSION: Database row locking causes requests to WAIT and execute serially"
             )

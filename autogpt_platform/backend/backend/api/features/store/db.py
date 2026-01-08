@@ -249,7 +249,9 @@ async def log_search_term(search_query: str):
     date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     try:
         await prisma.models.SearchTerms.prisma().create(
-            data={"searchTerm": search_query, "createdDate": date}
+            data=prisma.types.SearchTermsCreateInput(
+                searchTerm=search_query, createdDate=date
+            )
         )
     except Exception as e:
         # Fail silently here so that logging search terms doesn't break the app
@@ -1456,11 +1458,9 @@ async def _approve_sub_agent(
     # Create new version if no matching version found
     next_version = max((v.version for v in listing.Versions or []), default=0) + 1
     await prisma.models.StoreListingVersion.prisma(tx).create(
-        data={
-            **_create_sub_agent_version_data(sub_graph, heading, main_agent_name),
-            "version": next_version,
-            "storeListingId": listing.id,
-        }
+        data=_create_sub_agent_version_data(
+            sub_graph, heading, main_agent_name, next_version, listing.id
+        )
     )
     await prisma.models.StoreListing.prisma(tx).update(
         where={"id": listing.id}, data={"hasApprovedVersion": True}
@@ -1468,10 +1468,14 @@ async def _approve_sub_agent(
 
 
 def _create_sub_agent_version_data(
-    sub_graph: prisma.models.AgentGraph, heading: str, main_agent_name: str
+    sub_graph: prisma.models.AgentGraph,
+    heading: str,
+    main_agent_name: str,
+    version: typing.Optional[int] = None,
+    store_listing_id: typing.Optional[str] = None,
 ) -> prisma.types.StoreListingVersionCreateInput:
     """Create store listing version data for a sub-agent"""
-    return prisma.types.StoreListingVersionCreateInput(
+    data = prisma.types.StoreListingVersionCreateInput(
         agentGraphId=sub_graph.id,
         agentGraphVersion=sub_graph.version,
         name=sub_graph.name or heading,
@@ -1486,6 +1490,11 @@ def _create_sub_agent_version_data(
         imageUrls=[],  # Sub-agents don't need images
         categories=[],  # Sub-agents don't need categories
     )
+    if version is not None:
+        data["version"] = version
+    if store_listing_id is not None:
+        data["storeListingId"] = store_listing_id
+    return data
 
 
 async def review_store_submission(

@@ -12,6 +12,12 @@ import pytest
 import stripe
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
+from prisma.types import (
+    CreditRefundRequestCreateInput,
+    CreditTransactionCreateInput,
+    UserBalanceCreateInput,
+    UserCreateInput,
+)
 
 from backend.data.credit import UserCredit
 from backend.util.json import SafeJson
@@ -35,32 +41,32 @@ async def setup_test_user_with_topup():
 
     # Create user
     await User.prisma().create(
-        data={
-            "id": REFUND_TEST_USER_ID,
-            "email": f"{REFUND_TEST_USER_ID}@example.com",
-            "name": "Refund Test User",
-        }
+        data=UserCreateInput(
+            id=REFUND_TEST_USER_ID,
+            email=f"{REFUND_TEST_USER_ID}@example.com",
+            name="Refund Test User",
+        )
     )
 
     # Create user balance
     await UserBalance.prisma().create(
-        data={
-            "userId": REFUND_TEST_USER_ID,
-            "balance": 1000,  # $10
-        }
+        data=UserBalanceCreateInput(
+            userId=REFUND_TEST_USER_ID,
+            balance=1000,  # $10
+        )
     )
 
     # Create a top-up transaction that can be refunded
     topup_tx = await CreditTransaction.prisma().create(
-        data={
-            "userId": REFUND_TEST_USER_ID,
-            "amount": 1000,
-            "type": CreditTransactionType.TOP_UP,
-            "transactionKey": "pi_test_12345",
-            "runningBalance": 1000,
-            "isActive": True,
-            "metadata": SafeJson({"stripe_payment_intent": "pi_test_12345"}),
-        }
+        data=CreditTransactionCreateInput(
+            userId=REFUND_TEST_USER_ID,
+            amount=1000,
+            type=CreditTransactionType.TOP_UP,
+            transactionKey="pi_test_12345",
+            runningBalance=1000,
+            isActive=True,
+            metadata=SafeJson({"stripe_payment_intent": "pi_test_12345"}),
+        )
     )
 
     return topup_tx
@@ -93,12 +99,12 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
 
         # Create refund request record (simulating webhook flow)
         await CreditRefundRequest.prisma().create(
-            data={
-                "userId": REFUND_TEST_USER_ID,
-                "amount": 500,
-                "transactionKey": topup_tx.transactionKey,  # Should match the original transaction
-                "reason": "Test refund",
-            }
+            data=CreditRefundRequestCreateInput(
+                userId=REFUND_TEST_USER_ID,
+                amount=500,
+                transactionKey=topup_tx.transactionKey,  # Should match the original transaction
+                reason="Test refund",
+            )
         )
 
         # Call deduct_credits
@@ -109,9 +115,9 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
             where={"userId": REFUND_TEST_USER_ID}
         )
         assert user_balance is not None
-        assert (
-            user_balance.balance == 500
-        ), f"Expected balance 500, got {user_balance.balance}"
+        assert user_balance.balance == 500, (
+            f"Expected balance 500, got {user_balance.balance}"
+        )
 
         # Verify refund transaction was created
         refund_tx = await CreditTransaction.prisma().find_first(
@@ -205,9 +211,9 @@ async def test_handle_dispute_with_sufficient_balance(
             where={"userId": REFUND_TEST_USER_ID}
         )
         assert user_balance is not None
-        assert (
-            user_balance.balance == 1000
-        ), f"Balance should remain 1000, got {user_balance.balance}"
+        assert user_balance.balance == 1000, (
+            f"Balance should remain 1000, got {user_balance.balance}"
+        )
 
     finally:
         await cleanup_test_user()
@@ -286,12 +292,12 @@ async def test_concurrent_refunds(server: SpinTestServer):
         refund_requests = []
         for i in range(5):
             req = await CreditRefundRequest.prisma().create(
-                data={
-                    "userId": REFUND_TEST_USER_ID,
-                    "amount": 100,  # $1 each
-                    "transactionKey": topup_tx.transactionKey,
-                    "reason": f"Test refund {i}",
-                }
+                data=CreditRefundRequestCreateInput(
+                    userId=REFUND_TEST_USER_ID,
+                    amount=100,  # $1 each
+                    transactionKey=topup_tx.transactionKey,
+                    reason=f"Test refund {i}",
+                )
             )
             refund_requests.append(req)
 
@@ -332,9 +338,9 @@ async def test_concurrent_refunds(server: SpinTestServer):
         print(f"DEBUG: Final balance = {user_balance.balance}, expected = 500")
 
         # With atomic implementation, all 5 refunds should process correctly
-        assert (
-            user_balance.balance == 500
-        ), f"Expected balance 500 after 5 refunds of 100 each, got {user_balance.balance}"
+        assert user_balance.balance == 500, (
+            f"Expected balance 500 after 5 refunds of 100 each, got {user_balance.balance}"
+        )
 
         # Verify all refund transactions exist
         refund_txs = await CreditTransaction.prisma().find_many(
@@ -343,9 +349,9 @@ async def test_concurrent_refunds(server: SpinTestServer):
                 "type": CreditTransactionType.REFUND,
             }
         )
-        assert (
-            len(refund_txs) == 5
-        ), f"Expected 5 refund transactions, got {len(refund_txs)}"
+        assert len(refund_txs) == 5, (
+            f"Expected 5 refund transactions, got {len(refund_txs)}"
+        )
 
         running_balances: set[int] = {
             tx.runningBalance for tx in refund_txs if tx.runningBalance is not None
@@ -353,20 +359,20 @@ async def test_concurrent_refunds(server: SpinTestServer):
 
         # Verify all balances are valid intermediate states
         for balance in running_balances:
-            assert (
-                500 <= balance <= 1000
-            ), f"Invalid balance {balance}, should be between 500 and 1000"
+            assert 500 <= balance <= 1000, (
+                f"Invalid balance {balance}, should be between 500 and 1000"
+            )
 
         # Final balance should be present
-        assert (
-            500 in running_balances
-        ), f"Final balance 500 should be in {running_balances}"
+        assert 500 in running_balances, (
+            f"Final balance 500 should be in {running_balances}"
+        )
 
         # All balances should be unique and form a valid sequence
         sorted_balances = sorted(running_balances, reverse=True)
-        assert (
-            len(sorted_balances) == 5
-        ), f"Expected 5 unique balances, got {len(sorted_balances)}"
+        assert len(sorted_balances) == 5, (
+            f"Expected 5 unique balances, got {len(sorted_balances)}"
+        )
 
     finally:
         await cleanup_test_user()
