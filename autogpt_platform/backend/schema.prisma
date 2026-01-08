@@ -53,6 +53,7 @@ model User {
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
+  BusinessUnderstanding UserBusinessUnderstanding?
   BuilderSearchHistory  BuilderSearchHistory[]
   StoreListings         StoreListing[]
   StoreListingReviews   StoreListingReview[]
@@ -121,6 +122,43 @@ model UserOnboarding {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model UserBusinessUnderstanding {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // User info
+  userName String?
+  jobTitle String?
+
+  // Business basics (string columns)
+  businessName String?
+  industry     String?
+  businessSize String? // "1-10", "11-50", "51-200", "201-1000", "1000+"
+  userRole     String? // Role in organization context (e.g., "decision maker", "implementer")
+
+  // Processes & activities (JSON arrays)
+  keyWorkflows    Json?
+  dailyActivities Json?
+
+  // Pain points & goals (JSON arrays)
+  painPoints      Json?
+  bottlenecks     Json?
+  manualTasks     Json?
+  automationGoals Json?
+
+  // Current tools (JSON arrays)
+  currentSoftware    Json?
+  existingAutomation Json?
+
+  additionalNotes String?
+
+  @@index([userId])
+}
+
 model BuilderSearchHistory {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -132,6 +170,59 @@ model BuilderSearchHistory {
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////   CHAT SESSION TABLES   ///////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String?
+
+  // Session metadata
+  title       String?
+  credentials Json    @default("{}") // Map of provider -> credential metadata
+
+  // Rate limiting counters (stored as JSON maps)
+  successfulAgentRuns      Json @default("{}") // Map of graph_id -> count
+  successfulAgentSchedules Json @default("{}") // Map of graph_id -> count
+
+  // Usage tracking
+  totalPromptTokens     Int @default(0)
+  totalCompletionTokens Int @default(0)
+
+  Messages ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  sessionId String
+  Session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Message content
+  role        String // "user", "assistant", "system", "tool", "function"
+  content     String?
+  name        String?
+  toolCallId  String?
+  refusal     String?
+  toolCalls   Json? // List of tool calls for assistant messages
+  functionCall Json? // Deprecated but kept for compatibility
+
+  // Ordering within session
+  sequence Int
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, sequence])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -899,6 +990,9 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
+  // Embedding for semantic search (one-to-one)
+  Embedding StoreListingEmbedding?
+
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
@@ -922,6 +1016,24 @@ model StoreListingReview {
 
   @@unique([storeListingVersionId, reviewByUserId])
   @@index([reviewByUserId])
+}
+
+// Stores vector embeddings for semantic search of store listings
+// Uses pgvector extension for efficient similarity search
+model StoreListingEmbedding {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  storeListingVersionId String                @unique
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+
+  // pgvector embedding - stored as Unsupported type since Prisma doesn't natively support vector
+  embedding      Unsupported("vector(1536)")?
+  searchableText String?  // The text that was embedded (for debugging/recomputation)
+  contentHash    String?  // MD5 hash for change detection
+
+  @@index([contentHash])
 }
 
 enum SubmissionStatus {
