@@ -54,7 +54,7 @@ load-store-agents:
 	cd backend && poetry run load-store-agents
 
 backfill-store-embeddings:
-	cd backend && poetry run python -m backend.server.v2.store.backfill_embeddings
+	cd backend && poetry run python -m backend.api.features.store.backfill_embeddings
 
 help:
 	@echo "Usage: make <target>"

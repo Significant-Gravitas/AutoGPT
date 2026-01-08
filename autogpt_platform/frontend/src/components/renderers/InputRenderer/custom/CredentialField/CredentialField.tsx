@@ -4,7 +4,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api";
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
+import { CredentialsInput } from "@/components/contextual/CredentialsInputs/CredentialsInputs";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import { CredentialFieldTitle } from "./components/CredentialFieldTitle";
