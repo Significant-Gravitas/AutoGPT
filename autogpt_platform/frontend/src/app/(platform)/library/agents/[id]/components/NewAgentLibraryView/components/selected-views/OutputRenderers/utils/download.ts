@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import { OutputRenderer, OutputMetadata } from "../types";
 
 export interface DownloadItem {
@@ -6,9 +7,46 @@ export interface DownloadItem {
   renderer: OutputRenderer;
 }
 
+async function fetchFileAsBlob(url: string): Promise<Blob | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`Failed to fetch ${url}: ${response.status}`);
+      return null;
+    }
+    return await response.blob();
+  } catch (error) {
+    console.error(`Error fetching ${url}:`, error);
+    return null;
+  }
+}
+
+function getUniqueFilename(filename: string, usedNames: Set<string>): string {
+  if (!usedNames.has(filename)) {
+    usedNames.add(filename);
+    return filename;
+  }
+
+  const dotIndex = filename.lastIndexOf(".");
+  const baseName = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
+  const extension = dotIndex > 0 ? filename.slice(dotIndex) : "";
+
+  let counter = 1;
+  let newName = `${baseName}_${counter}${extension}`;
+  while (usedNames.has(newName)) {
+    counter++;
+    newName = `${baseName}_${counter}${extension}`;
+  }
+  usedNames.add(newName);
+  return newName;
+}
+
 export async function downloadOutputs(items: DownloadItem[]) {
+  const zip = new JSZip();
+  const usedFilenames = new Set<string>();
+  let hasFiles = false;
+
   const concatenableTexts: string[] = [];
-  const nonConcatenableDownloads: Array<{ blob: Blob; filename: string }> = [];
 
   for (const item of items) {
     if (item.renderer.isConcatenable(item.value, item.metadata)) {
@@ -17,7 +55,6 @@ export async function downloadOutputs(items: DownloadItem[]) {
         item.metadata,
       );
       if (copyContent) {
-        // Extract text from CopyContent
         let text: string;
         if (typeof copyContent.data === "string") {
           text = copyContent.data;
@@ -34,18 +71,21 @@ export async function downloadOutputs(items: DownloadItem[]) {
         item.metadata,
       );
       if (downloadContent) {
+        let blob: Blob | null = null;
+        const filename = downloadContent.filename;
+
         if (typeof downloadContent.data === "string") {
           if (downloadContent.data.startsWith("http")) {
-            const link = document.createElement("a");
-            link.href = downloadContent.data;
-            link.download = downloadContent.filename;
-            link.click();
+            blob = await fetchFileAsBlob(downloadContent.data);
           }
         } else {
-          nonConcatenableDownloads.push({
-            blob: downloadContent.data as Blob,
-            filename: downloadContent.filename,
-          });
+          blob = downloadContent.data as Blob;
+        }
+
+        if (blob) {
+          const uniqueFilename = getUniqueFilename(filename, usedFilenames);
+          zip.file(uniqueFilename, blob);
+          hasFiles = true;
         }
       }
     }
@@ -53,12 +93,14 @@ export async function downloadOutputs(items: DownloadItem[]) {
 
   if (concatenableTexts.length > 0) {
     const combinedText = concatenableTexts.join("\n\n---\n\n");
-    const blob = new Blob([combinedText], { type: "text/plain" });
-    downloadBlob(blob, "combined_output.txt");
+    const filename = getUniqueFilename("combined_output.txt", usedFilenames);
+    zip.file(filename, combinedText);
+    hasFiles = true;
   }
 
-  for (const download of nonConcatenableDownloads) {
-    downloadBlob(download.blob, download.filename);
+  if (hasFiles) {
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    downloadBlob(zipBlob, "outputs.zip");
   }
 }
 
