@@ -137,6 +137,10 @@ class HumanInTheLoopBlock(Block):
             yield "approved_data", decision.review_result.data
         elif decision.review_result.status == ReviewStatus.REJECTED:
             yield "rejected_data", decision.review_result.data
+        else:
+            # This should never happen, but handle unexpected review status
+            yield "error", f"Unexpected review status: {decision.review_result.status}"
+            return
 
         # Always yield the review message if present
         if decision.message:
