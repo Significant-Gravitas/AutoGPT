@@ -4,10 +4,9 @@ import { Button } from "@/components/__legacy__/ui/button";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { CronScheduler } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { useGetV1GetUserTimezone } from "@/app/api/__generated__/endpoints/auth/auth";
 import { getTimezoneDisplayName } from "@/lib/timezone-utils";
+import { useUserTimezone } from "@/lib/hooks/useUserTimezone";
 import { InfoIcon } from "lucide-react";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 // Base type for cron expression only
 type CronOnlyCallback = (cronExpression: string) => void;
@@ -49,14 +48,9 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
   const [scheduleName, setScheduleName] = useState<string>(
     props.mode === "with-name" ? props.defaultScheduleName || "" : "",
   );
-  const { completeStep } = useOnboarding();
 
   // Get user's timezone
-  const { data: userTimezone } = useGetV1GetUserTimezone({
-    query: {
-      select: (res) => (res.status === 200 ? res.data.timezone : undefined),
-    },
-  });
+  const userTimezone = useUserTimezone();
   const timezoneDisplay = getTimezoneDisplayName(userTimezone || "UTC");
 
   // Reset state when dialog opens
@@ -94,7 +88,6 @@ export function CronSchedulerDialog(props: CronSchedulerDialogProps) {
       props.onSubmit(cronExpression);
     }
     setOpen(false);
-    completeStep("SCHEDULE_AGENT");
   };
 
   return (

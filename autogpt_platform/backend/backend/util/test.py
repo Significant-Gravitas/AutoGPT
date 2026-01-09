@@ -6,19 +6,19 @@ from typing import Sequence, cast
 
 from autogpt_libs.auth import get_user_id
 
+from backend.api.rest_api import AgentServer
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
 from backend.data.execution import (
+    ExecutionContext,
     ExecutionStatus,
     NodeExecutionResult,
-    UserContext,
     get_graph_execution,
 )
 from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, Scheduler
 from backend.notifications.notifications import NotificationManager
-from backend.server.rest_api import AgentServer
 
 log = logging.getLogger(__name__)
 
@@ -141,9 +141,11 @@ async def execute_block_test(block: Block):
         "node_exec_id": str(uuid.uuid4()),
         "user_id": str(uuid.uuid4()),
         "graph_version": 1,  # Default version for tests
-        "user_context": UserContext(timezone="UTC"),  # Default for tests
+        "execution_context": ExecutionContext(),
     }
     input_model = cast(type[BlockSchema], block.input_schema)
+
+    # Handle regular credentials fields
     credentials_input_fields = input_model.get_credentials_fields()
     if len(credentials_input_fields) == 1 and isinstance(
         block.test_credentials, _BaseCredentials
@@ -157,6 +159,18 @@ async def execute_block_test(block: Block):
             for field_name in credentials_input_fields:
                 if field_name in block.test_credentials:
                     extra_exec_kwargs[field_name] = block.test_credentials[field_name]
+
+    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+    auto_creds_fields = input_model.get_auto_credentials_fields()
+    if auto_creds_fields and block.test_credentials:
+        if isinstance(block.test_credentials, _BaseCredentials):
+            # Single credentials object - use for all auto_credentials kwargs
+            for kwarg_name in auto_creds_fields.keys():
+                extra_exec_kwargs[kwarg_name] = block.test_credentials
+        elif isinstance(block.test_credentials, dict):
+            for kwarg_name in auto_creds_fields.keys():
+                if kwarg_name in block.test_credentials:
+                    extra_exec_kwargs[kwarg_name] = block.test_credentials[kwarg_name]
 
     for input_data in block.test_input:
         log.info(f"{prefix} in: {input_data}")

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from prisma.enums import ReviewStatus
 
@@ -9,8 +9,9 @@ from backend.data.block import (
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
+    BlockType,
 )
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionContext, ExecutionStatus
 from backend.data.human_review import ReviewResult
 from backend.data.model import SchemaField
 from backend.executor.manager import async_update_node_execution_status
@@ -44,11 +45,11 @@ class HumanInTheLoopBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        reviewed_data: Any = SchemaField(
-            description="The data after human review (may be modified)"
+        approved_data: Any = SchemaField(
+            description="The data when approved (may be modified by reviewer)"
         )
-        status: Literal["approved", "rejected"] = SchemaField(
-            description="Status of the review: 'approved' or 'rejected'"
+        rejected_data: Any = SchemaField(
+            description="The data when rejected (may be modified by reviewer)"
         )
         review_message: str = SchemaField(
             description="Any message provided by the reviewer", default=""
@@ -61,15 +62,14 @@ class HumanInTheLoopBlock(Block):
             categories={BlockCategory.BASIC},
             input_schema=HumanInTheLoopBlock.Input,
             output_schema=HumanInTheLoopBlock.Output,
+            block_type=BlockType.HUMAN_IN_THE_LOOP,
             test_input={
                 "data": {"name": "John Doe", "age": 30},
                 "name": "User profile data",
                 "editable": True,
             },
             test_output=[
-                ("reviewed_data", {"name": "John Doe", "age": 30}),
-                ("status", "approved"),
-                ("review_message", ""),
+                ("approved_data", {"name": "John Doe", "age": 30}),
             ],
             test_mock={
                 "get_or_create_human_review": lambda *_args, **_kwargs: ReviewResult(
@@ -80,7 +80,23 @@ class HumanInTheLoopBlock(Block):
                     node_exec_id="test-node-exec-id",
                 ),
                 "update_node_execution_status": lambda *_args, **_kwargs: None,
+                "update_review_processed_status": lambda *_args, **_kwargs: None,
             },
+        )
+
+    async def get_or_create_human_review(self, **kwargs):
+        return await get_database_manager_async_client().get_or_create_human_review(
+            **kwargs
+        )
+
+    async def update_node_execution_status(self, **kwargs):
+        return await async_update_node_execution_status(
+            db_client=get_database_manager_async_client(), **kwargs
+        )
+
+    async def update_review_processed_status(self, node_exec_id: str, processed: bool):
+        return await get_database_manager_async_client().update_review_processed_status(
+            node_exec_id, processed
         )
 
     async def run(
@@ -92,20 +108,19 @@ class HumanInTheLoopBlock(Block):
         graph_exec_id: str,
         graph_id: str,
         graph_version: int,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
-        """
-        Execute the Human In The Loop block.
+        if not execution_context.safe_mode:
+            logger.info(
+                f"HITL block skipping review for node {node_exec_id} - safe mode disabled"
+            )
+            yield "approved_data", input_data.data
+            yield "review_message", "Auto-approved (safe mode disabled)"
+            return
 
-        This method uses one function to handle the complete workflow - checking existing reviews
-        and creating pending ones as needed.
-        """
         try:
-            logger.debug(f"HITL block executing for node {node_exec_id}")
-
-            # Use the data layer to handle the complete workflow
-            db_client = get_database_manager_async_client()
-            result = await db_client.get_or_create_human_review(
+            result = await self.get_or_create_human_review(
                 user_id=user_id,
                 node_exec_id=node_exec_id,
                 graph_exec_id=graph_exec_id,
@@ -119,21 +134,15 @@ class HumanInTheLoopBlock(Block):
             logger.error(f"Error in HITL block for node {node_exec_id}: {str(e)}")
             raise
 
-        # Check if we're waiting for human input
         if result is None:
             logger.info(
                 f"HITL block pausing execution for node {node_exec_id} - awaiting human review"
             )
             try:
-                # Set node status to REVIEW so execution manager can't mark it as COMPLETED
-                # The VALID_STATUS_TRANSITIONS will then prevent any unwanted status changes
-                # Use the proper wrapper function to ensure websocket events are published
-                await async_update_node_execution_status(
-                    db_client=db_client,
+                await self.update_node_execution_status(
                     exec_id=node_exec_id,
                     status=ExecutionStatus.REVIEW,
                 )
-                # Execution pauses here until API routes process the review
                 return
             except Exception as e:
                 logger.error(
@@ -141,20 +150,17 @@ class HumanInTheLoopBlock(Block):
                 )
                 raise
 
-        # Review is complete (approved or rejected) - check if unprocessed
         if not result.processed:
-            # Mark as processed before yielding
-            await db_client.update_review_processed_status(
+            await self.update_review_processed_status(
                 node_exec_id=node_exec_id, processed=True
             )
 
             if result.status == ReviewStatus.APPROVED:
-                yield "status", "approved"
-                yield "reviewed_data", result.data
+                yield "approved_data", result.data
                 if result.message:
                     yield "review_message", result.message
 
             elif result.status == ReviewStatus.REJECTED:
-                yield "status", "rejected"
+                yield "rejected_data", result.data
                 if result.message:
                     yield "review_message", result.message

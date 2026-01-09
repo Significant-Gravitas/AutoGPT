@@ -1,16 +1,17 @@
 "use client";
 
-import * as React from "react";
+import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { Form, FormField } from "@/components/__legacy__/ui/form";
 import { Button } from "@/components/atoms/Button/Button";
-import { StepHeader } from "../StepHeader";
 import { Input } from "@/components/atoms/Input/Input";
 import { Select } from "@/components/atoms/Select/Select";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
-import { CronExpressionDialog } from "@/app/(platform)/library/agents/[id]/components/OldAgentLibraryView/components/cron-scheduler-dialog";
+import { Text } from "@/components/atoms/Text/Text";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { CalendarClockIcon } from "lucide-react";
-import { Props, useAgentInfoStep } from "./useAgentInfoStep";
+import * as React from "react";
+import { StepHeader } from "../StepHeader";
 import { ThumbnailImages } from "./components/ThumbnailImages";
+import { Props, useAgentInfoStep } from "./useAgentInfoStep";
 
 export function AgentInfoStep({
   onBack,
@@ -18,6 +19,7 @@ export function AgentInfoStep({
   selectedAgentId,
   selectedAgentVersion,
   initialData,
+  isMarketplaceUpdate,
 }: Props) {
   const {
     form,
@@ -33,6 +35,7 @@ export function AgentInfoStep({
     selectedAgentId,
     selectedAgentVersion,
     initialData,
+    isMarketplaceUpdate,
   });
 
   const [cronScheduleDialogOpen, setCronScheduleDialogOpen] =
@@ -64,6 +67,41 @@ export function AgentInfoStep({
 
       <Form {...form}>
         <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto p-6">
+          {/* Changes summary field - only shown for updates */}
+          {isMarketplaceUpdate && (
+            <FormField
+              control={form.control}
+              name="changesSummary"
+              render={({ field }) => (
+                <div className="mb-6">
+                  <Input
+                    id={field.name}
+                    label="What changed?"
+                    type="textarea"
+                    placeholder="Describe what's new or improved in this version..."
+                    error={form.formState.errors.changesSummary?.message}
+                    required
+                    {...field}
+                  />
+                  <Text variant="small" className="mt-1 text-gray-600">
+                    This is required to help users understand what&apos;s
+                    different in this update.
+                  </Text>
+                </div>
+              )}
+            />
+          )}
+
+          {/* Optional section label for updates */}
+          {isMarketplaceUpdate && (
+            <div className="mb-4">
+              <Text variant="body" className="font-medium text-gray-700">
+                Optional: Update any of the following details (or leave them
+                as-is)
+              </Text>
+            </div>
+          )}
+
           <FormField
             control={form.control}
             name="title"
@@ -165,6 +203,21 @@ export function AgentInfoStep({
 
           <FormField
             control={form.control}
+            name="agentOutputDemo"
+            render={({ field }) => (
+              <Input
+                id={field.name}
+                label="Agent Output Demo"
+                type="url"
+                placeholder="Add a short video showing the agent's results in action."
+                error={form.formState.errors.agentOutputDemo?.message}
+                {...field}
+              />
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name="instructions"
             render={({ field }) => (
               <Input
@@ -182,10 +235,8 @@ export function AgentInfoStep({
             control={form.control}
             name="recommendedScheduleCron"
             render={({ field }) => (
-              <div className="flex flex-col space-y-2">
-                <label className="text-sm font-medium">
-                  Recommended Schedule
-                </label>
+              <div className="mb-8 flex flex-col space-y-2">
+                <Text variant="large-medium">Recommended Schedule</Text>
                 <p className="text-xs text-gray-600">
                   Suggest when users should run this agent for best results
                 </p>

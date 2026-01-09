@@ -1,11 +1,12 @@
 import { Button } from "@/components/atoms/Button/Button";
+import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import React, { useCallback } from "react";
 import { GoogleDrivePicker } from "./GoogleDrivePicker";
-import type { GoogleDrivePickerConfig } from "@/lib/autogpt-server-api/types";
+import { isValidFile } from "./helpers";
 
-export interface GoogleDrivePickerInputProps {
+export interface Props {
   config: GoogleDrivePickerConfig;
   value: any;
   onChange: (value: any) => void;
@@ -21,37 +22,51 @@ export function GoogleDrivePickerInput({
   error,
   className,
   showRemoveButton = true,
-}: GoogleDrivePickerInputProps) {
+}: Props) {
   const [pickerError, setPickerError] = React.useState<string | null>(null);
   const isMultiSelect = config.multiselect || false;
-  const currentFiles = isMultiSelect
-    ? Array.isArray(value)
-      ? value
-      : []
-    : value
-      ? [value]
-      : [];
+  const hasAutoCredentials = !!config.auto_credentials;
+
+  // Strip _credentials_id from value for display purposes
+  // Only show files section when there are valid file objects
+  const currentFiles = React.useMemo(() => {
+    if (isMultiSelect) {
+      if (!Array.isArray(value)) return [];
+      return value.filter(isValidFile);
+    }
+    if (!value || !isValidFile(value)) return [];
+    return [value];
+  }, [value, isMultiSelect]);
 
   const handlePicked = useCallback(
-    (files: any[]) => {
+    (files: any[], credentialId?: string) => {
       // Clear any previous picker errors
       setPickerError(null);
 
       // Convert to GoogleDriveFile format
-      const convertedFiles = files.map((f) => ({
-        id: f.id,
-        name: f.name,
-        mimeType: f.mimeType,
-        url: f.url,
-        iconUrl: f.iconUrl,
-        isFolder: f.mimeType === "application/vnd.google-apps.folder",
-      }));
+      const convertedFiles = files.map((f) => {
+        const file: any = {
+          id: f.id,
+          name: f.name,
+          mimeType: f.mimeType,
+          url: f.url,
+          iconUrl: f.iconUrl,
+          isFolder: f.mimeType === "application/vnd.google-apps.folder",
+        };
+
+        // Include _credentials_id when auto_credentials is configured
+        if (hasAutoCredentials && credentialId) {
+          file._credentials_id = credentialId;
+        }
+
+        return file;
+      });
 
       // Store based on multiselect mode
       const newValue = isMultiSelect ? convertedFiles : convertedFiles[0];
       onChange(newValue);
     },
-    [isMultiSelect, onChange],
+    [isMultiSelect, onChange, hasAutoCredentials],
   );
 
   const handleRemoveFile = useCallback(
@@ -73,22 +88,27 @@ export function GoogleDrivePickerInput({
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      {/* Picker Button */}
-      <GoogleDrivePicker
-        multiselect={config.multiselect || false}
-        views={config.allowed_views || ["DOCS"]}
-        scopes={config.scopes || ["https://www.googleapis.com/auth/drive.file"]}
-        disabled={false}
-        onPicked={handlePicked}
-        onCanceled={() => {
-          // User canceled - no action needed
-        }}
-        onError={handleError}
-      />
+      <div className="mb-4">
+        {/* Picker Button */}
+        <GoogleDrivePicker
+          multiselect={config.multiselect || false}
+          views={config.allowed_views || ["DOCS"]}
+          scopes={
+            config.scopes || ["https://www.googleapis.com/auth/drive.file"]
+          }
+          disabled={false}
+          requirePlatformCredentials={hasAutoCredentials}
+          onPicked={handlePicked}
+          onCanceled={() => {
+            // User canceled - no action needed
+          }}
+          onError={handleError}
+        />
+      </div>
 
       {/* Display Selected Files */}
       {currentFiles.length > 0 && (
-        <div className="space-y-1">
+        <div className="mb-8 space-y-1">
           {currentFiles.map((file: any, idx: number) => (
             <div
               key={file.id || idx}
@@ -101,6 +121,7 @@ export function GoogleDrivePickerInput({
             >
               <div className="flex items-center gap-2 overflow-hidden">
                 {file.iconUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={file.iconUrl}
                     alt=""

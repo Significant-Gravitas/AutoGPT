@@ -2,13 +2,24 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
+from backend.api.features.library.db import (
+    add_store_agent_to_library,
+    list_library_agents,
+)
+from backend.api.features.store.db import get_store_agent_details, get_store_agents
 from backend.data import db
+from backend.data.analytics import (
+    get_accuracy_trends_and_alerts,
+    get_marketplace_graphs_for_monitoring,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_block_error_stats,
     get_child_graph_executions,
     get_execution_kv_data,
+    get_execution_outputs_by_node_exec_id,
+    get_frequently_executed_graphs,
     get_graph_execution_meta,
     get_graph_executions,
     get_graph_executions_count,
@@ -28,6 +39,7 @@ from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
     get_graph_metadata,
+    get_graph_settings,
     get_node,
     validate_graph_execution_permissions,
 )
@@ -54,8 +66,6 @@ from backend.data.user import (
     get_user_notification_preference,
     update_user_integrations,
 )
-from backend.server.v2.library.db import add_store_agent_to_library, list_library_agents
-from backend.server.v2.store.db import get_store_agent_details, get_store_agents
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -141,15 +151,20 @@ class DatabaseManager(AppService):
     update_graph_execution_stats = _(update_graph_execution_stats)
     upsert_execution_input = _(upsert_execution_input)
     upsert_execution_output = _(upsert_execution_output)
+    get_execution_outputs_by_node_exec_id = _(get_execution_outputs_by_node_exec_id)
     get_execution_kv_data = _(get_execution_kv_data)
     set_execution_kv_data = _(set_execution_kv_data)
     get_block_error_stats = _(get_block_error_stats)
+    get_accuracy_trends_and_alerts = _(get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(get_marketplace_graphs_for_monitoring)
 
     # Graphs
     get_node = _(get_node)
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
     get_graph_metadata = _(get_graph_metadata)
+    get_graph_settings = _(get_graph_settings)
 
     # Credits
     spend_credits = _(_spend_credits, name="spend_credits")
@@ -224,6 +239,10 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
+    # Execution accuracy monitoring
+    get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
+    get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
+    get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
     # Human In The Loop
     has_pending_reviews_for_graph_exec = _(d.has_pending_reviews_for_graph_exec)
@@ -254,6 +273,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
     get_graph_metadata = d.get_graph_metadata
+    get_graph_settings = d.get_graph_settings
     get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution
@@ -262,6 +282,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_integrations = d.get_user_integrations
     upsert_execution_input = d.upsert_execution_input
     upsert_execution_output = d.upsert_execution_output
+    get_execution_outputs_by_node_exec_id = d.get_execution_outputs_by_node_exec_id
     update_graph_execution_stats = d.update_graph_execution_stats
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch

@@ -10,6 +10,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
+from backend.data import user as user_db
 from backend.data.block import (
     Block,
     BlockCostType,
@@ -24,19 +25,17 @@ from backend.data.db import prisma
 # Import dynamic field utilities from centralized location
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
+    ExecutionContext,
     ExecutionStatus,
     GraphExecutionMeta,
     GraphExecutionStats,
     GraphExecutionWithNodes,
     NodesInputMasks,
-    UserContext,
     get_graph_execution,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import CredentialsMetaInput
+from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import get_user_by_id
-from backend.util.cache import cached
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_async_execution_queue,
@@ -51,32 +50,6 @@ from backend.util.exceptions import (
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 from backend.util.type import convert
-
-
-@cached(maxsize=1000, ttl_seconds=3600)
-async def get_user_context(user_id: str) -> UserContext:
-    """
-    Get UserContext for a user, always returns a valid context with timezone.
-    Defaults to UTC if user has no timezone set.
-    """
-    user_context = UserContext(timezone="UTC")  # Default to UTC
-    try:
-        if prisma.is_connected():
-            user = await get_user_by_id(user_id)
-        else:
-            user = await get_database_manager_async_client().get_user_by_id(user_id)
-
-        if user and user.timezone and user.timezone != "not-set":
-            user_context.timezone = user.timezone
-            logger.debug(f"Retrieved user context: timezone={user.timezone}")
-        else:
-            logger.debug("User has no timezone set, using UTC")
-    except Exception as e:
-        logger.warning(f"Could not fetch user timezone: {e}")
-        # Continue with UTC as default
-
-    return user_context
-
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -266,14 +239,19 @@ async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-) -> dict[str, dict[str, str]]:
+) -> tuple[dict[str, dict[str, str]], set[str]]:
     """
-    Checks all credentials for all nodes of the graph and returns structured errors.
+    Checks all credentials for all nodes of the graph and returns structured errors
+    and a set of nodes that should be skipped due to optional missing credentials.
 
     Returns:
-        dict[node_id, dict[field_name, error_message]]: Credential validation errors per node
+        tuple[
+            dict[node_id, dict[field_name, error_message]]: Credential validation errors per node,
+            set[node_id]: Nodes that should be skipped (optional credentials not configured)
+        ]
     """
     credential_errors: dict[str, dict[str, str]] = defaultdict(dict)
+    nodes_to_skip: set[str] = set()
 
     for node in graph.nodes:
         block = node.block
@@ -283,27 +261,46 @@ async def _validate_node_input_credentials(
         if not credentials_fields:
             continue
 
+        # Track if any credential field is missing for this node
+        has_missing_credentials = False
+
         for field_name, credentials_meta_type in credentials_fields.items():
             try:
+                # Check nodes_input_masks first, then input_default
+                field_value = None
                 if (
                     nodes_input_masks
                     and (node_input_mask := nodes_input_masks.get(node.id))
                     and field_name in node_input_mask
                 ):
-                    credentials_meta = credentials_meta_type.model_validate(
-                        node_input_mask[field_name]
-                    )
+                    field_value = node_input_mask[field_name]
                 elif field_name in node.input_default:
-                    credentials_meta = credentials_meta_type.model_validate(
-                        node.input_default[field_name]
-                    )
-                else:
-                    # Missing credentials
-                    credential_errors[node.id][
-                        field_name
-                    ] = "These credentials are required"
-                    continue
+                    # For optional credentials, don't use input_default - treat as missing
+                    # This prevents stale credential IDs from failing validation
+                    if node.credentials_optional:
+                        field_value = None
+                    else:
+                        field_value = node.input_default[field_name]
+
+                # Check if credentials are missing (None, empty, or not present)
+                if field_value is None or (
+                    isinstance(field_value, dict) and not field_value.get("id")
+                ):
+                    has_missing_credentials = True
+                    # If node has credentials_optional flag, mark for skipping instead of error
+                    if node.credentials_optional:
+                        continue  # Don't add error, will be marked for skip after loop
+                    else:
+                        credential_errors[node.id][
+                            field_name
+                        ] = "These credentials are required"
+                        continue
+
+                credentials_meta = credentials_meta_type.model_validate(field_value)
+
             except ValidationError as e:
+                # Validation error means credentials were provided but invalid
+                # This should always be an error, even if optional
                 credential_errors[node.id][field_name] = f"Invalid credentials: {e}"
                 continue
 
@@ -314,6 +311,7 @@ async def _validate_node_input_credentials(
                 )
             except Exception as e:
                 # Handle any errors fetching credentials
+                # If credentials were explicitly configured but unavailable, it's an error
                 credential_errors[node.id][
                     field_name
                 ] = f"Credentials not available: {e}"
@@ -340,7 +338,19 @@ async def _validate_node_input_credentials(
                 ] = "Invalid credentials: type/provider mismatch"
                 continue
 
-    return credential_errors
+        # If node has optional credentials and any are missing, mark for skipping
+        # But only if there are no other errors for this node
+        if (
+            has_missing_credentials
+            and node.credentials_optional
+            and node.id not in credential_errors
+        ):
+            nodes_to_skip.add(node.id)
+            logger.info(
+                f"Node #{node.id} will be skipped: optional credentials not configured"
+            )
+
+    return credential_errors, nodes_to_skip
 
 
 def make_node_credentials_input_map(
@@ -382,21 +392,25 @@ async def validate_graph_with_credentials(
     graph: GraphModel,
     user_id: str,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-) -> Mapping[str, Mapping[str, str]]:
+) -> tuple[Mapping[str, Mapping[str, str]], set[str]]:
     """
-    Validate graph including credentials and return structured errors per node.
+    Validate graph including credentials and return structured errors per node,
+    along with a set of nodes that should be skipped due to optional missing credentials.
 
     Returns:
-        dict[node_id, dict[field_name, error_message]]: Validation errors per node
+        tuple[
+            dict[node_id, dict[field_name, error_message]]: Validation errors per node,
+            set[node_id]: Nodes that should be skipped (optional credentials not configured)
+        ]
     """
     # Get input validation errors
     node_input_errors = GraphModel.validate_graph_get_errors(
         graph, for_run=True, nodes_input_masks=nodes_input_masks
     )
 
-    # Get credential input/availability/validation errors
-    node_credential_input_errors = await _validate_node_input_credentials(
-        graph, user_id, nodes_input_masks
+    # Get credential input/availability/validation errors and nodes to skip
+    node_credential_input_errors, nodes_to_skip = (
+        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
     )
 
     # Merge credential errors with structural errors
@@ -405,7 +419,7 @@ async def validate_graph_with_credentials(
             node_input_errors[node_id] = {}
         node_input_errors[node_id].update(field_errors)
 
-    return node_input_errors
+    return node_input_errors, nodes_to_skip
 
 
 async def _construct_starting_node_execution_input(
@@ -413,7 +427,7 @@ async def _construct_starting_node_execution_input(
     user_id: str,
     graph_inputs: BlockInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-) -> list[tuple[str, BlockInput]]:
+) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
     This function checks the graph for starting nodes, validates the input data
@@ -427,11 +441,14 @@ async def _construct_starting_node_execution_input(
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
 
     Returns:
-        list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
-            the corresponding input data for that node.
+        tuple[
+            list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID
+                and the corresponding input data for that node.
+            set[str]: Node IDs that should be skipped (optional credentials not configured)
+        ]
     """
     # Use new validation function that includes credentials
-    validation_errors = await validate_graph_with_credentials(
+    validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
     n_error_nodes = len(validation_errors)
@@ -472,7 +489,7 @@ async def _construct_starting_node_execution_input(
             "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
         )
 
-    return nodes_input
+    return nodes_input, nodes_to_skip
 
 
 async def validate_and_construct_node_execution_input(
@@ -483,7 +500,7 @@ async def validate_and_construct_node_execution_input(
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     is_sub_graph: bool = False,
-) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks]:
+) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
     This centralizes the logic used by both scheduler validation and actual execution.
@@ -495,12 +512,12 @@ async def validate_and_construct_node_execution_input(
         graph_version: The version of the graph to use.
         graph_credentials_inputs: Credentials inputs to use.
         nodes_input_masks: Node inputs to use.
-        is_sub_graph: Whether this is a sub-graph execution.
 
     Returns:
         GraphModel: Full graph object for the given `graph_id`.
         list[tuple[node_id, BlockInput]]: Starting node IDs with corresponding inputs.
         dict[str, BlockInput]: Node input masks including all passed-in credentials.
+        set[str]: Node IDs that should be skipped (optional credentials not configured).
 
     Raises:
         NotFoundError: If the graph is not found.
@@ -542,14 +559,16 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input = await _construct_starting_node_execution_input(
-        graph=graph,
-        user_id=user_id,
-        graph_inputs=graph_inputs,
-        nodes_input_masks=nodes_input_masks,
+    starting_nodes_input, nodes_to_skip = (
+        await _construct_starting_node_execution_input(
+            graph=graph,
+            user_id=user_id,
+            graph_inputs=graph_inputs,
+            nodes_input_masks=nodes_input_masks,
+        )
     )
 
-    return graph, starting_nodes_input, nodes_input_masks
+    return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
 
 
 def _merge_nodes_input_masks(
@@ -763,8 +782,7 @@ async def add_graph_execution(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-    parent_graph_exec_id: Optional[str] = None,
-    is_sub_graph: bool = False,
+    execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
@@ -780,7 +798,6 @@ async def add_graph_execution(
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
         nodes_input_masks: Node inputs to use in the execution.
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
-        is_sub_graph: Whether this is a sub-graph execution.
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
@@ -790,8 +807,10 @@ async def add_graph_execution(
     """
     if prisma.is_connected():
         edb = execution_db
+        udb = user_db
+        gdb = graph_db
     else:
-        edb = get_database_manager_async_client()
+        edb = udb = gdb = get_database_manager_async_client()
 
     # Get or create the graph execution
     if graph_exec_id:
@@ -807,11 +826,18 @@ async def add_graph_execution(
 
         # Use existing execution's compiled input masks
         compiled_nodes_input_masks = graph_exec.nodes_input_masks or {}
+        # For resumed executions, nodes_to_skip was already determined at creation time
+        # TODO: Consider storing nodes_to_skip in DB if we need to preserve it across resumes
+        nodes_to_skip: set[str] = set()
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
+        parent_exec_id = (
+            execution_context.parent_execution_id if execution_context else None
+        )
+
         # Create new execution
-        graph, starting_nodes_input, compiled_nodes_input_masks = (
+        graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
             await validate_and_construct_node_execution_input(
                 graph_id=graph_id,
                 user_id=user_id,
@@ -819,7 +845,7 @@ async def add_graph_execution(
                 graph_version=graph_version,
                 graph_credentials_inputs=graph_credentials_inputs,
                 nodes_input_masks=nodes_input_masks,
-                is_sub_graph=is_sub_graph,
+                is_sub_graph=parent_exec_id is not None,
             )
         )
 
@@ -832,7 +858,7 @@ async def add_graph_execution(
             nodes_input_masks=nodes_input_masks,
             starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
-            parent_graph_exec_id=parent_graph_exec_id,
+            parent_graph_exec_id=parent_exec_id,
         )
 
         logger.info(
@@ -840,14 +866,29 @@ async def add_graph_execution(
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
 
-    # Common path: publish to queue and update status
-    try:
-        graph_exec_entry = graph_exec.to_graph_execution_entry(
-            user_context=await get_user_context(user_id),
-            compiled_nodes_input_masks=compiled_nodes_input_masks,
-            parent_graph_exec_id=parent_graph_exec_id,
+    # Generate execution context if it's not provided
+    if execution_context is None:
+        user = await udb.get_user_by_id(user_id)
+        settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
+
+        execution_context = ExecutionContext(
+            safe_mode=(
+                settings.human_in_the_loop_safe_mode
+                if settings.human_in_the_loop_safe_mode is not None
+                else True
+            ),
+            user_timezone=(
+                user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+            ),
+            root_execution_id=graph_exec.id,
         )
 
+    try:
+        graph_exec_entry = graph_exec.to_graph_execution_entry(
+            compiled_nodes_input_masks=compiled_nodes_input_masks,
+            nodes_to_skip=nodes_to_skip,
+            execution_context=execution_context,
+        )
         logger.info(f"Publishing execution {graph_exec.id} to execution queue")
 
         exec_queue = await get_async_execution_queue()

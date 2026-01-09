@@ -32,3 +32,17 @@ def test_type_conversion():
     assert convert("5", List[int]) == [5]
     assert convert("[5,4,2]", List[int]) == [5, 4, 2]
     assert convert([5, 4, 2], List[str]) == ["5", "4", "2"]
+
+    # Test the specific case that was failing: empty list to Optional[str]
+    assert convert([], Optional[str]) == "[]"
+    assert convert([], str) == "[]"
+
+    # Test the actual failing case: empty list to ShortTextType
+    from backend.util.type import ShortTextType
+
+    assert convert([], Optional[ShortTextType]) == "[]"
+    assert convert([], ShortTextType) == "[]"
+
+    # Test other empty list conversions
+    assert convert([], int) == 0  # len([]) = 0
+    assert convert([], Optional[int]) == 0

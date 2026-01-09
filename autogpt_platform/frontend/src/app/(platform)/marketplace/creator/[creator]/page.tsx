@@ -1,13 +1,13 @@
-import { getQueryClient } from "@/lib/react-query/queryClient";
 import {
   getV2GetCreatorDetails,
   prefetchGetV2GetCreatorDetailsQuery,
   prefetchGetV2ListStoreAgentsQuery,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
-import { MainCreatorPage } from "../../components/MainCreatorPage/MainCreatorPage";
-import { Metadata } from "next";
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
+import { getQueryClient } from "@/lib/react-query/queryClient";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { Metadata } from "next";
+import { MainCreatorPage } from "../../components/MainCreatorPage/MainCreatorPage";
 
 export const dynamic = "force-dynamic";
 

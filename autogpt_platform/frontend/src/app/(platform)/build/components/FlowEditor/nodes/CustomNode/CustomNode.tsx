@@ -1,24 +1,25 @@
-import React from "react";
-import { Node as XYNode, NodeProps } from "@xyflow/react";
-import { RJSFSchema } from "@rjsf/utils";
-import { BlockUIType } from "../../../types";
-import { StickyNoteBlock } from "./components/StickyNoteBlock";
-import { BlockInfoCategoriesItem } from "@/app/api/__generated__/models/blockInfoCategoriesItem";
-import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { BlockCost } from "@/app/api/__generated__/models/blockCost";
+import { BlockInfoCategoriesItem } from "@/app/api/__generated__/models/blockInfoCategoriesItem";
 import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutionResult";
-import { NodeContainer } from "./components/NodeContainer";
-import { NodeHeader } from "./components/NodeHeader";
-import { FormCreator } from "../FormCreator";
-import { preprocessInputSchema } from "@/components/renderers/input-renderer/utils/input-schema-pre-processor";
-import { OutputHandler } from "../OutputHandler";
-import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
-import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
-import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
-import { cn } from "@/lib/utils";
-import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
-import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
 import { NodeModelMetadata } from "@/app/api/__generated__/models/nodeModelMetadata";
+import { preprocessInputSchema } from "@/components/renderers/InputRenderer/utils/input-schema-pre-processor";
+import { cn } from "@/lib/utils";
+import { RJSFSchema } from "@rjsf/utils";
+import { NodeProps, Node as XYNode } from "@xyflow/react";
+import React from "react";
+import { BlockUIType } from "../../../types";
+import { FormCreator } from "../FormCreator";
+import { OutputHandler } from "../OutputHandler";
+import { AyrshareConnectButton } from "./components/AyrshareConnectButton";
+import { NodeAdvancedToggle } from "./components/NodeAdvancedToggle";
+import { NodeContainer } from "./components/NodeContainer";
+import { NodeExecutionBadge } from "./components/NodeExecutionBadge";
+import { NodeHeader } from "./components/NodeHeader";
+import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
+import { NodeRightClickMenu } from "./components/NodeRightClickMenu";
+import { StickyNoteBlock } from "./components/StickyNoteBlock";
+import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -37,6 +38,7 @@ export type CustomNodeData = {
   costs: BlockCost[];
   categories: BlockInfoCategoriesItem[];
   metadata?: NodeModelMetadata;
+  errors?: { [key: string]: string };
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -71,10 +73,24 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
         ? (data.hardcodedValues.output_schema ?? {})
         : data.outputSchema;
 
+    const hasConfigErrors =
+      data.errors &&
+      Object.values(data.errors).some(
+        (value) => value !== null && value !== undefined && value !== "",
+      );
+
+    const outputData = data.nodeExecutionResult?.output_data;
+    const hasOutputError =
+      typeof outputData === "object" &&
+      outputData !== null &&
+      "error" in outputData;
+
+    const hasErrors = hasConfigErrors || hasOutputError;
+
     // Currently all blockTypes design are similar - that's why i am using the same component for all of them
     // If in future - if we need some drastic change in some blockTypes design - we can create separate components for them
-    return (
-      <NodeContainer selected={selected} nodeId={nodeId}>
+    const node = (
+      <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
         <div className="rounded-xlarge bg-white">
           <NodeHeader data={data} nodeId={nodeId} />
           {isWebhook && <WebhookDisclaimer nodeId={nodeId} />}
@@ -84,19 +100,32 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             nodeId={nodeId}
             uiType={data.uiType}
             className={cn(
-              "bg-white pr-6",
+              "bg-white px-4",
               isWebhook && "pointer-events-none opacity-50",
             )}
             showHandles={showHandles}
           />
           <NodeAdvancedToggle nodeId={nodeId} />
           {data.uiType != BlockUIType.OUTPUT && (
-            <OutputHandler outputSchema={outputSchema} nodeId={nodeId} />
+            <OutputHandler
+              uiType={data.uiType}
+              outputSchema={outputSchema}
+              nodeId={nodeId}
+            />
           )}
           <NodeDataRenderer nodeId={nodeId} />
         </div>
         <NodeExecutionBadge nodeId={nodeId} />
       </NodeContainer>
+    );
+
+    return (
+      <NodeRightClickMenu
+        nodeId={nodeId}
+        subGraphID={data.hardcodedValues?.graph_id}
+      >
+        {node}
+      </NodeRightClickMenu>
     );
   },
 );

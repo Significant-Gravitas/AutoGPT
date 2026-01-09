@@ -1,19 +1,18 @@
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 
-import BackendAPI from "@/lib/autogpt-server-api/client";
-import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
-import { useCallback, useEffect, useState } from "react";
-import * as Sentry from "@sentry/nextjs";
+import { okData } from "@/app/api/helpers";
+import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
+import type { GraphExecution } from "@/lib/autogpt-server-api/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NotificationState,
   categorizeExecutions,
   handleExecutionUpdate,
 } from "./helpers";
-import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 
 export function useAgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
-  const [api] = useState(() => new BackendAPI());
   const { agentInfoMap } = useLibraryAgents();
 
   const [notifications, setNotifications] = useState<NotificationState>({
@@ -23,15 +22,19 @@ export function useAgentActivityDropdown() {
     totalCount: 0,
   });
 
-  const [isConnected, setIsConnected] = useState(false);
-
   const {
     data: executions,
     isSuccess: executionsSuccess,
     error: executionsError,
   } = useGetV1ListAllExecutions({
-    query: { select: (res) => (res.status === 200 ? res.data : null) },
+    query: { select: okData },
   });
+
+  // Get all graph IDs from agentInfoMap
+  const graphIds = useMemo(
+    () => Array.from(agentInfoMap.keys()),
+    [agentInfoMap],
+  );
 
   // Handle real-time execution updates
   const handleExecutionEvent = useCallback(
@@ -44,52 +47,34 @@ export function useAgentActivityDropdown() {
   );
 
   // Process initial execution state when data loads
+  // Use a ref to track if we've already processed to avoid infinite loops
+  const processedExecutionsRef = useRef<string | null>(null);
   useEffect(() => {
-    if (executions && executionsSuccess && agentInfoMap.size > 0) {
+    const executionKey = executions
+      ? `${executions.length}-${executionsSuccess}`
+      : null;
+
+    if (
+      executions &&
+      executionsSuccess &&
+      agentInfoMap.size > 0 &&
+      processedExecutionsRef.current !== executionKey
+    ) {
       const notifications = categorizeExecutions(executions, agentInfoMap);
       setNotifications(notifications);
+      processedExecutionsRef.current = executionKey;
     }
   }, [executions, executionsSuccess, agentInfoMap]);
 
-  // Initialize WebSocket connection for real-time updates
-  useEffect(() => {
-    if (!agentInfoMap.size) return;
-
-    const connectHandler = api.onWebSocketConnect(() => {
-      setIsConnected(true);
-      agentInfoMap.forEach((_, graphId) => {
-        api.subscribeToGraphExecutions(graphId as GraphID).catch((error) => {
-          Sentry.captureException(error, {
-            tags: {
-              graphId,
-            },
-          });
-        });
-      });
-    });
-
-    const disconnectHandler = api.onWebSocketDisconnect(() => {
-      setIsConnected(false);
-    });
-
-    const messageHandler = api.onWebSocketMessage(
-      "graph_execution_event",
-      handleExecutionEvent,
-    );
-
-    api.connectWebSocket();
-
-    return () => {
-      connectHandler();
-      disconnectHandler();
-      messageHandler();
-      api.disconnectWebSocket();
-    };
-  }, [api, handleExecutionEvent, agentInfoMap]);
+  // Subscribe to execution events for all graphs
+  useExecutionEvents({
+    graphIds: graphIds.length > 0 ? graphIds : undefined,
+    enabled: graphIds.length > 0,
+    onExecutionUpdate: handleExecutionEvent,
+  });
 
   return {
     ...notifications,
-    isConnected,
     isReady: executionsSuccess,
     error: executionsError,
     isOpen,

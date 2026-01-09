@@ -1,13 +1,14 @@
 "use client";
 
 import { useGetV1GetExecutionDetails } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import { useGetV2GetASpecificPreset } from "@/app/api/__generated__/endpoints/presets/presets";
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { okData } from "@/app/api/helpers";
 
 export function useSelectedRunView(graphId: string, runId: string) {
-  const query = useGetV1GetExecutionDetails(graphId, runId, {
+  const executionQuery = useGetV1GetExecutionDetails(graphId, runId, {
     query: {
-      refetchInterval: (q: any) => {
+      refetchInterval: (q) => {
         const isSuccess = q.state.data?.status === 200;
 
         if (!isSuccess) return false;
@@ -30,12 +31,17 @@ export function useSelectedRunView(graphId: string, runId: string) {
     },
   });
 
-  const status = query.data?.status;
+  const run = okData(executionQuery.data);
+  const status = executionQuery.data?.status;
 
-  const run: GetV1GetExecutionDetails200 | undefined =
-    status === 200
-      ? (query.data?.data as GetV1GetExecutionDetails200)
-      : undefined;
+  const presetId = run?.preset_id || undefined;
+
+  const presetQuery = useGetV2GetASpecificPreset(presetId || "", {
+    query: {
+      enabled: !!presetId,
+      select: okData,
+    },
+  });
 
   const httpError =
     status && status !== 200
@@ -44,8 +50,9 @@ export function useSelectedRunView(graphId: string, runId: string) {
 
   return {
     run,
-    isLoading: query.isLoading,
-    responseError: query.error,
+    preset: presetQuery.data,
+    isLoading: executionQuery.isLoading || presetQuery.isLoading,
+    responseError: executionQuery.error || presetQuery.error,
     httpError,
   } as const;
 }

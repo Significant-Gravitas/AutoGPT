@@ -29,6 +29,7 @@ from backend.data.block import (
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
+    ExecutionContext,
     ExecutionQueue,
     ExecutionStatus,
     GraphExecution,
@@ -36,7 +37,6 @@ from backend.data.execution import (
     NodeExecutionEntry,
     NodeExecutionResult,
     NodesInputMasks,
-    UserContext,
 )
 from backend.data.graph import Link, Node
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
@@ -48,27 +48,8 @@ from backend.data.notifications import (
     ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
-from backend.executor.activity_status_generator import (
-    generate_activity_status_for_execution,
-)
-from backend.executor.utils import (
-    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
-    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-    GRAPH_EXECUTION_EXCHANGE,
-    GRAPH_EXECUTION_QUEUE_NAME,
-    GRAPH_EXECUTION_ROUTING_KEY,
-    CancelExecutionEvent,
-    ExecutionOutputEntry,
-    LogMetadata,
-    NodeExecutionProgress,
-    block_usage_cost,
-    create_execution_queue_config,
-    execution_usage_cost,
-    validate_exec,
-)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.notifications.notifications import queue_notification
-from backend.server.v2.AutoMod.manager import automod_manager
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -95,7 +76,24 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
+from .activity_status_generator import generate_activity_status_for_execution
+from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .utils import (
+    GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
+    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_EXCHANGE,
+    GRAPH_EXECUTION_QUEUE_NAME,
+    GRAPH_EXECUTION_ROUTING_KEY,
+    CancelExecutionEvent,
+    ExecutionOutputEntry,
+    LogMetadata,
+    NodeExecutionProgress,
+    block_usage_cost,
+    create_execution_queue_config,
+    execution_usage_cost,
+    validate_exec,
+)
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
@@ -116,6 +114,40 @@ utilization_gauge = Gauge(
     "Ratio of active graph runs to max graph workers",
 )
 
+# Redis key prefix for tracking insufficient funds Discord notifications.
+# We only send one notification per user per agent until they top up credits.
+INSUFFICIENT_FUNDS_NOTIFIED_PREFIX = "insufficient_funds_discord_notified"
+# TTL for the notification flag (30 days) - acts as a fallback cleanup
+INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS = 30 * 24 * 60 * 60
+
+
+async def clear_insufficient_funds_notifications(user_id: str) -> int:
+    """
+    Clear all insufficient funds notification flags for a user.
+
+    This should be called when a user tops up their credits, allowing
+    Discord notifications to be sent again if they run out of funds.
+
+    Args:
+        user_id: The user ID to clear notifications for.
+
+    Returns:
+        The number of keys that were deleted.
+    """
+    try:
+        redis_client = await redis.get_redis_async()
+        pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
+        keys = [key async for key in redis_client.scan_iter(match=pattern)]
+        if keys:
+            return await redis_client.delete(*keys)
+        return 0
+    except Exception as e:
+        logger.warning(
+            f"Failed to clear insufficient funds notification flags for user "
+            f"{user_id}: {e}"
+        )
+        return 0
+
 
 # Thread-local storage for ExecutionProcessor instances
 _tls = threading.local()
@@ -133,9 +165,8 @@ def execute_graph(
     cluster_lock: ClusterLock,
 ):
     """Execute graph using thread-local ExecutionProcessor instance"""
-    return _tls.processor.on_graph_execution(
-        graph_exec_entry, cancel_event, cluster_lock
-    )
+    processor: ExecutionProcessor = _tls.processor
+    return processor.on_graph_execution(graph_exec_entry, cancel_event, cluster_lock)
 
 
 T = TypeVar("T")
@@ -143,10 +174,11 @@ T = TypeVar("T")
 
 async def execute_node(
     node: Node,
-    creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
+    execution_processor: "ExecutionProcessor",
     execution_stats: NodeExecutionStats | None = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    nodes_to_skip: Optional[set[str]] = None,
 ) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -168,6 +200,8 @@ async def execute_node(
     node_exec_id = data.node_exec_id
     node_id = data.node_id
     node_block = node.block
+    execution_context = data.execution_context
+    creds_manager = execution_processor.creds_manager
 
     log_metadata = LogMetadata(
         logger=_logger,
@@ -210,23 +244,61 @@ async def execute_node(
         "graph_exec_id": graph_exec_id,
         "node_exec_id": node_exec_id,
         "user_id": user_id,
+        "execution_context": execution_context,
+        "execution_processor": execution_processor,
+        "nodes_to_skip": nodes_to_skip or set(),
     }
-
-    # Add user context from NodeExecutionEntry
-    extra_exec_kwargs["user_context"] = data.user_context
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
     # credentials is not supported.
-    creds_lock = None
+    creds_locks: list[AsyncRedisLock] = []
     input_model = cast(type[BlockSchema], node_block.input_schema)
+
+    # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
         credentials_meta = input_type(**input_data[field_name])
-        credentials, creds_lock = await creds_manager.acquire(
-            user_id, credentials_meta.id
-        )
+        credentials, lock = await creds_manager.acquire(user_id, credentials_meta.id)
+        creds_locks.append(lock)
         extra_exec_kwargs[field_name] = credentials
+
+    # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
+    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
+        field_name = info["field_name"]
+        field_data = input_data.get(field_name)
+        if field_data and isinstance(field_data, dict):
+            # Check if _credentials_id key exists in the field data
+            if "_credentials_id" in field_data:
+                cred_id = field_data["_credentials_id"]
+                if cred_id:
+                    # Credential ID provided - acquire credentials
+                    provider = info.get("config", {}).get(
+                        "provider", "external service"
+                    )
+                    file_name = field_data.get("name", "selected file")
+                    try:
+                        credentials, lock = await creds_manager.acquire(
+                            user_id, cred_id
+                        )
+                        creds_locks.append(lock)
+                        extra_exec_kwargs[kwarg_name] = credentials
+                    except ValueError:
+                        # Credential was deleted or doesn't exist
+                        raise ValueError(
+                            f"Authentication expired for '{file_name}' in field '{field_name}'. "
+                            f"The saved {provider.capitalize()} credentials no longer exist. "
+                            f"Please re-select the file to re-authenticate."
+                        )
+                # else: _credentials_id is explicitly None, skip credentials (for chained data)
+            else:
+                # _credentials_id key missing entirely - this is an error
+                provider = info.get("config", {}).get("provider", "external service")
+                file_name = field_data.get("name", "selected file")
+                raise ValueError(
+                    f"Authentication missing for '{file_name}' in field '{field_name}'. "
+                    f"Please re-select the file to authenticate with {provider.capitalize()}."
+                )
 
     output_size = 0
 
@@ -243,8 +315,8 @@ async def execute_node(
     scope.set_tag("node_id", node_id)
     scope.set_tag("block_name", node_block.name)
     scope.set_tag("block_id", node_block.id)
-    for k, v in (data.user_context or UserContext(timezone="UTC")).model_dump().items():
-        scope.set_tag(f"user_context.{k}", v)
+    for k, v in execution_context.model_dump().items():
+        scope.set_tag(f"execution_context.{k}", v)
 
     try:
         async for output_name, output_data in node_block.execute(
@@ -261,12 +333,17 @@ async def execute_node(
         # Re-raise to maintain normal error flow
         raise
     finally:
-        # Ensure credentials are released even if execution fails
-        if creds_lock and (await creds_lock.locked()) and (await creds_lock.owned()):
-            try:
-                await creds_lock.release()
-            except Exception as e:
-                log_metadata.error(f"Failed to release credentials lock: {e}")
+        # Ensure all credentials are released even if execution fails
+        for creds_lock in creds_locks:
+            if (
+                creds_lock
+                and (await creds_lock.locked())
+                and (await creds_lock.owned())
+            ):
+                try:
+                    await creds_lock.release()
+                except Exception as e:
+                    log_metadata.error(f"Failed to release credentials lock: {e}")
 
         # Update execution stats
         if execution_stats is not None:
@@ -289,7 +366,7 @@ async def _enqueue_next_nodes(
     graph_version: int,
     log_metadata: LogMetadata,
     nodes_input_masks: Optional[NodesInputMasks],
-    user_context: UserContext,
+    execution_context: ExecutionContext,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
@@ -309,7 +386,7 @@ async def _enqueue_next_nodes(
             node_id=node_id,
             block_id=block_id,
             inputs=data,
-            user_context=user_context,
+            execution_context=execution_context,
         )
 
     async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -467,6 +544,7 @@ class ExecutionProcessor:
         node_exec_progress: NodeExecutionProgress,
         nodes_input_masks: Optional[NodesInputMasks],
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        nodes_to_skip: Optional[set[str]] = None,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             logger=_logger,
@@ -489,6 +567,7 @@ class ExecutionProcessor:
             db_client=db_client,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
+            nodes_to_skip=nodes_to_skip,
         )
         if isinstance(status, BaseException):
             raise status
@@ -534,6 +613,7 @@ class ExecutionProcessor:
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
         nodes_input_masks: Optional[NodesInputMasks] = None,
+        nodes_to_skip: Optional[set[str]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
 
@@ -566,10 +646,11 @@ class ExecutionProcessor:
 
             async for output_name, output_data in execute_node(
                 node=node,
-                creds_manager=self.creds_manager,
                 data=node_exec,
+                execution_processor=self,
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
+                nodes_to_skip=nodes_to_skip,
             ):
                 await persist_output(output_name, output_data)
 
@@ -818,11 +899,16 @@ class ExecutionProcessor:
         execution_stats_lock = threading.Lock()
 
         # State holders ----------------------------------------------------
-        running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
+        self.running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
             NodeExecutionProgress
         )
-        running_node_evaluation: dict[str, Future] = {}
+        self.running_node_evaluation: dict[str, Future] = {}
+        self.execution_stats = execution_stats
+        self.execution_stats_lock = execution_stats_lock
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
+
+        running_node_execution = self.running_node_execution
+        running_node_evaluation = self.running_node_evaluation
 
         try:
             if db_client.get_credits(graph_exec.user_id) <= 0:
@@ -861,7 +947,9 @@ class ExecutionProcessor:
                     ExecutionStatus.REVIEW,
                 ],
             ):
-                node_entry = node_exec.to_node_execution_entry(graph_exec.user_context)
+                node_entry = node_exec.to_node_execution_entry(
+                    graph_exec.execution_context
+                )
                 execution_queue.add(node_entry)
 
             # ------------------------------------------------------------
@@ -873,6 +961,21 @@ class ExecutionProcessor:
                     break
 
                 queued_node_exec = execution_queue.get()
+
+                # Check if this node should be skipped due to optional credentials
+                if queued_node_exec.node_id in graph_exec.nodes_to_skip:
+                    log_metadata.info(
+                        f"Skipping node execution {queued_node_exec.node_exec_id} "
+                        f"for node {queued_node_exec.node_id} - optional credentials not configured"
+                    )
+                    # Mark the node as completed without executing
+                    # No outputs will be produced, so downstream nodes won't trigger
+                    update_node_execution_status(
+                        db_client=db_client,
+                        exec_id=queued_node_exec.node_exec_id,
+                        status=ExecutionStatus.COMPLETED,
+                    )
+                    continue
 
                 log_metadata.debug(
                     f"Dispatching node execution {queued_node_exec.node_exec_id} "
@@ -934,6 +1037,7 @@ class ExecutionProcessor:
                             execution_stats,
                             execution_stats_lock,
                         ),
+                        nodes_to_skip=graph_exec.nodes_to_skip,
                     ),
                     self.node_execution_loop,
                 )
@@ -1165,7 +1269,7 @@ class ExecutionProcessor:
             graph_version=graph_exec.graph_version,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
-            user_context=graph_exec.user_context,
+            execution_context=graph_exec.execution_context,
         ):
             execution_queue.add(next_execution)
 
@@ -1213,12 +1317,40 @@ class ExecutionProcessor:
         graph_id: str,
         e: InsufficientBalanceError,
     ):
+        # Check if we've already sent a notification for this user+agent combo.
+        # We only send one notification per user per agent until they top up credits.
+        redis_key = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
+        try:
+            redis_client = redis.get_redis()
+            # SET NX returns True only if the key was newly set (didn't exist)
+            is_new_notification = redis_client.set(
+                redis_key,
+                "1",
+                nx=True,
+                ex=INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS,
+            )
+            if not is_new_notification:
+                # Already notified for this user+agent, skip all notifications
+                logger.debug(
+                    f"Skipping duplicate insufficient funds notification for "
+                    f"user={user_id}, graph={graph_id}"
+                )
+                return
+        except Exception as redis_error:
+            # If Redis fails, log and continue to send the notification
+            # (better to occasionally duplicate than to never notify)
+            logger.warning(
+                f"Failed to check/set insufficient funds notification flag in Redis: "
+                f"{redis_error}"
+            )
+
         shortfall = abs(e.amount) - e.balance
         metadata = db_client.get_graph_metadata(graph_id)
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
 
+        # Queue user email notification
         queue_notification(
             NotificationEventModel(
                 user_id=user_id,
@@ -1232,6 +1364,7 @@ class ExecutionProcessor:
             )
         )
 
+        # Send Discord system alert
         try:
             user_email = db_client.get_user_email_by_id(user_id)
 
@@ -1555,36 +1688,32 @@ class ExecutionManager(AppProcess):
         graph_exec_id = graph_exec_entry.graph_exec_id
         user_id = graph_exec_entry.user_id
         graph_id = graph_exec_entry.graph_id
-        parent_graph_exec_id = graph_exec_entry.parent_graph_exec_id
+        root_exec_id = graph_exec_entry.execution_context.root_execution_id
+        parent_exec_id = graph_exec_entry.execution_context.parent_execution_id
 
         logger.info(
             f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}, user_id={user_id}, executor_id={self.executor_id}"
-            + (f", parent={parent_graph_exec_id}" if parent_graph_exec_id else "")
+            + (f", root={root_exec_id}" if root_exec_id else "")
+            + (f", parent={parent_exec_id}" if parent_exec_id else "")
         )
 
-        # Check if parent execution is already terminated (prevents orphaned child executions)
-        if parent_graph_exec_id:
-            try:
-                parent_exec = get_db_client().get_graph_execution_meta(
-                    execution_id=parent_graph_exec_id,
-                    user_id=user_id,
+        # Check if root execution is already terminated (prevents orphaned child executions)
+        if root_exec_id and root_exec_id != graph_exec_id:
+            parent_exec = get_db_client().get_graph_execution_meta(
+                execution_id=root_exec_id,
+                user_id=user_id,
+            )
+            if parent_exec and parent_exec.status == ExecutionStatus.TERMINATED:
+                logger.info(
+                    f"[{self.service_name}] Skipping execution {graph_exec_id} - parent {root_exec_id} is TERMINATED"
                 )
-                if parent_exec and parent_exec.status == ExecutionStatus.TERMINATED:
-                    logger.info(
-                        f"[{self.service_name}] Skipping execution {graph_exec_id} - parent {parent_graph_exec_id} is TERMINATED"
-                    )
-                    # Mark this child as terminated since parent was stopped
-                    get_db_client().update_graph_execution_stats(
-                        graph_exec_id=graph_exec_id,
-                        status=ExecutionStatus.TERMINATED,
-                    )
-                    _ack_message(reject=False, requeue=False)
-                    return
-            except Exception as e:
-                logger.warning(
-                    f"[{self.service_name}] Could not check parent status for {graph_exec_id}: {e}"
+                # Mark this child as terminated since parent was stopped
+                get_db_client().update_graph_execution_stats(
+                    graph_exec_id=graph_exec_id,
+                    status=ExecutionStatus.TERMINATED,
                 )
-                # Continue execution if parent check fails (don't block on errors)
+                _ack_message(reject=False, requeue=False)
+                return
 
         # Check user rate limit before processing
         try:
