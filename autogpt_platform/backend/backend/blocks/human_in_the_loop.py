@@ -132,18 +132,15 @@ class HumanInTheLoopBlock(Block):
             # Execution is paused, the helper already handled status updates
             return
 
-        # Process the review result and yield appropriate outputs
-        if (
-            decision.review_result
-            and decision.review_result.status == ReviewStatus.APPROVED
-        ):
+        # Decision is complete - review_result is guaranteed to be present
+        assert (
+            decision.review_result is not None
+        ), "review_result should not be None when decision exists"
+        if decision.review_result.status == ReviewStatus.APPROVED:
             yield "approved_data", decision.review_result.data
-            if decision.message:
-                yield "review_message", decision.message
-        elif (
-            decision.review_result
-            and decision.review_result.status == ReviewStatus.REJECTED
-        ):
+        elif decision.review_result.status == ReviewStatus.REJECTED:
             yield "rejected_data", decision.review_result.data
-            if decision.message:
-                yield "review_message", decision.message
+
+        # Always yield the review message if present
+        if decision.message:
+            yield "review_message", decision.message

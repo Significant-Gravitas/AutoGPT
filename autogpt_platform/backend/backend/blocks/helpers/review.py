@@ -176,11 +176,13 @@ class HITLReviewHelper:
             # Still awaiting review - return None to pause execution
             return None
 
+        # Review is complete, determine outcome
         should_proceed = review_result.status == ReviewStatus.APPROVED
-        if should_proceed:
-            message = review_result.message or "Execution approved by reviewer"
-        else:
-            message = review_result.message or "Execution rejected by reviewer"
+        message = review_result.message or (
+            "Execution approved by reviewer"
+            if should_proceed
+            else "Execution rejected by reviewer"
+        )
 
         return ReviewDecision(
             should_proceed=should_proceed, message=message, review_result=review_result
