@@ -8,6 +8,7 @@ import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBann
 
 export function ModalRunSection() {
   const {
+    agent,
     defaultRunType,
     presetName,
     setPresetName,
@@ -23,6 +24,11 @@ export function ModalRunSection() {
 
   const inputFields = Object.entries(agentInputFields || {});
   const credentialFields = Object.entries(agentCredentialsInputFields || {});
+
+  // Get the list of required credentials from the schema
+  const requiredCredentials = new Set(
+    (agent.credentials_input_schema?.required as string[]) || [],
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -99,14 +105,12 @@ export function ModalRunSection() {
                   schema={
                     { ...inputSubSchema, discriminator: undefined } as any
                   }
-                  selectedCredentials={
-                    (inputCredentials && inputCredentials[key]) ??
-                    inputSubSchema.default
-                  }
+                  selectedCredentials={inputCredentials?.[key]}
                   onSelectCredentials={(value) =>
                     setInputCredentialsValue(key, value)
                   }
                   siblingInputs={inputValues}
+                  isOptional={!requiredCredentials.has(key)}
                 />
               ),
             )}

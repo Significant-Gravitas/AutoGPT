@@ -66,6 +66,7 @@ export const RunInputDialog = ({
                     formContext={{
                       showHandles: false,
                       size: "large",
+                      showOptionalToggle: false,
                     }}
                   />
                 </div>

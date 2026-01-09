@@ -18,8 +18,9 @@ export const CredentialFieldTitle = (props: {
   uiOptions: UiSchema;
   schema: RJSFSchema;
   fieldPathId: FieldPathId;
+  required?: boolean;
 }) => {
-  const { registry, uiOptions, schema, fieldPathId } = props;
+  const { registry, uiOptions, schema, fieldPathId, required = false } = props;
   const { nodeId } = registry.formContext;
 
   const TitleFieldTemplate = getTemplate(
@@ -50,7 +51,7 @@ export const CredentialFieldTitle = (props: {
       <TitleFieldTemplate
         id={titleId(fieldPathId ?? "")}
         title={credentialProvider ?? ""}
-        required={true}
+        required={required}
         schema={schema}
         registry={registry}
         uiSchema={updatedUiSchema}

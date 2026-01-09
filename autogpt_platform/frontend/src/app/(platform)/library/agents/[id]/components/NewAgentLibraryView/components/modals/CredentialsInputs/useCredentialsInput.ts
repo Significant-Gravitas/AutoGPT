@@ -22,6 +22,7 @@ type Params = {
   siblingInputs?: Record<string, any>;
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
+  isOptional?: boolean;
 };
 
 export function useCredentialsInput({
@@ -31,6 +32,7 @@ export function useCredentialsInput({
   siblingInputs,
   onLoaded,
   readOnly = false,
+  isOptional = false,
 }: Params) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -99,13 +101,20 @@ export function useCredentialsInput({
       : null;
   }, [credentials]);
 
-  // Auto-select the one available credential
+  // Auto-select the one available credential (only if not optional)
   useEffect(() => {
     if (readOnly) return;
+    if (isOptional) return; // Don't auto-select when credential is optional
     if (singleCredential && !selectedCredential) {
       onSelectCredential(singleCredential);
     }
-  }, [singleCredential, selectedCredential, onSelectCredential, readOnly]);
+  }, [
+    singleCredential,
+    selectedCredential,
+    onSelectCredential,
+    readOnly,
+    isOptional,
+  ]);
 
   if (
     !credentials ||
