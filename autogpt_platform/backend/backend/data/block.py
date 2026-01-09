@@ -50,6 +50,8 @@ from .model import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from backend.data.execution import ExecutionContext
+
     from .graph import Link
 
 app_config = Config()
@@ -472,6 +474,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.execution_stats: NodeExecutionStats = NodeExecutionStats()
+        self.requires_human_review: bool = False
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -614,7 +617,77 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     block_id=self.id,
                 ) from ex
 
+    async def is_block_exec_need_review(
+        self,
+        input_data: BlockInput,
+        *,
+        user_id: str,
+        node_exec_id: str,
+        graph_exec_id: str,
+        graph_id: str,
+        graph_version: int,
+        execution_context: "ExecutionContext",
+        **kwargs,
+    ) -> tuple[bool, BlockInput]:
+        """
+        Check if this block execution needs human review and handle the review process.
+
+        Returns:
+            Tuple of (should_pause, input_data_to_use)
+            - should_pause: True if execution should be paused for review
+            - input_data_to_use: The input data to use (may be modified by reviewer)
+        """
+        # Skip review if not required or safe mode is disabled
+        if not self.requires_human_review or not execution_context.safe_mode:
+            return False, input_data
+
+        from backend.blocks.helpers.review import HITLReviewHelper
+
+        # Handle the review request and get decision
+        decision = await HITLReviewHelper.handle_review_decision(
+            input_data=input_data,
+            user_id=user_id,
+            node_exec_id=node_exec_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            execution_context=execution_context,
+            block_name=self.name,
+            editable=True,
+        )
+
+        if decision is None:
+            # We're awaiting review - pause execution
+            return True, input_data
+
+        if not decision.should_proceed:
+            # Review was rejected, raise an error to stop execution
+            raise BlockExecutionError(
+                message=f"Block execution rejected by reviewer: {decision.message}",
+                block_name=self.name,
+                block_id=self.id,
+            )
+
+        # Review was approved - use the potentially modified data
+        # ReviewResult.data must be a dict for block inputs
+        reviewed_data = decision.review_result.data
+        if not isinstance(reviewed_data, dict):
+            raise BlockExecutionError(
+                message=f"Review data must be a dict for block input, got {type(reviewed_data).__name__}",
+                block_name=self.name,
+                block_id=self.id,
+            )
+        return False, reviewed_data
+
     async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        # Check for review requirement and get potentially modified input data
+        should_pause, input_data = await self.is_block_exec_need_review(
+            input_data, **kwargs
+        )
+        if should_pause:
+            return
+
+        # Validate the input data (original or reviewer-modified) once
         if error := self.input_schema.validate_data(input_data):
             raise BlockInputError(
                 message=f"Unable to execute block with invalid input data: {error}",
@@ -622,6 +695,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_id=self.id,
             )
 
+        # Use the validated input data
         async for output_name, output_data in self.run(
             self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
             **kwargs,
