@@ -98,11 +98,6 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
         (submission: StoreSubmission) => submission.agent_id === agent.graph_id,
       ) || [];
 
-    const hasSubmissionForCurrentVersion = agentSubmissions.some(
-      (submission: StoreSubmission) =>
-        submission.agent_version === agent.graph_version,
-    );
-
     const highestSubmittedVersion =
       agentSubmissions.length > 0
         ? Math.max(
@@ -113,9 +108,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
         : 0;
 
     const hasUnpublishedChanges =
-      isUserCreator &&
-      agent.graph_version > highestSubmittedVersion &&
-      !hasSubmissionForCurrentVersion;
+      isUserCreator && agent.graph_version > highestSubmittedVersion;
 
     if (!storeAgent) {
       return {
@@ -138,8 +131,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     const hasPublishUpdate =
       isUserCreator &&
       agent.graph_version >
-        Math.max(latestMarketplaceVersion || 0, highestSubmittedVersion) &&
-      !hasSubmissionForCurrentVersion;
+        Math.max(latestMarketplaceVersion || 0, highestSubmittedVersion);
 
     const hasMarketplaceUpdate =
       latestMarketplaceVersion !== undefined &&
