@@ -16,6 +16,7 @@
 !autogpt_platform/backend/poetry.lock
 !autogpt_platform/backend/README.md
 !autogpt_platform/backend/.env
+!autogpt_platform/backend/gen_prisma_types_stub.py
 
 # Platform - Market
 !autogpt_platform/market/market/
