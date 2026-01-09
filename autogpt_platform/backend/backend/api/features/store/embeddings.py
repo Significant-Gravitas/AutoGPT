@@ -1,8 +1,8 @@
 """
-Store Listing Embeddings Service
+Unified Content Embeddings Service
 
-Handles generation and storage of OpenAI embeddings for store listings
-to enable semantic/hybrid search.
+Handles generation and storage of OpenAI embeddings for all content types
+(store listings, blocks, documentation, library agents) to enable semantic/hybrid search.
 """
 
 import asyncio
@@ -11,7 +11,9 @@ from typing import Any
 
 import prisma
 from openai import OpenAI
+from prisma.enums import ContentType
 
+from backend.util.json import dumps
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -93,6 +95,33 @@ async def store_embedding(
     """
     Store embedding in the database.
 
+    BACKWARD COMPATIBILITY: Maintained for existing store listing usage.
+    Uses raw SQL since Prisma doesn't natively support pgvector.
+    """
+    return await store_content_embedding(
+        content_type=ContentType.STORE_AGENT,
+        content_id=version_id,
+        embedding=embedding,
+        searchable_text="",  # Will be populated from existing data
+        metadata=None,
+        user_id=None,  # Store agents are public
+        tx=tx,
+    )
+
+
+async def store_content_embedding(
+    content_type: ContentType,
+    content_id: str,
+    embedding: list[float],
+    searchable_text: str,
+    metadata: dict | None = None,
+    user_id: str | None = None,
+    tx: prisma.Prisma | None = None,
+) -> bool:
+    """
+    Store embedding in the unified content embeddings table.
+
+    New function for unified content embedding storage.
     Uses raw SQL since Prisma doesn't natively support pgvector.
     """
     try:
@@ -100,28 +129,35 @@ async def store_embedding(
 
         # Convert embedding to PostgreSQL vector format
         embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+        metadata_json = dumps(metadata or {})
 
         # Upsert the embedding
         await client.execute_raw(
             """
-            INSERT INTO platform."StoreListingEmbedding" (
-                "storeListingVersionId", "embedding", "createdAt", "updatedAt"
+            INSERT INTO platform."UnifiedContentEmbedding" (
+                "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
             )
-            VALUES ($1, $2::vector, NOW(), NOW())
-            ON CONFLICT ("storeListingVersionId")
+            VALUES ($1, $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
+            ON CONFLICT ("contentType", "contentId", "userId")
             DO UPDATE SET
-                "embedding" = $2::vector,
+                "embedding" = $4::vector,
+                "searchableText" = $5,
+                "metadata" = $6::jsonb,
                 "updatedAt" = NOW()
             """,
-            version_id,
+            content_type,
+            content_id,
+            user_id,
             embedding_str,
+            searchable_text,
+            metadata_json,
         )
 
-        logger.info(f"Stored embedding for version {version_id}")
+        logger.info(f"Stored embedding for {content_type}:{content_id}")
         return True
 
     except Exception as e:
-        logger.error(f"Failed to store embedding for version {version_id}: {e}")
+        logger.error(f"Failed to store embedding for {content_type}:{content_id}: {e}")
         return False
 
 
@@ -129,7 +165,31 @@ async def get_embedding(version_id: str) -> dict[str, Any] | None:
     """
     Retrieve embedding record for a listing version.
 
+    BACKWARD COMPATIBILITY: Maintained for existing store listing usage.
     Returns dict with storeListingVersionId, embedding, timestamps or None if not found.
+    """
+    result = await get_content_embedding(
+        ContentType.STORE_AGENT, version_id, user_id=None
+    )
+    if result:
+        # Transform to old format for backward compatibility
+        return {
+            "storeListingVersionId": result["contentId"],
+            "embedding": result["embedding"],
+            "createdAt": result["createdAt"],
+            "updatedAt": result["updatedAt"],
+        }
+    return None
+
+
+async def get_content_embedding(
+    content_type: ContentType, content_id: str, user_id: str | None = None
+) -> dict[str, Any] | None:
+    """
+    Retrieve embedding record for any content type.
+
+    New function for unified content embedding retrieval.
+    Returns dict with contentType, contentId, embedding, timestamps or None if not found.
     """
     try:
         client = prisma.get_client()
@@ -137,14 +197,20 @@ async def get_embedding(version_id: str) -> dict[str, Any] | None:
         result = await client.query_raw(
             """
             SELECT
-                "storeListingVersionId",
+                "contentType",
+                "contentId",
+                "userId",
                 "embedding"::text as "embedding",
+                "searchableText",
+                "metadata",
                 "createdAt",
                 "updatedAt"
-            FROM platform."StoreListingEmbedding"
-            WHERE "storeListingVersionId" = $1
+            FROM platform."UnifiedContentEmbedding"
+            WHERE "contentType" = $1 AND "contentId" = $2 AND ("userId" = $3 OR ($3 IS NULL AND "userId" IS NULL))
             """,
-            version_id,
+            content_type,
+            content_id,
+            user_id,
         )
 
         if result and len(result) > 0:
@@ -152,7 +218,7 @@ async def get_embedding(version_id: str) -> dict[str, Any] | None:
         return None
 
     except Exception as e:
-        logger.error(f"Failed to get embedding for version {version_id}: {e}")
+        logger.error(f"Failed to get embedding for {content_type}:{content_id}: {e}")
         return None
 
 
@@ -169,6 +235,7 @@ async def ensure_embedding(
     Ensure an embedding exists for the listing version.
 
     Creates embedding if missing. Use force=True to regenerate.
+    Backward-compatible wrapper for store listings.
 
     Args:
         version_id: The StoreListingVersion ID
@@ -201,10 +268,19 @@ async def ensure_embedding(
             logger.warning(f"Could not generate embedding for version {version_id}")
             return False
 
-        # Store the embedding
-        return await store_embedding(
-            version_id=version_id,
+        # Store the embedding with metadata using new function
+        metadata = {
+            "name": name,
+            "subHeading": sub_heading,
+            "categories": categories,
+        }
+        return await store_content_embedding(
+            content_type=ContentType.STORE_AGENT,
+            content_id=version_id,
             embedding=embedding,
+            searchable_text=searchable_text,
+            metadata=metadata,
+            user_id=None,  # Store agents are public
             tx=tx,
         )
 
@@ -217,6 +293,18 @@ async def delete_embedding(version_id: str) -> bool:
     """
     Delete embedding for a listing version.
 
+    BACKWARD COMPATIBILITY: Maintained for existing store listing usage.
+    Note: This is usually handled automatically by CASCADE delete,
+    but provided for manual cleanup if needed.
+    """
+    return await delete_content_embedding(ContentType.STORE_AGENT, version_id)
+
+
+async def delete_content_embedding(content_type: ContentType, content_id: str) -> bool:
+    """
+    Delete embedding for any content type.
+
+    New function for unified content embedding deletion.
     Note: This is usually handled automatically by CASCADE delete,
     but provided for manual cleanup if needed.
     """
@@ -225,17 +313,18 @@ async def delete_embedding(version_id: str) -> bool:
 
         await client.execute_raw(
             """
-            DELETE FROM platform."StoreListingEmbedding"
-            WHERE "storeListingVersionId" = $1
+            DELETE FROM platform."UnifiedContentEmbedding"
+            WHERE "contentType" = $1 AND "contentId" = $2
             """,
-            version_id,
+            content_type,
+            content_id,
         )
 
-        logger.info(f"Deleted embedding for version {version_id}")
+        logger.info(f"Deleted embedding for {content_type}:{content_id}")
         return True
 
     except Exception as e:
-        logger.error(f"Failed to delete embedding for version {version_id}: {e}")
+        logger.error(f"Failed to delete embedding for {content_type}:{content_id}: {e}")
         return False
 
 
@@ -267,7 +356,7 @@ async def get_embedding_stats() -> dict[str, Any]:
             """
             SELECT COUNT(*) as count
             FROM platform."StoreListingVersion" slv
-            JOIN platform."StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
+            JOIN platform."UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
             """
@@ -319,11 +408,11 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
                 slv."subHeading",
                 slv.categories
             FROM platform."StoreListingVersion" slv
-            LEFT JOIN platform."StoreListingEmbedding" sle
-                ON slv.id = sle."storeListingVersionId"
+            LEFT JOIN platform."UnifiedContentEmbedding" uce
+                ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
-            AND sle."storeListingVersionId" IS NULL
+            AND uce."contentId" IS NULL
             LIMIT $1
             """,
             batch_size,
@@ -383,3 +472,62 @@ async def embed_query(query: str) -> list[float] | None:
 def embedding_to_vector_string(embedding: list[float]) -> str:
     """Convert embedding list to PostgreSQL vector string format."""
     return "[" + ",".join(str(x) for x in embedding) + "]"
+
+
+async def ensure_content_embedding(
+    content_type: ContentType,
+    content_id: str,
+    searchable_text: str,
+    metadata: dict | None = None,
+    user_id: str | None = None,
+    force: bool = False,
+    tx: prisma.Prisma | None = None,
+) -> bool:
+    """
+    Ensure an embedding exists for any content type.
+
+    Generic function for creating embeddings for store agents, blocks, docs, etc.
+
+    Args:
+        content_type: ContentType enum value (STORE_AGENT, BLOCK, etc.)
+        content_id: Unique identifier for the content
+        searchable_text: Combined text for embedding generation
+        metadata: Optional metadata to store with embedding
+        force: Force regeneration even if embedding exists
+        tx: Optional transaction client
+
+    Returns:
+        True if embedding exists/was created, False on failure
+    """
+    try:
+        # Check if embedding already exists
+        if not force:
+            existing = await get_content_embedding(content_type, content_id, user_id)
+            if existing and existing.get("embedding"):
+                logger.debug(
+                    f"Embedding for {content_type}:{content_id} already exists"
+                )
+                return True
+
+        # Generate new embedding
+        embedding = await generate_embedding(searchable_text)
+        if embedding is None:
+            logger.warning(
+                f"Could not generate embedding for {content_type}:{content_id}"
+            )
+            return False
+
+        # Store the embedding
+        return await store_content_embedding(
+            content_type=content_type,
+            content_id=content_id,
+            embedding=embedding,
+            searchable_text=searchable_text,
+            metadata=metadata or {},
+            user_id=user_id,
+            tx=tx,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to ensure embedding for {content_type}:{content_id}: {e}")
+        return False

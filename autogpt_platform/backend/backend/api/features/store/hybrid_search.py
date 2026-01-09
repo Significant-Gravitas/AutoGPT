@@ -148,7 +148,7 @@ async def hybrid_search(
         param_index += 1
 
         # Optimized hybrid search query:
-        # 1. Direct join to StoreListingEmbedding via storeListingVersionId (no redundant JOINs)
+        # 1. Direct join to UnifiedContentEmbedding via contentId=storeListingVersionId (no redundant JOINs)
         # 2. UNION ALL approach to enable index usage for both lexical and semantic branches
         # 3. COUNT(*) OVER() to get total count in single query
         # 4. Simplified category matching with array_to_string
@@ -165,8 +165,8 @@ async def hybrid_search(
                 -- Semantic matches (uses HNSW index on embedding)
                 SELECT DISTINCT sa."storeListingVersionId"
                 FROM {{schema_prefix}}"StoreAgent" sa
-                INNER JOIN {{schema_prefix}}"StoreListingEmbedding" sle
-                    ON sa."storeListingVersionId" = sle."storeListingVersionId"
+                INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
+                    ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
                 WHERE {where_clause}
             ),
             search_scores AS (
@@ -185,7 +185,7 @@ async def hybrid_search(
                     sa.is_available,
                     sa.updated_at,
                     -- Semantic score: cosine similarity (1 - distance)
-                    COALESCE(1 - (sle.embedding <=> {embedding_param}::vector), 0) as semantic_score,
+                    COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                     -- Lexical score: ts_rank_cd (will be normalized later)
                     COALESCE(ts_rank_cd(sa.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
                     -- Category match: check if query appears in any category
@@ -199,8 +199,8 @@ async def hybrid_search(
                 FROM candidates c
                 INNER JOIN {{schema_prefix}}"StoreAgent" sa
                     ON c."storeListingVersionId" = sa."storeListingVersionId"
-                LEFT JOIN {{schema_prefix}}"StoreListingEmbedding" sle
-                    ON sa."storeListingVersionId" = sle."storeListingVersionId"
+                LEFT JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
+                    ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
             ),
             normalized AS (
                 SELECT

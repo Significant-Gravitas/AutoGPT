@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import prisma
 import pytest
 from prisma import Prisma
+from prisma.enums import ContentType
 
 from backend.api.features.store import embeddings
 
@@ -137,6 +138,7 @@ async def test_store_embedding_success(mocker):
     call_args = mock_client.execute_raw.call_args[0]
     assert "test-version-id" in call_args
     assert "[0.1,0.2,0.3]" in call_args
+    assert None in call_args  # userId should be None for store agents
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -160,8 +162,11 @@ async def test_get_embedding_success(mocker):
     mock_client = mocker.AsyncMock()
     mock_result = [
         {
-            "storeListingVersionId": "test-version-id",
+            "contentType": "STORE_AGENT",
+            "contentId": "test-version-id",
             "embedding": "[0.1,0.2,0.3]",
+            "searchableText": "Test text",
+            "metadata": {},
             "createdAt": "2024-01-01T00:00:00Z",
             "updatedAt": "2024-01-01T00:00:00Z",
         }
@@ -211,7 +216,7 @@ async def test_ensure_embedding_already_exists(mock_get, mock_store, mock_genera
 
 @pytest.mark.asyncio(loop_scope="session")
 @patch("backend.api.features.store.embeddings.generate_embedding")
-@patch("backend.api.features.store.embeddings.store_embedding")
+@patch("backend.api.features.store.embeddings.store_content_embedding")
 @patch("backend.api.features.store.embeddings.get_embedding")
 async def test_ensure_embedding_create_new(mock_get, mock_store, mock_generate):
     """Test ensure_embedding creating new embedding."""
@@ -230,7 +235,13 @@ async def test_ensure_embedding_create_new(mock_get, mock_store, mock_generate):
     assert result is True
     mock_generate.assert_called_once_with("Test Test heading Test description test")
     mock_store.assert_called_once_with(
-        version_id="test-id", embedding=[0.1, 0.2, 0.3], tx=None
+        content_type=ContentType.STORE_AGENT,
+        content_id="test-id",
+        embedding=[0.1, 0.2, 0.3],
+        searchable_text="Test Test heading Test description test",
+        metadata={"name": "Test", "subHeading": "Test heading", "categories": ["test"]},
+        user_id=None,
+        tx=None,
     )
 
 

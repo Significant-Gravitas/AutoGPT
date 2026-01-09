@@ -2,7 +2,7 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
-  extensions = [pgvector(map: "vector", schema: "public")]
+  extensions = [pgvector(map: "vector")]
 }
 
 generator client {
@@ -734,7 +734,6 @@ view StoreAgent {
   sub_heading        String
   description        String
   categories         String[]
-  search             Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
   runs               Int
   rating             Float
   versions           String[]
@@ -900,8 +899,8 @@ model StoreListingVersion {
   // Reviews for this specific version
   Reviews StoreListingReview[]
 
-  // Embedding for semantic search (one-to-one)
-  Embedding StoreListingEmbedding?
+  // Note: Embeddings now stored in UnifiedContentEmbedding table
+  // Use contentType=STORE_AGENT and contentId=storeListingVersionId
 
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
@@ -910,17 +909,40 @@ model StoreListingVersion {
   @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
 }
 
-// Stores vector embeddings for semantic search of store listings
-// Uses pgvector extension for efficient similarity search
-model StoreListingEmbedding {
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
 
-  storeListingVersionId String              @id
-  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+// Content type enum for unified search across store agents, blocks, docs
+// Note: BLOCK/INTEGRATION are file-based (Python classes), not DB records
+// DOCUMENTATION are file-based (.md files), not DB records  
+// Only STORE_AGENT and LIBRARY_AGENT are stored in database
+enum ContentType {
+  STORE_AGENT     // Database: StoreListingVersion
+  BLOCK           // File-based: Python classes in /backend/blocks/
+  INTEGRATION     // File-based: Python classes (blocks with credentials)
+  DOCUMENTATION   // File-based: .md/.mdx files
+  LIBRARY_AGENT   // Database: User's personal agents
+}
 
-  // pgvector embedding - stored as Unsupported type since Prisma doesn't natively support vector
-  embedding Unsupported("vector(1536)")?
+// Unified embeddings table for all searchable content types
+// Supports both public content (userId=null) and user-specific content (userId=userID)
+model UnifiedContentEmbedding {
+  id          String      @id @default(uuid())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Content identification
+  contentType ContentType
+  contentId   String      // DB ID (storeListingVersionId) or file identifier (block.id, file_path)
+  userId      String?     // NULL for public content (store, blocks, docs), userId for private content (library agents)
+  
+  // Search data  
+  embedding      Unsupported("public.vector(1536)")  // pgvector embedding from public schema
+  searchableText String                        // Combined text for search and fallback
+  metadata       Json        @default("{}")    // Content-specific metadata
+  
+  @@unique([contentType, contentId, userId])  // Allow same content for different users
+  @@index([contentType])
+  @@index([userId])
+  @@index([contentType, userId])
 }
 
 model StoreListingReview {
