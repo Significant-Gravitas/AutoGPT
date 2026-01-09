@@ -110,17 +110,17 @@ async def store_embedding(
         # Upsert the embedding
         await client.execute_raw(
             """
-            INSERT INTO "StoreListingEmbedding" (
+            INSERT INTO platform."StoreListingEmbedding" (
                 "id", "storeListingVersionId", "embedding",
                 "searchableText", "contentHash", "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2::vector,
+                gen_random_uuid(), $1, $2::public.vector,
                 $3, $4, NOW(), NOW()
             )
             ON CONFLICT ("storeListingVersionId")
             DO UPDATE SET
-                "embedding" = $2::vector,
+                "embedding" = $2::public.vector,
                 "searchableText" = $3,
                 "contentHash" = $4,
                 "updatedAt" = NOW()
@@ -158,7 +158,7 @@ async def get_embedding(version_id: str) -> dict[str, Any] | None:
                 "contentHash",
                 "createdAt",
                 "updatedAt"
-            FROM "StoreListingEmbedding"
+            FROM platform."StoreListingEmbedding"
             WHERE "storeListingVersionId" = $1
             """,
             version_id,
@@ -248,7 +248,7 @@ async def delete_embedding(version_id: str) -> bool:
 
         await client.execute_raw(
             """
-            DELETE FROM "StoreListingEmbedding"
+            DELETE FROM platform."StoreListingEmbedding"
             WHERE "storeListingVersionId" = $1
             """,
             version_id,
@@ -278,7 +278,7 @@ async def get_embedding_stats() -> dict[str, Any]:
         approved_result = await client.query_raw(
             """
             SELECT COUNT(*) as count
-            FROM "StoreListingVersion"
+            FROM platform."StoreListingVersion"
             WHERE "submissionStatus" = 'APPROVED'
             AND "isDeleted" = false
             """
@@ -289,8 +289,8 @@ async def get_embedding_stats() -> dict[str, Any]:
         embedded_result = await client.query_raw(
             """
             SELECT COUNT(*) as count
-            FROM "StoreListingVersion" slv
-            JOIN "StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
+            FROM platform."StoreListingVersion" slv
+            JOIN platform."StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
             """
@@ -341,8 +341,8 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
                 slv.description,
                 slv."subHeading",
                 slv.categories
-            FROM "StoreListingVersion" slv
-            LEFT JOIN "StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
+            FROM platform."StoreListingVersion" slv
+            LEFT JOIN platform."StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
             AND sle.id IS NULL

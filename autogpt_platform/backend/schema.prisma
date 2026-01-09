@@ -1,14 +1,15 @@
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgvector(map: "vector", schema: "public")]
 }
 
 generator client {
   provider               = "prisma-client-py"
   recursive_type_depth   = -1
   interface              = "asyncio"
-  previewFeatures        = ["views", "fullTextSearch"]
+  previewFeatures        = ["views", "fullTextSearch", "postgresqlExtensions"]
   partial_type_generator = "backend/data/partial_types.py"
 }
 
@@ -165,8 +166,8 @@ model BuilderSearchHistory {
   updatedAt DateTime @default(now()) @updatedAt
 
   searchQuery String
-  filter      String[]  @default([])
-  byCreator   String[]  @default([])
+  filter      String[] @default([])
+  byCreator   String[] @default([])
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -210,12 +211,12 @@ model ChatMessage {
   Session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   // Message content
-  role        String // "user", "assistant", "system", "tool", "function"
-  content     String?
-  name        String?
-  toolCallId  String?
-  refusal     String?
-  toolCalls   Json? // List of tool calls for assistant messages
+  role         String // "user", "assistant", "system", "tool", "function"
+  content      String?
+  name         String?
+  toolCallId   String?
+  refusal      String?
+  toolCalls    Json? // List of tool calls for assistant messages
   functionCall Json? // Deprecated but kept for compatibility
 
   // Ordering within session
@@ -812,26 +813,26 @@ view StoreAgent {
   storeListingVersionId String
   updated_at            DateTime
 
-  slug                String
-  agent_name          String
-  agent_video         String?
-  agent_output_demo   String?
-  agent_image         String[]
+  slug              String
+  agent_name        String
+  agent_video       String?
+  agent_output_demo String?
+  agent_image       String[]
 
-  featured         Boolean                  @default(false)
-  creator_username String?
-  creator_avatar   String?
-  sub_heading      String
-  description      String
-  categories       String[]
-  search           Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
-  runs                Int
-  rating              Float
-  versions            String[]
-  agentGraphVersions  String[]
-  agentGraphId        String
-  is_available        Boolean                  @default(true)
-  useForOnboarding    Boolean                  @default(false)
+  featured           Boolean                  @default(false)
+  creator_username   String?
+  creator_avatar     String?
+  sub_heading        String
+  description        String
+  categories         String[]
+  search             Unsupported("tsvector")? @default(dbgenerated("''::tsvector"))
+  runs               Int
+  rating             Float
+  versions           String[]
+  agentGraphVersions String[]
+  agentGraphId       String
+  is_available       Boolean                  @default(true)
+  useForOnboarding   Boolean                  @default(false)
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -947,14 +948,14 @@ model StoreListingVersion {
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // Content fields
-  name                String
-  subHeading          String
-  videoUrl            String?
-  agentOutputDemoUrl  String?
-  imageUrls           String[]
-  description         String
-  instructions        String?
-  categories          String[]
+  name               String
+  subHeading         String
+  videoUrl           String?
+  agentOutputDemoUrl String?
+  imageUrls          String[]
+  description        String
+  instructions       String?
+  categories         String[]
 
   isFeatured Boolean @default(false)
 
@@ -1025,13 +1026,13 @@ model StoreListingEmbedding {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  storeListingVersionId String                @unique
+  storeListingVersionId String              @unique
   StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
 
   // pgvector embedding - stored as Unsupported type since Prisma doesn't natively support vector
   embedding      Unsupported("vector(1536)")?
-  searchableText String?  // The text that was embedded (for debugging/recomputation)
-  contentHash    String?  // MD5 hash for change detection
+  searchableText String? // The text that was embedded (for debugging/recomputation)
+  contentHash    String? // MD5 hash for change detection
 
   @@index([contentHash])
 }
@@ -1110,16 +1111,16 @@ model OAuthApplication {
   updatedAt DateTime @updatedAt
 
   // Application metadata
-  name               String
-  description        String?
-  logoUrl            String? // URL to app logo stored in GCS
-  clientId           String @unique
-  clientSecret       String // Hashed with Scrypt (same as API keys)
-  clientSecretSalt   String // Salt for Scrypt hashing
+  name             String
+  description      String?
+  logoUrl          String? // URL to app logo stored in GCS
+  clientId         String  @unique
+  clientSecret     String // Hashed with Scrypt (same as API keys)
+  clientSecretSalt String // Salt for Scrypt hashing
 
   // OAuth configuration
   redirectUris String[] // Allowed callback URLs
-  grantTypes   String[] @default(["authorization_code", "refresh_token"])
+  grantTypes   String[]           @default(["authorization_code", "refresh_token"])
   scopes       APIKeyPermission[] // Which permissions the app can request
 
   // Application management

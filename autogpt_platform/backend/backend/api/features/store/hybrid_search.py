@@ -152,7 +152,7 @@ async def hybrid_search(
                 SELECT
                     sa.*,
                     -- Semantic score: cosine similarity (1 - distance)
-                    COALESCE(1 - (sle.embedding <=> {embedding_param}::vector), 0) as semantic_score,
+                    COALESCE(1 - (sle.embedding <=> {embedding_param}::public.vector), 0) as semantic_score,
                     -- Lexical score: ts_rank_cd normalized
                     COALESCE(ts_rank_cd(sa.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
                     -- Category match: 1 if query term appears in categories, else 0
@@ -165,10 +165,10 @@ async def hybrid_search(
                     END as category_score,
                     -- Recency score: exponential decay over 90 days
                     EXP(-EXTRACT(EPOCH FROM (NOW() - sa.updated_at)) / (90 * 24 * 3600)) as recency_score
-                FROM "StoreAgent" sa
-                LEFT JOIN "StoreListing" sl ON sa.slug = sl.slug
-                LEFT JOIN "StoreListingVersion" slv ON sl."activeVersionId" = slv.id
-                LEFT JOIN "StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
+                FROM platform."StoreAgent" sa
+                LEFT JOIN platform."StoreListing" sl ON sa.slug = sl.slug
+                LEFT JOIN platform."StoreListingVersion" slv ON sl."activeVersionId" = slv.id
+                LEFT JOIN platform."StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
                 WHERE {where_clause}
                 AND (
                     sa.search @@ plainto_tsquery('english', {query_param})
@@ -227,7 +227,7 @@ async def hybrid_search(
             WITH search_scores AS (
                 SELECT
                     sa.slug,
-                    COALESCE(1 - (sle.embedding <=> {embedding_param}::vector), 0) as semantic_score,
+                    COALESCE(1 - (sle.embedding <=> {embedding_param}::public.vector), 0) as semantic_score,
                     COALESCE(ts_rank_cd(sa.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
                     CASE
                         WHEN EXISTS (
@@ -237,10 +237,10 @@ async def hybrid_search(
                         ELSE 0.0
                     END as category_score,
                     EXP(-EXTRACT(EPOCH FROM (NOW() - sa.updated_at)) / (90 * 24 * 3600)) as recency_score
-                FROM "StoreAgent" sa
-                LEFT JOIN "StoreListing" sl ON sa.slug = sl.slug
-                LEFT JOIN "StoreListingVersion" slv ON sl."activeVersionId" = slv.id
-                LEFT JOIN "StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
+                FROM platform."StoreAgent" sa
+                LEFT JOIN platform."StoreListing" sl ON sa.slug = sl.slug
+                LEFT JOIN platform."StoreListingVersion" slv ON sl."activeVersionId" = slv.id
+                LEFT JOIN platform."StoreListingEmbedding" sle ON slv.id = sle."storeListingVersionId"
                 WHERE {where_clause}
                 AND (
                     sa.search @@ plainto_tsquery('english', {query_param})
@@ -307,7 +307,7 @@ async def hybrid_search(
                         ELSE 0.0
                     END as category_score,
                     EXP(-EXTRACT(EPOCH FROM (NOW() - updated_at)) / (90 * 24 * 3600)) as recency_score
-                FROM "StoreAgent" sa
+                FROM platform."StoreAgent" sa
                 WHERE {where_clause}
                 AND search @@ plainto_tsquery('english', {query_param})
             ),
@@ -368,7 +368,7 @@ async def hybrid_search(
                         ELSE 0.0
                     END as category_score,
                     EXP(-EXTRACT(EPOCH FROM (NOW() - updated_at)) / (90 * 24 * 3600)) as recency_score
-                FROM "StoreAgent" sa
+                FROM platform."StoreAgent" sa
                 WHERE {where_clause}
                 AND search @@ plainto_tsquery('english', {query_param})
             ),
