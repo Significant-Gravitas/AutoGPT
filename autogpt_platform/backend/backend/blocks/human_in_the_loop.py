@@ -125,19 +125,15 @@ class HumanInTheLoopBlock(Block):
         )
 
         if decision is None:
-            # Execution is paused, the helper already handled status updates
             return
 
-        # Decision is complete - review_result is guaranteed to be present by type system
-        if decision.review_result.status == ReviewStatus.APPROVED:
+        status = decision.review_result.status
+        if status == ReviewStatus.APPROVED:
             yield "approved_data", decision.review_result.data
-        elif decision.review_result.status == ReviewStatus.REJECTED:
+        elif status == ReviewStatus.REJECTED:
             yield "rejected_data", decision.review_result.data
         else:
-            # This should never happen, but handle unexpected review status
-            yield "error", f"Unexpected review status: {decision.review_result.status}"
-            return
+            raise RuntimeError(f"Unexpected review status: {status}")
 
-        # Always yield the review message if present
         if decision.message:
             yield "review_message", decision.message
