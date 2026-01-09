@@ -21,7 +21,7 @@ class ReviewDecision(NamedTuple):
 
     should_proceed: bool
     message: str
-    review_result: Optional[ReviewResult]
+    review_result: ReviewResult
 
 
 class HITLReviewHelper:

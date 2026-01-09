@@ -132,10 +132,7 @@ class HumanInTheLoopBlock(Block):
             # Execution is paused, the helper already handled status updates
             return
 
-        # Decision is complete - review_result is guaranteed to be present
-        assert (
-            decision.review_result is not None
-        ), "review_result should not be None when decision exists"
+        # Decision is complete - review_result is guaranteed to be present by type system
         if decision.review_result.status == ReviewStatus.APPROVED:
             yield "approved_data", decision.review_result.data
         elif decision.review_result.status == ReviewStatus.REJECTED:
