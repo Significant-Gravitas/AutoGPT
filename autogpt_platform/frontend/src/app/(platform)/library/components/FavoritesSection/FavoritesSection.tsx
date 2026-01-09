@@ -1,7 +1,6 @@
 "use client";
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { HeartIcon } from "@phosphor-icons/react";
@@ -41,30 +40,22 @@ export function FavoritesSection() {
       </div>
 
       <div className="relative">
-        {isLoading ? (
+        <InfiniteScroll
+          isFetchingNextPage={isFetchingNextPage}
+          fetchNextPage={fetchNextPage}
+          hasNextPage={hasNextPage}
+          loader={
+            <div className="flex h-8 w-full items-center justify-center">
+              <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-t-2 border-neutral-800" />
+            </div>
+          }
+        >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-48 w-full rounded-lg" />
+            {favoriteAgents.map((agent: LibraryAgent) => (
+              <LibraryAgentCard key={agent.id} agent={agent} />
             ))}
           </div>
-        ) : (
-          <InfiniteScroll
-            isFetchingNextPage={isFetchingNextPage}
-            fetchNextPage={fetchNextPage}
-            hasNextPage={hasNextPage}
-            loader={
-              <div className="flex h-8 w-full items-center justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-t-2 border-neutral-800" />
-              </div>
-            }
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {favoriteAgents.map((agent: LibraryAgent) => (
-                <LibraryAgentCard key={agent.id} agent={agent} />
-              ))}
-            </div>
-          </InfiniteScroll>
-        )}
+        </InfiniteScroll>
       </div>
 
       {favoriteAgents.length > 0 && <div className="!mt-10 border-t" />}
