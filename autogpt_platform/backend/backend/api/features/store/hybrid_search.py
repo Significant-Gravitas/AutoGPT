@@ -152,7 +152,7 @@ async def hybrid_search(
                 SELECT
                     sa.*,
                     -- Semantic score: cosine similarity (1 - distance)
-                    COALESCE(1 - (sle.embedding <=> {embedding_param}::public.vector), 0) as semantic_score,
+                    COALESCE(1 - (sle.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                     -- Lexical score: ts_rank_cd normalized
                     COALESCE(ts_rank_cd(sa.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
                     -- Category match: 1 if query term appears in categories, else 0
@@ -227,7 +227,7 @@ async def hybrid_search(
             WITH search_scores AS (
                 SELECT
                     sa.slug,
-                    COALESCE(1 - (sle.embedding <=> {embedding_param}::public.vector), 0) as semantic_score,
+                    COALESCE(1 - (sle.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                     COALESCE(ts_rank_cd(sa.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
                     CASE
                         WHEN EXISTS (

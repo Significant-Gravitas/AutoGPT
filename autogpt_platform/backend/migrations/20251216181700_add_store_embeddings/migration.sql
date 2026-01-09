@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE "StoreListingEmbedding" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid(),
     "storeListingVersionId" TEXT NOT NULL,
-    "embedding" public.vector(1536),  -- OpenAI text-embedding-3-small produces 1536 dimensions
+    "embedding" vector(1536),  -- OpenAI text-embedding-3-small produces 1536 dimensions
     "searchableText" TEXT,     -- The text that was embedded (for debugging/recomputation)
     "contentHash" TEXT,        -- MD5 hash of searchable text for change detection
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -25,7 +25,7 @@ CREATE UNIQUE INDEX "StoreListingEmbedding_storeListingVersionId_key"
 -- Using cosine distance (vector_cosine_ops) which is standard for text embeddings
 CREATE INDEX "StoreListingEmbedding_embedding_idx"
     ON "StoreListingEmbedding"
-    USING hnsw ("embedding" public.vector_cosine_ops);
+    USING hnsw ("embedding" vector_cosine_ops);
 
 -- Index on content hash for fast lookup during change detection
 CREATE INDEX "StoreListingEmbedding_contentHash_idx"

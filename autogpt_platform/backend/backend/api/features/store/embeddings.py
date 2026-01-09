@@ -115,12 +115,12 @@ async def store_embedding(
                 "searchableText", "contentHash", "createdAt", "updatedAt"
             )
             VALUES (
-                gen_random_uuid(), $1, $2::public.vector,
+                gen_random_uuid(), $1, $2::vector,
                 $3, $4, NOW(), NOW()
             )
             ON CONFLICT ("storeListingVersionId")
             DO UPDATE SET
-                "embedding" = $2::public.vector,
+                "embedding" = $2::vector,
                 "searchableText" = $3,
                 "contentHash" = $4,
                 "updatedAt" = NOW()
