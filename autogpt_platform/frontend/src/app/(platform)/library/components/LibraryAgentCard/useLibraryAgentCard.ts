@@ -8,7 +8,6 @@ import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { updateFavoriteInQueries } from "./helpers";
 
 interface Props {
@@ -20,7 +19,6 @@ export function useLibraryAgentCard({ agent }: Props) {
     agent;
 
   const isFromMarketplace = Boolean(marketplace_listing);
-  const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
   const [isFavorite, setIsFavorite] = useState(is_favorite);
   const { toast } = useToast();
   const queryClient = getQueryClient();
@@ -48,8 +46,6 @@ export function useLibraryAgentCard({ agent }: Props) {
   async function handleToggleFavorite(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-
-    if (!isAgentFavoritingEnabled) return;
 
     const newIsFavorite = !isFavorite;
 
@@ -80,7 +76,6 @@ export function useLibraryAgentCard({ agent }: Props) {
 
   return {
     isFromMarketplace,
-    isAgentFavoritingEnabled,
     isFavorite,
     profile,
     creator_image_url,
