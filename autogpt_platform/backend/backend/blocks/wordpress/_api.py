@@ -502,7 +502,7 @@ async def create_post(
     raise ValueError(f"Failed to create post: {response.status} - {error_message}")
 
 
-class PostListItem(BaseModel):
+class Post(BaseModel):
     """Response model for individual posts in a posts list response.
 
     This is a simplified version compared to PostResponse, as the list endpoint
@@ -557,7 +557,7 @@ class PostsResponse(BaseModel):
     """Response model for WordPress posts list."""
 
     found: int
-    posts: List[PostListItem]
+    posts: List[Post]
     meta: Dict[str, Any]
 
 

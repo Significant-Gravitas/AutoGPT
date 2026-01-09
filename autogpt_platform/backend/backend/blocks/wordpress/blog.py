@@ -11,6 +11,7 @@ from backend.sdk import (
 
 from ._api import (
     CreatePostRequest,
+    Post,
     PostResponse,
     PostsResponse,
     PostStatus,
@@ -137,8 +138,11 @@ class WordPressGetAllPostsBlock(Block):
             description="The site ID or domain (pass-through for chaining with other blocks)"
         )
         found: int = SchemaField(description="Total number of posts found")
-        posts: list[dict] = SchemaField(
+        posts: list[Post] = SchemaField(
             description="List of post objects with their details"
+        )
+        post: Post = SchemaField(
+            description="Individual post object (yielded for each post)"
         )
 
     def __init__(self):
@@ -163,4 +167,6 @@ class WordPressGetAllPostsBlock(Block):
 
         yield "site", input_data.site
         yield "found", posts_response.found
-        yield "posts", [post.model_dump() for post in posts_response.posts]
+        yield "posts", posts_response.posts
+        for post in posts_response.posts:
+            yield "post", post
