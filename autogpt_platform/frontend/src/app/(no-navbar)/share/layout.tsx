@@ -16,8 +16,8 @@ export default function ShareLayout({
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-background">
-        <div className="container mx-auto px-4 py-4">
-          <Link href="/" className="inline-block">
+        <div className="container mx-auto flex justify-end px-4 py-4">
+          <Link href="/login" className="inline-block">
             <Image
               src="/autogpt-logo-dark-bg.png"
               alt="AutoGPT"
