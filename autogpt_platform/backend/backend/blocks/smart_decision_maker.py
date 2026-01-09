@@ -391,8 +391,12 @@ class SmartDecisionMakerBlock(Block):
         """
         block = sink_node.block
 
+        # Use custom name from node metadata if set, otherwise fall back to block.name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else block.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(block.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": block.description,
         }
         sink_block_input_schema = block.input_schema
@@ -489,8 +493,12 @@ class SmartDecisionMakerBlock(Block):
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
             )
 
+        # Use custom name from node metadata if set, otherwise fall back to graph name
+        custom_name = sink_node.metadata.get("customized_name")
+        tool_name = custom_name if custom_name else sink_graph_meta.name
+
         tool_function: dict[str, Any] = {
-            "name": SmartDecisionMakerBlock.cleanup(sink_graph_meta.name),
+            "name": SmartDecisionMakerBlock.cleanup(tool_name),
             "description": sink_graph_meta.description,
         }
 
