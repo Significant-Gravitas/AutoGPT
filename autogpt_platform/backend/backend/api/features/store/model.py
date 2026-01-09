@@ -110,6 +110,7 @@ class Profile(pydantic.BaseModel):
 
 
 class StoreSubmission(pydantic.BaseModel):
+    listing_id: str
     agent_id: str
     agent_version: int
     name: str
@@ -164,8 +165,12 @@ class StoreListingsWithVersionsResponse(pydantic.BaseModel):
 
 
 class StoreSubmissionRequest(pydantic.BaseModel):
-    agent_id: str
-    agent_version: int
+    agent_id: str = pydantic.Field(
+        ..., min_length=1, description="Agent ID cannot be empty"
+    )
+    agent_version: int = pydantic.Field(
+        ..., gt=0, description="Agent version must be greater than 0"
+    )
     slug: str
     name: str
     sub_heading: str

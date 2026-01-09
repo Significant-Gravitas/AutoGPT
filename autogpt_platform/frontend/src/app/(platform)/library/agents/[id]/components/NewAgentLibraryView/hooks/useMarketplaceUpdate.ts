@@ -40,15 +40,17 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
     },
   );
 
-  // Get user's submissions to check for pending submissions
-  const { data: submissionsData } = useGetV2ListMySubmissions(
-    { page: 1, page_size: 50 }, // Get enough to cover recent submissions
-    {
-      query: {
-        enabled: !!user?.id, // Only fetch if user is authenticated
+  // Get user's submissions - only fetch if user is the creator
+  const { data: submissionsData, isLoading: isSubmissionsLoading } =
+    useGetV2ListMySubmissions(
+      { page: 1, page_size: 50 },
+      {
+        query: {
+          // Only fetch if user is the creator
+          enabled: !!(user?.id && agent?.owner_user_id === user.id),
+        },
       },
-    },
-  );
+    );
 
   const updateToLatestMutation = usePatchV2UpdateLibraryAgent({
     mutation: {
@@ -78,11 +80,36 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
   // Check if marketplace has a newer version than user's current version
   const marketplaceUpdateInfo = React.useMemo(() => {
     const storeAgent = okData(storeAgentData) as any;
-    if (!agent || !storeAgent) {
+
+    if (!agent || isSubmissionsLoading) {
       return {
         hasUpdate: false,
         latestVersion: undefined,
         isUserCreator: false,
+        hasPublishUpdate: false,
+      };
+    }
+
+    const isUserCreator = agent?.owner_user_id === user?.id;
+
+    // Check if there's a pending submission for this specific agent version
+    const submissionsResponse = okData(submissionsData) as any;
+    const hasPendingSubmissionForCurrentVersion =
+      isUserCreator &&
+      submissionsResponse?.submissions?.some(
+        (submission: StoreSubmission) =>
+          submission.agent_id === agent.graph_id &&
+          submission.agent_version === agent.graph_version &&
+          submission.status === "PENDING",
+      );
+
+    if (!storeAgent) {
+      return {
+        hasUpdate: false,
+        latestVersion: undefined,
+        isUserCreator,
+        hasPublishUpdate:
+          isUserCreator && !hasPendingSubmissionForCurrentVersion,
       };
     }
 
@@ -97,29 +124,15 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
           )
         : undefined;
 
-    // Determine if the user is the creator of this agent
-    // Compare current user ID with the marketplace listing creator ID
-    const isUserCreator =
-      user?.id && agent.marketplace_listing?.creator.id === user.id;
-
-    // Check if there's a pending submission for this specific agent version
-    const submissionsResponse = okData(submissionsData) as any;
-    const hasPendingSubmissionForCurrentVersion =
-      isUserCreator &&
-      submissionsResponse?.submissions?.some(
-        (submission: StoreSubmission) =>
-          submission.agent_id === agent.graph_id &&
-          submission.agent_version === agent.graph_version &&
-          submission.status === "PENDING",
-      );
-
-    // If user is creator and their version is newer than marketplace, show publish update banner
-    // BUT only if there's no pending submission for this version
+    // Show publish update button if:
+    // 1. User is the creator
+    // 2. No pending submission for current version
+    // 3. Either: agent not published yet OR local version is newer than marketplace
     const hasPublishUpdate =
       isUserCreator &&
       !hasPendingSubmissionForCurrentVersion &&
-      latestMarketplaceVersion !== undefined &&
-      agent.graph_version > latestMarketplaceVersion;
+      (latestMarketplaceVersion === undefined || // Not published yet
+        agent.graph_version > latestMarketplaceVersion); // Or local version is newer
 
     // If marketplace version is newer than user's version, show update banner
     // This applies to both creators and non-creators
@@ -133,7 +146,7 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
       isUserCreator,
       hasPublishUpdate,
     };
-  }, [agent, storeAgentData, user, submissionsData]);
+  }, [agent, storeAgentData, user, submissionsData, isSubmissionsLoading]);
 
   const handlePublishUpdate = () => {
     setModalOpen(true);

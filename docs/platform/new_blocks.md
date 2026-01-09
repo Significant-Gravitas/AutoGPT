@@ -616,7 +616,59 @@ custom_requests = Requests(
 
 ### Error Handling
 
-All blocks should have an error output that catches all reasonable errors that a user can handle, wrap them in a ValueError, and re-raise. Don't catch things the system admin would need to fix like being out of money or unreachable addresses.  
+Blocks should raise appropriate exceptions for errors that users can fix. The executor classifies errors based on whether they inherit from `ValueError` - these are treated as "expected failures" (user-fixable) rather than system errors.
+
+#### Block Exception Classes
+
+Import from `backend.util.exceptions`:
+
+```python
+from backend.util.exceptions import BlockInputError, BlockExecutionError
+```
+
+| Exception | Use Case | Example |
+|-----------|----------|---------|
+| `BlockInputError` | Invalid user input, validation failures, missing required fields | Bad API key format, invalid URL, missing credentials |
+| `BlockExecutionError` | Runtime failures the user can address | API errors, auth failures, resource not found, rate limits |
+| `ValueError` | Simple cases (auto-wrapped to `BlockExecutionError`) | Basic validation errors |
+
+#### Raising Exceptions
+
+```python
+from backend.util.exceptions import BlockInputError, BlockExecutionError
+
+class MyBlock(Block):
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        # Input validation - use BlockInputError
+        if not input_data.api_key:
+            raise BlockInputError(
+                message="API key is required",
+                block_name=self.name,
+                block_id=self.id,
+            )
+
+        try:
+            result = await self.call_api(input_data)
+            yield "result", result
+        except AuthenticationError as e:
+            # API/runtime errors - use BlockExecutionError
+            raise BlockExecutionError(
+                message=f"Authentication failed: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
+```
+
+#### What NOT to Catch
+
+Don't catch errors that require system admin intervention:
+
+- Out of money/credits
+- Unreachable infrastructure
+- Database connection failures
+- Internal server errors from your own services
+
+Let these propagate as unexpected errors so they get proper attention.  
 
 ### Data Models
 

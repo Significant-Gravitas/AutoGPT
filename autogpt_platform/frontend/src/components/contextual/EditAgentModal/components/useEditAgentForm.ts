@@ -19,11 +19,13 @@ interface useEditAgentFormProps {
     agent_id: string;
   };
   onSuccess: (submission: StoreSubmission) => void;
+  onClose: () => void;
 }
 
 export const useEditAgentForm = ({
   submission,
   onSuccess,
+  onClose,
 }: useEditAgentFormProps) => {
   const editAgentSchema = z.object({
     title: z
@@ -54,19 +56,11 @@ export const useEditAgentForm = ({
   type EditAgentFormData = z.infer<typeof editAgentSchema>;
 
   const [images, setImages] = React.useState<string[]>(
-    submission.image_urls || [],
+    Array.from(new Set(submission.image_urls || [])), // Remove duplicates
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2ListMySubmissionsQueryKey(),
-        });
-      },
-    },
-  });
+  const { mutateAsync: editSubmission } = usePutV2EditStoreSubmission();
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -132,7 +126,20 @@ export const useEditAgentForm = ({
 
       // Extract the StoreSubmission from the response
       if (response.status === 200 && response.data) {
+        toast({
+          title: "Agent Updated",
+          description: "Your agent submission has been updated successfully.",
+          duration: 3000,
+          variant: "default",
+        });
+
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListMySubmissionsQueryKey(),
+        });
+
+        // Call onSuccess and explicitly close the modal
         onSuccess(response.data);
+        onClose();
       } else {
         throw new Error("Failed to update submission");
       }

@@ -12,6 +12,7 @@ reset-db:
 	rm -rf db/docker/volumes/db/data
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
+	cd backend && poetry run gen-prisma-stub
 	
 # View logs for core services
 logs-core:
@@ -33,6 +34,7 @@ init-env:
 migrate:
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
+	cd backend && poetry run gen-prisma-stub
 
 run-backend:
 	cd backend && poetry run app

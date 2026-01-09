@@ -99,6 +99,7 @@ export const MainDashboardPage = () => {
               store_listing_version_id:
                 submission.store_listing_version_id || undefined,
               changes_summary: submission.changes_summary || undefined,
+              listing_id: submission.listing_id,
             }))}
             onViewSubmission={onViewSubmission}
             onDeleteSubmission={onDeleteSubmission}

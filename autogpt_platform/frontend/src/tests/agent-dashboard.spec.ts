@@ -83,7 +83,7 @@ test("agent table delete action works correctly", async ({ page }) => {
 
   const rows = agentTable.getByTestId("agent-table-row");
 
-  // Delete button testing — delete the first agent in the list
+  // Delete button testing — only works for PENDING submissions
   const beforeCount = await rows.count();
 
   if (beforeCount === 0) {
@@ -91,11 +91,18 @@ test("agent table delete action works correctly", async ({ page }) => {
     return;
   }
 
-  const firstRow = rows.first();
-  const deletedSubmissionId = await firstRow.getAttribute("data-submission-id");
-  await firstRow.scrollIntoViewIfNeeded();
+  // Find a PENDING submission to delete
+  const pendingRow = rows.filter({ hasText: "Pending" }).first();
+  if (!(await pendingRow.count())) {
+    console.log("No pending agents available; skipping delete flow.");
+    return;
+  }
 
-  const delActionsButton = firstRow.getByTestId("agent-table-row-actions");
+  const deletedSubmissionId =
+    await pendingRow.getAttribute("data-submission-id");
+  await pendingRow.scrollIntoViewIfNeeded();
+
+  const delActionsButton = pendingRow.getByTestId("agent-table-row-actions");
   await delActionsButton.waitFor({ state: "visible", timeout: 10000 });
   await delActionsButton.scrollIntoViewIfNeeded();
   await delActionsButton.click();
@@ -108,7 +115,7 @@ test("agent table delete action works correctly", async ({ page }) => {
   await isHidden(page.locator(`[data-submission-id="${deletedSubmissionId}"]`));
 });
 
-test("edit action is unavailable for rejected agents (view only)", async ({
+test("edit and delete actions are unavailable for non-pending submissions", async ({
   page,
 }) => {
   await page.goto("/profile/dashboard");
@@ -118,27 +125,39 @@ test("edit action is unavailable for rejected agents (view only)", async ({
 
   const rows = agentTable.getByTestId("agent-table-row");
 
+  // Test with rejected submissions (view only)
   const rejectedRow = rows.filter({ hasText: "Rejected" }).first();
-  if (!(await rejectedRow.count())) {
-    console.log("No rejected agents available; skipping rejected edit test.");
-    return;
+  if (await rejectedRow.count()) {
+    await rejectedRow.scrollIntoViewIfNeeded();
+    const actionsButton = rejectedRow.getByTestId("agent-table-row-actions");
+    await actionsButton.waitFor({ state: "visible", timeout: 10000 });
+    await actionsButton.scrollIntoViewIfNeeded();
+    await actionsButton.click();
+
+    await expect(page.getByRole("menuitem", { name: "View" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
+
+    // Close the menu
+    await page.keyboard.press("Escape");
   }
 
-  await rejectedRow.scrollIntoViewIfNeeded();
+  // Test with approved submissions (view only)
+  const approvedRow = rows.filter({ hasText: "Approved" }).first();
+  if (await approvedRow.count()) {
+    await approvedRow.scrollIntoViewIfNeeded();
+    const actionsButton = approvedRow.getByTestId("agent-table-row-actions");
+    await actionsButton.waitFor({ state: "visible", timeout: 10000 });
+    await actionsButton.scrollIntoViewIfNeeded();
+    await actionsButton.click();
 
-  const actionsButton = rejectedRow.getByTestId("agent-table-row-actions");
-  await actionsButton.waitFor({ state: "visible", timeout: 10000 });
-  await actionsButton.scrollIntoViewIfNeeded();
-  await actionsButton.click();
-
-  // Rejected should not show Edit, only View
-  await expect(page.getByRole("menuitem", { name: "View" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "View" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Edit" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
+  }
 });
 
-test("editing an approved agent creates a new pending submission", async ({
-  page,
-}) => {
+test("editing a pending submission works correctly", async ({ page }) => {
   await page.goto("/profile/dashboard");
 
   const agentTable = page.getByTestId("agent-table");
@@ -146,16 +165,17 @@ test("editing an approved agent creates a new pending submission", async ({
 
   const rows = agentTable.getByTestId("agent-table-row");
 
-  const approvedRow = rows.filter({ hasText: "Approved" }).first();
-  if (!(await approvedRow.count())) {
-    console.log("No approved agents available; skipping approved edit test.");
+  // Find a PENDING submission to edit (only PENDING submissions can be edited)
+  const pendingRow = rows.filter({ hasText: "Pending" }).first();
+  if (!(await pendingRow.count())) {
+    console.log("No pending agents available; skipping edit test.");
     return;
   }
 
   const beforeCount = await rows.count();
 
-  await approvedRow.scrollIntoViewIfNeeded();
-  const actionsButton = approvedRow.getByTestId("agent-table-row-actions");
+  await pendingRow.scrollIntoViewIfNeeded();
+  const actionsButton = pendingRow.getByTestId("agent-table-row-actions");
   await actionsButton.waitFor({ state: "visible", timeout: 10000 });
   await actionsButton.scrollIntoViewIfNeeded();
   await actionsButton.click();
@@ -167,11 +187,11 @@ test("editing an approved agent creates a new pending submission", async ({
   const editModal = page.getByTestId("edit-agent-modal");
   await expect(editModal).toBeVisible();
 
-  const newTitle = `E2E Edit Approved ${Date.now()}`;
+  const newTitle = `E2E Edit Pending ${Date.now()}`;
   await page.getByRole("textbox", { name: "Title" }).fill(newTitle);
   await page
     .getByRole("textbox", { name: "Changes Summary" })
-    .fill("E2E change - approved -> new pending submission");
+    .fill("E2E change - updating pending submission");
 
   await page.getByRole("button", { name: "Update submission" }).click();
   await expect(editModal).not.toBeVisible();
