@@ -628,15 +628,18 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         graph_version: int,
         execution_context: "ExecutionContext",
         **kwargs,
-    ) -> bool:
+    ) -> tuple[bool, BlockInput]:
         """
         Check if this block execution needs human review and handle the review process.
 
         Returns:
-            True if execution should be paused for review, False if execution can proceed
+            Tuple of (should_pause, input_data_to_use)
+            - should_pause: True if execution should be paused for review
+            - input_data_to_use: The input data to use (may be modified by reviewer)
         """
-        if not self.requires_human_review:
-            return False
+        # Skip review if not required or safe mode is disabled
+        if not self.requires_human_review or not execution_context.safe_mode:
+            return False, input_data
 
         from backend.blocks.helpers.review import HITLReviewHelper
 
@@ -655,7 +658,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
         if decision is None:
             # We're awaiting review - pause execution
-            return True
+            return True, input_data
 
         if not decision.should_proceed:
             # Review was rejected, raise an error to stop execution
@@ -665,7 +668,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_id=self.id,
             )
 
-        return False
+        # Review was approved - use the potentially modified data
+        # Ensure data is in the correct format for BlockInput
+        reviewed_data = decision.review_result.data
+        if isinstance(reviewed_data, dict):
+            return False, reviewed_data
+        else:
+            # Fallback to original input if review data is not a dict
+            return False, input_data
 
     async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
@@ -675,11 +685,18 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_id=self.id,
             )
 
-        if await self.is_block_exec_need_review(input_data, **kwargs):
+        # Check for review requirement and get potentially modified input data
+        should_pause, reviewed_input_data = await self.is_block_exec_need_review(
+            input_data, **kwargs
+        )
+        if should_pause:
             return
 
+        # Use the reviewed input data (may have been modified by reviewer)
         async for output_name, output_data in self.run(
-            self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
+            self.input_schema(
+                **{k: v for k, v in reviewed_input_data.items() if v is not None}
+            ),
             **kwargs,
         ):
             if output_name == "error":
