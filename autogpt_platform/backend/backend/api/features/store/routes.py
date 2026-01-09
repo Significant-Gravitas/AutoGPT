@@ -7,6 +7,7 @@ from typing import Literal
 import autogpt_libs.auth
 import fastapi
 import fastapi.responses
+from autogpt_libs.auth.dependencies import get_optional_user_id
 
 import backend.data.graph
 import backend.util.json
@@ -76,6 +77,63 @@ async def update_or_create_profile(
     """
     updated_profile = await store_db.update_profile(user_id=user_id, profile=profile)
     return updated_profile
+
+
+##############################################
+############## Waitlist Endpoints ############
+##############################################
+@router.get(
+    "/waitlist",
+    summary="Get the agent waitlist",
+    tags=["store", "public"],
+    response_model=store_model.StoreWaitlistsAllResponse,
+)
+async def get_waitlist():
+    """
+    Get all active waitlists for public display.
+    """
+    waitlists = await store_db.get_waitlist()
+    return store_model.StoreWaitlistsAllResponse(listings=waitlists)
+
+
+@router.get(
+    "/waitlist/my-memberships",
+    summary="Get waitlist IDs the current user has joined",
+    tags=["store", "private"],
+)
+async def get_my_waitlist_memberships(
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
+) -> list[str]:
+    """Returns list of waitlist IDs the authenticated user has joined."""
+    return await store_db.get_user_waitlist_memberships(user_id)
+
+
+@router.post(
+    path="/waitlist/{waitlist_id}/join",
+    summary="Add self to the agent waitlist",
+    tags=["store", "public"],
+    response_model=store_model.StoreWaitlistEntry,
+)
+async def add_self_to_waitlist(
+    user_id: str | None = fastapi.Security(get_optional_user_id),
+    waitlist_id: str = fastapi.Path(..., description="The ID of the waitlist to join"),
+    email: str | None = fastapi.Body(
+        default=None, embed=True, description="Email address for unauthenticated users"
+    ),
+):
+    """
+    Add the current user to the agent waitlist.
+    """
+    if not user_id and not email:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="Either user authentication or email address is required",
+        )
+
+    waitlist_entry = await store_db.add_user_to_waitlist(
+        waitlist_id=waitlist_id, user_id=user_id, email=email
+    )
+    return waitlist_entry
 
 
 ##############################################
