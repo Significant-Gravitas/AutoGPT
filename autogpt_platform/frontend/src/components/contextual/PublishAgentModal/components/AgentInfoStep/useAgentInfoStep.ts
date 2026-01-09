@@ -53,14 +53,14 @@ export function useAgentInfoStep({
   useEffect(() => {
     if (initialData?.agent_id) {
       setAgentId(initialData.agent_id);
-      if (!isMarketplaceUpdate) {
-        const initialImages = [
-          ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
-          ...(initialData.additionalImages || []),
-        ];
-        setImages(initialImages);
-      }
-
+      setImages(
+        Array.from(
+          new Set([
+            ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
+            ...(initialData.additionalImages || []),
+          ]),
+        ),
+      );
       form.reset({
         changesSummary: isMarketplaceUpdate
           ? ""
@@ -152,12 +152,7 @@ export function useAgentInfoStep({
     agentId,
     images,
     isSubmitting,
-    initialImages: initialData
-      ? [
-          ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
-          ...(initialData.additionalImages || []),
-        ]
-      : [],
+    initialImages: images,
     initialSelectedImage: initialData?.thumbnailSrc || null,
     handleImagesChange,
     handleSubmit: form.handleSubmit(handleFormSubmit),
