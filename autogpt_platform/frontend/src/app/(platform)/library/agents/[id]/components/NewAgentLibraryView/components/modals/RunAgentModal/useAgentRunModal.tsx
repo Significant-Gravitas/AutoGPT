@@ -163,15 +163,21 @@ export function useAgentRunModal(
   }, [agentInputSchema.required, inputValues]);
 
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
-    const availableCredentials = new Set(Object.keys(inputCredentials));
-    const allCredentials = new Set(
-      Object.keys(agentCredentialsInputFields || {}) ?? [],
+    // Only check required credentials from schema, not all properties
+    // Credentials marked as optional in node metadata won't be in the required array
+    const requiredCredentials = new Set(
+      (agent.credentials_input_schema?.required as string[]) || [],
     );
-    const missing = [...allCredentials].filter(
-      (key) => !availableCredentials.has(key),
-    );
+
+    // Check if required credentials have valid id (not just key existence)
+    // A credential is valid only if it has an id field set
+    const missing = [...requiredCredentials].filter((key) => {
+      const cred = inputCredentials[key];
+      return !cred || !cred.id;
+    });
+
     return [missing.length === 0, missing];
-  }, [agentCredentialsInputFields, inputCredentials]);
+  }, [agent.credentials_input_schema, inputCredentials]);
 
   const credentialsRequired = useMemo(
     () => Object.keys(agentCredentialsInputFields || {}).length > 0,
@@ -239,12 +245,18 @@ export function useAgentRunModal(
       });
     } else {
       // Manual execution
+      // Filter out incomplete credentials (optional ones not selected)
+      // Only send credentials that have a valid id field
+      const validCredentials = Object.fromEntries(
+        Object.entries(inputCredentials).filter(([_, cred]) => cred && cred.id),
+      );
+
       executeGraphMutation.mutate({
         graphId: agent.graph_id,
         graphVersion: agent.graph_version,
         data: {
           inputs: inputValues,
-          credentials_inputs: inputCredentials,
+          credentials_inputs: validCredentials,
           source: "library",
         },
       });

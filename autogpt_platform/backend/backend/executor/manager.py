@@ -178,6 +178,7 @@ async def execute_node(
     execution_processor: "ExecutionProcessor",
     execution_stats: NodeExecutionStats | None = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    nodes_to_skip: Optional[set[str]] = None,
 ) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -245,6 +246,7 @@ async def execute_node(
         "user_id": user_id,
         "execution_context": execution_context,
         "execution_processor": execution_processor,
+        "nodes_to_skip": nodes_to_skip or set(),
     }
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
@@ -542,6 +544,7 @@ class ExecutionProcessor:
         node_exec_progress: NodeExecutionProgress,
         nodes_input_masks: Optional[NodesInputMasks],
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
+        nodes_to_skip: Optional[set[str]] = None,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             logger=_logger,
@@ -564,6 +567,7 @@ class ExecutionProcessor:
             db_client=db_client,
             log_metadata=log_metadata,
             nodes_input_masks=nodes_input_masks,
+            nodes_to_skip=nodes_to_skip,
         )
         if isinstance(status, BaseException):
             raise status
@@ -609,6 +613,7 @@ class ExecutionProcessor:
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
         nodes_input_masks: Optional[NodesInputMasks] = None,
+        nodes_to_skip: Optional[set[str]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
 
@@ -645,6 +650,7 @@ class ExecutionProcessor:
                 execution_processor=self,
                 execution_stats=stats,
                 nodes_input_masks=nodes_input_masks,
+                nodes_to_skip=nodes_to_skip,
             ):
                 await persist_output(output_name, output_data)
 
@@ -956,6 +962,21 @@ class ExecutionProcessor:
 
                 queued_node_exec = execution_queue.get()
 
+                # Check if this node should be skipped due to optional credentials
+                if queued_node_exec.node_id in graph_exec.nodes_to_skip:
+                    log_metadata.info(
+                        f"Skipping node execution {queued_node_exec.node_exec_id} "
+                        f"for node {queued_node_exec.node_id} - optional credentials not configured"
+                    )
+                    # Mark the node as completed without executing
+                    # No outputs will be produced, so downstream nodes won't trigger
+                    update_node_execution_status(
+                        db_client=db_client,
+                        exec_id=queued_node_exec.node_exec_id,
+                        status=ExecutionStatus.COMPLETED,
+                    )
+                    continue
+
                 log_metadata.debug(
                     f"Dispatching node execution {queued_node_exec.node_exec_id} "
                     f"for node {queued_node_exec.node_id}",
@@ -1016,6 +1037,7 @@ class ExecutionProcessor:
                             execution_stats,
                             execution_stats_lock,
                         ),
+                        nodes_to_skip=graph_exec.nodes_to_skip,
                     ),
                     self.node_execution_loop,
                 )
