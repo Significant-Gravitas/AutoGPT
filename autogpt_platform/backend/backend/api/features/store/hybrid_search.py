@@ -147,7 +147,9 @@ async def hybrid_search(
         # Build hybrid search query with weighted scoring
         # The semantic score is (1 - cosine_distance), normalized to [0,1]
         # The lexical score is ts_rank_cd, normalized by max value
+        # Set search_path to include public for vector type visibility
         sql_query = f"""
+            SET LOCAL search_path TO platform, public;
             WITH search_scores AS (
                 SELECT
                     sa.*,
@@ -224,6 +226,7 @@ async def hybrid_search(
 
         # Count query - must also filter by min_score
         count_query = f"""
+            SET LOCAL search_path TO platform, public;
             WITH search_scores AS (
                 SELECT
                     sa.slug,

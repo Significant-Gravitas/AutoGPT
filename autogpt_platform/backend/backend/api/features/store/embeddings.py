@@ -108,8 +108,10 @@ async def store_embedding(
         embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
 
         # Upsert the embedding
+        # Set search_path to include public for vector type visibility
         await client.execute_raw(
             """
+            SET LOCAL search_path TO platform, public;
             INSERT INTO platform."StoreListingEmbedding" (
                 "id", "storeListingVersionId", "embedding",
                 "searchableText", "contentHash", "createdAt", "updatedAt"
