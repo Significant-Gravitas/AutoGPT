@@ -18,6 +18,7 @@ import {
   BlockIOSubSchema,
   BlockUIType,
   Category,
+  Node,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
@@ -81,6 +82,7 @@ export type CustomNodeData = {
   outputSchema: BlockIORootSchema;
   hardcodedValues: { [key: string]: any };
   connections: ConnectionData;
+  webhook?: Node["webhook"];
   isOutputOpen: boolean;
   status?: NodeExecutionResult["status"];
   /** executionResults contains outputs across multiple executions
@@ -910,6 +912,39 @@ export const CustomNode = React.memo(
                         </span>
                       </AlertDescription>
                     </Alert>
+                    {data.uiType === BlockUIType.WEBHOOK_MANUAL && (
+                      <>
+                        {data.webhook ? (
+                          <div className="nodrag mr-5 flex flex-col gap-1">
+                            Webhook URL:
+                            <div className="flex gap-2 rounded-md bg-gray-50 p-2">
+                              <code className="select-all break-all text-sm">
+                                {data.webhook.url}
+                              </code>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="size-7 flex-none"
+                                onClick={() =>
+                                  data.webhook &&
+                                  navigator.clipboard.writeText(
+                                    data.webhook.url,
+                                  )
+                                }
+                                title="Copy webhook URL"
+                              >
+                                <CopyIcon className="size-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="italic text-gray-500">
+                            (A Webhook URL will be generated when you save the
+                            agent)
+                          </p>
+                        )}
+                      </>
+                    )}
                     <div className="pointer-events-none opacity-50">
                       {generateInputHandles(data.inputSchema, data.uiType)}
                     </div>
