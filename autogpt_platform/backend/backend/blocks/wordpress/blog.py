@@ -62,6 +62,9 @@ class WordPressCreatePostBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        site: str = SchemaField(
+            description="The site ID or domain (pass-through for chaining with other blocks)"
+        )
         post_id: int = SchemaField(description="The ID of the created post")
         post_url: str = SchemaField(description="The full URL of the created post")
         short_url: str = SchemaField(description="The shortened wp.me URL")
@@ -100,6 +103,7 @@ class WordPressCreatePostBlock(Block):
             post_data=post_request,
         )
 
+        yield "site", input_data.site
         yield "post_id", post_response.ID
         yield "post_url", post_response.URL
         yield "short_url", post_response.short_URL
@@ -117,8 +121,8 @@ class WordPressGetAllPostsBlock(Block):
         site: str = SchemaField(
             description="Site ID or domain (e.g., 'myblog.wordpress.com' or '123456789')"
         )
-        status: str | None = SchemaField(
-            description="Filter by post status: 'publish', 'draft', 'pending', 'private', 'future', 'auto-draft', or None for all",
+        status: PostStatus | None = SchemaField(
+            description="Filter by post status, or None for all",
             default=None,
         )
         number: int = SchemaField(
@@ -129,6 +133,9 @@ class WordPressGetAllPostsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
+        site: str = SchemaField(
+            description="The site ID or domain (pass-through for chaining with other blocks)"
+        )
         found: int = SchemaField(description="Total number of posts found")
         posts: list[dict] = SchemaField(
             description="List of post objects with their details"
@@ -136,7 +143,7 @@ class WordPressGetAllPostsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b3e0c4d1-7f9a-4b2e-8c5d-1a2b3c4d5e6f",
+            id="97728fa7-7f6f-4789-ba0c-f2c114119536",
             description="Fetch all posts from WordPress.com or Jetpack sites",
             categories={BlockCategory.SOCIAL},
             input_schema=self.Input,
@@ -154,5 +161,6 @@ class WordPressGetAllPostsBlock(Block):
             offset=input_data.offset,
         )
 
+        yield "site", input_data.site
         yield "found", posts_response.found
         yield "posts", [post.model_dump() for post in posts_response.posts]

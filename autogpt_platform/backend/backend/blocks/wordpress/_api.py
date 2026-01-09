@@ -476,6 +476,7 @@ async def create_post(
         data["tags"] = ",".join(str(t) for t in data["tags"])
 
     # Make the API request
+    site = normalize_site(site)
     endpoint = f"/rest/v1.1/sites/{site}/posts/new"
 
     headers = {
@@ -560,10 +561,28 @@ class PostsResponse(BaseModel):
     meta: Dict[str, Any]
 
 
+def normalize_site(site: str) -> str:
+    """
+    Normalize a site identifier by stripping protocol and trailing slashes.
+
+    Args:
+        site: Site URL, domain, or ID (e.g., "https://myblog.wordpress.com/", "myblog.wordpress.com", "123456789")
+
+    Returns:
+        Normalized site identifier (domain or ID only)
+    """
+    site = site.strip()
+    if site.startswith("https://"):
+        site = site[8:]
+    elif site.startswith("http://"):
+        site = site[7:]
+    return site.rstrip("/")
+
+
 async def get_posts(
     credentials: Credentials,
     site: str,
-    status: str | None = None,
+    status: PostStatus | None = None,
     number: int = 100,
     offset: int = 0,
 ) -> PostsResponse:
@@ -573,14 +592,14 @@ async def get_posts(
     Args:
         credentials: OAuth credentials
         site: Site ID or domain (e.g., "myblog.wordpress.com" or "123456789")
-        status: Filter by post status (e.g., "publish", "draft", "pending", etc.)
+        status: Filter by post status using PostStatus enum, or None for all
         number: Number of posts to retrieve (max 100)
         offset: Number of posts to skip (for pagination)
 
     Returns:
         PostsResponse with the list of posts
     """
-
+    site = normalize_site(site)
     endpoint = f"/rest/v1.1/sites/{site}/posts"
 
     headers = {
@@ -593,7 +612,7 @@ async def get_posts(
     }
 
     if status:
-        params["status"] = status
+        params["status"] = status.value
     response = await Requests().get(
         f"{WORDPRESS_BASE_URL.rstrip('/')}{endpoint}",
         headers=headers,
