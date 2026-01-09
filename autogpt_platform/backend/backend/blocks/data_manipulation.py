@@ -159,7 +159,7 @@ class FindInDictionaryBlock(Block):
     def __init__(self):
         super().__init__(
             id="0e50422c-6dee-4145-83d6-3a5a392f65de",
-            description="Lookup the given key in the input dictionary/object/list and return the value.",
+            description="A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value.",
             input_schema=FindInDictionaryBlock.Input,
             output_schema=FindInDictionaryBlock.Output,
             test_input=[
