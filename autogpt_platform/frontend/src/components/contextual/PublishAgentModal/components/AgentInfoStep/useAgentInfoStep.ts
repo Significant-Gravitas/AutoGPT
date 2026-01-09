@@ -61,20 +61,20 @@ export function useAgentInfoStep({
         setImages(initialImages);
       }
 
-      if (!isMarketplaceUpdate) {
-        form.reset({
-          changesSummary: initialData.changesSummary || "",
-          title: initialData.title,
-          subheader: initialData.subheader,
-          slug: initialData.slug.toLocaleLowerCase().trim(),
-          youtubeLink: initialData.youtubeLink,
-          category: initialData.category,
-          description: initialData.description,
-          recommendedScheduleCron: initialData.recommendedScheduleCron || "",
-          instructions: initialData.instructions || "",
-          agentOutputDemo: initialData.agentOutputDemo || "",
-        });
-      }
+      form.reset({
+        changesSummary: isMarketplaceUpdate
+          ? ""
+          : initialData.changesSummary || "",
+        title: initialData.title,
+        subheader: initialData.subheader,
+        slug: initialData.slug.toLocaleLowerCase().trim(),
+        youtubeLink: initialData.youtubeLink,
+        category: initialData.category,
+        description: isMarketplaceUpdate ? "" : initialData.description,
+        recommendedScheduleCron: initialData.recommendedScheduleCron || "",
+        instructions: initialData.instructions || "",
+        agentOutputDemo: initialData.agentOutputDemo || "",
+      });
     }
   }, [initialData, form]);
 
