@@ -3,9 +3,6 @@
 ### What it is
 Creates a new thread in a Discord channel.
 
-### What it does
-Creates a new thread in a Discord channel.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Discord API with a bot token to create a new thread in a specified channel. Threads can be public or private (private requires Boost Level 2+).
@@ -47,9 +44,6 @@ Configure auto-archive duration and optionally send an initial message when the 
 ### What it is
 Resolves Discord channel names to IDs and vice versa.
 
-### What it does
-Resolves Discord channel names to IDs and vice versa.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block resolves Discord channel identifiers, converting between channel names and IDs. It queries the Discord API to find the channel and returns comprehensive information including server details.
@@ -87,9 +81,6 @@ Useful for workflows that receive channel names but need IDs for other Discord o
 ## Discord User Info
 
 ### What it is
-Gets information about a Discord user by their ID.
-
-### What it does
 Gets information about a Discord user by their ID.
 
 ### How it works
@@ -132,9 +123,6 @@ The user must be visible to your bot (share a server with your bot).
 ### What it is
 Reads messages from a Discord channel using a bot token.
 
-### What it does
-Reads messages from a Discord channel using a bot token.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block uses a Discord bot to log into a server and listen for new messages. When a message is received, it extracts the content, channel name, and username of the sender. If the message contains a text file attachment, the block also retrieves and includes the file's content.
@@ -161,9 +149,6 @@ This block could be used to monitor a Discord channel for support requests. When
 ## Reply To Discord Message
 
 ### What it is
-Replies to a specific Discord message.
-
-### What it does
 Replies to a specific Discord message.
 
 ### How it works
@@ -204,9 +189,6 @@ The reply appears linked to the original message in Discord's UI, maintaining co
 ### What it is
 Sends a direct message to a Discord user using their user ID.
 
-### What it does
-Sends a direct message to a Discord user using their user ID.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block sends a direct message to a Discord user. It opens a DM channel with the user (if not already open) and sends the message. The user must allow DMs from server members or share a server with your bot.
@@ -241,9 +223,6 @@ Returns the message ID of the sent DM for tracking purposes.
 ## Send Discord Embed
 
 ### What it is
-Sends a rich embed message to a Discord channel.
-
-### What it does
 Sends a rich embed message to a Discord channel.
 
 ### How it works
@@ -290,9 +269,6 @@ Configure the embed's appearance with colors, images, and multiple fields for or
 ### What it is
 Sends a file attachment to a Discord channel.
 
-### What it does
-Sends a file attachment to a Discord channel.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uploads and sends a file attachment to a Discord channel. It supports various file types including images, documents, and other media. Files can be provided as URLs, data URIs, or local paths.
@@ -330,9 +306,6 @@ Optionally include a message along with the file attachment.
 ## Send Discord Message
 
 ### What it is
-Sends a message to a Discord channel using a bot token.
-
-### What it does
 Sends a message to a Discord channel using a bot token.
 
 ### How it works

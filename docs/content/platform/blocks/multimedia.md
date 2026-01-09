@@ -3,9 +3,6 @@
 ### What it is
 Block to attach an audio file to a video file using moviepy.
 
-### What it does
-Block to attach an audio file to a video file using moviepy.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block combines a video file with an audio file using the moviepy library. The audio track is attached to the video, optionally with volume adjustment via the volume parameter (1.0 = original volume).
@@ -43,9 +40,6 @@ Input files can be URLs, data URIs, or local paths. The output can be returned a
 ### What it is
 Block to loop a video to a given duration or number of repeats.
 
-### What it does
-Block to loop a video to a given duration or number of repeats.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block extends a video by repeating it to reach a target duration or number of loops. Set duration to specify the total length in seconds, or use n_loops to repeat the video a specific number of times.
@@ -81,9 +75,6 @@ The looped video is seamlessly concatenated and can be output as a file path or 
 ## Media Duration
 
 ### What it is
-Block to get the duration of a media file.
-
-### What it does
 Block to get the duration of a media file.
 
 ### How it works

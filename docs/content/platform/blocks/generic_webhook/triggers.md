@@ -3,9 +3,6 @@
 ### What it is
 This block will output the contents of the generic input for the webhook.
 
-### What it does
-This block will output the contents of the generic input for the webhook.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a webhook endpoint that receives and outputs any incoming HTTP payload. When external services send data to this webhook URL, the block triggers and outputs the complete payload as a dictionary.

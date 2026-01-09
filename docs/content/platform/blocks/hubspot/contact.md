@@ -1,9 +1,6 @@
 # Hub Spot Contact
 
 ### What it is
-Manages HubSpot contacts - create, update, and retrieve contact information.
-
-### What it does
 Manages HubSpot contacts - create, update, and retrieve contact information
 
 ### How it works

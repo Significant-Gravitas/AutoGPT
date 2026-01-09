@@ -3,9 +3,6 @@
 ### What it is
 This block follows a specified Twitter user.
 
-### What it does
-This block follows a specified Twitter user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to create a follow relationship from the authenticated user to the specified target user. The follow action is public—the target user will be notified and can see that you followed them.
@@ -38,9 +35,6 @@ The block authenticates using OAuth 2.0 with follow write permissions. If the ta
 ## Twitter Get Followers
 
 ### What it is
-This block retrieves followers of a specified Twitter user.
-
-### What it does
 This block retrieves followers of a specified Twitter user.
 
 ### How it works
@@ -87,9 +81,6 @@ The block uses Tweepy with OAuth 2.0 authentication. Followers are returned in r
 ### What it is
 This block retrieves the users that a specified Twitter user is following.
 
-### What it does
-This block retrieves the users that a specified Twitter user is following.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve a paginated list of users that a specified account follows. Results include user IDs, usernames, and optionally expanded profile data.
@@ -132,9 +123,6 @@ The block uses Tweepy with OAuth 2.0 authentication. Following lists are returne
 ## Twitter Unfollow User
 
 ### What it is
-This block unfollows a specified Twitter user.
-
-### What it does
 This block unfollows a specified Twitter user.
 
 ### How it works

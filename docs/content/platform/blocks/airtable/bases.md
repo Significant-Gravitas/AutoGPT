@@ -1,9 +1,6 @@
 # Airtable Create Base
 
 ### What it is
-Create or find a base in Airtable.
-
-### What it does
 Create or find a base in Airtable
 
 ### How it works
@@ -44,9 +41,6 @@ Enable find_existing to search for a base with the same name before creating a n
 ## Airtable List Bases
 
 ### What it is
-List all bases in Airtable.
-
-### What it does
 List all bases in Airtable
 
 ### How it works

@@ -1,9 +1,6 @@
 # Google Sheets Add Column
 
 ### What it is
-Add a new column with a header.
-
-### What it does
 Add a new column with a header. Can add at the end or insert at a specific position.
 
 ### How it works
@@ -45,9 +42,6 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 ## Google Sheets Add Dropdown
 
 ### What it is
-Add a dropdown list (data validation) to cells.
-
-### What it does
 Add a dropdown list (data validation) to cells. Useful for enforcing valid inputs.
 
 ### How it works
@@ -88,9 +82,6 @@ The dropdown arrow appears in cells when enabled, providing users with a list of
 ## Google Sheets Add Note
 
 ### What it is
-Add a note to a cell in a Google Sheet.
-
-### What it does
 Add a note to a cell in a Google Sheet
 
 ### How it works
@@ -129,9 +120,6 @@ Notes are useful for documentation, explanations, or audit trails that shouldn't
 ## Google Sheets Append Row
 
 ### What it is
-Append or Add a single row to the end of a Google Sheet.
-
-### What it does
 Append or Add a single row to the end of a Google Sheet. The row is added after the last row with data.
 
 ### How it works
@@ -172,9 +160,6 @@ This is ideal for continuously adding records to a log or database-style sheet.
 ### What it is
 This block performs multiple operations on a Google Sheets spreadsheet in a single batch request.
 
-### What it does
-This block performs multiple operations on a Google Sheets spreadsheet in a single batch request.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block combines multiple spreadsheet operations into a single API call using the Google Sheets API's batch update functionality. This is more efficient than making separate calls for each operation.
@@ -211,9 +196,6 @@ Operations execute in order and can include various actions like formatting, dat
 ### What it is
 This block clears data from a specified range in a Google Sheets spreadsheet.
 
-### What it does
-This block clears data from a specified range in a Google Sheets spreadsheet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block removes all values from a specified cell range using the Google Sheets API. The cells remain but their contents are deleted, preserving any formatting.
@@ -248,9 +230,6 @@ Use A1 notation (e.g., "A1:D10" or "Sheet1!B2:C5") to specify the range to clear
 ## Google Sheets Copy To Spreadsheet
 
 ### What it is
-Copy a sheet from one spreadsheet to another.
-
-### What it does
 Copy a sheet from one spreadsheet to another.
 
 ### How it works
@@ -292,9 +271,6 @@ The new sheet is added to the destination spreadsheet with a potentially modifie
 ### What it is
 Create a named range to reference cells by name instead of A1 notation.
 
-### What it does
-Create a named range to reference cells by name instead of A1 notation.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a named range in a Google Spreadsheet using the Google Sheets API. Named ranges allow you to reference cells by descriptive names instead of A1 notation, making formulas more readable.
@@ -332,9 +308,6 @@ Named ranges can be used in formulas across the spreadsheet and make maintenance
 ## Google Sheets Create Spreadsheet
 
 ### What it is
-This block creates a new Google Sheets spreadsheet with specified sheets.
-
-### What it does
 This block creates a new Google Sheets spreadsheet with specified sheets.
 
 ### How it works
@@ -375,9 +348,6 @@ The spreadsheet output can be chained to other Sheets blocks for immediate data 
 ### What it is
 Delete a column by header name or column letter.
 
-### What it does
-Delete a column by header name or column letter.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block removes an entire column from a Google Sheet using the Google Sheets API. You can specify the column by its header name or column letter (A, B, C, etc.).
@@ -413,9 +383,6 @@ All data in the column is permanently deleted and subsequent columns shift left 
 ## Google Sheets Delete Rows
 
 ### What it is
-Delete specific rows from a Google Sheet by their row indices.
-
-### What it does
 Delete specific rows from a Google Sheet by their row indices. Works well with FilterRowsBlock output.
 
 ### How it works
@@ -454,9 +421,6 @@ Works seamlessly with the Filter Rows block output to delete rows matching speci
 ## Google Sheets Export Csv
 
 ### What it is
-Export a Google Sheet as CSV data.
-
-### What it does
 Export a Google Sheet as CSV data
 
 ### How it works
@@ -495,9 +459,6 @@ The CSV data can be used for integration with other systems, file downloads, or 
 ## Google Sheets Filter Rows
 
 ### What it is
-Filter rows in a Google Sheet based on a column condition.
-
-### What it does
 Filter rows in a Google Sheet based on a column condition. Returns matching rows and their indices.
 
 ### How it works
@@ -541,9 +502,6 @@ Returns matching rows along with their original 1-based row indices, making it e
 ## Google Sheets Find
 
 ### What it is
-Find text in a Google Sheets spreadsheet.
-
-### What it does
 Find text in a Google Sheets spreadsheet. Returns locations and count of occurrences. Can find all occurrences or just the first one.
 
 ### How it works
@@ -589,9 +547,6 @@ Returns the locations (sheet, row, column) of all matches or just the first one,
 ### What it is
 This block finds and replaces text in a Google Sheets spreadsheet.
 
-### What it does
-This block finds and replaces text in a Google Sheets spreadsheet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block performs find-and-replace operations across a Google Spreadsheet using the Google Sheets API. You can target all sheets or specific ones, with options for case matching and whole-cell matching.
@@ -630,9 +585,6 @@ Returns the number of replacements made, enabling verification of the operation'
 ## Google Sheets Format
 
 ### What it is
-Format a range in a Google Sheet (sheet optional).
-
-### What it does
 Format a range in a Google Sheet (sheet optional)
 
 ### How it works
@@ -674,9 +626,6 @@ Formatting enhances readability and can highlight important data or create visua
 ## Google Sheets Get Column
 
 ### What it is
-Extract all values from a specific column.
-
-### What it does
 Extract all values from a specific column. Useful for getting a list of emails, IDs, or any single field.
 
 ### How it works
@@ -718,9 +667,6 @@ Returns values as a list for easy iteration or processing in subsequent blocks.
 ## Google Sheets Get Notes
 
 ### What it is
-Get notes from cells in a Google Sheet.
-
-### What it does
 Get notes from cells in a Google Sheet
 
 ### How it works
@@ -759,9 +705,6 @@ Returns a list of notes with their cell locations, useful for extracting documen
 ## Google Sheets Get Row
 
 ### What it is
-Get a specific row by its index.
-
-### What it does
 Get a specific row by its index. Returns both list and dict formats.
 
 ### How it works
@@ -800,9 +743,6 @@ The dictionary format makes it easy to access specific fields by name rather tha
 ## Google Sheets Get Row Count
 
 ### What it is
-Get row count and dimensions of a Google Sheet.
-
-### What it does
 Get row count and dimensions of a Google Sheet. Useful for knowing where data ends.
 
 ### How it works
@@ -844,9 +784,6 @@ This information is essential for determining loop boundaries or validating data
 ## Google Sheets Get Unique Values
 
 ### What it is
-Get unique values from a column.
-
-### What it does
 Get unique values from a column. Useful for building dropdown options or finding distinct categories.
 
 ### How it works
@@ -888,9 +825,6 @@ Useful for discovering data categories, building dynamic dropdown lists, or anal
 ## Google Sheets Import Csv
 
 ### What it is
-Import CSV data into a Google Sheet.
-
-### What it does
 Import CSV data into a Google Sheet
 
 ### How it works
@@ -931,9 +865,6 @@ The CSV string is parsed and written to the sheet, enabling data import from ext
 ## Google Sheets Insert Row
 
 ### What it is
-Insert a single row at a specific position.
-
-### What it does
 Insert a single row at a specific position. Existing rows shift down.
 
 ### How it works
@@ -975,9 +906,6 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 ### What it is
 List all named ranges in a spreadsheet.
 
-### What it does
-List all named ranges in a spreadsheet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves all named ranges defined in a Google Spreadsheet using the Google Sheets API. Returns each range's name, ID, and the cell range it references.
@@ -1012,9 +940,6 @@ Useful for discovering available named ranges or auditing spreadsheet configurat
 ## Google Sheets Lookup Row
 
 ### What it is
-Look up a row by finding a value in a specific column.
-
-### What it does
 Look up a row by finding a value in a specific column. Returns the first matching row and optionally specific columns.
 
 ### How it works
@@ -1058,9 +983,6 @@ This is useful for database-style lookups where you need to find a record by ID,
 ## Google Sheets Manage Sheet
 
 ### What it is
-Create, delete, or copy sheets (sheet optional).
-
-### What it does
 Create, delete, or copy sheets (sheet optional)
 
 ### How it works
@@ -1102,9 +1024,6 @@ Use this to dynamically organize spreadsheet structure as part of workflows.
 ### What it is
 This block retrieves metadata about a Google Sheets spreadsheet including sheet names and properties.
 
-### What it does
-This block retrieves metadata about a Google Sheets spreadsheet including sheet names and properties.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves spreadsheet metadata using the Google Sheets API, including title, sheet names, sheet IDs, and properties like row/column counts and frozen rows.
@@ -1138,9 +1057,6 @@ Useful for understanding spreadsheet structure before performing operations.
 ## Google Sheets Protect Range
 
 ### What it is
-Protect a cell range or entire sheet from editing.
-
-### What it does
 Protect a cell range or entire sheet from editing.
 
 ### How it works
@@ -1181,10 +1097,7 @@ Use this to prevent accidental changes to important formulas, headers, or refere
 ## Google Sheets Read
 
 ### What it is
-A block that reads data from a Google Sheets spreadsheet.
-
-### What it does
-Retrieves information from a designated range within a Google Sheets document.
+A block that reads data from a Google Sheets spreadsheet using A1 notation range selection.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1214,9 +1127,6 @@ A marketing team could use this block to automatically retrieve the latest campa
 ## Google Sheets Remove Duplicates
 
 ### What it is
-Remove duplicate rows based on specified columns.
-
-### What it does
 Remove duplicate rows based on specified columns. Keeps either the first or last occurrence.
 
 ### How it works
@@ -1258,9 +1168,6 @@ Case sensitivity is configurable for text comparisons.
 ## Google Sheets Set Public Access
 
 ### What it is
-Make a Google Spreadsheet public or private.
-
-### What it does
 Make a Google Spreadsheet public or private
 
 ### How it works
@@ -1299,9 +1206,6 @@ When made public, anyone with the link can access the spreadsheet. The share lin
 ## Google Sheets Share Spreadsheet
 
 ### What it is
-Share a Google Spreadsheet with users or get shareable link.
-
-### What it does
 Share a Google Spreadsheet with users or get shareable link
 
 ### How it works
@@ -1342,9 +1246,6 @@ Leave the email blank to just generate a shareable link.
 ## Google Sheets Sort
 
 ### What it is
-Sort a Google Sheet by one or two columns.
-
-### What it does
 Sort a Google Sheet by one or two columns. The sheet is sorted in-place.
 
 ### How it works
@@ -1388,9 +1289,6 @@ Sorting is performed in-place, modifying the sheet directly.
 ### What it is
 Update a single cell in a Google Sheets spreadsheet.
 
-### What it does
-Update a single cell in a Google Sheets spreadsheet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block updates a single cell in a Google Sheet using the Google Sheets API. Use A1 notation to specify the cell (e.g., "A1" or "Sheet1!B2").
@@ -1427,9 +1325,6 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 ## Google Sheets Update Row
 
 ### What it is
-Update a specific row by its index.
-
-### What it does
 Update a specific row by its index. Can use list or dict format for values.
 
 ### How it works
@@ -1469,10 +1364,7 @@ The dictionary format is convenient when you only need to update specific column
 ## Google Sheets Write
 
 ### What it is
-A block that writes data to a Google Sheets spreadsheet.
-
-### What it does
-Inputs data into a designated range within a Google Sheets document.
+A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

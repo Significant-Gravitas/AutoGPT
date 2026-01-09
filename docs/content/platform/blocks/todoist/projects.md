@@ -1,9 +1,6 @@
 # Todoist Create Project
 
 ### What it is
-Creates a new project in Todoist.
-
-### What it does
 Creates a new project in Todoist
 
 ### How it works
@@ -36,9 +33,6 @@ Creating new projects programmatically for workflow automation.
 ## Todoist Delete Project
 
 ### What it is
-Deletes a Todoist project and all its contents.
-
-### What it does
 Deletes a Todoist project and all its contents
 
 ### How it works
@@ -67,9 +61,6 @@ Removing completed or obsolete projects.
 ## Todoist Get Project
 
 ### What it is
-Gets details for a specific Todoist project.
-
-### What it does
 Gets details for a specific Todoist project
 
 ### How it works
@@ -101,9 +92,6 @@ Looking up project details for verification or editing.
 ## Todoist List Collaborators
 
 ### What it is
-Gets all collaborators for a specific Todoist project.
-
-### What it does
 Gets all collaborators for a specific Todoist project
 
 ### How it works
@@ -135,9 +123,6 @@ Managing project sharing and collaboration.
 ## Todoist List Projects
 
 ### What it is
-Gets all projects and their details from Todoist.
-
-### What it does
 Gets all projects and their details from Todoist
 
 ### How it works
@@ -164,9 +149,6 @@ Getting an overview of all projects for organization or automation.
 ## Todoist Update Project
 
 ### What it is
-Updates an existing project in Todoist.
-
-### What it does
 Updates an existing project in Todoist
 
 ### How it works

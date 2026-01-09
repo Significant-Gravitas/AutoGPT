@@ -1,9 +1,6 @@
 # Exa Answer
 
 ### What it is
-Get an LLM answer to a question informed by Exa search results.
-
-### What it does
 Get an LLM answer to a question informed by Exa search results
 
 ### How it works

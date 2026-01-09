@@ -3,9 +3,6 @@
 ### What it is
 This block fetches the summary of a given topic from Wikipedia.
 
-### What it does
-This block fetches the summary of a given topic from Wikipedia.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block sends a request to Wikipedia's API with the provided topic. It then extracts the summary from the response and returns it. If there's an error during this process, it will return an error message instead.
@@ -32,9 +29,6 @@ A student researching for a project could use this block to quickly get overview
 ## Google Maps Search
 
 ### What it is
-This block searches for local businesses using Google Maps API.
-
-### What it does
 This block searches for local businesses using Google Maps API.
 
 ### How it works

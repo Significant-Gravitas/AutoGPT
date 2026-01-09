@@ -3,9 +3,6 @@
 ### What it is
 This block deletes a tweet on Twitter.
 
-### What it does
-This block deletes a tweet on Twitter.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to permanently delete a tweet from the authenticated user's account. The deletion is immediate and cannot be undone.
@@ -38,9 +35,6 @@ The block authenticates using OAuth 2.0 with tweet write permissions and sends a
 ## Twitter Post Tweet
 
 ### What it is
-This block posts a tweet on Twitter.
-
-### What it does
 This block posts a tweet on Twitter.
 
 ### How it works
@@ -81,9 +75,6 @@ The block supports advanced features like restricting replies to mentioned users
 ## Twitter Search Recent Tweets
 
 ### What it is
-This block searches all public Tweets in Twitter history.
-
-### What it does
 This block searches all public Tweets in Twitter history.
 
 ### How it works

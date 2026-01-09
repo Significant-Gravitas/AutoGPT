@@ -3,9 +3,6 @@
 ### What it is
 Read a Notion page and convert it to Markdown format with proper formatting for headings, lists, links, and rich text.
 
-### What it does
-Read a Notion page and convert it to Markdown format with proper formatting for headings, lists, links, and rich text.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block reads a Notion page and converts its content to Markdown format. It handles Notion's block structure and rich text, translating headings, lists, links, bold, italic, and other formatting into standard Markdown.

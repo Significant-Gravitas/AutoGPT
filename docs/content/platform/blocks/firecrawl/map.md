@@ -3,9 +3,6 @@
 ### What it is
 Firecrawl maps a website to extract all the links.
 
-### What it does
-Firecrawl maps a website to extract all the links.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's mapping API to discover all links on a website without extracting full content. It quickly scans the site structure and returns a comprehensive list of URLs found.

@@ -1,9 +1,6 @@
 # Airtable Webhook Trigger
 
 ### What it is
-Starts a flow whenever Airtable emits a webhook event.
-
-### What it does
 Starts a flow whenever Airtable emits a webhook event
 
 ### How it works

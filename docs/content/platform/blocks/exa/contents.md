@@ -1,9 +1,6 @@
 # Exa Contents
 
 ### What it is
-Retrieves document contents using Exa's contents API.
-
-### What it does
 Retrieves document contents using Exa's contents API
 
 ### How it works

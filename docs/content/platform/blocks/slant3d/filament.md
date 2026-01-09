@@ -1,9 +1,6 @@
 # Slant3D Filament
 
 ### What it is
-Get list of available filaments.
-
-### What it does
 Get list of available filaments
 
 ### How it works

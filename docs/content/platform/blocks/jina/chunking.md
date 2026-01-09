@@ -1,9 +1,6 @@
 # Jina Chunking
 
 ### What it is
-Chunks texts using Jina AI's segmentation service.
-
-### What it does
 Chunks texts using Jina AI's segmentation service
 
 ### How it works

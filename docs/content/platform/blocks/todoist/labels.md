@@ -1,9 +1,6 @@
 # Todoist Create Label
 
 ### What it is
-Creates a new label in Todoist, It will not work if same name already exists.
-
-### What it does
 Creates a new label in Todoist, It will not work if same name already exists
 
 ### How it works
@@ -39,9 +36,6 @@ Creating new labels to organize and categorize tasks in Todoist.
 ## Todoist Delete Label
 
 ### What it is
-Deletes a personal label in Todoist.
-
-### What it does
 Deletes a personal label in Todoist
 
 ### How it works
@@ -76,9 +70,6 @@ The operation is irreversible, so any tasks previously tagged with this label wi
 ## Todoist Get Label
 
 ### What it is
-Gets a personal label from Todoist by ID.
-
-### What it does
 Gets a personal label from Todoist by ID
 
 ### How it works
@@ -111,9 +102,6 @@ Looking up details of a specific label for editing or verification.
 ## Todoist Get Shared Labels
 
 ### What it is
-Gets all shared labels from Todoist.
-
-### What it does
 Gets all shared labels from Todoist
 
 ### How it works
@@ -143,9 +131,6 @@ The API returns a list of label names that are currently in use across shared pr
 ## Todoist List Labels
 
 ### What it is
-Gets all personal labels from Todoist.
-
-### What it does
 Gets all personal labels from Todoist
 
 ### How it works
@@ -171,9 +156,6 @@ Getting an overview of all labels to organize tasks or find specific labels.
 ## Todoist Remove Shared Labels
 
 ### What it is
-Removes all instances of a shared label.
-
-### What it does
 Removes all instances of a shared label
 
 ### How it works
@@ -208,9 +190,6 @@ The removal affects all instances of the label across collaborative projects, un
 ## Todoist Rename Shared Labels
 
 ### What it is
-Renames all instances of a shared label.
-
-### What it does
 Renames all instances of a shared label
 
 ### How it works
@@ -246,9 +225,6 @@ The rename is atomic across the entire account, ensuring consistent label naming
 ## Todoist Update Label
 
 ### What it is
-Updates a personal label in Todoist.
-
-### What it does
 Updates a personal label in Todoist
 
 ### How it works

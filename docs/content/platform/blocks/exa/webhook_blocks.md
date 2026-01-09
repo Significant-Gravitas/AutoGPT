@@ -1,9 +1,6 @@
 # Exa Webset Webhook
 
 ### What it is
-Receive webhook notifications for Exa webset events.
-
-### What it does
 Receive webhook notifications for Exa webset events
 
 ### How it works

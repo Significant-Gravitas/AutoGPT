@@ -3,9 +3,6 @@
 ### What it is
 This block retrieves tweets from a specified Twitter list.
 
-### What it does
-This block retrieves tweets from a specified Twitter list.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets posted by members of a specific Twitter List. Results include all tweets from list members in reverse chronological order, providing a curated timeline based on the list's membership.

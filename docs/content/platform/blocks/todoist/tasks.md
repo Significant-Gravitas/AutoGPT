@@ -1,9 +1,6 @@
 # Todoist Close Task
 
 ### What it is
-Closes a task in Todoist.
-
-### What it does
 Closes a task in Todoist
 
 ### How it works
@@ -32,9 +29,6 @@ Marking tasks as done in automated workflows.
 ## Todoist Create Task
 
 ### What it is
-Creates a new task in a Todoist project.
-
-### What it does
 Creates a new task in a Todoist project
 
 ### How it works
@@ -77,9 +71,6 @@ Creating new tasks with full customization of parameters.
 ## Todoist Delete Task
 
 ### What it is
-Deletes a task in Todoist.
-
-### What it does
 Deletes a task in Todoist
 
 ### How it works
@@ -108,9 +99,6 @@ Removing unwanted or obsolete tasks from the system.
 ## Todoist Get Task
 
 ### What it is
-Get an active task from Todoist.
-
-### What it does
 Get an active task from Todoist
 
 ### How it works
@@ -143,9 +131,6 @@ _Add practical use case examples here._
 ## Todoist Get Tasks
 
 ### What it is
-Get active tasks from Todoist.
-
-### What it does
 Get active tasks from Todoist
 
 ### How it works
@@ -181,9 +166,6 @@ Retrieving tasks matching specific criteria for review or processing.
 ## Todoist Reopen Task
 
 ### What it is
-Reopens a task in Todoist.
-
-### What it does
 Reopens a task in Todoist
 
 ### How it works
@@ -212,9 +194,6 @@ Reactivating tasks that were closed accidentally or need to be repeated.
 ## Todoist Update Task
 
 ### What it is
-Updates an existing task in Todoist.
-
-### What it does
 Updates an existing task in Todoist
 
 ### How it works

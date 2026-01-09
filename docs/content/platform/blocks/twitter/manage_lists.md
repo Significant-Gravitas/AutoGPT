@@ -3,9 +3,6 @@
 ### What it is
 This block creates a new Twitter List for the authenticated user.
 
-### What it does
-This block creates a new Twitter List for the authenticated user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to create a new Twitter List under your account. You can specify the list name, description, and whether it should be public or private.
@@ -43,9 +40,6 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 ### What it is
 This block deletes a specified Twitter List owned by the authenticated user.
 
-### What it does
-This block deletes a specified Twitter List owned by the authenticated user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to permanently delete a Twitter List that you own. The list and all its member associations are removed and cannot be recovered.
@@ -78,9 +72,6 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 ## Twitter Update List
 
 ### What it is
-This block updates a specified Twitter List owned by the authenticated user.
-
-### What it does
 This block updates a specified Twitter List owned by the authenticated user.
 
 ### How it works

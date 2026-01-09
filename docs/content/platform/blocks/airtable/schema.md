@@ -1,9 +1,6 @@
 # Airtable Create Field
 
 ### What it is
-Add a new field to an Airtable table.
-
-### What it does
 Add a new field to an Airtable table
 
 ### How it works
@@ -44,9 +41,6 @@ The field is created immediately and becomes available for use in all records. R
 ## Airtable Create Table
 
 ### What it is
-Create a new table in an Airtable base.
-
-### What it does
 Create a new table in an Airtable base
 
 ### How it works
@@ -84,9 +78,6 @@ The table is created with the defined schema and is immediately ready for use. R
 ## Airtable List Schema
 
 ### What it is
-Get the complete schema of an Airtable base.
-
-### What it does
 Get the complete schema of an Airtable base
 
 ### How it works
@@ -122,9 +113,6 @@ The schema includes field configurations, validation rules, and relationship def
 ## Airtable Update Field
 
 ### What it is
-Update field properties in an Airtable table.
-
-### What it does
 Update field properties in an Airtable table
 
 ### How it works
@@ -163,9 +151,6 @@ Changes take effect immediately across all records and views that use the field.
 ## Airtable Update Table
 
 ### What it is
-Update table properties.
-
-### What it does
 Update table properties
 
 ### How it works

@@ -1,9 +1,6 @@
 # Hub Spot Engagement
 
 ### What it is
-Manages HubSpot engagements - sends emails and tracks engagement metrics.
-
-### What it does
 Manages HubSpot engagements - sends emails and tracks engagement metrics
 
 ### How it works

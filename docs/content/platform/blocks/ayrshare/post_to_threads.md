@@ -1,9 +1,6 @@
 # Post To Threads
 
 ### What it is
-Post to Threads using Ayrshare.
-
-### What it does
 Post to Threads using Ayrshare
 
 ### How it works

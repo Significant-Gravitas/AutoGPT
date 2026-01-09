@@ -1,9 +1,6 @@
 # Post To Instagram
 
 ### What it is
-Post to Instagram using Ayrshare.
-
-### What it does
 Post to Instagram using Ayrshare. Requires a Business or Creator Instagram Account connected with a Facebook Page
 
 ### How it works

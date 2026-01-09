@@ -3,9 +3,6 @@
 ### What it is
 This block retrieves information about a specified Twitter user.
 
-### What it does
-This block retrieves information about a specified Twitter user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve detailed information about a single user. You can look up users either by their unique Twitter ID or by their username (handle). The block uses Tweepy with OAuth 2.0 authentication.
@@ -45,9 +42,6 @@ Optional expansions allow you to include additional data such as the user's pinn
 ## Twitter Get Users
 
 ### What it is
-This block retrieves information about multiple Twitter users.
-
-### What it does
 This block retrieves information about multiple Twitter users.
 
 ### How it works

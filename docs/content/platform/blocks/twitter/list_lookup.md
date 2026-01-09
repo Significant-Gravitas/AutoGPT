@@ -3,9 +3,6 @@
 ### What it is
 This block retrieves information about a specified Twitter List.
 
-### What it does
-This block retrieves information about a specified Twitter List.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve detailed information about a specific Twitter List by its ID. Returns list metadata including name, description, member count, follower count, and privacy status.
@@ -63,9 +60,6 @@ You can see things like:
 ## Twitter Get Owned Lists
 
 ### What it is
-This block retrieves all Lists owned by a specified Twitter user.
-
-### What it does
 This block retrieves all Lists owned by a specified Twitter user.
 
 ### How it works

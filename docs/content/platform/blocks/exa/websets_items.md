@@ -1,9 +1,6 @@
 # Exa Bulk Webset Items
 
 ### What it is
-Get all items from a webset in bulk (with configurable limits).
-
-### What it does
 Get all items from a webset in bulk (with configurable limits)
 
 ### How it works
@@ -44,9 +41,6 @@ Use this for batch processing when you need all webset data at once rather than 
 ## Exa Delete Webset Item
 
 ### What it is
-Delete a specific item from a webset.
-
-### What it does
 Delete a specific item from a webset
 
 ### How it works
@@ -83,9 +77,6 @@ Use this to clean up irrelevant results, remove duplicates, or curate webset con
 ## Exa Get New Items
 
 ### What it is
-Get items added since a cursor - enables incremental processing without reprocessing.
-
-### What it does
 Get items added since a cursor - enables incremental processing without reprocessing
 
 ### How it works
@@ -126,9 +117,6 @@ Save the returned next_cursor for subsequent calls to implement continuous incre
 ## Exa Get Webset Item
 
 ### What it is
-Get a specific item from a webset by its ID.
-
-### What it does
 Get a specific item from a webset by its ID
 
 ### How it works
@@ -171,9 +159,6 @@ The block returns the full item record with all available data, timestamps, and 
 ## Exa List Webset Items
 
 ### What it is
-List items in a webset with pagination support.
-
-### What it does
 List items in a webset with pagination support
 
 ### How it works
@@ -216,9 +201,6 @@ Use pagination cursors to iterate through large websets efficiently. Each page r
 ## Exa Webset Items Summary
 
 ### What it is
-Get a summary of webset items without retrieving all data.
-
-### What it does
 Get a summary of webset items without retrieving all data
 
 ### How it works

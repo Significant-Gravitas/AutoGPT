@@ -1,9 +1,6 @@
 # Post To Linked In
 
 ### What it is
-Post to LinkedIn using Ayrshare.
-
-### What it does
 Post to LinkedIn using Ayrshare
 
 ### How it works

@@ -1,9 +1,6 @@
 # Add Lead To Campaign
 
 ### What it is
-Add a lead to a campaign in SmartLead.
-
-### What it does
 Add a lead to a campaign in SmartLead
 
 ### How it works
@@ -46,9 +43,6 @@ Configure upload settings to control duplicate handling and campaign status. The
 ## Create Campaign
 
 ### What it is
-Create a campaign in SmartLead.
-
-### What it does
 Create a campaign in SmartLead
 
 ### How it works
@@ -85,9 +79,6 @@ Use the campaign ID with other SmartLead blocks to add leads, configure sequence
 ## Save Campaign Sequences
 
 ### What it is
-Save sequences within a campaign.
-
-### What it does
 Save sequences within a campaign
 
 ### How it works

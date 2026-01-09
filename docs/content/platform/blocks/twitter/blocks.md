@@ -3,9 +3,6 @@
 ### What it is
 This block retrieves a list of users blocked by the authenticating user.
 
-### What it does
-This block retrieves a list of users blocked by the authenticating user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to retrieve a paginated list of users that the authenticated account has blocked. It authenticates using OAuth 2.0 with the required scopes (users.read, block.read) and sends a request to Twitter's blocked users endpoint.

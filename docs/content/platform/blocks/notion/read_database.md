@@ -3,9 +3,6 @@
 ### What it is
 Query a Notion database with optional filtering and sorting, returning structured entries.
 
-### What it does
-Query a Notion database with optional filtering and sorting, returning structured entries.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries a Notion database using the Notion API. It retrieves entries with optional filtering by property values and sorting. The block requires your Notion integration to have access to the database.

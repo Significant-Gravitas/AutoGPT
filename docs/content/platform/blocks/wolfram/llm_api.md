@@ -1,9 +1,6 @@
 # Ask Wolfram
 
 ### What it is
-Ask Wolfram Alpha a question.
-
-### What it does
 Ask Wolfram Alpha a question
 
 ### How it works

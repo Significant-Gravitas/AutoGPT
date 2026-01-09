@@ -3,9 +3,6 @@
 ### What it is
 This block gets a list of users muted by the authenticating user.
 
-### What it does
-This block gets a list of users muted by the authenticating user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block connects to the Twitter API v2 via Tweepy to retrieve all users that the authenticated account has muted. It uses OAuth 2.0 authentication with appropriate scopes and returns paginated results with user IDs, usernames, and optional expanded data.
@@ -49,9 +46,6 @@ The mute list is returned in batches (default 100, up to 1,000 per page), with p
 ### What it is
 This block mutes a specified Twitter user.
 
-### What it does
-This block mutes a specified Twitter user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block sends a mute request to the Twitter API v2 for a specified user ID. The authenticated user will no longer see tweets from the muted account in their timeline, but the muted user is not notified and can still view and interact with your content.
@@ -84,9 +78,6 @@ The mute action is performed using Tweepy's client interface with OAuth 2.0 auth
 ## Twitter Unmute User
 
 ### What it is
-This block unmutes a specified Twitter user.
-
-### What it does
 This block unmutes a specified Twitter user.
 
 ### How it works

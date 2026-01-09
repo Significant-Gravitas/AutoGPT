@@ -1,9 +1,6 @@
 # Post To Bluesky
 
 ### What it is
-Post to Bluesky using Ayrshare.
-
-### What it does
 Post to Bluesky using Ayrshare
 
 ### How it works

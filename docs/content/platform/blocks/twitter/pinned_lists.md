@@ -3,9 +3,6 @@
 ### What it is
 This block returns the Lists pinned by the authenticated user.
 
-### What it does
-This block returns the Lists pinned by the authenticated user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve all Lists that the authenticated user has pinned for quick access. Pinned lists appear prominently in the user's Lists tab on Twitter.
@@ -62,9 +59,6 @@ You can see things like:
 ### What it is
 This block allows the authenticated user to pin a specified List.
 
-### What it does
-This block allows the authenticated user to pin a specified List.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to pin a Twitter List for quick access. Pinned lists appear at the top of your Lists tab on Twitter for easy navigation.
@@ -97,9 +91,6 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 ## Twitter Unpin List
 
 ### What it is
-This block allows the authenticated user to unpin a specified List.
-
-### What it does
 This block allows the authenticated user to unpin a specified List.
 
 ### How it works

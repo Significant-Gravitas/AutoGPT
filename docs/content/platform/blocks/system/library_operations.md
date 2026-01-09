@@ -1,9 +1,6 @@
 # Add To Library From Store
 
 ### What it is
-Add an agent from the store to your personal library.
-
-### What it does
 Add an agent from the store to your personal library
 
 ### How it works
@@ -44,9 +41,6 @@ The block returns the library entry ID and agent graph ID, which can be used to 
 ## List Library Agents
 
 ### What it is
-List all agents in your personal library.
-
-### What it does
 List all agents in your personal library
 
 ### How it works

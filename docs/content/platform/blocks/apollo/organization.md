@@ -1,9 +1,6 @@
 # Search Organizations
 
 ### What it is
-Search for organizations in Apollo.
-
-### What it does
 Search for organizations in Apollo
 
 ### How it works

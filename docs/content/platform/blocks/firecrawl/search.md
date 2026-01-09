@@ -3,9 +3,6 @@
 ### What it is
 Firecrawl searches the web for the given query.
 
-### What it does
-Firecrawl searches the web for the given query.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's search API to find web pages matching your query and optionally extract their content. It performs a web search and can return results with full page content in your chosen format.

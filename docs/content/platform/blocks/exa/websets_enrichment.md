@@ -1,9 +1,6 @@
 # Exa Cancel Enrichment
 
 ### What it is
-Cancel a running enrichment operation.
-
-### What it does
 Cancel a running enrichment operation
 
 ### How it works
@@ -42,9 +39,6 @@ Use this when an enrichment is taking too long, producing unexpected results, or
 ## Exa Create Enrichment
 
 ### What it is
-Create enrichments to extract additional structured data from webset items.
-
-### What it does
 Create enrichments to extract additional structured data from webset items
 
 ### How it works
@@ -95,9 +89,6 @@ Enrichments support various output formats including text, dates, numbers, and p
 ## Exa Delete Enrichment
 
 ### What it is
-Delete an enrichment from a webset.
-
-### What it does
 Delete an enrichment from a webset
 
 ### How it works
@@ -134,9 +125,6 @@ Use this to clean up enrichments that are no longer needed or to remove misconfi
 ## Exa Get Enrichment
 
 ### What it is
-Get the status and details of a webset enrichment.
-
-### What it does
 Get the status and details of a webset enrichment
 
 ### How it works
@@ -181,9 +169,6 @@ Use this to monitor enrichment progress, verify configuration, or troubleshoot i
 ## Exa Update Enrichment
 
 ### What it is
-Update an existing enrichment configuration.
-
-### What it does
 Update an existing enrichment configuration
 
 ### How it works

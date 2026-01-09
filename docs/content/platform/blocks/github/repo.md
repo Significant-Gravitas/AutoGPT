@@ -3,9 +3,6 @@
 ### What it is
 This block creates a new file in a GitHub repository.
 
-### What it does
-This block creates a new file in a GitHub repository.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a new file in a GitHub repository using the GitHub Contents API. It commits the file with the specified content to the chosen branch (or the default branch if not specified).
@@ -43,9 +40,6 @@ The commit message can be customized, and the block returns the URL of the creat
 ## Github Create Repository
 
 ### What it is
-This block creates a new GitHub repository.
-
-### What it does
 This block creates a new GitHub repository.
 
 ### How it works
@@ -87,9 +81,6 @@ The block returns both the web URL for viewing the repository and the clone URL 
 ### What it is
 This block deletes a specified branch.
 
-### What it does
-This block deletes a specified branch.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block deletes a specified branch from a GitHub repository using the GitHub References API. The branch is permanently removed, so use with caution—this cannot be undone without re-pushing the branch.
@@ -125,9 +116,6 @@ Protected branches cannot be deleted unless protection rules are first removed.
 ### What it is
 This block lists all branches for a specified GitHub repository.
 
-### What it does
-This block lists all branches for a specified GitHub repository.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves all branches from a GitHub repository. It queries the GitHub API and returns each branch with its name and a URL to browse the files at that branch.
@@ -161,9 +149,6 @@ This provides visibility into all development streams in a repository.
 ## Github List Discussions
 
 ### What it is
-This block lists recent discussions for a specified GitHub repository.
-
-### What it does
 This block lists recent discussions for a specified GitHub repository.
 
 ### How it works
@@ -202,9 +187,6 @@ You can limit the number of discussions retrieved with the num_discussions param
 ### What it is
 This block lists all releases for a specified GitHub repository.
 
-### What it does
-This block lists all releases for a specified GitHub repository.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves all releases from a GitHub repository. Releases are versioned packages of your software that may include release notes, binaries, and source code archives.
@@ -238,9 +220,6 @@ The block returns release information including names and URLs, outputting both 
 ## Github List Stargazers
 
 ### What it is
-This block lists all users who have starred a specified GitHub repository.
-
-### What it does
 This block lists all users who have starred a specified GitHub repository.
 
 ### How it works
@@ -278,9 +257,6 @@ Each stargazer entry includes their username and a link to their GitHub profile.
 ### What it is
 This block lists all tags for a specified GitHub repository.
 
-### What it does
-This block lists all tags for a specified GitHub repository.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves all git tags from a GitHub repository. Tags are typically used to mark release points or significant milestones in the repository history.
@@ -314,9 +290,6 @@ Each tag includes its name and a URL to browse the repository files at that tag.
 ## Github Make Branch
 
 ### What it is
-This block creates a new branch from a specified source branch.
-
-### What it does
 This block creates a new branch from a specified source branch.
 
 ### How it works
@@ -353,9 +326,6 @@ The new branch immediately contains all the code from the source branch at the t
 ## Github Read File
 
 ### What it is
-This block reads the content of a specified file from a GitHub repository.
-
-### What it does
 This block reads the content of a specified file from a GitHub repository.
 
 ### How it works
@@ -396,9 +366,6 @@ The block returns both the decoded text content (for text files) and the raw bas
 ### What it is
 This block reads the content of a specified folder from a GitHub repository.
 
-### What it does
-This block reads the content of a specified folder from a GitHub repository.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block lists the contents of a folder in a GitHub repository. It returns separate outputs for files and directories found in the specified path, allowing you to explore the repository structure.
@@ -434,9 +401,6 @@ You can specify which branch to read from; it defaults to master if not specifie
 ## Github Update File
 
 ### What it is
-This block updates an existing file in a GitHub repository.
-
-### What it does
 This block updates an existing file in a GitHub repository.
 
 ### How it works

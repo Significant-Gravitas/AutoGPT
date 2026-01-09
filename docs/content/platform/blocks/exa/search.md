@@ -1,9 +1,6 @@
 # Exa Search
 
 ### What it is
-Searches the web using Exa's advanced search API.
-
-### What it does
 Searches the web using Exa's advanced search API
 
 ### How it works

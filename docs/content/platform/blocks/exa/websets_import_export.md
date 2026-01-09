@@ -1,9 +1,6 @@
 # Exa Create Import
 
 ### What it is
-Import CSV data to use with websets for targeted searches.
-
-### What it does
 Import CSV data to use with websets for targeted searches
 
 ### How it works
@@ -51,9 +48,6 @@ You specify the entity type and which columns contain identifiers and URLs. The 
 ## Exa Delete Import
 
 ### What it is
-Delete an import.
-
-### What it does
 Delete an import
 
 ### How it works
@@ -89,9 +83,6 @@ Use this to clean up imports that are no longer needed or contain outdated data.
 ## Exa Export Webset
 
 ### What it is
-Export webset data in JSON, CSV, or JSON Lines format.
-
-### What it does
 Export webset data in JSON, CSV, or JSON Lines format
 
 ### How it works
@@ -134,9 +125,6 @@ Supported formats include JSON for structured data, CSV for spreadsheet compatib
 ## Exa Get Import
 
 ### What it is
-Get the status and details of an import.
-
-### What it does
 Get the status and details of an import
 
 ### How it works
@@ -183,9 +171,6 @@ The block returns upload status information if the import is pending data upload
 ## Exa List Imports
 
 ### What it is
-List all imports with pagination support.
-
-### What it does
 List all imports with pagination support
 
 ### How it works

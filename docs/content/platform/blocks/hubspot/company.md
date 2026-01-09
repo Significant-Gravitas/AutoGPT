@@ -1,9 +1,6 @@
 # Hub Spot Company
 
 ### What it is
-Manages HubSpot companies - create, update, and retrieve company information.
-
-### What it does
 Manages HubSpot companies - create, update, and retrieve company information
 
 ### How it works

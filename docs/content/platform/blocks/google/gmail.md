@@ -1,10 +1,7 @@
 # Gmail Add Label
 
 ### What it is
-A block that adds a label to a specific email in a Gmail account.
-
-### What it does
-Allows users to add a label (category) to a particular email message, creating the label if it doesn't exist.
+A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -33,9 +30,6 @@ Automatically categorizing incoming customer emails based on their content, addi
 ## Gmail Create Draft
 
 ### What it is
-Create draft emails in Gmail with automatic HTML detection and proper text formatting.
-
-### What it does
 Create draft emails in Gmail with automatic HTML detection and proper text formatting. Plain text drafts preserve natural paragraph flow without 78-character line wrapping. HTML content is automatically detected and formatted correctly.
 
 ### How it works
@@ -76,9 +70,6 @@ Plain text emails preserve natural formatting without forced line breaks. HTML e
 ## Gmail Draft Reply
 
 ### What it is
-Create draft replies to Gmail threads with automatic HTML detection and proper text formatting.
-
-### What it does
 Create draft replies to Gmail threads with automatic HTML detection and proper text formatting. Plain text draft replies maintain natural paragraph flow without 78-character line wrapping. HTML content is automatically detected and formatted correctly.
 
 ### How it works
@@ -125,9 +116,6 @@ The block preserves the thread context and adds proper email headers for threadi
 ## Gmail Forward
 
 ### What it is
-Forward Gmail messages to other recipients with automatic HTML detection and proper formatting.
-
-### What it does
 Forward Gmail messages to other recipients with automatic HTML detection and proper formatting. Preserves original message threading and attachments.
 
 ### How it works
@@ -174,9 +162,6 @@ The block handles proper email threading and formatting, prepending "Fwd:" to th
 ### What it is
 Get the authenticated user's Gmail profile details including email address and message statistics.
 
-### What it does
-Get the authenticated user's Gmail profile details including email address and message statistics.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves profile information for the authenticated Gmail user via the Gmail API. It returns the email address, total message count, thread count, and storage usage statistics.
@@ -204,10 +189,7 @@ This is useful for verifying which account is connected and gathering basic mail
 ## Gmail Get Thread
 
 ### What it is
-A block that retrieves an entire Gmail thread by ID.
-
-### What it does
-Fetches all messages in a thread and decodes the text bodies for reading complete email conversations.
+A block that retrieves an entire Gmail thread (email conversation) by ID, returning all messages with decoded bodies for reading complete conversations.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -241,10 +223,7 @@ The thread includes all messages, their senders, timestamps, and content, making
 ## Gmail List Labels
 
 ### What it is
-A block that retrieves all labels (categories) from a Gmail account.
-
-### What it does
-Fetches and lists all labels set up in the user's Gmail account used for organizing and categorizing emails.
+A block that retrieves all labels (categories) from a Gmail account for organizing and categorizing emails.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -267,10 +246,7 @@ Creating a dashboard that shows an overview of how many emails are in each categ
 ## Gmail Read
 
 ### What it is
-A block that retrieves and reads emails from a Gmail account.
-
-### What it does
-Searches for and retrieves emails based on given search criteria, fetching detailed information including subject, sender, recipient, date, body content, and attachments.
+A block that retrieves and reads emails from a Gmail account based on search criteria, returning detailed message information including subject, sender, body, and attachments.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -300,10 +276,7 @@ Automatically checking for new customer inquiries in a support email inbox and o
 ## Gmail Remove Label
 
 ### What it is
-A block that removes a label from a specific email in a Gmail account.
-
-### What it does
-Allows users to remove a label (category) from a particular email message in their Gmail account.
+A block that removes a label from a specific email message in a Gmail account.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -332,9 +305,6 @@ Automatically removing the "Unread" label from emails after they have been proce
 ## Gmail Reply
 
 ### What it is
-Reply to Gmail threads with automatic HTML detection and proper text formatting.
-
-### What it does
 Reply to Gmail threads with automatic HTML detection and proper text formatting. Plain text replies maintain natural paragraph flow without 78-character line wrapping. HTML content is automatically detected and sent with correct MIME type.
 
 ### How it works
@@ -381,9 +351,6 @@ Use replyAll to respond to all recipients, or specify custom recipients. The blo
 ## Gmail Send
 
 ### What it is
-Send emails via Gmail with automatic HTML detection and proper text formatting.
-
-### What it does
 Send emails via Gmail with automatic HTML detection and proper text formatting. Plain text emails are sent without 78-character line wrapping, preserving natural paragraph flow. HTML emails are automatically detected and sent with correct MIME type.
 
 ### How it works

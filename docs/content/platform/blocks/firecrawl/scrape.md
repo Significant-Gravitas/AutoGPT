@@ -3,9 +3,6 @@
 ### What it is
 Firecrawl scrapes a website to extract comprehensive data while bypassing blockers.
 
-### What it does
-Firecrawl scrapes a website to extract comprehensive data while bypassing blockers.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's scraping API to extract content from a single URL. It handles JavaScript rendering, bypasses anti-bot measures, and can return content in multiple formats including markdown, HTML, and screenshots.

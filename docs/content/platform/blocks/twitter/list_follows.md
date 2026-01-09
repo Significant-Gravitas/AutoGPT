@@ -3,9 +3,6 @@
 ### What it is
 This block follows a specified Twitter list for the authenticated user.
 
-### What it does
-This block follows a specified Twitter list for the authenticated user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to follow a Twitter List. Following a list adds it to your Lists tab and shows tweets from list members in your timeline when viewing that list.
@@ -38,9 +35,6 @@ The block authenticates using OAuth 2.0 with list write permissions and sends a 
 ## Twitter Unfollow List
 
 ### What it is
-This block unfollows a specified Twitter list for the authenticated user.
-
-### What it does
 This block unfollows a specified Twitter list for the authenticated user.
 
 ### How it works

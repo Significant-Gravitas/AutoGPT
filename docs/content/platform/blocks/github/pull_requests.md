@@ -3,9 +3,6 @@
 ### What it is
 This block assigns a reviewer to a specified GitHub pull request.
 
-### What it does
-This block assigns a reviewer to a specified GitHub pull request.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block requests a code review from a specific user on a GitHub pull request. It uses the GitHub API to add the specified username to the list of requested reviewers, triggering a notification to that user.
@@ -39,9 +36,6 @@ The reviewer must have access to the repository. Organization members can typica
 ## Github List PR Reviewers
 
 ### What it is
-This block lists all reviewers for a specified GitHub pull request.
-
-### What it does
 This block lists all reviewers for a specified GitHub pull request.
 
 ### How it works
@@ -79,9 +73,6 @@ This includes both pending review requests and users who have already submitted 
 ### What it is
 This block lists all pull requests for a specified GitHub repository.
 
-### What it does
-This block lists all pull requests for a specified GitHub repository.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block fetches all open pull requests from a GitHub repository. It queries the GitHub API and returns a list of PRs with their titles and URLs, outputting both individual PRs and a complete list.
@@ -115,9 +106,6 @@ The block returns open pull requests by default, allowing you to monitor pending
 ## Github Make Pull Request
 
 ### What it is
-This block creates a new pull request on a specified GitHub repository.
-
-### What it does
 This block creates a new pull request on a specified GitHub repository.
 
 ### How it works
@@ -159,9 +147,6 @@ For cross-repository PRs, format the head branch as "username:branch". The branc
 ### What it is
 This block reads the body, title, user, and changes of a specified GitHub pull request.
 
-### What it does
-This block reads the body, title, user, and changes of a specified GitHub pull request.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block reads the details of a GitHub pull request including its title, description, author, and optionally the code diff. It fetches this information via the GitHub API using your credentials.
@@ -198,9 +183,6 @@ When include_pr_changes is enabled, the block also retrieves the full diff of al
 ## Github Unassign PR Reviewer
 
 ### What it is
-This block unassigns a reviewer from a specified GitHub pull request.
-
-### What it does
 This block unassigns a reviewer from a specified GitHub pull request.
 
 ### How it works

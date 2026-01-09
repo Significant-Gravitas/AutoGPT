@@ -1,9 +1,6 @@
 # Todoist Create Comment
 
 ### What it is
-Creates a new comment on a Todoist task or project.
-
-### What it does
 Creates a new comment on a Todoist task or project
 
 ### How it works
@@ -38,9 +35,6 @@ Adding notes and comments to tasks or projects automatically.
 ## Todoist Delete Comment
 
 ### What it is
-Deletes a Todoist comment.
-
-### What it does
 Deletes a Todoist comment
 
 ### How it works
@@ -69,9 +63,6 @@ Removing outdated or incorrect comments from tasks/projects.
 ## Todoist Get Comment
 
 ### What it is
-Get a single comment from Todoist.
-
-### What it does
 Get a single comment from Todoist
 
 ### How it works
@@ -105,9 +96,6 @@ Looking up specific comment details for reference.
 ## Todoist Get Comments
 
 ### What it is
-Get all comments for a Todoist task or project.
-
-### What it does
 Get all comments for a Todoist task or project
 
 ### How it works
@@ -136,9 +124,6 @@ Reviewing comment history on tasks or projects.
 ## Todoist Update Comment
 
 ### What it is
-Updates a Todoist comment.
-
-### What it does
 Updates a Todoist comment
 
 ### How it works

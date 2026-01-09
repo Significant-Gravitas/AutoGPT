@@ -1,9 +1,6 @@
 # Todoist Delete Section
 
 ### What it is
-Deletes a section and all its tasks from Todoist.
-
-### What it does
 Deletes a section and all its tasks from Todoist
 
 ### How it works
@@ -32,9 +29,6 @@ Removing unused sections or reorganizing projects.
 ## Todoist Get Section
 
 ### What it is
-Gets a single section by ID from Todoist.
-
-### What it does
 Gets a single section by ID from Todoist
 
 ### How it works
@@ -66,9 +60,6 @@ Looking up section details for task management.
 ## Todoist List Sections
 
 ### What it is
-Gets all sections and their details from Todoist.
-
-### What it does
 Gets all sections and their details from Todoist
 
 ### How it works

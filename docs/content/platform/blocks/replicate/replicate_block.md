@@ -1,9 +1,6 @@
 # Replicate Model
 
 ### What it is
-Run Replicate models synchronously.
-
-### What it does
 Run Replicate models synchronously
 
 ### How it works

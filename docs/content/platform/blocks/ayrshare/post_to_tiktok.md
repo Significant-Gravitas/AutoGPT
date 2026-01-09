@@ -1,9 +1,6 @@
 # Post To Tik Tok
 
 ### What it is
-Post to TikTok using Ayrshare.
-
-### What it does
 Post to TikTok using Ayrshare
 
 ### How it works

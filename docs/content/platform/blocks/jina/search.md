@@ -1,10 +1,7 @@
 # Extract Website Content
 
 ### What it is
-A block that retrieves and extracts content from websites using Jina-ai Reader.
-
-### What it does
-Scrapes content from a given web URL and returns the extracted text, with options for raw or intelligent content extraction.
+This block scrapes the content from the given web URL.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -33,10 +30,7 @@ A data analyst could use this block to automatically extract article content fro
 ## Search The Web
 
 ### What it is
-A block that performs web searches and returns results from across the internet.
-
-### What it does
-Searches the internet for a given query and returns structured search results including content from top URLs.
+This block searches the internet for the given search query.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

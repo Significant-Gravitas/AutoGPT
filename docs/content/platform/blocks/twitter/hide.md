@@ -3,9 +3,6 @@
 ### What it is
 This block hides a reply to a tweet.
 
-### What it does
-This block hides a reply to a tweet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to hide a reply to one of your tweets. Hidden replies are not deleted—they're moved behind a "View hidden replies" option that viewers can click to see. Only the original tweet author can hide replies.
@@ -38,9 +35,6 @@ The block authenticates using OAuth 2.0 and sends a PUT request to change the re
 ## Twitter Unhide Reply
 
 ### What it is
-This block unhides a reply to a tweet.
-
-### What it does
 This block unhides a reply to a tweet.
 
 ### How it works

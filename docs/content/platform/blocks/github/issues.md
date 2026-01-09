@@ -1,10 +1,7 @@
 # Github Add Label
 
 ### What it is
-A block that adds a label to a GitHub issue or pull request.
-
-### What it does
-Allows users to add a specified label to an existing GitHub issue or pull request.
+A block that adds a label to a GitHub issue or pull request for categorization and organization.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -33,10 +30,7 @@ Automatically categorizing issues based on their content or assigning priority l
 ## Github Assign Issue
 
 ### What it is
-A block that assigns a user to a GitHub issue.
-
-### What it does
-Allows users to assign a specific GitHub user to an existing issue.
+A block that assigns a GitHub user to an issue for task ownership and tracking.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -65,10 +59,7 @@ Automatically assigning new issues to team members based on their expertise or w
 ## Github Comment
 
 ### What it is
-A block that posts comments on GitHub issues or pull requests.
-
-### What it does
-Enables users to add comments to existing GitHub issues or pull requests using the GitHub API.
+A block that posts comments on GitHub issues or pull requests using the GitHub API.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -98,10 +89,7 @@ Automating responses to issues in a GitHub repository, such as thanking contribu
 ## Github List Comments
 
 ### What it is
-A block that retrieves comments from a GitHub issue or pull request.
-
-### What it does
-Fetches all comments from a specified GitHub issue or pull request, including comment ID, body, author, and URL.
+A block that retrieves all comments from a GitHub issue or pull request, including comment metadata and content.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -136,10 +124,7 @@ Each comment includes the comment ID, body text, author username, and a direct U
 ## Github List Issues
 
 ### What it is
-A block that retrieves a list of issues from a GitHub repository.
-
-### What it does
-Fetches all open issues from a specified GitHub repository and provides their titles and URLs.
+A block that retrieves a list of issues from a GitHub repository with their titles and URLs.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -168,10 +153,7 @@ Creating a summary of open issues for a project status report or displaying them
 ## Github Make Issue
 
 ### What it is
-A block that creates new issues on GitHub repositories.
-
-### What it does
-Allows users to generate new issues in a specified GitHub repository with title and body content.
+A block that creates new issues on GitHub repositories with a title and body content.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -202,10 +184,7 @@ Automatically creating issues for bug reports or feature requests submitted thro
 ## Github Read Issue
 
 ### What it is
-A block that retrieves information about a specific GitHub issue.
-
-### What it does
-Fetches details of a given GitHub issue, including its title, body content, and creator information.
+A block that retrieves information about a specific GitHub issue, including its title, body content, and creator.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -237,9 +216,6 @@ Gathering information about reported issues for analysis or to display on a dash
 ### What it is
 A block that removes a label from a GitHub issue or pull request.
 
-### What it does
-Allows users to remove a specified label from an existing GitHub issue or pull request.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block takes the GitHub credentials, the URL of the issue or pull request, and the label to be removed as inputs. It then sends a request to the GitHub API to remove the label from the specified issue or pull request.
@@ -267,10 +243,7 @@ Updating the status of issues as they progress through a workflow, such as remov
 ## Github Unassign Issue
 
 ### What it is
-A block that unassigns a user from a GitHub issue.
-
-### What it does
-Allows users to remove a specific GitHub user's assignment from an existing issue.
+A block that removes a user's assignment from a GitHub issue.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -299,10 +272,7 @@ Automatically unassigning issues that have been inactive for a certain period or
 ## Github Update Comment
 
 ### What it is
-This block updates a comment on a specified GitHub issue or pull request.
-
-### What it does
-This block updates a comment on a specified GitHub issue or pull request.
+A block that updates an existing comment on a GitHub issue or pull request.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

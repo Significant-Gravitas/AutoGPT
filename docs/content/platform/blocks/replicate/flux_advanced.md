@@ -3,9 +3,6 @@
 ### What it is
 This block runs Flux models on Replicate with advanced settings.
 
-### What it does
-This block runs Flux models on Replicate with advanced settings.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block takes a text prompt and several customization options as input. It then sends this information to the selected Flux model on the Replicate platform. The AI model processes the input and generates an image based on the provided specifications. Finally, the block returns a URL to the generated image.

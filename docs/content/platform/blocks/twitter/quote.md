@@ -3,9 +3,6 @@
 ### What it is
 This block gets quote tweets for a specific tweet.
 
-### What it does
-This block gets quote tweets for a specific tweet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets that quote a specific tweet. Quote tweets are retweets with added commentary, allowing users to share the original tweet while adding their own thoughts.

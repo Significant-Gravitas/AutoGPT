@@ -3,9 +3,6 @@
 ### What it is
 Generate videos using FAL AI models.
 
-### What it does
-Generate videos using FAL AI models.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block generates videos from text prompts using FAL.ai's video generation models including Mochi, Luma Dream Machine, and Veo3. Describe the video you want to create, and the AI generates it.

@@ -1,9 +1,6 @@
 # Data For Seo Keyword Suggestions
 
 ### What it is
-Get keyword suggestions from DataForSEO Labs Google API.
-
-### What it does
 Get keyword suggestions from DataForSEO Labs Google API
 
 ### How it works
@@ -47,9 +44,6 @@ Configure location and language targeting to get region-specific results. Option
 ## Keyword Suggestion Extractor
 
 ### What it is
-Extract individual fields from a KeywordSuggestion object.
-
-### What it does
 Extract individual fields from a KeywordSuggestion object
 
 ### How it works

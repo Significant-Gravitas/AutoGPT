@@ -1,9 +1,6 @@
 # Github Discussion Trigger
 
 ### What it is
-This block triggers on GitHub Discussions events.
-
-### What it does
 This block triggers on GitHub Discussions events. Great for syncing Q&A to Discord or auto-responding to common questions. Note: Discussions must be enabled on the repository.
 
 ### How it works
@@ -51,9 +48,6 @@ The block parses the webhook payload and extracts discussion details including t
 ## Github Issues Trigger
 
 ### What it is
-This block triggers on GitHub issues events.
-
-### What it does
 This block triggers on GitHub issues events. Useful for automated triage, notifications, and welcoming first-time contributors.
 
 ### How it works
@@ -103,9 +97,6 @@ The block extracts issue details including the title, body, labels, assignees, s
 ### What it is
 This block triggers on pull request events and outputs the event type and payload.
 
-### What it does
-This block triggers on pull request events and outputs the event type and payload.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block creates a webhook subscription to GitHub Pull Request events. When a PR event occurs (opened, closed, merged, review requested, etc.), GitHub sends a webhook payload that triggers your workflow.
@@ -146,9 +137,6 @@ The block extracts PR details including the number, URL, and full pull request o
 ## Github Release Trigger
 
 ### What it is
-This block triggers on GitHub release events.
-
-### What it does
 This block triggers on GitHub release events. Perfect for automating announcements to Discord, Twitter, or other platforms.
 
 ### How it works
@@ -196,9 +184,6 @@ The block extracts release details including tag name, release name, release not
 ## Github Star Trigger
 
 ### What it is
-This block triggers on GitHub star events.
-
-### What it does
 This block triggers on GitHub star events. Useful for celebrating milestones (e.g., 1k, 10k stars) or tracking engagement.
 
 ### How it works

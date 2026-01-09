@@ -3,9 +3,6 @@
 ### What it is
 This block retrieves the authenticated user's home timeline.
 
-### What it does
-This block retrieves the authenticated user's home timeline.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve the authenticated user's home timeline—tweets from accounts they follow and their own tweets. Results are returned in reverse chronological order with optional filtering by time range.
@@ -64,9 +61,6 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 ## Twitter Get User Mentions
 
 ### What it is
-This block retrieves Tweets mentioning a specific user.
-
-### What it does
 This block retrieves Tweets mentioning a specific user.
 
 ### How it works
@@ -128,9 +122,6 @@ The block uses Tweepy with OAuth 2.0 authentication and supports time-based filt
 ## Twitter Get User Tweets
 
 ### What it is
-This block retrieves Tweets composed by a single user.
-
-### What it does
 This block retrieves Tweets composed by a single user.
 
 ### How it works

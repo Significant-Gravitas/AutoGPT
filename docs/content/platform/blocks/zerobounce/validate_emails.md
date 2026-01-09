@@ -1,9 +1,6 @@
 # Validate Emails
 
 ### What it is
-Validate emails.
-
-### What it does
 Validate emails
 
 ### How it works

@@ -1,9 +1,6 @@
 # Exa Code Context
 
 ### What it is
-Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples.
-
-### What it does
 Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples
 
 ### How it works

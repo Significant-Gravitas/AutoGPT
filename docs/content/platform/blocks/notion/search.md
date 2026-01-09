@@ -3,9 +3,6 @@
 ### What it is
 Search your Notion workspace for pages and databases by text query.
 
-### What it does
-Search your Notion workspace for pages and databases by text query.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block searches across your Notion workspace using the Notion Search API. It finds pages and databases matching your query text, with optional filtering by type (page or database).

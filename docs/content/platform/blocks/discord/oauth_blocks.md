@@ -3,9 +3,6 @@
 ### What it is
 Gets information about the currently authenticated Discord user using OAuth2 credentials.
 
-### What it does
-Gets information about the currently authenticated Discord user using OAuth2 credentials.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Discord's OAuth2 API to retrieve information about the currently authenticated user. It requires valid OAuth2 credentials that have been obtained through Discord's authorization flow with the `identify` scope.

@@ -1,9 +1,6 @@
 # Github Create Status
 
 ### What it is
-Creates a new commit status in a GitHub repository.
-
-### What it does
 Creates a new commit status in a GitHub repository
 
 ### How it works

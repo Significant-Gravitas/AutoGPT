@@ -21,17 +21,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Agent Dropdown Input](basic.md#agent-dropdown-input) | Block for dropdown text selection |
 | [Agent File Input](basic.md#agent-file-input) | Block for file upload input (string path for example) |
 | [Agent Google Drive File Input](basic.md#agent-google-drive-file-input) | Block for selecting a file from Google Drive |
-| [Agent Input](basic.md#agent-input) | Base block for user inputs |
+| [Agent Input](basic.md#agent-input) | A block that accepts and processes user input values within a workflow, supporting various input types and validation |
 | [Agent Long Text Input](basic.md#agent-long-text-input) | Block for long text input (multi-line) |
 | [Agent Number Input](basic.md#agent-number-input) | Block for number input |
-| [Agent Output](basic.md#agent-output) | Stores the output of the graph for users to see |
+| [Agent Output](basic.md#agent-output) | A block that records and formats workflow results for display to users, with optional Jinja2 template formatting support |
 | [Agent Short Text Input](basic.md#agent-short-text-input) | Block for short text input (single-line) |
 | [Agent Table Input](basic.md#agent-table-input) | Block for table data input with customizable headers |
 | [Agent Time Input](basic.md#agent-time-input) | Block for time input |
 | [Agent Toggle Input](basic.md#agent-toggle-input) | Block for boolean toggle input |
 | [Dictionary Is Empty](basic.md#dictionary-is-empty) | Checks if a dictionary is empty |
 | [File Store](basic.md#file-store) | Stores the input file in the temporary directory |
-| [Find In Dictionary](basic.md#find-in-dictionary) | Lookup the given key in the input dictionary/object/list and return the value |
+| [Find In Dictionary](basic.md#find-in-dictionary) | A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value |
 | [Find In List](basic.md#find-in-list) | Finds the index of the value in the list |
 | [Get All Memories](basic.md#get-all-memories) | Retrieve all memories from Mem0 with optional conversation filtering |
 | [Get Latest Memory](basic.md#get-latest-memory) | Retrieve the latest memory from Mem0 with optional key filtering |
@@ -43,8 +43,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Linear Search Issues](linear/issues.md#linear-search-issues) | Searches for issues on Linear |
 | [List Is Empty](basic.md#list-is-empty) | Checks if a list is empty |
 | [List Library Agents](system/library_operations.md#list-library-agents) | List all agents in your personal library |
-| [Note](basic.md#note) | This block is used to display a sticky note with the given text |
-| [Print To Console](basic.md#print-to-console) | Print the given text to the console, this is used for a debugging purpose |
+| [Note](basic.md#note) | A visual annotation block that displays a sticky note in the workflow editor for documentation and organization purposes |
+| [Print To Console](basic.md#print-to-console) | A debugging block that outputs text to the console for monitoring and troubleshooting workflow execution |
 | [Remove From Dictionary](basic.md#remove-from-dictionary) | Removes a key-value pair from a dictionary |
 | [Remove From List](basic.md#remove-from-list) | Removes an item from a list by value or index |
 | [Replace Dictionary Value](basic.md#replace-dictionary-value) | Replaces the value for a specified key in a dictionary |
@@ -60,7 +60,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Slant3D Get Orders](slant3d/order.md#slant3d-get-orders) | Get all orders for the account |
 | [Slant3D Slicer](slant3d/slicing.md#slant3d-slicer) | Slice a 3D model file and get pricing information |
 | [Slant3D Tracking](slant3d/order.md#slant3d-tracking) | Track order status and shipping |
-| [Store Value](basic.md#store-value) | This block forwards an input value as output, allowing reuse without change |
+| [Store Value](basic.md#store-value) | A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks |
 | [Universal Type Converter](basic.md#universal-type-converter) | This block is used to convert a value to a universal type |
 | [XML Parser](basic.md#xml-parser) | Parses XML using gravitasml to tokenize and coverts it to dict |
 
@@ -141,14 +141,14 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Google Sheets Manage Sheet](google/sheets.md#google-sheets-manage-sheet) | Create, delete, or copy sheets (sheet optional) |
 | [Google Sheets Metadata](google/sheets.md#google-sheets-metadata) | This block retrieves metadata about a Google Sheets spreadsheet including sheet names and properties |
 | [Google Sheets Protect Range](google/sheets.md#google-sheets-protect-range) | Protect a cell range or entire sheet from editing |
-| [Google Sheets Read](google/sheets.md#google-sheets-read) | This block reads data from a Google Sheets spreadsheet |
+| [Google Sheets Read](google/sheets.md#google-sheets-read) | A block that reads data from a Google Sheets spreadsheet using A1 notation range selection |
 | [Google Sheets Remove Duplicates](google/sheets.md#google-sheets-remove-duplicates) | Remove duplicate rows based on specified columns |
 | [Google Sheets Set Public Access](google/sheets.md#google-sheets-set-public-access) | Make a Google Spreadsheet public or private |
 | [Google Sheets Share Spreadsheet](google/sheets.md#google-sheets-share-spreadsheet) | Share a Google Spreadsheet with users or get shareable link |
 | [Google Sheets Sort](google/sheets.md#google-sheets-sort) | Sort a Google Sheet by one or two columns |
 | [Google Sheets Update Cell](google/sheets.md#google-sheets-update-cell) | Update a single cell in a Google Sheets spreadsheet |
 | [Google Sheets Update Row](google/sheets.md#google-sheets-update-row) | Update a specific row by its index |
-| [Google Sheets Write](google/sheets.md#google-sheets-write) | This block writes data to a Google Sheets spreadsheet |
+| [Google Sheets Write](google/sheets.md#google-sheets-write) | A block that writes data to a Google Sheets spreadsheet at a specified A1 notation range |
 | [Keyword Suggestion Extractor](dataforseo/keyword_suggestions.md#keyword-suggestion-extractor) | Extract individual fields from a KeywordSuggestion object |
 | [Persist Information](data.md#persist-information) | Persist key-value information for the current user |
 | [Read Spreadsheet](data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
@@ -178,17 +178,17 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [AI Ad Maker Video Creator](llm.md#ai-ad-maker-video-creator) | Creates an AI‑generated 30‑second advert (text + images) |
 | [AI Condition](llm.md#ai-condition) | Uses AI to evaluate natural language conditions and provide conditional outputs |
-| [AI Conversation](llm.md#ai-conversation) | Advanced LLM call that takes a list of messages and sends them to the language model |
+| [AI Conversation](llm.md#ai-conversation) | A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges |
 | [AI Image Customizer](llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana model from Gemini 2 |
 | [AI Image Editor](llm.md#ai-image-editor) | Edit images using BlackForest Labs' Flux Kontext models |
 | [AI Image Generator](llm.md#ai-image-generator) | Generate images using various AI models through a unified interface |
-| [AI List Generator](llm.md#ai-list-generator) | Generate a list of values based on the given prompt using a Large Language Model (LLM) |
+| [AI List Generator](llm.md#ai-list-generator) | A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context |
 | [AI Music Generator](llm.md#ai-music-generator) | This block generates music using Meta's MusicGen model on Replicate |
 | [AI Screenshot To Video Ad](llm.md#ai-screenshot-to-video-ad) | Turns a screenshot into an engaging, avatar‑narrated video advert |
 | [AI Shortform Video Creator](llm.md#ai-shortform-video-creator) | Creates a shortform video using revid |
-| [AI Structured Response Generator](llm.md#ai-structured-response-generator) | Call a Large Language Model (LLM) to generate formatted object based on the given prompt |
-| [AI Text Generator](llm.md#ai-text-generator) | Call a Large Language Model (LLM) to generate a string based on the given prompt |
-| [AI Text Summarizer](llm.md#ai-text-summarizer) | Utilize a Large Language Model (LLM) to summarize a long text |
+| [AI Structured Response Generator](llm.md#ai-structured-response-generator) | A block that generates structured JSON responses using a Large Language Model (LLM), with schema validation and format enforcement |
+| [AI Text Generator](llm.md#ai-text-generator) | A block that produces text responses using a Large Language Model (LLM) based on customizable prompts and system instructions |
+| [AI Text Summarizer](llm.md#ai-text-summarizer) | A block that summarizes long texts using a Large Language Model (LLM), with configurable focus topics and summary styles |
 | [AI Video Generator](fal/ai_video_generator.md#ai-video-generator) | Generate videos using FAL AI models |
 | [Bannerbear Text Overlay](bannerbear/text_overlay.md#bannerbear-text-overlay) | Add text overlay to images using Bannerbear templates |
 | [Code Generation](llm.md#code-generation) | Generate or refactor code using OpenAI's Codex (Responses API) |
@@ -355,15 +355,15 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Baas Bot Join Meeting](baas/bots.md#baas-bot-join-meeting) | Deploy a bot to join and record a meeting |
 | [Baas Bot Leave Meeting](baas/bots.md#baas-bot-leave-meeting) | Remove a bot from an ongoing meeting |
-| [Gmail Add Label](google/gmail.md#gmail-add-label) | This block adds a label to a Gmail message |
+| [Gmail Add Label](google/gmail.md#gmail-add-label) | A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist |
 | [Gmail Create Draft](google/gmail.md#gmail-create-draft) | Create draft emails in Gmail with automatic HTML detection and proper text formatting |
 | [Gmail Draft Reply](google/gmail.md#gmail-draft-reply) | Create draft replies to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Forward](google/gmail.md#gmail-forward) | Forward Gmail messages to other recipients with automatic HTML detection and proper formatting |
 | [Gmail Get Profile](google/gmail.md#gmail-get-profile) | Get the authenticated user's Gmail profile details including email address and message statistics |
-| [Gmail Get Thread](google/gmail.md#gmail-get-thread) | Get a full Gmail thread by ID |
-| [Gmail List Labels](google/gmail.md#gmail-list-labels) | This block lists all labels in Gmail |
-| [Gmail Read](google/gmail.md#gmail-read) | This block reads emails from Gmail |
-| [Gmail Remove Label](google/gmail.md#gmail-remove-label) | This block removes a label from a Gmail message |
+| [Gmail Get Thread](google/gmail.md#gmail-get-thread) | A block that retrieves an entire Gmail thread (email conversation) by ID, returning all messages with decoded bodies for reading complete conversations |
+| [Gmail List Labels](google/gmail.md#gmail-list-labels) | A block that retrieves all labels (categories) from a Gmail account for organizing and categorizing emails |
+| [Gmail Read](google/gmail.md#gmail-read) | A block that retrieves and reads emails from a Gmail account based on search criteria, returning detailed message information including subject, sender, body, and attachments |
+| [Gmail Remove Label](google/gmail.md#gmail-remove-label) | A block that removes a label from a specific email message in a Gmail account |
 | [Gmail Reply](google/gmail.md#gmail-reply) | Reply to Gmail threads with automatic HTML detection and proper text formatting |
 | [Gmail Send](google/gmail.md#gmail-send) | Send emails via Gmail with automatic HTML detection and proper text formatting |
 | [Hub Spot Engagement](hubspot/engagement.md#hub-spot-engagement) | Manages HubSpot engagements - sends emails and tracks engagement metrics |
@@ -374,10 +374,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Code Context](exa/code_context.md#exa-code-context) | Search billions of GitHub repos, docs, and Stack Overflow for relevant code examples |
 | [Execute Code](misc.md#execute-code) | Executes code in a sandbox environment with internet access |
 | [Execute Code Step](misc.md#execute-code-step) | Execute code in a previously instantiated sandbox |
-| [Github Add Label](github/issues.md#github-add-label) | This block adds a label to a specified GitHub issue or pull request |
-| [Github Assign Issue](github/issues.md#github-assign-issue) | This block assigns a user to a specified GitHub issue |
+| [Github Add Label](github/issues.md#github-add-label) | A block that adds a label to a GitHub issue or pull request for categorization and organization |
+| [Github Assign Issue](github/issues.md#github-assign-issue) | A block that assigns a GitHub user to an issue for task ownership and tracking |
 | [Github Assign PR Reviewer](github/pull_requests.md#github-assign-pr-reviewer) | This block assigns a reviewer to a specified GitHub pull request |
-| [Github Comment](github/issues.md#github-comment) | This block posts a comment on a specified GitHub issue or pull request |
+| [Github Comment](github/issues.md#github-comment) | A block that posts comments on GitHub issues or pull requests using the GitHub API |
 | [Github Create Check Run](github/checks.md#github-create-check-run) | Creates a new check run for a specific commit in a GitHub repository |
 | [Github Create Comment Object](github/reviews.md#github-create-comment-object) | Creates a comment object for use with GitHub blocks |
 | [Github Create File](github/repo.md#github-create-file) | This block creates a new file in a GitHub repository |
@@ -390,9 +390,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github Get PR Review Comments](github/reviews.md#github-get-pr-review-comments) | This block gets all review comments from a GitHub pull request or from a specific review |
 | [Github Issues Trigger](github/triggers.md#github-issues-trigger) | This block triggers on GitHub issues events |
 | [Github List Branches](github/repo.md#github-list-branches) | This block lists all branches for a specified GitHub repository |
-| [Github List Comments](github/issues.md#github-list-comments) | This block lists all comments for a specified GitHub issue or pull request |
+| [Github List Comments](github/issues.md#github-list-comments) | A block that retrieves all comments from a GitHub issue or pull request, including comment metadata and content |
 | [Github List Discussions](github/repo.md#github-list-discussions) | This block lists recent discussions for a specified GitHub repository |
-| [Github List Issues](github/issues.md#github-list-issues) | This block lists all issues for a specified GitHub repository |
+| [Github List Issues](github/issues.md#github-list-issues) | A block that retrieves a list of issues from a GitHub repository with their titles and URLs |
 | [Github List PR Reviewers](github/pull_requests.md#github-list-pr-reviewers) | This block lists all reviewers for a specified GitHub pull request |
 | [Github List PR Reviews](github/reviews.md#github-list-pr-reviews) | This block lists all reviews for a specified GitHub pull request |
 | [Github List Pull Requests](github/pull_requests.md#github-list-pull-requests) | This block lists all pull requests for a specified GitHub repository |
@@ -400,22 +400,22 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Github List Stargazers](github/repo.md#github-list-stargazers) | This block lists all users who have starred a specified GitHub repository |
 | [Github List Tags](github/repo.md#github-list-tags) | This block lists all tags for a specified GitHub repository |
 | [Github Make Branch](github/repo.md#github-make-branch) | This block creates a new branch from a specified source branch |
-| [Github Make Issue](github/issues.md#github-make-issue) | This block creates a new issue on a specified GitHub repository |
+| [Github Make Issue](github/issues.md#github-make-issue) | A block that creates new issues on GitHub repositories with a title and body content |
 | [Github Make Pull Request](github/pull_requests.md#github-make-pull-request) | This block creates a new pull request on a specified GitHub repository |
 | [Github Pull Request Trigger](github/triggers.md#github-pull-request-trigger) | This block triggers on pull request events and outputs the event type and payload |
 | [Github Read File](github/repo.md#github-read-file) | This block reads the content of a specified file from a GitHub repository |
 | [Github Read Folder](github/repo.md#github-read-folder) | This block reads the content of a specified folder from a GitHub repository |
-| [Github Read Issue](github/issues.md#github-read-issue) | This block reads the body, title, and user of a specified GitHub issue |
+| [Github Read Issue](github/issues.md#github-read-issue) | A block that retrieves information about a specific GitHub issue, including its title, body content, and creator |
 | [Github Read Pull Request](github/pull_requests.md#github-read-pull-request) | This block reads the body, title, user, and changes of a specified GitHub pull request |
 | [Github Release Trigger](github/triggers.md#github-release-trigger) | This block triggers on GitHub release events |
-| [Github Remove Label](github/issues.md#github-remove-label) | This block removes a label from a specified GitHub issue or pull request |
+| [Github Remove Label](github/issues.md#github-remove-label) | A block that removes a label from a GitHub issue or pull request |
 | [Github Resolve Review Discussion](github/reviews.md#github-resolve-review-discussion) | This block resolves or unresolves a review discussion thread on a GitHub pull request |
 | [Github Star Trigger](github/triggers.md#github-star-trigger) | This block triggers on GitHub star events |
 | [Github Submit Pending Review](github/reviews.md#github-submit-pending-review) | This block submits a pending (draft) review on a GitHub pull request |
-| [Github Unassign Issue](github/issues.md#github-unassign-issue) | This block unassigns a user from a specified GitHub issue |
+| [Github Unassign Issue](github/issues.md#github-unassign-issue) | A block that removes a user's assignment from a GitHub issue |
 | [Github Unassign PR Reviewer](github/pull_requests.md#github-unassign-pr-reviewer) | This block unassigns a reviewer from a specified GitHub pull request |
 | [Github Update Check Run](github/checks.md#github-update-check-run) | Updates an existing check run in a GitHub repository |
-| [Github Update Comment](github/issues.md#github-update-comment) | This block updates a comment on a specified GitHub issue or pull request |
+| [Github Update Comment](github/issues.md#github-update-comment) | A block that updates an existing comment on a GitHub issue or pull request |
 | [Github Update File](github/repo.md#github-update-file) | This block updates an existing file in a GitHub repository |
 | [Instantiate Code Sandbox](misc.md#instantiate-code-sandbox) | Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block |
 | [Slant3D Order Webhook](slant3d/webhook.md#slant3d-order-webhook) | This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped |

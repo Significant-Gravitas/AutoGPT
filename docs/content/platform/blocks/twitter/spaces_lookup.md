@@ -3,9 +3,6 @@
 ### What it is
 This block retrieves a list of users who purchased tickets to a Twitter Space.
 
-### What it does
-This block retrieves a list of users who purchased tickets to a Twitter Space.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve a list of users who purchased tickets to a ticketed Twitter Space. Only the Space creator or hosts can access buyer information.
@@ -44,9 +41,6 @@ The block uses Tweepy with OAuth 2.0 authentication and returns buyer user IDs, 
 ## Twitter Get Space By Id
 
 ### What it is
-This block retrieves information about a single Twitter Space.
-
-### What it does
 This block retrieves information about a single Twitter Space.
 
 ### How it works
@@ -105,9 +99,6 @@ The block uses Tweepy with OAuth 2.0 authentication and supports expansions for 
 ### What it is
 This block retrieves tweets shared in a Twitter Space.
 
-### What it does
-This block retrieves tweets shared in a Twitter Space.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets that were shared during a Twitter Space. This includes tweets pinned or shared by hosts and speakers during the live audio session.
@@ -157,9 +148,6 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 ## Twitter Get Spaces
 
 ### What it is
-This block retrieves information about multiple Twitter Spaces.
-
-### What it does
 This block retrieves information about multiple Twitter Spaces.
 
 ### How it works

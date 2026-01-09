@@ -1,9 +1,6 @@
 # Bannerbear Text Overlay
 
 ### What it is
-Add text overlay to images using Bannerbear templates.
-
-### What it does
 Add text overlay to images using Bannerbear templates. Perfect for creating social media graphics, marketing materials, and dynamic image content.
 
 ### How it works

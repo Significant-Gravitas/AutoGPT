@@ -3,9 +3,6 @@
 ### What it is
 This block gets information about who has retweeted a tweet.
 
-### What it does
-This block gets information about who has retweeted a tweet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve a paginated list of users who have retweeted a specific tweet. Results include user IDs, usernames, display names, and optionally expanded profile data.
@@ -51,9 +48,6 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 ### What it is
 This block removes a retweet on Twitter.
 
-### What it does
-This block removes a retweet on Twitter.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to remove a retweet from the authenticated user's account. The original tweet remains unaffected—only your retweet is removed.
@@ -86,9 +80,6 @@ The block authenticates using OAuth 2.0 with tweet write permissions and sends a
 ## Twitter Retweet
 
 ### What it is
-This block retweets a tweet on Twitter.
-
-### What it does
 This block retweets a tweet on Twitter.
 
 ### How it works

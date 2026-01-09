@@ -1,9 +1,6 @@
 # Slant3D Cancel Order
 
 ### What it is
-Cancel an existing order.
-
-### What it does
 Cancel an existing order
 
 ### How it works
@@ -38,9 +35,6 @@ Orders can only be cancelled before they enter production. Check order status be
 ## Slant3D Create Order
 
 ### What it is
-Create a new print order.
-
-### What it does
 Create a new print order
 
 ### How it works
@@ -77,9 +71,6 @@ The block returns the Slant3D order ID which you can use for tracking and status
 ## Slant3D Estimate Order
 
 ### What it is
-Get order cost estimate.
-
-### What it does
 Get order cost estimate
 
 ### How it works
@@ -118,9 +109,6 @@ Use this for price quotes before customers commit to orders.
 ## Slant3D Estimate Shipping
 
 ### What it is
-Get shipping cost estimate.
-
-### What it does
 Get shipping cost estimate
 
 ### How it works
@@ -158,9 +146,6 @@ Use this to display shipping costs at checkout or calculate delivery options for
 ## Slant3D Get Orders
 
 ### What it is
-Get all orders for the account.
-
-### What it does
 Get all orders for the account
 
 ### How it works
@@ -190,9 +175,6 @@ Use this for order management dashboards or to sync order data with your systems
 ## Slant3D Tracking
 
 ### What it is
-Track order status and shipping.
-
-### What it does
 Track order status and shipping
 
 ### How it works

@@ -1,9 +1,6 @@
 # Nvidia Deepfake Detect
 
 ### What it is
-Detects potential deepfakes in images using Nvidia's AI API.
-
-### What it does
 Detects potential deepfakes in images using Nvidia's AI API
 
 ### How it works

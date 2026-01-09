@@ -1,9 +1,6 @@
 # Exa Create Monitor
 
 ### What it is
-Create automated monitors to keep websets updated with fresh data on a schedule.
-
-### What it does
 Create automated monitors to keep websets updated with fresh data on a schedule
 
 ### How it works
@@ -56,9 +53,6 @@ Configure the cron expression for your desired frequency (daily, weekly, etc.) a
 ## Exa Delete Monitor
 
 ### What it is
-Delete a monitor from a webset.
-
-### What it does
 Delete a monitor from a webset
 
 ### How it works
@@ -94,9 +88,6 @@ Use this to clean up monitors that are no longer needed or to stop scheduled ope
 ## Exa Get Monitor
 
 ### What it is
-Get the details and status of a webset monitor.
-
-### What it does
 Get the details and status of a webset monitor
 
 ### How it works
@@ -142,9 +133,6 @@ Use this to verify monitor settings, check when the next run is scheduled, or re
 ## Exa List Monitors
 
 ### What it is
-List all monitors with optional webset filtering.
-
-### What it does
 List all monitors with optional webset filtering
 
 ### How it works
@@ -184,9 +172,6 @@ Use this to get an overview of all active monitors or find monitors associated w
 ## Exa Update Monitor
 
 ### What it is
-Update a monitor's status, schedule, or metadata.
-
-### What it does
 Update a monitor's status, schedule, or metadata
 
 ### How it works

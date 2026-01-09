@@ -1,9 +1,6 @@
 # Post To Reddit
 
 ### What it is
-Post to Reddit using Ayrshare.
-
-### What it does
 Post to Reddit using Ayrshare
 
 ### How it works

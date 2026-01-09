@@ -1,9 +1,6 @@
 # Google Docs Append Markdown
 
 ### What it is
-Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output.
-
-### What it does
 Append Markdown content to the end of a Google Doc with full formatting - ideal for LLM/AI output
 
 ### How it works
@@ -41,9 +38,6 @@ Set add_newline to true to insert a line break before the appended content. The 
 ## Google Docs Append Plain Text
 
 ### What it is
-Append plain text to the end of a Google Doc (no formatting applied).
-
-### What it does
 Append plain text to the end of a Google Doc (no formatting applied)
 
 ### How it works
@@ -81,9 +75,6 @@ The block finds the document's end index and inserts the text there, with an opt
 ## Google Docs Create
 
 ### What it is
-Create a new Google Doc.
-
-### What it does
 Create a new Google Doc
 
 ### How it works
@@ -121,9 +112,6 @@ The newly created document is returned with its ID and URL, allowing immediate a
 ## Google Docs Delete Content
 
 ### What it is
-Delete a range of content from a Google Doc.
-
-### What it does
 Delete a range of content from a Google Doc
 
 ### How it works
@@ -161,9 +149,6 @@ Use the Get Structure block first to find the correct index positions for conten
 ## Google Docs Export
 
 ### What it is
-Export a Google Doc to PDF, Word, text, or other formats.
-
-### What it does
 Export a Google Doc to PDF, Word, text, or other formats
 
 ### How it works
@@ -201,9 +186,6 @@ The export preserves document formatting as closely as possible in the target fo
 ## Google Docs Find Replace Plain Text
 
 ### What it is
-Find and replace plain text in a Google Doc (no formatting applied to replacement).
-
-### What it does
 Find and replace plain text in a Google Doc (no formatting applied to replacement)
 
 ### How it works
@@ -242,9 +224,6 @@ The replacement preserves the surrounding formatting but does not apply any new 
 ## Google Docs Format Text
 
 ### What it is
-Apply formatting (bold, italic, color, etc.
-
-### What it does
 Apply formatting (bold, italic, color, etc.) to text in a Google Doc
 
 ### How it works
@@ -287,9 +266,6 @@ Use the Get Structure block to identify the correct index positions. Multiple fo
 ## Google Docs Get Metadata
 
 ### What it is
-Get metadata about a Google Doc.
-
-### What it does
 Get metadata about a Google Doc
 
 ### How it works
@@ -328,9 +304,6 @@ This metadata is useful for tracking document versions, building document invent
 ## Google Docs Get Structure
 
 ### What it is
-Get document structure with index positions for precise editing operations.
-
-### What it does
 Get document structure with index positions for precise editing operations
 
 ### How it works
@@ -368,9 +341,6 @@ The index positions are essential for precise editing operations like formatting
 ## Google Docs Insert Markdown At
 
 ### What it is
-Insert formatted Markdown at a specific position in a Google Doc - ideal for LLM/AI output.
-
-### What it does
 Insert formatted Markdown at a specific position in a Google Doc - ideal for LLM/AI output
 
 ### How it works
@@ -408,9 +378,6 @@ The Markdown parser handles headers, bold, italic, links, lists, and code format
 ## Google Docs Insert Page Break
 
 ### What it is
-Insert a page break into a Google Doc.
-
-### What it does
 Insert a page break into a Google Doc
 
 ### How it works
@@ -447,9 +414,6 @@ Page breaks force subsequent content to start on a new page, useful for separati
 ## Google Docs Insert Plain Text
 
 ### What it is
-Insert plain text at a specific position in a Google Doc (no formatting applied).
-
-### What it does
 Insert plain text at a specific position in a Google Doc (no formatting applied)
 
 ### How it works
@@ -487,9 +451,6 @@ Unlike the Markdown insert, text is inserted exactly as provided without any for
 ## Google Docs Insert Table
 
 ### What it is
-Insert a table into a Google Doc, optionally with content and Markdown formatting.
-
-### What it does
 Insert a table into a Google Doc, optionally with content and Markdown formatting
 
 ### How it works
@@ -530,9 +491,6 @@ Cell content can optionally be formatted as Markdown, enabling rich formatting l
 ## Google Docs Read
 
 ### What it is
-Read text content from a Google Doc.
-
-### What it does
 Read text content from a Google Doc
 
 ### How it works
@@ -569,9 +527,6 @@ Use this for content analysis, text processing, or feeding document content to A
 ## Google Docs Replace All With Markdown
 
 ### What it is
-Replace entire Google Doc content with formatted Markdown - ideal for LLM/AI output.
-
-### What it does
 Replace entire Google Doc content with formatted Markdown - ideal for LLM/AI output
 
 ### How it works
@@ -608,9 +563,6 @@ This is ideal for completely regenerating document content from AI-generated Mar
 ## Google Docs Replace Content With Markdown
 
 ### What it is
-Find text and replace it with formatted Markdown - ideal for LLM/AI output and templates.
-
-### What it does
 Find text and replace it with formatted Markdown - ideal for LLM/AI output and templates
 
 ### How it works
@@ -649,9 +601,6 @@ Use this for template systems where placeholders like {{SECTION}} are replaced w
 ## Google Docs Replace Range With Markdown
 
 ### What it is
-Replace a specific index range in a Google Doc with formatted Markdown - ideal for LLM/AI output.
-
-### What it does
 Replace a specific index range in a Google Doc with formatted Markdown - ideal for LLM/AI output
 
 ### How it works
@@ -690,9 +639,6 @@ Use Get Structure to find the correct index positions. This enables precise repl
 ## Google Docs Set Public Access
 
 ### What it is
-Make a Google Doc public or private.
-
-### What it does
 Make a Google Doc public or private
 
 ### How it works
@@ -731,9 +677,6 @@ When made public, anyone with the link can access the document according to the 
 ## Google Docs Share
 
 ### What it is
-Share a Google Doc with specific users.
-
-### What it does
 Share a Google Doc with specific users
 
 ### How it works

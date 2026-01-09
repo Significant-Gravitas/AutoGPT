@@ -1,9 +1,6 @@
 # Get Store Agent Details
 
 ### What it is
-Get detailed information about an agent from the store.
-
-### What it does
 Get detailed information about an agent from the store
 
 ### How it works
@@ -46,9 +43,6 @@ The store_listing_version_id can be used with other blocks to add the agent to y
 ## Search Store Agents
 
 ### What it is
-Search for agents in the store.
-
-### What it does
 Search for agents in the store
 
 ### How it works

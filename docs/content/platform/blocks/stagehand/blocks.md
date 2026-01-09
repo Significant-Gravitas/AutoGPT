@@ -1,9 +1,6 @@
 # Stagehand Act
 
 ### What it is
-Interact with a web page by performing actions on a web page.
-
-### What it does
 Interact with a web page by performing actions on a web page. Use it to build self-healing and deterministic automations that adapt to website chang.
 
 ### How it works
@@ -49,9 +46,6 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 ### What it is
 Extract structured data from a webpage.
 
-### What it does
-Extract structured data from a webpage.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Stagehand with Browserbase to extract data from web pages using natural language instructions. Describe what data you want to extract, and the AI identifies and returns the matching content.
@@ -89,9 +83,6 @@ Supports searching within iframes and configurable timeouts for dynamic content 
 ## Stagehand Observe
 
 ### What it is
-Find suggested actions for your workflows.
-
-### What it does
 Find suggested actions for your workflows
 
 ### How it works

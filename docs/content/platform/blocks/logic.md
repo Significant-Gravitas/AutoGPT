@@ -3,9 +3,6 @@
 ### What it is
 Performs a mathematical operation on two numbers.
 
-### What it does
-Performs a mathematical operation on two numbers.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The Calculator block takes in two numbers and an operation choice. It then applies the chosen operation to the numbers and returns the result. If rounding is selected, it rounds the result to the nearest whole number.
@@ -35,9 +32,6 @@ A user wants to quickly perform a calculation, such as adding two numbers or cal
 ## Condition
 
 ### What it is
-Handles conditional logic based on comparison operators.
-
-### What it does
 Handles conditional logic based on comparison operators
 
 ### How it works
@@ -80,9 +74,6 @@ Optionally specify yes_value and no_value to output different data than the inpu
 ### What it is
 Counts the number of items in a collection.
 
-### What it does
-Counts the number of items in a collection.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The Count Items block receives a collection as input. It then determines the type of collection and uses the appropriate method to count the items. For most collections, it uses the length function. For other iterable objects, it counts the items one by one.
@@ -109,9 +100,6 @@ A user has a list of customer names and wants to quickly determine how many cust
 ## Data Sampling
 
 ### What it is
-This block samples data from a given dataset using various sampling methods.
-
-### What it does
 This block samples data from a given dataset using various sampling methods.
 
 ### How it works
@@ -154,9 +142,6 @@ Configure sample_size to control how many items to select. Use random_seed for r
 ## If Input Matches
 
 ### What it is
-Handles conditional logic based on comparison operators.
-
-### What it does
 Handles conditional logic based on comparison operators
 
 ### How it works
@@ -196,9 +181,6 @@ Use yes_value and no_value to specify what data to output in each case. This pro
 ## Pinecone Init
 
 ### What it is
-Initializes a Pinecone index.
-
-### What it does
 Initializes a Pinecone index
 
 ### How it works
@@ -238,9 +220,6 @@ For serverless deployment, configure the cloud provider and region. The block re
 ## Pinecone Insert
 
 ### What it is
-Upload data to a Pinecone index.
-
-### What it does
 Upload data to a Pinecone index
 
 ### How it works
@@ -279,9 +258,6 @@ Use namespaces to organize vectors into logical groups within the same index. Th
 ## Pinecone Query
 
 ### What it is
-Queries a Pinecone index.
-
-### What it does
 Queries a Pinecone index
 
 ### How it works
@@ -323,9 +299,6 @@ Results include similarity scores and optionally the vector values and metadata.
 ## Step Through Items
 
 ### What it is
-Iterates over a list or dictionary and outputs each item.
-
-### What it does
 Iterates over a list or dictionary and outputs each item.
 
 ### How it works

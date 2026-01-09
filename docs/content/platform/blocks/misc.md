@@ -1,9 +1,6 @@
 # Agent Executor
 
 ### What it is
-Executes an existing agent inside your agent.
-
-### What it does
 Executes an existing agent inside your agent
 
 ### How it works
@@ -38,9 +35,6 @@ Input and output schemas define the expected data structure for communication be
 ## Execute Code
 
 ### What it is
-Executes code in a sandbox environment with internet access.
-
-### What it does
 Executes code in a sandbox environment with internet access.
 
 ### How it works
@@ -88,9 +82,6 @@ These commands are executed with `sh`, in the foreground. | List[str] | No |
 ### What it is
 Execute code in a previously instantiated sandbox.
 
-### What it does
-Execute code in a previously instantiated sandbox.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block executes additional code in a sandbox that was previously created with the Instantiate Code Sandbox block. The sandbox maintains state between steps, so variables and installed packages persist.
@@ -132,9 +123,6 @@ Use this for multi-step code execution where each step builds on previous result
 ### What it is
 This block fetches Reddit posts from a defined subreddit name.
 
-### What it does
-This block fetches Reddit posts from a defined subreddit name.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block connects to Reddit using provided credentials, accesses the specified subreddit, and retrieves posts based on the given parameters. It can limit the number of posts, stop at a specific post, or fetch posts within a certain time frame.
@@ -165,9 +153,6 @@ A content curator could use this block to gather recent posts from a specific su
 ## Instantiate Code Sandbox
 
 ### What it is
-Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block.
-
-### What it does
 Instantiate a sandbox environment with internet access in which you can execute code with the Execute Code Step block.
 
 ### How it works
@@ -213,9 +198,6 @@ These commands are executed with `sh`, in the foreground. | List[str] | No |
 ### What it is
 This block posts a Reddit comment on a specified Reddit post.
 
-### What it does
-This block posts a Reddit comment on a specified Reddit post.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block connects to Reddit using the provided credentials, locates the specified post, and then adds the given comment to that post.
@@ -242,9 +224,6 @@ An automated moderation system could use this block to post pre-defined response
 ## Publish To Medium
 
 ### What it is
-Publishes a post to Medium.
-
-### What it does
 Publishes a post to Medium.
 
 ### How it works
@@ -293,9 +272,6 @@ curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" https://api.medium.com/v1/me" 
 ### What it is
 Reads RSS feed entries from a given URL.
 
-### What it does
-Reads RSS feed entries from a given URL.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block fetches and parses RSS or Atom feeds from a URL. Filter entries by time_period to only get recent items. When run_continuously is enabled, the block polls the feed at the specified polling_rate interval.
@@ -332,9 +308,6 @@ Each entry is output individually, enabling processing of new content as it appe
 ## Send Authenticated Web Request
 
 ### What it is
-Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart).
-
-### What it does
 Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart).
 
 ### How it works
@@ -379,9 +352,6 @@ Supports JSON, form-encoded, and multipart requests with file uploads. The respo
 ### What it is
 This block sends an email using the provided SMTP credentials.
 
-### What it does
-This block sends an email using the provided SMTP credentials.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block sends emails via SMTP using your configured email server credentials. Provide the recipient address, subject, and body content. The SMTP configuration includes server host, port, username, and password.
@@ -417,9 +387,6 @@ The block handles connection, authentication, and message delivery, returning a 
 ## Send Web Request
 
 ### What it is
-Make an HTTP request (JSON / form / multipart).
-
-### What it does
 Make an HTTP request (JSON / form / multipart).
 
 ### How it works
@@ -462,9 +429,6 @@ The response body is parsed and returned. Separate error outputs distinguish bet
 ## Transcribe Youtube Video
 
 ### What it is
-Transcribes a YouTube video using a proxy.
-
-### What it does
 Transcribes a YouTube video using a proxy.
 
 ### How it works

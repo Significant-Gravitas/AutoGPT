@@ -1,9 +1,6 @@
 # Exa Create Research
 
 ### What it is
-Create research task with optional waiting - explores web and synthesizes findings with citations.
-
-### What it does
 Create research task with optional waiting - explores web and synthesizes findings with citations
 
 ### How it works
@@ -50,9 +47,6 @@ You can choose from different model tiers (fast, standard, pro) depending on you
 ## Exa Get Research
 
 ### What it is
-Get status and results of a research task.
-
-### What it does
 Get status and results of a research task
 
 ### How it works
@@ -101,9 +95,6 @@ When the research is complete, the block returns the full output content along w
 ## Exa List Research
 
 ### What it is
-List all research tasks with pagination support.
-
-### What it does
 List all research tasks with pagination support
 
 ### How it works
@@ -142,9 +133,6 @@ The block returns basic information about each task including its ID, status, in
 ## Exa Wait For Research
 
 ### What it is
-Wait for a research task to complete with configurable timeout.
-
-### What it does
 Wait for a research task to complete with configurable timeout
 
 ### How it works

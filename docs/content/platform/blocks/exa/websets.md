@@ -1,9 +1,6 @@
 # Exa Cancel Webset
 
 ### What it is
-Cancel all operations being performed on a Webset.
-
-### What it does
 Cancel all operations being performed on a Webset
 
 ### How it works
@@ -41,9 +38,6 @@ The block is useful for stopping long-running operations that are no longer need
 ## Exa Create Or Find Webset
 
 ### What it is
-Create a new webset or return existing one by external_id (idempotent operation).
-
-### What it does
 Create a new webset or return existing one by external_id (idempotent operation)
 
 ### How it works
@@ -82,9 +76,6 @@ This pattern prevents duplicate websets when workflows retry or run multiple tim
 ## Exa Create Webset
 
 ### What it is
-Create a new Exa Webset for persistent web search collections with optional waiting for initial results.
-
-### What it does
 Create a new Exa Webset for persistent web search collections with optional waiting for initial results
 
 ### How it works
@@ -141,9 +132,6 @@ The block supports advanced features like scoped searches (searching within spec
 ## Exa Delete Webset
 
 ### What it is
-Delete a Webset and all its items.
-
-### What it does
 Delete a Webset and all its items
 
 ### How it works
@@ -181,9 +169,6 @@ Use this to clean up websets that are no longer needed or to remove test data. T
 ## Exa Get Webset
 
 ### What it is
-Retrieve a Webset by ID or external ID.
-
-### What it does
 Retrieve a Webset by ID or external ID
 
 ### How it works
@@ -226,9 +211,6 @@ The block returns the webset's current state, metadata, and timestamps. Use this
 ## Exa List Websets
 
 ### What it is
-List all Websets with pagination support.
-
-### What it does
 List all Websets with pagination support
 
 ### How it works
@@ -267,9 +249,6 @@ Use this to discover existing websets, find specific websets by browsing, or bui
 ## Exa Preview Webset
 
 ### What it is
-Preview how a search query will be interpreted before creating a webset.
-
-### What it does
 Preview how a search query will be interpreted before creating a webset. Helps understand entity detection, criteria generation, and available enrichments.
 
 ### How it works
@@ -312,9 +291,6 @@ Use this to refine your query and understand what results to expect. The block a
 ## Exa Update Webset
 
 ### What it is
-Update metadata for an existing Webset.
-
-### What it does
 Update metadata for an existing Webset
 
 ### How it works
@@ -354,9 +330,6 @@ Setting metadata to null clears all existing metadata. This operation does not a
 ## Exa Webset Ready Check
 
 ### What it is
-Check if webset is ready for next operation - enables conditional workflow branching.
-
-### What it does
 Check if webset is ready for next operation - enables conditional workflow branching
 
 ### How it works
@@ -397,9 +370,6 @@ Use this block for conditional workflow branching to decide whether to proceed w
 ## Exa Webset Status
 
 ### What it is
-Get a quick status overview of a webset.
-
-### What it does
 Get a quick status overview of a webset
 
 ### How it works
@@ -441,9 +411,6 @@ Use this for quick status checks and monitoring without the overhead of retrievi
 ## Exa Webset Summary
 
 ### What it is
-Get a comprehensive summary of a webset with samples and statistics.
-
-### What it does
 Get a comprehensive summary of a webset with samples and statistics
 
 ### How it works

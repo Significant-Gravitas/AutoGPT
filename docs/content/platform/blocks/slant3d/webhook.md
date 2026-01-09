@@ -3,9 +3,6 @@
 ### What it is
 This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped.
 
-### What it does
-This block triggers on Slant3D order status updates and outputs the event details, including tracking information when orders are shipped.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block subscribes to Slant3D webhook events for order status updates. When an order's status changes (e.g., printing, shipped, delivered), Slant3D sends a webhook notification that triggers your workflow.

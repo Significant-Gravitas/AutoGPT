@@ -1,9 +1,6 @@
 # Notion Create Page
 
 ### What it is
-Create a new page in Notion.
-
-### What it does
 Create a new page in Notion. Requires EITHER a parent_page_id OR parent_database_id. Supports markdown content.
 
 ### How it works

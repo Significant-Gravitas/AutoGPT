@@ -1,9 +1,6 @@
 # Post To Snapchat
 
 ### What it is
-Post to Snapchat using Ayrshare.
-
-### What it does
 Post to Snapchat using Ayrshare
 
 ### How it works

@@ -1,9 +1,6 @@
 # Linear Create Issue
 
 ### What it is
-Creates a new issue on Linear.
-
-### What it does
 Creates a new issue on Linear
 
 ### How it works
@@ -43,9 +40,6 @@ Returns the created issue's ID and title for tracking or further operations.
 ## Linear Get Project Issues
 
 ### What it is
-Gets issues from a Linear project filtered by status and assignee.
-
-### What it does
 Gets issues from a Linear project filtered by status and assignee
 
 ### How it works
@@ -83,9 +77,6 @@ Optionally include comments in the response for comprehensive issue data.
 ## Linear Search Issues
 
 ### What it is
-Searches for issues on Linear.
-
-### What it does
 Searches for issues on Linear
 
 ### How it works

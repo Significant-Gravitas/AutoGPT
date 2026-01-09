@@ -1,9 +1,6 @@
 # Exa Cancel Webset Search
 
 ### What it is
-Cancel a running webset search.
-
-### What it does
 Cancel a running webset search
 
 ### How it works
@@ -42,9 +39,6 @@ Use this when a search is taking too long, returning unexpected results, or is n
 ## Exa Create Webset Search
 
 ### What it is
-Add a new search to an existing webset to find more items.
-
-### What it does
 Add a new search to an existing webset to find more items
 
 ### How it works
@@ -101,9 +95,6 @@ Searches support scoped and exclusion sources, criteria validation, and relation
 ## Exa Find Or Create Search
 
 ### What it is
-Find existing search by query or create new - prevents duplicate searches in workflows.
-
-### What it does
 Find existing search by query or create new - prevents duplicate searches in workflows
 
 ### How it works
@@ -147,9 +138,6 @@ Use this pattern to prevent duplicate searches when workflows retry or run multi
 ## Exa Get Webset Search
 
 ### What it is
-Get the status and details of a webset search.
-
-### What it does
 Get the status and details of a webset search
 
 ### How it works

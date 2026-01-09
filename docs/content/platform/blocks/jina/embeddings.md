@@ -1,9 +1,6 @@
 # Jina Embedding
 
 ### What it is
-Generates embeddings using Jina AI.
-
-### What it does
 Generates embeddings using Jina AI
 
 ### How it works

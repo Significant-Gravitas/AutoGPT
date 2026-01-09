@@ -1,9 +1,6 @@
 # Post To Pinterest
 
 ### What it is
-Post to Pinterest using Ayrshare.
-
-### What it does
 Post to Pinterest using Ayrshare
 
 ### How it works

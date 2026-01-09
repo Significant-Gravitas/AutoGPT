@@ -1,9 +1,6 @@
 # Code Extraction
 
 ### What it is
-Extracts code blocks from text and identifies their programming languages.
-
-### What it does
 Extracts code blocks from text and identifies their programming languages
 
 ### How it works
@@ -54,10 +51,7 @@ The block supports 16 programming languages including Python, JavaScript, HTML, 
 ## Combine Texts
 
 ### What it is
-A block that combines multiple text inputs into a single output.
-
-### What it does
-Concatenates multiple text strings together, optionally inserting a specified delimiter between each input.
+This block combines multiple input texts into a single output text.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -86,10 +80,7 @@ Merging multiple parts of an address (street, city, state, zip code) into a sing
 ## Countdown Timer
 
 ### What it is
-A block that acts as a countdown timer, triggering after a specified duration.
-
-### What it does
-Waits for a specified amount of time and then outputs a message, with optional repeat capability.
+This block triggers after a specified duration.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -128,10 +119,7 @@ The block supports a repeat parameter, allowing the timer to fire multiple times
 ## Extract Text Information
 
 ### What it is
-A block that extracts specific information from text using a pattern.
-
-### What it does
-Searches for a regex pattern within text and retrieves a specific portion based on that pattern, supporting group extraction.
+This block extracts the text from the given text using the pattern (regex).
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -169,9 +157,6 @@ Extracting phone numbers or email addresses from a large body of text, such as a
 ### What it is
 This block formats the given texts using the format template.
 
-### What it does
-This block formats the given texts using the format template.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block uses a template engine to replace placeholders in the format string with the provided values. It supports both simple placeholder replacement and more complex operations like loops.
@@ -200,9 +185,6 @@ Generating personalized email messages by filling a template with customer-speci
 ## Get Current Date
 
 ### What it is
-This block outputs the current date with an optional offset.
-
-### What it does
 This block outputs the current date with an optional offset.
 
 ### How it works
@@ -241,9 +223,6 @@ The block supports two format types: strftime (customizable format strings like 
 ### What it is
 This block outputs the current date and time.
 
-### What it does
-This block outputs the current date and time.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block outputs the current date and time from the system clock, formatted according to your specifications. It supports both strftime custom formats (like "%Y-%m-%d %H:%M:%S") and ISO 8601/RFC 3339 format for maximum compatibility with APIs and databases.
@@ -277,9 +256,6 @@ You can configure the timezone to use either a specific timezone (e.g., "America
 ## Get Current Time
 
 ### What it is
-This block outputs the current time.
-
-### What it does
 This block outputs the current time.
 
 ### How it works
@@ -317,9 +293,6 @@ The timezone can be configured to a specific timezone or to use the user's profi
 ### What it is
 Matches text against a regex pattern and forwards data to positive or negative output based on the match.
 
-### What it does
-Matches text against a regex pattern and forwards data to positive or negative output based on the match.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block uses regular expressions to search for the specified pattern within the input text. It considers options like case sensitivity and whether the dot should match all characters.
@@ -351,9 +324,6 @@ Filtering customer feedback messages based on specific keywords or phrases to ca
 ## Text Decoder
 
 ### What it is
-Decodes a string containing escape sequences into actual text.
-
-### What it does
 Decodes a string containing escape sequences into actual text
 
 ### How it works
@@ -388,9 +358,6 @@ This is useful when working with data from APIs or files where escape sequences 
 ## Text Replace
 
 ### What it is
-This block is used to replace a text with a new text.
-
-### What it does
 This block is used to replace a text with a new text.
 
 ### How it works
@@ -429,9 +396,6 @@ Unlike regex-based replacements, this block performs literal string matching, ma
 ### What it is
 This block is used to split a text into a list of strings.
 
-### What it does
-This block is used to split a text into a list of strings.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block takes a text string and divides it into a list of substrings based on a specified delimiter. For example, splitting "apple,banana,cherry" by comma results in ["apple", "banana", "cherry"].
@@ -466,9 +430,6 @@ By default, the block also strips whitespace from each resulting substring (cont
 ## Word Character Count
 
 ### What it is
-Counts the number of words and characters in a given text.
-
-### What it does
 Counts the number of words and characters in a given text.
 
 ### How it works

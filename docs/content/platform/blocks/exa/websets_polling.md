@@ -1,9 +1,6 @@
 # Exa Wait For Enrichment
 
 ### What it is
-Wait for a webset enrichment to complete with progress tracking.
-
-### What it does
 Wait for a webset enrichment to complete with progress tracking
 
 ### How it works
@@ -48,9 +45,6 @@ Use this to block workflow execution until enrichments finish, enabling sequenti
 ## Exa Wait For Search
 
 ### What it is
-Wait for a specific webset search to complete with progress tracking.
-
-### What it does
 Wait for a specific webset search to complete with progress tracking
 
 ### How it works
@@ -95,9 +89,6 @@ Use this when you need search results before proceeding with downstream operatio
 ## Exa Wait For Webset
 
 ### What it is
-Wait for a webset to reach a specific status with progress tracking.
-
-### What it does
 Wait for a webset to reach a specific status with progress tracking
 
 ### How it works

@@ -358,16 +358,8 @@ def generate_block_markdown(
     lines.append(f"{heading_level} {block.name}")
     lines.append("")
 
-    # What it is (auto-generated from first sentence of description)
+    # What it is (full description)
     lines.append("### What it is")
-    first_sentence = (
-        block.description.split(".")[0] + "." if block.description else "A block."
-    )
-    lines.append(first_sentence)
-    lines.append("")
-
-    # What it does (full description)
-    lines.append("### What it does")
     lines.append(block.description or "No description available.")
     lines.append("")
 

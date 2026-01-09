@@ -3,9 +3,6 @@
 ### What it is
 Firecrawl crawls websites to extract comprehensive data while bypassing blockers.
 
-### What it does
-Firecrawl crawls websites to extract comprehensive data while bypassing blockers.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Firecrawl's extraction API to pull structured data from web pages based on a prompt or schema. It crawls the specified URLs and uses AI to extract information matching your requirements.

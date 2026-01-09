@@ -3,9 +3,6 @@
 ### What it is
 This block bookmarks a tweet on Twitter.
 
-### What it does
-This block bookmarks a tweet on Twitter.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to add a tweet to the authenticated user's bookmarks. The bookmark is private and only visible to you—the tweet author is not notified.
@@ -38,9 +35,6 @@ The block authenticates using OAuth 2.0 with bookmark write permissions and send
 ## Twitter Get Bookmarked Tweets
 
 ### What it is
-This block retrieves bookmarked tweets from Twitter.
-
-### What it does
 This block retrieves bookmarked tweets from Twitter.
 
 ### How it works
@@ -96,9 +90,6 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 ## Twitter Remove Bookmark Tweet
 
 ### What it is
-This block removes a bookmark from a tweet on Twitter.
-
-### What it does
 This block removes a bookmark from a tweet on Twitter.
 
 ### How it works

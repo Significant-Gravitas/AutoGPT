@@ -1,9 +1,6 @@
 # Post To X
 
 ### What it is
-Post to X / Twitter using Ayrshare.
-
-### What it does
 Post to X / Twitter using Ayrshare
 
 ### How it works

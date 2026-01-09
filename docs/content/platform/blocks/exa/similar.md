@@ -1,9 +1,6 @@
 # Exa Find Similar
 
 ### What it is
-Finds similar links using Exa's findSimilar API.
-
-### What it does
 Finds similar links using Exa's findSimilar API
 
 ### How it works

@@ -3,9 +3,6 @@
 ### What it is
 This block retrieves information about a specific Tweet.
 
-### What it does
-This block retrieves information about a specific Tweet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve detailed information about a specific tweet by its ID. Returns tweet content, author information, engagement metrics, and any requested expanded data.
@@ -57,9 +54,6 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 ## Twitter Get Tweets
 
 ### What it is
-This block retrieves information about multiple Tweets.
-
-### What it does
 This block retrieves information about multiple Tweets.
 
 ### How it works

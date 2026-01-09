@@ -1,9 +1,6 @@
 # Get Person Detail
 
 ### What it is
-Get detailed person data with Apollo API, including email reveal.
-
-### What it does
 Get detailed person data with Apollo API, including email reveal
 
 ### How it works

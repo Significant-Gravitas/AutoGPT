@@ -1,9 +1,6 @@
 # Slant3D Slicer
 
 ### What it is
-Slice a 3D model file and get pricing information.
-
-### What it does
 Slice a 3D model file and get pricing information
 
 ### How it works

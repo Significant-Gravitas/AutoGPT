@@ -1,9 +1,6 @@
 # AI Ad Maker Video Creator
 
 ### What it is
-Creates an AI‑generated 30‑second advert (text + images).
-
-### What it does
 Creates an AI‑generated 30‑second advert (text + images)
 
 ### How it works
@@ -44,9 +41,6 @@ Optionally provide your own images via input_media_urls, or let the AI generate 
 ## AI Condition
 
 ### What it is
-Uses AI to evaluate natural language conditions and provide conditional outputs.
-
-### What it does
 Uses AI to evaluate natural language conditions and provide conditional outputs
 
 ### How it works
@@ -87,10 +81,7 @@ The result routes data to yes_output or no_output, enabling intelligent branchin
 ## AI Conversation
 
 ### What it is
-A block that facilitates multi-turn conversations using a Large Language Model (LLM).
-
-### What it does
-Takes a list of conversation messages, sends them to an LLM, and returns the model's response to continue the conversation.
+A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -123,9 +114,6 @@ Creating an interactive chatbot that can maintain context over multiple exchange
 ## AI Image Customizer
 
 ### What it is
-Generate and edit custom images using Google's Nano-Banana model from Gemini 2.
-
-### What it does
 Generate and edit custom images using Google's Nano-Banana model from Gemini 2.5. Provide a prompt and optional reference images to create or modify images.
 
 ### How it works
@@ -164,9 +152,6 @@ Configure aspect ratio to match your needs and choose between JPG or PNG output 
 ## AI Image Editor
 
 ### What it is
-Edit images using BlackForest Labs' Flux Kontext models.
-
-### What it does
 Edit images using BlackForest Labs' Flux Kontext models. Provide a prompt and optional reference image to generate a modified image.
 
 ### How it works
@@ -205,9 +190,6 @@ Choose between Flux Kontext Pro or Max for different quality/speed tradeoffs. Se
 ## AI Image Generator
 
 ### What it is
-Generate images using various AI models through a unified interface.
-
-### What it does
 Generate images using various AI models through a unified interface
 
 ### How it works
@@ -250,10 +232,7 @@ The unified interface allows switching between models without changing your work
 ## AI List Generator
 
 ### What it is
-A block that generates lists based on prompts or source data using a Large Language Model (LLM).
-
-### What it does
-Takes a focus or source data, sends it to an LLM, and returns a generated list based on the input.
+A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -289,9 +268,6 @@ Automatically generating a list of key points or action items from a long meetin
 ## AI Music Generator
 
 ### What it is
-This block generates music using Meta's MusicGen model on Replicate.
-
-### What it does
 This block generates music using Meta's MusicGen model on Replicate.
 
 ### How it works
@@ -336,9 +312,6 @@ Configure duration, temperature (for variety), and output format. Higher tempera
 ### What it is
 Turns a screenshot into an engaging, avatar‑narrated video advert.
 
-### What it does
-Turns a screenshot into an engaging, avatar‑narrated video advert.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block creates video advertisements featuring a screenshot with AI-generated narration. Provide the screenshot URL and narration script, and the block generates a video with voice and background music.
@@ -376,9 +349,6 @@ Choose from various voices and music tracks. The video showcases the screenshot 
 ## AI Shortform Video Creator
 
 ### What it is
-Creates a shortform video using revid.
-
-### What it does
 Creates a shortform video using revid.ai
 
 ### How it works
@@ -424,10 +394,7 @@ Choose video style (stock video, moving images, or AI-generated), voice, backgro
 ## AI Structured Response Generator
 
 ### What it is
-A block that generates structured responses using a Large Language Model (LLM).
-
-### What it does
-Takes a prompt and other parameters, sends them to an LLM, and returns a structured response in a specified format.
+A block that generates structured JSON responses using a Large Language Model (LLM), with schema validation and format enforcement.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -467,10 +434,7 @@ Extracting specific information from unstructured text, such as generating a pro
 ## AI Text Generator
 
 ### What it is
-A block that generates text responses using a Large Language Model (LLM).
-
-### What it does
-Takes a prompt and other parameters, sends them to an LLM, and returns a text response.
+A block that produces text responses using a Large Language Model (LLM) based on customizable prompts and system instructions.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -505,10 +469,7 @@ Generating creative writing, such as short stories or poetry, based on a given t
 ## AI Text Summarizer
 
 ### What it is
-A block that summarizes long texts using a Large Language Model (LLM).
-
-### What it does
-Takes a long text, breaks it into manageable chunks, summarizes each chunk, and then combines these summaries into a final summary.
+A block that summarizes long texts using a Large Language Model (LLM), with configurable focus topics and summary styles.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -543,9 +504,6 @@ Summarizing lengthy research papers or articles to quickly grasp the main points
 ## Code Generation
 
 ### What it is
-Generate or refactor code using OpenAI's Codex (Responses API).
-
-### What it does
 Generate or refactor code using OpenAI's Codex (Responses API).
 
 ### How it works
@@ -588,9 +546,6 @@ Configure reasoning_effort to control how much the model "thinks" before respond
 ### What it is
 This block integrates with D-ID to create video clips and retrieve their URLs.
 
-### What it does
-This block integrates with D-ID to create video clips and retrieve their URLs.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block sends a request to the D-ID API with your specified parameters. It then regularly checks the status of the video creation process until it's complete or an error occurs.
@@ -627,9 +582,6 @@ A marketing team could use this block to create engaging video content for socia
 ## Ideogram Model
 
 ### What it is
-This block runs Ideogram models with both simple and advanced settings.
-
-### What it does
 This block runs Ideogram models with both simple and advanced settings.
 
 ### How it works
@@ -675,9 +627,6 @@ Advanced options include upscaling, custom color palettes, and negative prompts 
 ### What it is
 Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations.
 
-### What it does
-Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries Perplexity's sonar models which combine LLM capabilities with real-time web search. Responses include source citations as annotations, providing verifiable references for the information.
@@ -714,9 +663,6 @@ Choose from different sonar model variants including deep-research for comprehen
 ## Smart Decision Maker
 
 ### What it is
-Uses AI to intelligently decide what tool to use.
-
-### What it does
 Uses AI to intelligently decide what tool to use.
 
 ### How it works
@@ -764,9 +710,6 @@ Configure agent_mode_max_iterations to control loop behavior: 0 for single decis
 ## Unreal Text To Speech
 
 ### What it is
-Converts text to speech using the Unreal Speech API.
-
-### What it does
 Converts text to speech using the Unreal Speech API
 
 ### How it works

@@ -1,9 +1,6 @@
 # Post To GMB
 
 ### What it is
-Post to Google My Business using Ayrshare.
-
-### What it does
 Post to Google My Business using Ayrshare
 
 ### How it works

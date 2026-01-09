@@ -3,9 +3,6 @@
 ### What it is
 This block creates a new event in Google Calendar with customizable parameters.
 
-### What it does
-This block creates a new event in Google Calendar with customizable parameters.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block creates events in Google Calendar via the Google Calendar API. It handles various event parameters including timing, location, guest invitations, Google Meet links, and recurring schedules. The block authenticates using your connected Google account credentials.
@@ -48,9 +45,6 @@ When you specify guests, they receive email invitations (if notifications are en
 ## Google Calendar Read Events
 
 ### What it is
-Retrieves upcoming events from a Google Calendar with filtering options.
-
-### What it does
 Retrieves upcoming events from a Google Calendar with filtering options
 
 ### How it works

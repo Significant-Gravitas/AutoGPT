@@ -1,9 +1,6 @@
 # Get Linkedin Profile
 
 ### What it is
-Fetch LinkedIn profile data using Enrichlayer.
-
-### What it does
 Fetch LinkedIn profile data using Enrichlayer
 
 ### How it works
@@ -46,9 +43,6 @@ Configure caching options for performance and optionally include additional data
 ## Get Linkedin Profile Picture
 
 ### What it is
-Get LinkedIn profile pictures using Enrichlayer.
-
-### What it does
 Get LinkedIn profile pictures using Enrichlayer
 
 ### How it works
@@ -83,9 +77,6 @@ The returned URL can be used for display, download, or further image processing.
 ## Linkedin Person Lookup
 
 ### What it is
-Look up LinkedIn profiles by person information using Enrichlayer.
-
-### What it does
 Look up LinkedIn profiles by person information using Enrichlayer
 
 ### How it works
@@ -126,9 +117,6 @@ Enable similarity checks and profile enrichment for more detailed results.
 ## Linkedin Role Lookup
 
 ### What it is
-Look up LinkedIn profiles by role in a company using Enrichlayer.
-
-### What it does
 Look up LinkedIn profiles by role in a company using Enrichlayer
 
 ### How it works

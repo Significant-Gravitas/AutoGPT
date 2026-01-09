@@ -1,9 +1,6 @@
 # Linear Search Projects
 
 ### What it is
-Searches for projects on Linear.
-
-### What it does
 Searches for projects on Linear
 
 ### How it works

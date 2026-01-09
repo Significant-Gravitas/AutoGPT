@@ -1,9 +1,6 @@
 # Airtable Create Records
 
 ### What it is
-Create records in an Airtable table.
-
-### What it does
 Create records in an Airtable table
 
 ### How it works
@@ -44,9 +41,6 @@ Enable typecast to automatically convert string values to appropriate field type
 ## Airtable Delete Records
 
 ### What it is
-Delete records from an Airtable table.
-
-### What it does
 Delete records from an Airtable table
 
 ### How it works
@@ -83,9 +77,6 @@ Provide an array of record IDs to delete. Using the table ID instead of the name
 ## Airtable Get Record
 
 ### What it is
-Get a single record from Airtable.
-
-### What it does
 Get a single record from Airtable
 
 ### How it works
@@ -127,9 +118,6 @@ Optionally include field metadata for type information and configuration details
 ## Airtable List Records
 
 ### What it is
-List records from an Airtable table.
-
-### What it does
 List records from an Airtable table
 
 ### How it works
@@ -176,9 +164,6 @@ Results can be limited, paginated with offsets, and restricted to specific field
 ## Airtable Update Records
 
 ### What it is
-Update records in an Airtable table.
-
-### What it does
 Update records in an Airtable table
 
 ### How it works

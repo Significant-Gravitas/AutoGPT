@@ -1,9 +1,6 @@
 # Post To Telegram
 
 ### What it is
-Post to Telegram using Ayrshare.
-
-### What it does
 Post to Telegram using Ayrshare
 
 ### How it works

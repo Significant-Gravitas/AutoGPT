@@ -1,9 +1,6 @@
 # Post To Facebook
 
 ### What it is
-Post to Facebook using Ayrshare.
-
-### What it does
 Post to Facebook using Ayrshare
 
 ### How it works

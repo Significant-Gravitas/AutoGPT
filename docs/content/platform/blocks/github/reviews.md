@@ -1,9 +1,6 @@
 # Github Create Comment Object
 
 ### What it is
-Creates a comment object for use with GitHub blocks.
-
-### What it does
 Creates a comment object for use with GitHub blocks. Note: For review comments, only path, body, and position are used. Side fields are only for standalone PR comments.
 
 ### How it works
@@ -44,9 +41,6 @@ For review comments, only path, body, and position fields are used. The side, st
 ## Github Create PR Review
 
 ### What it is
-This block creates a review on a GitHub pull request with optional inline comments.
-
-### What it does
 This block creates a review on a GitHub pull request with optional inline comments. You can create it as a draft or post immediately. Note: For inline comments, 'position' should be the line number in the diff (starting from the first @@ hunk header).
 
 ### How it works
@@ -90,9 +84,6 @@ You can create reviews as drafts (pending) for later submission, or post them im
 ### What it is
 This block gets all review comments from a GitHub pull request or from a specific review.
 
-### What it does
-This block gets all review comments from a GitHub pull request or from a specific review.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves review comments from a GitHub pull request. Review comments are inline comments made on specific lines of code during code review, distinct from general issue-style comments.
@@ -128,9 +119,6 @@ You can get all review comments on the PR, or filter to comments from a specific
 ## Github List PR Reviews
 
 ### What it is
-This block lists all reviews for a specified GitHub pull request.
-
-### What it does
 This block lists all reviews for a specified GitHub pull request.
 
 ### How it works
@@ -169,9 +157,6 @@ Use this to check approval status, see who has reviewed, or analyze the review h
 ### What it is
 This block resolves or unresolves a review discussion thread on a GitHub pull request.
 
-### What it does
-This block resolves or unresolves a review discussion thread on a GitHub pull request.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block resolves or unresolves a review discussion thread on a GitHub pull request using the GraphQL API. Resolved discussions are collapsed in the GitHub UI, indicating the feedback has been addressed.
@@ -207,9 +192,6 @@ Specify the comment ID of the thread to resolve. Set resolve to true to mark as 
 ## Github Submit Pending Review
 
 ### What it is
-This block submits a pending (draft) review on a GitHub pull request.
-
-### What it does
 This block submits a pending (draft) review on a GitHub pull request.
 
 ### How it works

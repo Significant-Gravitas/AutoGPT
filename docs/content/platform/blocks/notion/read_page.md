@@ -3,9 +3,6 @@
 ### What it is
 Read a Notion page by its ID and return its raw JSON.
 
-### What it does
-Read a Notion page by its ID and return its raw JSON.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves a Notion page by its ID using the Notion API. The page must be accessible to your connected integration, which requires sharing the page with your integration from within Notion.

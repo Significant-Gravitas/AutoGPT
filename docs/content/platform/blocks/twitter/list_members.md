@@ -3,9 +3,6 @@
 ### What it is
 This block adds a specified user to a Twitter List owned by the authenticated user.
 
-### What it does
-This block adds a specified user to a Twitter List owned by the authenticated user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to add a user to a Twitter List that you own. The added user will appear in the list's member roster and their tweets will show in the list timeline.
@@ -39,9 +36,6 @@ The block authenticates using OAuth 2.0 with list write permissions. Only the li
 ## Twitter Get List Members
 
 ### What it is
-This block retrieves the members of a specified Twitter List.
-
-### What it does
 This block retrieves the members of a specified Twitter List.
 
 ### How it works
@@ -86,9 +80,6 @@ The block uses Tweepy with OAuth 2.0 authentication. Works for public lists and 
 ## Twitter Get List Memberships
 
 ### What it is
-This block retrieves all Lists that a specified user is a member of.
-
-### What it does
 This block retrieves all Lists that a specified user is a member of.
 
 ### How it works
@@ -148,9 +139,6 @@ You can see things like:
 ## Twitter Remove List Member
 
 ### What it is
-This block removes a specified user from a Twitter List owned by the authenticated user.
-
-### What it does
 This block removes a specified user from a Twitter List owned by the authenticated user.
 
 ### How it works

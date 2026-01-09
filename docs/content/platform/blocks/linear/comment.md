@@ -1,9 +1,6 @@
 # Linear Create Comment
 
 ### What it is
-Creates a new comment on a Linear issue.
-
-### What it does
 Creates a new comment on a Linear issue
 
 ### How it works

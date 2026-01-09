@@ -1,9 +1,6 @@
 # Post To You Tube
 
 ### What it is
-Post to YouTube using Ayrshare.
-
-### What it does
 Post to YouTube using Ayrshare
 
 ### How it works

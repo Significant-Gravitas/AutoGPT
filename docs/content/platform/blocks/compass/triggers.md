@@ -3,9 +3,6 @@
 ### What it is
 This block will output the contents of the compass transcription.
 
-### What it does
-This block will output the contents of the compass transcription.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block triggers when a Compass AI transcription is received. It outputs the transcription text content, enabling workflows that process voice input or meeting transcripts from Compass AI.

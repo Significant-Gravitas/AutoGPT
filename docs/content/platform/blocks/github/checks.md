@@ -1,9 +1,6 @@
 # Github Create Check Run
 
 ### What it is
-Creates a new check run for a specific commit in a GitHub repository.
-
-### What it does
 Creates a new check run for a specific commit in a GitHub repository
 
 ### How it works
@@ -46,9 +43,6 @@ You specify the commit SHA, check name, and current status. For completed checks
 ## Github Update Check Run
 
 ### What it is
-Updates an existing check run in a GitHub repository.
-
-### What it does
 Updates an existing check run in a GitHub repository
 
 ### How it works

@@ -1,9 +1,6 @@
 # Search People
 
 ### What it is
-Search for people in Apollo.
-
-### What it does
 Search for people in Apollo
 
 ### How it works

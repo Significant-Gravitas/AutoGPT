@@ -3,9 +3,6 @@
 ### What it is
 This block searches for Twitter Spaces based on specified terms.
 
-### What it does
-This block searches for Twitter Spaces based on specified terms.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to search for Twitter Spaces (live audio conversations) matching a search term. Results can be filtered by state (live, scheduled, or all) and include Space metadata like title, host information, and participant counts.

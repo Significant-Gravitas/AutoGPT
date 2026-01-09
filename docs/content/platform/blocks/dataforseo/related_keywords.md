@@ -1,9 +1,6 @@
 # Data For Seo Related Keywords
 
 ### What it is
-Get related keywords from DataForSEO Labs Google API.
-
-### What it does
 Get related keywords from DataForSEO Labs Google API
 
 ### How it works
@@ -48,9 +45,6 @@ The depth parameter controls the breadth of the search, with higher values retur
 ## Related Keyword Extractor
 
 ### What it is
-Extract individual fields from a RelatedKeyword object.
-
-### What it does
 Extract individual fields from a RelatedKeyword object
 
 ### How it works

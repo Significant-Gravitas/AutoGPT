@@ -1,9 +1,6 @@
 # Baas Bot Delete Recording
 
 ### What it is
-Permanently delete a meeting's recorded data.
-
-### What it does
 Permanently delete a meeting's recorded data
 
 ### How it works
@@ -38,9 +35,6 @@ Provide the bot_id from a previous recording session to delete that specific mee
 ## Baas Bot Fetch Meeting Data
 
 ### What it is
-Retrieve recorded meeting data.
-
-### What it does
 Retrieve recorded meeting data
 
 ### How it works
@@ -78,9 +72,6 @@ Enable include_transcripts to receive the full meeting transcript with speaker i
 ## Baas Bot Join Meeting
 
 ### What it is
-Deploy a bot to join and record a meeting.
-
-### What it does
 Deploy a bot to join and record a meeting
 
 ### How it works
@@ -124,9 +115,6 @@ Use webhooks to receive notifications when the meeting ends and recordings are r
 ## Baas Bot Leave Meeting
 
 ### What it is
-Remove a bot from an ongoing meeting.
-
-### What it does
 Remove a bot from an ongoing meeting
 
 ### How it works

@@ -1,9 +1,6 @@
 # Add Memory
 
 ### What it is
-Add new memories to Mem0 with user segmentation.
-
-### What it does
 Add new memories to Mem0 with user segmentation
 
 ### How it works
@@ -43,10 +40,7 @@ The block accepts either plain text or structured message objects (like those fr
 ## Add To Dictionary
 
 ### What it is
-A block that adds key-value pairs to dictionaries.
-
-### What it does
-Takes an existing dictionary (or creates a new one), adds a key-value pair, and returns the updated dictionary.
+Adds a new key-value pair to a dictionary. If no dictionary is provided, a new one is created.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -83,10 +77,7 @@ The block outputs the updated dictionary with all new entries added. This is use
 ## Add To List
 
 ### What it is
-A block that adds new entries to lists.
-
-### What it does
-Takes an existing list (or creates a new one) and adds a new entry to it, optionally at a specified position.
+Adds a new entry to a list. The entry can be of any type. If no list is provided, a new one is created.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -125,9 +116,6 @@ Items can be of any type—strings, numbers, dictionaries, or other lists. This 
 ### What it is
 Block for date input.
 
-### What it does
-Block for date input.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block provides a date picker input field for users interacting with your agent. When the agent runs, users see a calendar widget to select a date, which is then passed to your workflow in YYYY-MM-DD format.
@@ -164,9 +152,6 @@ The block is part of the Agent Input family, allowing you to collect structured 
 ## Agent Dropdown Input
 
 ### What it is
-Block for dropdown text selection.
-
-### What it does
 Block for dropdown text selection.
 
 ### How it works
@@ -208,9 +193,6 @@ This is ideal when you want to constrain user input to a predefined set of choic
 ### What it is
 Block for file upload input (string path for example).
 
-### What it does
-Block for file upload input (string path for example).
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block provides a file upload input for users interacting with your agent. Users can upload files which are stored temporarily and passed to your workflow as a file path reference.
@@ -248,9 +230,6 @@ By default, the block outputs a file path string that other blocks can use to ac
 ## Agent Google Drive File Input
 
 ### What it is
-Block for selecting a file from Google Drive.
-
-### What it does
 Block for selecting a file from Google Drive.
 
 ### How it works
@@ -291,10 +270,7 @@ You can configure which file types to display (documents, spreadsheets, presenta
 ## Agent Input
 
 ### What it is
-An input block that provides a way to accept user input in a workflow.
-
-### What it does
-Allows users to input values into the workflow, with options for naming, describing, and setting placeholder values.
+A block that accepts and processes user input values within a workflow, supporting various input types and validation.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -326,9 +302,6 @@ Collecting user preferences at the start of a personalized recommendation workfl
 ## Agent Long Text Input
 
 ### What it is
-Block for long text input (multi-line).
-
-### What it does
 Block for long text input (multi-line).
 
 ### How it works
@@ -369,9 +342,6 @@ The block is ideal for collecting longer-form content like messages, description
 ### What it is
 Block for number input.
 
-### What it does
-Block for number input.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block provides a numeric input field for users interacting with your agent. The input validates that the user enters a valid integer, preventing text or invalid values from being submitted.
@@ -408,10 +378,7 @@ This is useful when you need numeric parameters like quantities, counts, limits,
 ## Agent Output
 
 ### What it is
-An output block that records and formats the final results of a workflow.
-
-### What it does
-Takes a value and associated metadata, optionally formats it, and presents it as the output of the workflow.
+A block that records and formats workflow results for display to users, with optional Jinja2 template formatting support.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -446,9 +413,6 @@ Presenting the final results of a data analysis workflow in a specific format.
 ## Agent Short Text Input
 
 ### What it is
-Block for short text input (single-line).
-
-### What it does
 Block for short text input (single-line).
 
 ### How it works
@@ -487,9 +451,6 @@ The input displays as a standard text field and passes the entered text to downs
 ## Agent Table Input
 
 ### What it is
-Block for table data input with customizable headers.
-
-### What it does
 Block for table data input with customizable headers.
 
 ### How it works
@@ -531,9 +492,6 @@ The table input is ideal for structured data entry where users need to provide m
 ### What it is
 Block for time input.
 
-### What it does
-Block for time input.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block provides a time picker input for users interacting with your agent. Users select a time (hours, minutes, and optionally seconds) which is passed to your workflow in HH:MM:SS format.
@@ -570,9 +528,6 @@ The time picker provides a user-friendly interface for selecting times without r
 ## Agent Toggle Input
 
 ### What it is
-Block for boolean toggle input.
-
-### What it does
 Block for boolean toggle input.
 
 ### How it works
@@ -613,9 +568,6 @@ The toggle is ideal for binary choices like enabling features, confirming action
 ### What it is
 Checks if a dictionary is empty.
 
-### What it does
-Checks if a dictionary is empty.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block checks whether a dictionary has any entries and returns a boolean result. An empty dictionary (no key-value pairs) returns true, while a dictionary with any entries returns false.
@@ -648,9 +600,6 @@ This is useful for conditional logic where you need to verify if data was return
 ## File Store
 
 ### What it is
-Stores the input file in the temporary directory.
-
-### What it does
 Stores the input file in the temporary directory.
 
 ### How it works
@@ -686,10 +635,7 @@ The block outputs a file path that other blocks can use to access the stored fil
 ## Find In Dictionary
 
 ### What it is
-A block that retrieves values from dictionaries, objects, or lists using a specified key.
-
-### What it does
-Searches for a specified key in the input data structure and returns the corresponding value if found.
+A block that looks up a value in a dictionary, list, or object by key or index and returns the corresponding value.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -727,9 +673,6 @@ This enables safe data access with built-in handling for missing keys, preventin
 ### What it is
 Finds the index of the value in the list.
 
-### What it does
-Finds the index of the value in the list.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block searches a list for a specific value and returns its position (index). If found, it outputs the zero-based index and sets "found" to true. If not found, it outputs the original value through "not_found_value" and sets "found" to false.
@@ -765,9 +708,6 @@ This enables conditional logic based on list membership and helps locate items f
 ## Get All Memories
 
 ### What it is
-Retrieve all memories from Mem0 with optional conversation filtering.
-
-### What it does
 Retrieve all memories from Mem0 with optional conversation filtering
 
 ### How it works
@@ -806,9 +746,6 @@ Memories are returned as a list that your workflow can iterate through. This is 
 ## Get Latest Memory
 
 ### What it is
-Retrieve the latest memory from Mem0 with optional key filtering.
-
-### What it does
 Retrieve the latest memory from Mem0 with optional key filtering
 
 ### How it works
@@ -851,9 +788,6 @@ This is useful for quickly accessing the last piece of information stored withou
 ### What it is
 Returns the element at the given index.
 
-### What it does
-Returns the element at the given index.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves an item from a list at a specific index position. It uses zero-based indexing (first item is 0) and supports negative indices for accessing items from the end (e.g., -1 for the last item).
@@ -889,9 +823,6 @@ If the index is out of range, the block outputs an error. This is useful for acc
 ### What it is
 Retrieves weather information for a specified location using OpenWeatherMap API.
 
-### What it does
-Retrieves weather information for a specified location using OpenWeatherMap API.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 The block sends a request to a weather API (like OpenWeatherMap) with the provided location. It then processes the response to extract relevant weather data.
@@ -921,9 +852,6 @@ A travel planning application could use this block to provide users with current
 ## Human In The Loop
 
 ### What it is
-Pause execution and wait for human approval or modification of data.
-
-### What it does
 Pause execution and wait for human approval or modification of data
 
 ### How it works
@@ -964,9 +892,6 @@ This enables human oversight at critical points in automated workflows, ensuring
 ### What it is
 Given a code string, this block allows the verification and installation of a block code into the system.
 
-### What it does
-Given a code string, this block allows the verification and installation of a block code into the system.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block allows dynamic installation of new block types into the system from Python code. The code is verified for safety and correctness before installation. Once installed, the new block becomes available for use in workflows.
@@ -1001,9 +926,6 @@ This enables extensibility by allowing custom blocks to be added without modifyi
 ### What it is
 Checks if a list is empty.
 
-### What it does
-Checks if a list is empty.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block checks whether a list contains any items and returns a boolean result. An empty list (no elements) returns true, while a list with any elements returns false.
@@ -1036,10 +958,7 @@ This is useful for conditional logic where you need to verify if search results 
 ## Note
 
 ### What it is
-A block that displays sticky notes with custom text in workflows.
-
-### What it does
-Takes a text input and displays it as a sticky note in the workflow interface.
+A visual annotation block that displays a sticky note in the workflow editor for documentation and organization purposes.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1067,10 +986,7 @@ Adding explanatory notes or reminders within a complex workflow to help users un
 ## Print To Console
 
 ### What it is
-A debugging block that outputs text to the console.
-
-### What it does
-Takes a text input and prints it to the console for debugging, then outputs a status message and passes the data through.
+A debugging block that outputs text to the console for monitoring and troubleshooting workflow execution.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1105,9 +1021,6 @@ The block accepts any data type and both prints it for debugging visibility and 
 ## Remove From Dictionary
 
 ### What it is
-Removes a key-value pair from a dictionary.
-
-### What it does
 Removes a key-value pair from a dictionary.
 
 ### How it works
@@ -1145,9 +1058,6 @@ If the key doesn't exist in the dictionary, the operation may error or return th
 ## Remove From List
 
 ### What it is
-Removes an item from a list by value or index.
-
-### What it does
 Removes an item from a list by value or index.
 
 ### How it works
@@ -1188,9 +1098,6 @@ This provides flexibility for both "remove this specific item" and "remove the i
 ### What it is
 Replaces the value for a specified key in a dictionary.
 
-### What it does
-Replaces the value for a specified key in a dictionary.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block updates the value for an existing key in a dictionary. The old value is replaced with the new one, and the updated dictionary is output. The block also returns the old value that was replaced.
@@ -1228,9 +1135,6 @@ This is useful for updating specific fields in a data object while preserving al
 ### What it is
 Replaces an item at the specified index.
 
-### What it does
-Replaces an item at the specified index.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block replaces an item at a specific position in a list with a new value. It uses zero-based indexing and supports negative indices for accessing positions from the end. The old item that was replaced is also returned.
@@ -1266,9 +1170,6 @@ This is useful for updating specific elements in an ordered list without rebuild
 ## Reverse List Order
 
 ### What it is
-Reverses the order of elements in a list.
-
-### What it does
 Reverses the order of elements in a list
 
 ### How it works
@@ -1303,9 +1204,6 @@ This is useful for changing the processing order of items or displaying lists in
 ## Search Memory
 
 ### What it is
-Search memories in Mem0 by user.
-
-### What it does
 Search memories in Mem0 by user
 
 ### How it works
@@ -1345,10 +1243,7 @@ The search is performed against the Mem0 memory store and returns memories ranke
 ## Store Value
 
 ### What it is
-A basic block that stores and forwards a value throughout workflows.
-
-### What it does
-Takes an input value and stores it, allowing it to be reused without changes across multiple blocks.
+A basic block that stores and forwards a value throughout workflows, allowing it to be reused without changes across multiple blocks.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1377,9 +1272,6 @@ Storing a user's name at the beginning of a workflow to use it in multiple subse
 ## Universal Type Converter
 
 ### What it is
-This block is used to convert a value to a universal type.
-
-### What it does
 This block is used to convert a value to a universal type.
 
 ### How it works
@@ -1415,9 +1307,6 @@ This is useful when data from different sources needs to be in a consistent type
 ## XML Parser
 
 ### What it is
-Parses XML using gravitasml to tokenize and coverts it to dict.
-
-### What it does
 Parses XML using gravitasml to tokenize and coverts it to dict
 
 ### How it works

@@ -3,9 +3,6 @@
 ### What it is
 This block gets CI results for a commit or PR, with optional search for specific errors/warnings in logs.
 
-### What it does
-This block gets CI results for a commit or PR, with optional search for specific errors/warnings in logs.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block retrieves CI check results for a specific commit or pull request using the GitHub Checks API. It aggregates results from all CI checks, providing an overall status summary along with individual check details.

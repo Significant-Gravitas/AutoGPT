@@ -3,9 +3,6 @@
 ### What it is
 This block gets information about tweets liked by a user.
 
-### What it does
-This block gets information about tweets liked by a user.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve tweets that a specified user has liked. Results are returned in reverse chronological order (most recently liked first) with pagination support.
@@ -62,9 +59,6 @@ The block uses Tweepy with OAuth 2.0 authentication and supports extensive expan
 ### What it is
 This block gets information about users who liked a tweet.
 
-### What it does
-This block gets information about users who liked a tweet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block queries the Twitter API v2 to retrieve a paginated list of users who have liked a specific tweet. Results include user IDs, usernames, and optionally expanded profile data.
@@ -109,9 +103,6 @@ The block uses Tweepy with OAuth 2.0 authentication. Users are returned with pag
 ### What it is
 This block likes a tweet.
 
-### What it does
-This block likes a tweet.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses the Twitter API v2 via Tweepy to like a tweet on behalf of the authenticated user. The like is public—the tweet author and others can see that you liked the tweet.
@@ -144,9 +135,6 @@ The block authenticates using OAuth 2.0 with like write permissions and sends a 
 ## Twitter Unlike Tweet
 
 ### What it is
-This block unlikes a tweet.
-
-### What it does
 This block unlikes a tweet.
 
 ### How it works

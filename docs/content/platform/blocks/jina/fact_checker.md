@@ -3,9 +3,6 @@
 ### What it is
 This block checks the factuality of a given statement using Jina AI's Grounding API.
 
-### What it does
-This block checks the factuality of a given statement using Jina AI's Grounding API.
-
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block uses Jina AI's Grounding API to verify the factuality of statements. It analyzes the statement against reliable sources and returns a factuality score, result, reasoning, and supporting references.
