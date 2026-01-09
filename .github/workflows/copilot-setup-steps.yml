@@ -108,6 +108,16 @@ jobs:
       #   run: pnpm playwright install --with-deps chromium
 
       # Docker setup for development environment
+      - name: Free up disk space
+        run: |
+          # Remove large unused tools to free disk space for Docker builds
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker system prune -af
+          df -h
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
