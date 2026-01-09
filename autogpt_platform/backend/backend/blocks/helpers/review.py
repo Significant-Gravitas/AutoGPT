@@ -89,38 +89,26 @@ class HITLReviewHelper:
             )
             return None
 
-        try:
-            result = await HITLReviewHelper.get_or_create_human_review(
-                user_id=user_id,
-                node_exec_id=node_exec_id,
-                graph_exec_id=graph_exec_id,
-                graph_id=graph_id,
-                graph_version=graph_version,
-                input_data=input_data,
-                message=f"Review required for {block_name} execution",
-                editable=editable,
-            )
-        except Exception as e:
-            logger.error(
-                f"Error creating review for {block_name} node {node_exec_id}: {str(e)}"
-            )
-            raise
+        result = await HITLReviewHelper.get_or_create_human_review(
+            user_id=user_id,
+            node_exec_id=node_exec_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            input_data=input_data,
+            message=f"Review required for {block_name} execution",
+            editable=editable,
+        )
 
         if result is None:
             logger.info(
                 f"Block {block_name} pausing execution for node {node_exec_id} - awaiting human review"
             )
-            try:
-                await HITLReviewHelper.update_node_execution_status(
-                    exec_id=node_exec_id,
-                    status=ExecutionStatus.REVIEW,
-                )
-                return None  # Signal that execution should pause
-            except Exception as e:
-                logger.error(
-                    f"Failed to update node status for block {block_name} {node_exec_id}: {str(e)}"
-                )
-                raise
+            await HITLReviewHelper.update_node_execution_status(
+                exec_id=node_exec_id,
+                status=ExecutionStatus.REVIEW,
+            )
+            return None  # Signal that execution should pause
 
         # Mark review as processed if not already done
         if not result.processed:

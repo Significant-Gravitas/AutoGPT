@@ -112,21 +112,17 @@ class HumanInTheLoopBlock(Block):
             yield "review_message", "Auto-approved (safe mode disabled)"
             return
 
-        try:
-            decision = await self.handle_review_decision(
-                input_data=input_data.data,
-                user_id=user_id,
-                node_exec_id=node_exec_id,
-                graph_exec_id=graph_exec_id,
-                graph_id=graph_id,
-                graph_version=graph_version,
-                execution_context=execution_context,
-                block_name=self.name,
-                editable=input_data.editable,
-            )
-        except Exception as e:
-            logger.error(f"Error in HITL block for node {node_exec_id}: {str(e)}")
-            raise
+        decision = await self.handle_review_decision(
+            input_data=input_data.data,
+            user_id=user_id,
+            node_exec_id=node_exec_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            execution_context=execution_context,
+            block_name=self.name,
+            editable=input_data.editable,
+        )
 
         if decision is None:
             # Execution is paused, the helper already handled status updates
