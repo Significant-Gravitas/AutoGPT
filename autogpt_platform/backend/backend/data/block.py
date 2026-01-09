@@ -669,13 +669,15 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
 
         # Review was approved - use the potentially modified data
-        # Ensure data is in the correct format for BlockInput
+        # ReviewResult.data must be a dict for block inputs
         reviewed_data = decision.review_result.data
-        if isinstance(reviewed_data, dict):
-            return False, reviewed_data
-        else:
-            # Fallback to original input if review data is not a dict
-            return False, input_data
+        if not isinstance(reviewed_data, dict):
+            raise BlockExecutionError(
+                message=f"Review data must be a dict for block input, got {type(reviewed_data).__name__}",
+                block_name=self.name,
+                block_id=self.id,
+            )
+        return False, reviewed_data
 
     async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         # Check for review requirement and get potentially modified input data
