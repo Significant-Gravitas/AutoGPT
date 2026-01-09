@@ -7,7 +7,11 @@ import { HeartIcon } from "@phosphor-icons/react";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 
-export function FavoritesSection() {
+interface Props {
+  searchTerm: string;
+}
+
+export function FavoritesSection({ searchTerm }: Props) {
   const {
     allAgents: favoriteAgents,
     agentLoading: isLoading,
@@ -15,7 +19,7 @@ export function FavoritesSection() {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
-  } = useFavoriteAgents();
+  } = useFavoriteAgents({ searchTerm });
 
   if (isLoading || favoriteAgents.length === 0) {
     return null;
