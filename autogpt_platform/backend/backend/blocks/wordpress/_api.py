@@ -161,7 +161,7 @@ async def oauth_exchange_code_for_tokens(
         grant_type="authorization_code",
     ).model_dump(exclude_none=True)
 
-    response = await Requests().post(
+    response = await Requests(raise_for_status=False).post(
         f"{WORDPRESS_BASE_URL}oauth2/token",
         headers=headers,
         data=data,
@@ -205,7 +205,7 @@ async def oauth_refresh_tokens(
         grant_type="refresh_token",
     ).model_dump(exclude_none=True)
 
-    response = await Requests().post(
+    response = await Requests(raise_for_status=False).post(
         f"{WORDPRESS_BASE_URL}oauth2/token",
         headers=headers,
         data=data,
@@ -252,7 +252,7 @@ async def validate_token(
         "token": token,
     }
 
-    response = await Requests().get(
+    response = await Requests(raise_for_status=False).get(
         f"{WORDPRESS_BASE_URL}oauth2/token-info",
         params=params,
     )
@@ -296,7 +296,7 @@ async def make_api_request(
 
     url = f"{WORDPRESS_BASE_URL.rstrip('/')}{endpoint}"
 
-    request_method = getattr(Requests(), method.lower())
+    request_method = getattr(Requests(raise_for_status=False), method.lower())
     response = await request_method(
         url,
         headers=headers,
@@ -484,7 +484,7 @@ async def create_post(
         "Content-Type": "application/x-www-form-urlencoded",
     }
 
-    response = await Requests().post(
+    response = await Requests(raise_for_status=False).post(
         f"{WORDPRESS_BASE_URL.rstrip('/')}{endpoint}",
         headers=headers,
         data=data,
@@ -613,7 +613,7 @@ async def get_posts(
 
     if status:
         params["status"] = status.value
-    response = await Requests().get(
+    response = await Requests(raise_for_status=False).get(
         f"{WORDPRESS_BASE_URL.rstrip('/')}{endpoint}",
         headers=headers,
         params=params,
