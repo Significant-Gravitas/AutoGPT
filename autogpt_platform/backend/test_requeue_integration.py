@@ -167,6 +167,9 @@ def test_queue_ordering_behavior():
         tester.publish_message(msg_b)
         tester.publish_message(msg_c)
 
+        # Give RabbitMQ time to process all published messages before consuming
+        time.sleep(0.1)
+
         # Consume and verify FIFO order: A, B, C
         tester.received_messages = []
         tester.stop_consuming.clear()
@@ -204,6 +207,9 @@ def test_queue_ordering_behavior():
         # This is what happens in manager.py when requeue_by_republishing=True
         tester.publish_message(user1_msg)  # Goes to back via our method
 
+        # Give RabbitMQ time to process all published messages before consuming
+        time.sleep(0.1)
+
         # Expected order: RATE-LIMITED, USER2-1, USER2-2, RATE-LIMITED (republished to back)
         # This shows that user2 messages get processed instead of being blocked
         tester.received_messages = []
@@ -233,6 +239,9 @@ def test_queue_ordering_behavior():
 
         # Republish X (simulates requeue using our method)
         tester.publish_message(msg_x)
+
+        # Give RabbitMQ time to process all published messages before consuming
+        time.sleep(0.1)
 
         # Expected: X, Y, X (X was republished to back)
         tester.received_messages = []
