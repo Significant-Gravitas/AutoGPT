@@ -4,9 +4,10 @@ Used by both the dedicated HumanInTheLoopBlock and blocks that require human rev
 """
 
 import logging
-from typing import Any, NamedTuple, Optional
+from typing import Any, Optional
 
 from prisma.enums import ReviewStatus
+from pydantic import BaseModel
 
 from backend.data.execution import ExecutionContext, ExecutionStatus
 from backend.data.human_review import ReviewResult
@@ -16,7 +17,7 @@ from backend.util.clients import get_database_manager_async_client
 logger = logging.getLogger(__name__)
 
 
-class ReviewDecision(NamedTuple):
+class ReviewDecision(BaseModel):
     """Result of a review decision."""
 
     should_proceed: bool

@@ -678,6 +678,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             return False, input_data
 
     async def _execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+        # Check for review requirement and get potentially modified input data
+        should_pause, input_data = await self.is_block_exec_need_review(
+            input_data, **kwargs
+        )
+        if should_pause:
+            return
+
+        # Validate the input data (original or reviewer-modified) once
         if error := self.input_schema.validate_data(input_data):
             raise BlockInputError(
                 message=f"Unable to execute block with invalid input data: {error}",
@@ -685,18 +693,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_id=self.id,
             )
 
-        # Check for review requirement and get potentially modified input data
-        should_pause, reviewed_input_data = await self.is_block_exec_need_review(
-            input_data, **kwargs
-        )
-        if should_pause:
-            return
-
-        # Use the reviewed input data (may have been modified by reviewer)
+        # Use the validated input data
         async for output_name, output_data in self.run(
-            self.input_schema(
-                **{k: v for k, v in reviewed_input_data.items() if v is not None}
-            ),
+            self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
             **kwargs,
         ):
             if output_name == "error":
