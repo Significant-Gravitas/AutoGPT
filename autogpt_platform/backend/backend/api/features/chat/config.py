@@ -12,7 +12,11 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="qwen/qwen3-235b-a22b-2507", description="Default model to use"
+        default="anthropic/claude-opus-4.5", description="Default model to use"
+    )
+    title_model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="Model to use for generating session titles (should be fast/cheap)",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -72,8 +76,31 @@ class ChatConfig(BaseSettings):
                 v = "https://openrouter.ai/api/v1"
         return v
 
+    # Prompt paths for different contexts
+    PROMPT_PATHS: dict[str, str] = {
+        "default": "prompts/chat_system.md",
+        "onboarding": "prompts/onboarding_system.md",
+    }
+
+    def get_system_prompt_for_type(
+        self, prompt_type: str = "default", **template_vars
+    ) -> str:
+        """Load and render a system prompt by type.
+
+        Args:
+            prompt_type: The type of prompt to load ("default" or "onboarding")
+            **template_vars: Variables to substitute in the template
+
+        Returns:
+            Rendered system prompt string
+        """
+        prompt_path_str = self.PROMPT_PATHS.get(
+            prompt_type, self.PROMPT_PATHS["default"]
+        )
+        return self._load_prompt_from_path(prompt_path_str, **template_vars)
+
     def get_system_prompt(self, **template_vars) -> str:
-        """Load and render the system prompt from file.
+        """Load and render the default system prompt from file.
 
         Args:
             **template_vars: Variables to substitute in the template
@@ -82,9 +109,21 @@ class ChatConfig(BaseSettings):
             Rendered system prompt string
 
         """
+        return self._load_prompt_from_path(self.system_prompt_path, **template_vars)
+
+    def _load_prompt_from_path(self, prompt_path_str: str, **template_vars) -> str:
+        """Load and render a system prompt from a given path.
+
+        Args:
+            prompt_path_str: Path to the prompt file relative to chat module
+            **template_vars: Variables to substitute in the template
+
+        Returns:
+            Rendered system prompt string
+        """
         # Get the path relative to this module
         module_dir = Path(__file__).parent
-        prompt_path = module_dir / self.system_prompt_path
+        prompt_path = module_dir / prompt_path_str
 
         # Check for .j2 extension first (Jinja2 template)
         j2_path = Path(str(prompt_path) + ".j2")
