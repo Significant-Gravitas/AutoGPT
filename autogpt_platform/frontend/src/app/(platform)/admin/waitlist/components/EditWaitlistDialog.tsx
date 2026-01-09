@@ -20,11 +20,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
-import {
-  updateWaitlist,
-  type WaitlistAdminResponse,
-  type WaitlistUpdateRequest,
-} from "../actions";
+import { updateWaitlist } from "../actions";
+import type {
+  WaitlistAdminResponse,
+  WaitlistUpdateRequest,
+} from "@/lib/autogpt-server-api/types";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 type EditWaitlistDialogProps = {

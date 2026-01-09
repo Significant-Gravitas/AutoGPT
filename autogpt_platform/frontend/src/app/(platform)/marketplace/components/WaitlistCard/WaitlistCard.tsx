@@ -25,9 +25,7 @@ export function WaitlistCard({
 }: WaitlistCardProps) {
   function handleJoinClick(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!isMember) {
-      onJoinClick(e);
-    }
+    onJoinClick(e);
   }
 
   return (

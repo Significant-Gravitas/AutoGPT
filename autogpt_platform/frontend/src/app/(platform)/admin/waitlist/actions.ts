@@ -2,67 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import BackendAPI from "@/lib/autogpt-server-api";
-
-export type WaitlistAdminResponse = {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  slug: string;
-  name: string;
-  subHeading: string;
-  description: string;
-  categories: string[];
-  imageUrls: string[];
-  videoUrl: string | null;
-  agentOutputDemoUrl: string | null;
-  status: string;
-  votes: number;
-  signupCount: number;
-  storeListingId: string | null;
-  owningUserId: string;
-};
-
-export type WaitlistAdminListResponse = {
-  waitlists: WaitlistAdminResponse[];
-  totalCount: number;
-};
-
-export type WaitlistSignup = {
-  type: "user" | "email";
-  userId: string | null;
-  email: string | null;
-  username: string | null;
-};
-
-export type WaitlistSignupListResponse = {
-  waitlistId: string;
-  signups: WaitlistSignup[];
-  totalCount: number;
-};
-
-export type WaitlistCreateRequest = {
-  name: string;
-  slug: string;
-  subHeading: string;
-  description: string;
-  categories?: string[];
-  imageUrls?: string[];
-  videoUrl?: string | null;
-  agentOutputDemoUrl?: string | null;
-};
-
-export type WaitlistUpdateRequest = {
-  name?: string;
-  slug?: string;
-  subHeading?: string;
-  description?: string;
-  categories?: string[];
-  imageUrls?: string[];
-  videoUrl?: string | null;
-  agentOutputDemoUrl?: string | null;
-  status?: string;
-  storeListingId?: string | null;
-};
+import type {
+  WaitlistAdminResponse,
+  WaitlistAdminListResponse,
+  WaitlistSignupListResponse,
+  WaitlistCreateRequest,
+  WaitlistUpdateRequest,
+} from "@/lib/autogpt-server-api/types";
 
 export async function getWaitlistsAdmin(): Promise<WaitlistAdminListResponse> {
   const api = new BackendAPI();

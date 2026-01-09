@@ -17,10 +17,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
-import {
-  getWaitlistSignups,
-  type WaitlistSignupListResponse,
-} from "../actions";
+import { getWaitlistSignups } from "../actions";
+import type { WaitlistSignupListResponse } from "@/lib/autogpt-server-api/types";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { User, Mail, Download } from "lucide-react";
 

@@ -10,11 +10,8 @@ import {
   TableRow,
 } from "@/components/__legacy__/ui/table";
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  getWaitlistsAdmin,
-  deleteWaitlist,
-  type WaitlistAdminResponse,
-} from "../actions";
+import { getWaitlistsAdmin, deleteWaitlist } from "../actions";
+import type { WaitlistAdminResponse } from "@/lib/autogpt-server-api/types";
 import { EditWaitlistDialog } from "./EditWaitlistDialog";
 import { WaitlistSignupsDialog } from "./WaitlistSignupsDialog";
 import { Trash2, Edit, Users, Link } from "lucide-react";

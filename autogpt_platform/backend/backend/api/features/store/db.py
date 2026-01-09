@@ -1982,6 +1982,23 @@ async def get_agent_as_admin(
     return graph
 
 
+def _waitlist_to_store_entry(
+    waitlist: prisma.models.WaitlistEntry,
+) -> store_model.StoreWaitlistEntry:
+    """Convert a WaitlistEntry to StoreWaitlistEntry for public display."""
+    return store_model.StoreWaitlistEntry(
+        waitlist_id=waitlist.id,
+        slug=waitlist.slug,
+        name=waitlist.name,
+        subHeading=waitlist.subHeading,
+        videoUrl=waitlist.videoUrl,
+        agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
+        imageUrls=waitlist.imageUrls or [],
+        description=waitlist.description,
+        categories=waitlist.categories,
+    )
+
+
 async def get_waitlist() -> list[store_model.StoreWaitlistEntry]:
     """Get all active waitlists for public display."""
     try:
@@ -1997,20 +2014,7 @@ async def get_waitlist() -> list[store_model.StoreWaitlistEntry]:
         active_waitlists = [w for w in waitlists if w.status not in excluded_statuses]
         sorted_list = sorted(active_waitlists, key=lambda x: x.votes, reverse=True)
 
-        return [
-            store_model.StoreWaitlistEntry(
-                waitlist_id=waitlist.id,
-                slug=waitlist.slug,
-                name=waitlist.name,
-                subHeading=waitlist.subHeading,
-                videoUrl=waitlist.videoUrl,
-                agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
-                imageUrls=waitlist.imageUrls or [],
-                description=waitlist.description,
-                categories=waitlist.categories,
-            )
-            for waitlist in sorted_list
-        ]
+        return [_waitlist_to_store_entry(w) for w in sorted_list]
     except Exception as e:
         logger.error(f"Error fetching waitlists: {e}")
         raise DatabaseError("Failed to fetch waitlists") from e
@@ -2100,17 +2104,7 @@ async def add_user_to_waitlist(
             else:
                 logger.debug(f"Email {email} already on waitlist {waitlist_id}")
 
-        return store_model.StoreWaitlistEntry(
-            waitlist_id=waitlist.id,
-            slug=waitlist.slug,
-            name=waitlist.name,
-            subHeading=waitlist.subHeading,
-            videoUrl=waitlist.videoUrl,
-            agentOutputDemoUrl=waitlist.agentOutputDemoUrl,
-            imageUrls=waitlist.imageUrls or [],
-            description=waitlist.description,
-            categories=waitlist.categories,
-        )
+        return _waitlist_to_store_entry(waitlist)
 
     except ValueError:
         raise
@@ -2232,28 +2226,24 @@ async def update_waitlist_admin(
 
     try:
         # Build update data from non-None fields
-        update_data: dict[str, typing.Any] = {}
+        field_mappings = {
+            "name": data.name,
+            "slug": data.slug,
+            "subHeading": data.subHeading,
+            "description": data.description,
+            "categories": data.categories,
+            "imageUrls": data.imageUrls,
+            "videoUrl": data.videoUrl,
+            "agentOutputDemoUrl": data.agentOutputDemoUrl,
+            "storeListingId": data.storeListingId,
+        }
+        update_data: dict[str, typing.Any] = {
+            k: v for k, v in field_mappings.items() if v is not None
+        }
 
-        if data.name is not None:
-            update_data["name"] = data.name
-        if data.slug is not None:
-            update_data["slug"] = data.slug
-        if data.subHeading is not None:
-            update_data["subHeading"] = data.subHeading
-        if data.description is not None:
-            update_data["description"] = data.description
-        if data.categories is not None:
-            update_data["categories"] = data.categories
-        if data.imageUrls is not None:
-            update_data["imageUrls"] = data.imageUrls
-        if data.videoUrl is not None:
-            update_data["videoUrl"] = data.videoUrl
-        if data.agentOutputDemoUrl is not None:
-            update_data["agentOutputDemoUrl"] = data.agentOutputDemoUrl
+        # Handle status separately due to enum conversion
         if data.status is not None:
             update_data["status"] = prisma.enums.WaitlistExternalStatus(data.status)
-        if data.storeListingId is not None:
-            update_data["storeListingId"] = data.storeListingId
 
         if not update_data:
             # No updates, just return current data
