@@ -92,16 +92,20 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
 
     const isUserCreator = agent?.owner_user_id === user?.id;
 
-    // Check if there's a pending submission for this specific agent version
     const submissionsResponse = okData(submissionsData) as any;
-    const hasPendingSubmissionForCurrentVersion =
-      isUserCreator &&
-      submissionsResponse?.submissions?.some(
-        (submission: StoreSubmission) =>
-          submission.agent_id === agent.graph_id &&
-          submission.agent_version === agent.graph_version &&
-          submission.status === "PENDING",
-      );
+    const agentSubmissions =
+      submissionsResponse?.submissions?.filter(
+        (submission: StoreSubmission) => submission.agent_id === agent.graph_id,
+      ) || [];
+
+    const highestSubmittedVersion =
+      agentSubmissions.length > 0
+        ? Math.max(
+            ...agentSubmissions.map(
+              (submission: StoreSubmission) => submission.agent_version,
+            ),
+          )
+        : 0;
 
     if (!storeAgent) {
       return {
@@ -109,12 +113,12 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
         latestVersion: undefined,
         isUserCreator,
         hasPublishUpdate:
-          isUserCreator && !hasPendingSubmissionForCurrentVersion,
+          isUserCreator &&
+          agentSubmissions.length > 0 &&
+          agent.graph_version > highestSubmittedVersion,
       };
     }
 
-    // Get the latest version from the marketplace
-    // agentGraphVersions array contains graph version numbers as strings, get the highest one
     const latestMarketplaceVersion =
       storeAgent.agentGraphVersions?.length > 0
         ? Math.max(
@@ -124,18 +128,11 @@ export function useMarketplaceUpdate({ agent }: UseMarketplaceUpdateProps) {
           )
         : undefined;
 
-    // Show publish update button if:
-    // 1. User is the creator
-    // 2. No pending submission for current version
-    // 3. Either: agent not published yet OR local version is newer than marketplace
     const hasPublishUpdate =
       isUserCreator &&
-      !hasPendingSubmissionForCurrentVersion &&
-      (latestMarketplaceVersion === undefined || // Not published yet
-        agent.graph_version > latestMarketplaceVersion); // Or local version is newer
+      agent.graph_version >
+        Math.max(latestMarketplaceVersion || 0, highestSubmittedVersion);
 
-    // If marketplace version is newer than user's version, show update banner
-    // This applies to both creators and non-creators
     const hasMarketplaceUpdate =
       latestMarketplaceVersion !== undefined &&
       latestMarketplaceVersion > agent.graph_version;

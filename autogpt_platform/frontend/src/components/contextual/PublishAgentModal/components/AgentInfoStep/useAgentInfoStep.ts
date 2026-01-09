@@ -53,25 +53,28 @@ export function useAgentInfoStep({
   useEffect(() => {
     if (initialData?.agent_id) {
       setAgentId(initialData.agent_id);
-      const initialImages = [
-        ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
-        ...(initialData.additionalImages || []),
-      ];
-      setImages(initialImages);
+      if (!isMarketplaceUpdate) {
+        const initialImages = [
+          ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
+          ...(initialData.additionalImages || []),
+        ];
+        setImages(initialImages);
+      }
 
-      // Update form with initial data
-      form.reset({
-        changesSummary: initialData.changesSummary || "",
-        title: initialData.title,
-        subheader: initialData.subheader,
-        slug: initialData.slug.toLocaleLowerCase().trim(),
-        youtubeLink: initialData.youtubeLink,
-        category: initialData.category,
-        description: initialData.description,
-        recommendedScheduleCron: initialData.recommendedScheduleCron || "",
-        instructions: initialData.instructions || "",
-        agentOutputDemo: initialData.agentOutputDemo || "",
-      });
+      if (!isMarketplaceUpdate) {
+        form.reset({
+          changesSummary: initialData.changesSummary || "",
+          title: initialData.title,
+          subheader: initialData.subheader,
+          slug: initialData.slug.toLocaleLowerCase().trim(),
+          youtubeLink: initialData.youtubeLink,
+          category: initialData.category,
+          description: initialData.description,
+          recommendedScheduleCron: initialData.recommendedScheduleCron || "",
+          instructions: initialData.instructions || "",
+          agentOutputDemo: initialData.agentOutputDemo || "",
+        });
+      }
     }
   }, [initialData, form]);
 
