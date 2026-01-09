@@ -90,10 +90,11 @@ async def get_waitlist(
     """
     try:
         return await store_db.get_waitlist_admin(waitlist_id)
-    except ValueError as e:
+    except ValueError:
+        logger.warning("Waitlist not found: %s", waitlist_id)
         return fastapi.responses.JSONResponse(
             status_code=404,
-            content={"detail": str(e)},
+            content={"detail": "Waitlist not found"},
         )
     except Exception as e:
         logger.exception("Error fetching waitlist: %s", e)
@@ -124,10 +125,11 @@ async def update_waitlist(
     """
     try:
         return await store_db.update_waitlist_admin(waitlist_id, request)
-    except ValueError as e:
+    except ValueError:
+        logger.warning("Waitlist not found for update: %s", waitlist_id)
         return fastapi.responses.JSONResponse(
             status_code=404,
-            content={"detail": str(e)},
+            content={"detail": "Waitlist not found"},
         )
     except Exception as e:
         logger.exception("Error updating waitlist: %s", e)
@@ -188,10 +190,11 @@ async def get_waitlist_signups(
     """
     try:
         return await store_db.get_waitlist_signups_admin(waitlist_id)
-    except ValueError as e:
+    except ValueError:
+        logger.warning("Waitlist not found for signups: %s", waitlist_id)
         return fastapi.responses.JSONResponse(
             status_code=404,
-            content={"detail": str(e)},
+            content={"detail": "Waitlist not found"},
         )
     except Exception as e:
         logger.exception("Error fetching waitlist signups: %s", e)
@@ -209,7 +212,7 @@ async def get_waitlist_signups(
 async def link_waitlist_to_listing(
     waitlist_id: str = fastapi.Path(..., description="The ID of the waitlist"),
     store_listing_id: str = fastapi.Body(
-        ..., description="The ID of the store listing"
+        ..., embed=True, description="The ID of the store listing"
     ),
 ):
     """
@@ -229,10 +232,15 @@ async def link_waitlist_to_listing(
         return await store_db.link_waitlist_to_listing_admin(
             waitlist_id, store_listing_id
         )
-    except ValueError as e:
+    except ValueError:
+        logger.warning(
+            "Link failed - waitlist or listing not found: %s, %s",
+            waitlist_id,
+            store_listing_id,
+        )
         return fastapi.responses.JSONResponse(
             status_code=404,
-            content={"detail": str(e)},
+            content={"detail": "Waitlist or store listing not found"},
         )
     except Exception as e:
         logger.exception("Error linking waitlist to listing: %s", e)

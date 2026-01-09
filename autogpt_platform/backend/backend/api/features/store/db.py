@@ -1719,7 +1719,8 @@ async def review_store_submission(
                         where={"storeListingVersionId": submission.id}
                     )
                 )
-                store_url = f"{frontend_base_url}/marketplace/agent/{store_agent.creator_username}/{store_agent.slug}"
+                creator_username = store_agent.creator_username or "unknown"
+                store_url = f"{frontend_base_url}/marketplace/agent/{creator_username}/{store_agent.slug}"
                 await notify_waitlist_users_on_launch(
                     store_listing_id=submission.StoreListing.id,
                     agent_name=submission.name,
@@ -2093,16 +2094,25 @@ async def add_user_to_waitlist(
                 )
         elif email:
             # Add email to unaffiliated list if not already present
-            current_emails: list[str] = list(waitlist.unafilliatedEmailUsers or [])
-            if email not in current_emails:
-                current_emails.append(email)
-                await prisma.models.WaitlistEntry.prisma().update(
-                    where={"id": waitlist_id},
-                    data={"unafilliatedEmailUsers": current_emails},
+            # Use transaction to prevent race conditions with concurrent signups
+            async with transaction() as tx:
+                # Re-fetch within transaction to get latest state
+                current_waitlist = await tx.waitlistentry.find_unique(
+                    where={"id": waitlist_id}
                 )
-                logger.info(f"Email {email} added to waitlist {waitlist_id}")
-            else:
-                logger.debug(f"Email {email} already on waitlist {waitlist_id}")
+                if current_waitlist:
+                    current_emails: list[str] = list(
+                        current_waitlist.unafilliatedEmailUsers or []
+                    )
+                    if email not in current_emails:
+                        current_emails.append(email)
+                        await tx.waitlistentry.update(
+                            where={"id": waitlist_id},
+                            data={"unafilliatedEmailUsers": current_emails},
+                        )
+                        logger.info(f"Email {email} added to waitlist {waitlist_id}")
+                    else:
+                        logger.debug(f"Email {email} already on waitlist {waitlist_id}")
 
         return _waitlist_to_store_entry(waitlist)
 

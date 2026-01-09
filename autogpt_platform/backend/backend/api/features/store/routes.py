@@ -124,6 +124,12 @@ async def add_self_to_waitlist(
     """
     Add the current user to the agent waitlist.
     """
+    if not user_id and not email:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail="Either user authentication or email address is required",
+        )
+
     waitlist_entry = await store_db.add_user_to_waitlist(
         waitlist_id=waitlist_id, user_id=user_id, email=email
     )

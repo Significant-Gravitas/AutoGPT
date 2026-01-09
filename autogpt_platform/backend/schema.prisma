@@ -943,7 +943,7 @@ model WaitlistEntry {
   updatedAt DateTime @updatedAt
 
   storeListingId String?
-  StoreListing   StoreListing? @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
+  StoreListing   StoreListing? @relation(fields: [storeListingId], references: [id], onDelete: SetNull)
 
   owningUserId String
   OwningUser   User   @relation(fields: [owningUserId], references: [id])

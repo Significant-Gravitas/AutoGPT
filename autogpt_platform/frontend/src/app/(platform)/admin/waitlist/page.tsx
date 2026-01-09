@@ -30,7 +30,6 @@ function WaitlistDashboard() {
 }
 
 export default async function WaitlistDashboardPage() {
-  "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedWaitlistDashboard = await withAdminAccess(WaitlistDashboard);
   return <ProtectedWaitlistDashboard />;

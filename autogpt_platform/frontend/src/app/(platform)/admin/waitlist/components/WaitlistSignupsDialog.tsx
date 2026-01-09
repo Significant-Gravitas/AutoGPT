@@ -68,9 +68,11 @@ export function WaitlistSignupsDialog({
       signup.username || "",
     ]);
 
+    const escapeCell = (cell: string) => `"${cell.replace(/"/g, '""')}"`;
+
     const csvContent = [
       headers.join(","),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+      ...rows.map((row) => row.map(escapeCell).join(",")),
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv" });

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Button } from "@/components/atoms/Button/Button";
-import { Check } from "lucide-react";
+import { Check } from "@phosphor-icons/react";
 
 interface WaitlistCardProps {
   name: string;
@@ -87,7 +87,7 @@ export function WaitlistCard({
               disabled
               className="w-full rounded-full bg-green-600 text-white hover:bg-green-600 dark:bg-green-700 dark:hover:bg-green-700"
             >
-              <Check className="mr-2 h-4 w-4" />
+              <Check className="mr-2" size={16} weight="bold" />
               On the waitlist
             </Button>
           ) : (

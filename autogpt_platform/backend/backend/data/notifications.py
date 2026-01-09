@@ -239,6 +239,7 @@ NotificationData = Annotated[
         DailySummaryData,
         RefundRequestData,
         BaseSummaryData,
+        WaitlistLaunchData,
     ],
     Field(discriminator="type"),
 ]
@@ -289,6 +290,7 @@ def get_notif_data_type(
         NotificationType.REFUND_PROCESSED: RefundRequestData,
         NotificationType.AGENT_APPROVED: AgentApprovalData,
         NotificationType.AGENT_REJECTED: AgentRejectionData,
+        NotificationType.WAITLIST_LAUNCH: WaitlistLaunchData,
     }[notification_type]
 
 
@@ -334,6 +336,7 @@ class NotificationTypeOverride:
             NotificationType.REFUND_PROCESSED: QueueType.ADMIN,
             NotificationType.AGENT_APPROVED: QueueType.IMMEDIATE,
             NotificationType.AGENT_REJECTED: QueueType.IMMEDIATE,
+            NotificationType.WAITLIST_LAUNCH: QueueType.IMMEDIATE,
         }
         return BATCHING_RULES.get(self.notification_type, QueueType.IMMEDIATE)
 
@@ -353,6 +356,7 @@ class NotificationTypeOverride:
             NotificationType.REFUND_PROCESSED: "refund_processed.html",
             NotificationType.AGENT_APPROVED: "agent_approved.html",
             NotificationType.AGENT_REJECTED: "agent_rejected.html",
+            NotificationType.WAITLIST_LAUNCH: "waitlist_launch.html",
         }[self.notification_type]
 
     @property
@@ -370,6 +374,7 @@ class NotificationTypeOverride:
             NotificationType.REFUND_PROCESSED: "Refund for ${{data.amount / 100}} to {{data.user_name}} has been processed",
             NotificationType.AGENT_APPROVED: "🎉 Your agent '{{data.agent_name}}' has been approved!",
             NotificationType.AGENT_REJECTED: "Your agent '{{data.agent_name}}' needs some updates",
+            NotificationType.WAITLIST_LAUNCH: "🚀 {{data.agent_name}} is now available!",
         }[self.notification_type]
 
 
