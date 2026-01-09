@@ -128,9 +128,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     # migrate_llm_models uses registry default model
     from backend.blocks.llm import LlmModel
 
-    await backend.data.graph.migrate_llm_models(
-        LlmModel(llm_registry.get_default_model_slug())
-    )
+    default_model_slug = llm_registry.get_default_model_slug()
+    if default_model_slug:
+        await backend.data.graph.migrate_llm_models(LlmModel(default_model_slug))
+    else:
+        logger.warning("Skipping LLM model migration: no default model available")
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():

@@ -330,12 +330,13 @@ def get_model_info(model_slug: str) -> RegistryModel | None:
     return _dynamic_models.get(model_slug)
 
 
-def get_default_model_slug() -> str:
+def get_default_model_slug() -> str | None:
     """
     Get the default model slug to use for block defaults.
 
     Returns the recommended model if set, otherwise falls back to "gpt-4o"
-    if enabled, then first enabled model, or "gpt-4o" as final fallback.
+    if available and enabled, then first enabled model alphabetically.
+    Returns None if no models are available or enabled.
     """
     # First, check for recommended model
     for model in _dynamic_models.values():
@@ -348,10 +349,23 @@ def get_default_model_slug() -> str:
     if fallback_model and fallback_model.is_enabled:
         return fallback_slug
 
-    # Find first enabled model
+    # Find first enabled model alphabetically
     for model in sorted(_dynamic_models.values(), key=lambda m: m.display_name.lower()):
         if model.is_enabled:
+            logger.warning(
+                "Preferred model '%s' not available, using '%s' as default",
+                fallback_slug,
+                model.slug,
+            )
             return model.slug
 
-    # Final fallback for backwards compatibility
-    return fallback_slug
+    # No enabled models available
+    if _dynamic_models:
+        logger.error(
+            "No enabled models found in registry (%d models registered but all disabled)",
+            len(_dynamic_models),
+        )
+    else:
+        logger.error("No models registered in LLM registry")
+
+    return None

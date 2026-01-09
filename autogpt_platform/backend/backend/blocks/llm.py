@@ -159,12 +159,18 @@ class LlmModel(str, metaclass=LlmModelMeta):
         """
         Get the default model from the registry.
 
-        Returns the preferred default model (gpt-4o if available and enabled,
-        otherwise the first enabled model from the registry).
+        Returns the recommended model if set, otherwise gpt-4o if available
+        and enabled, otherwise the first enabled model from the registry.
+        Falls back to "gpt-4o" if registry is empty (e.g., at module import time).
         """
         from backend.data.llm_registry import get_default_model_slug
 
-        return cls(get_default_model_slug())
+        slug = get_default_model_slug()
+        if slug is None:
+            # Registry is empty (e.g., at module import time before DB connection).
+            # Fall back to gpt-4o for backward compatibility.
+            slug = "gpt-4o"
+        return cls(slug)
 
     @property
     def metadata(self) -> ModelMetadata:

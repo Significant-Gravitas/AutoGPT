@@ -60,7 +60,7 @@ export async function createLlmProviderAction(formData: FormData) {
     default_credential_id: undefined,
     default_credential_type: "api_key",
     supports_tools: formData.get("supports_tools") === "on",
-    supports_json_output: formData.get("supports_json_output") !== "off",
+    supports_json_output: formData.get("supports_json_output") === "on",
     supports_reasoning: formData.get("supports_reasoning") === "on",
     supports_parallel_tool: formData.get("supports_parallel_tool") === "on",
     metadata: {},
@@ -116,7 +116,7 @@ export async function createLlmModelAction(formData: FormData) {
     max_output_tokens: formData.get("max_output_tokens")
       ? Number(formData.get("max_output_tokens"))
       : undefined,
-    is_enabled: formData.get("is_enabled") !== "off",
+    is_enabled: formData.get("is_enabled") === "on",
     capabilities: {},
     metadata: {},
     costs: [
@@ -209,7 +209,7 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
   revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function deleteLlmModelAction(formData: FormData) {
+export async function deleteLlmModelAction(formData: FormData): Promise<void> {
   const modelId = String(formData.get("model_id"));
   const replacementModelSlug = String(formData.get("replacement_model_slug"));
 
@@ -224,7 +224,6 @@ export async function deleteLlmModelAction(formData: FormData) {
     throw new Error("Failed to delete model");
   }
   revalidatePath(ADMIN_LLM_PATH);
-  return response.data;
 }
 
 export async function fetchLlmModelUsage(
