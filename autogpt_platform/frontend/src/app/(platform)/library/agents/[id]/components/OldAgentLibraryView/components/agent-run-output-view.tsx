@@ -11,12 +11,12 @@ import {
 } from "@/components/__legacy__/ui/card";
 
 import LoadingBox from "@/components/__legacy__/ui/loading";
-import type { OutputMetadata } from "../../NewAgentLibraryView/components/selected-views/OutputRenderers";
+import type { OutputMetadata } from "../../../../../../../../components/contextual/OutputRenderers";
 import {
   globalRegistry,
   OutputActions,
   OutputItem,
-} from "../../NewAgentLibraryView/components/selected-views/OutputRenderers";
+} from "../../../../../../../../components/contextual/OutputRenderers";
 
 export function AgentRunOutputView({
   agentRunOutputs,
