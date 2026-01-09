@@ -1181,10 +1181,10 @@ Use this to prevent accidental changes to important formulas, headers, or refere
 ## Google Sheets Read
 
 ### What it is
-This block reads data from a Google Sheets spreadsheet.
+A block that reads data from a Google Sheets spreadsheet.
 
 ### What it does
-This block reads data from a Google Sheets spreadsheet.
+Retrieves information from a designated range within a Google Sheets document.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1469,10 +1469,10 @@ The dictionary format is convenient when you only need to update specific column
 ## Google Sheets Write
 
 ### What it is
-This block writes data to a Google Sheets spreadsheet.
+A block that writes data to a Google Sheets spreadsheet.
 
 ### What it does
-This block writes data to a Google Sheets spreadsheet.
+Inputs data into a designated range within a Google Sheets document.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

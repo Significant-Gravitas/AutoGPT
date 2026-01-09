@@ -77,10 +77,10 @@ This batching capability is particularly useful when processing large datasets t
 ## File Read
 
 ### What it is
-Reads a file and returns its content as a string, with optional chunking by delimiter and size limits.
+A block that reads files from various sources including URLs, data URIs, and local paths.
 
 ### What it does
-Reads a file and returns its content as a string, with optional chunking by delimiter and size limits
+Reads file content and returns it as a string, with optional chunking by delimiter and size limits for processing large files efficiently.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -119,10 +119,10 @@ Use skip_rows and skip_size to skip header content or initial bytes. When delimi
 ## Persist Information
 
 ### What it is
-Persist key-value information for the current user.
+A block that stores persistent key-value data for the current user across workflow runs.
 
 ### What it does
-Persist key-value information for the current user
+Stores key-value information that remains available between workflow executions, with configurable scope for agent-specific or user-wide persistence.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -158,10 +158,10 @@ The stored data remains available until explicitly overwritten, enabling state m
 ## Read Spreadsheet
 
 ### What it is
-Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows.
+A block that reads and parses CSV and Excel files into structured data.
 
 ### What it does
-Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows. Excel files are automatically converted to CSV format.
+Parses spreadsheet files and outputs data as dictionaries with column headers as keys, with automatic Excel-to-CSV conversion and configurable parsing options.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -205,10 +205,10 @@ Configure delimiter, quote character, and escape character for proper CSV parsin
 ## Retrieve Information
 
 ### What it is
-Retrieve key-value information for the current user.
+A block that retrieves previously stored key-value data for the current user.
 
 ### What it does
-Retrieve key-value information for the current user
+Fetches persisted key-value information from specified scope, returning the stored value or a default if not found.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -244,10 +244,10 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 ## Screenshot Web Page
 
 ### What it is
-Takes a screenshot of a specified website using ScreenshotOne API.
+A block that captures screenshots of web pages using the ScreenshotOne API.
 
 ### What it does
-Takes a screenshot of a specified website using ScreenshotOne API
+Takes a screenshot of a specified website URL with configurable viewport settings, output formats, and optional blocking of ads, cookies, and chat widgets.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

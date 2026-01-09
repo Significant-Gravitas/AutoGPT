@@ -87,10 +87,10 @@ The result routes data to yes_output or no_output, enabling intelligent branchin
 ## AI Conversation
 
 ### What it is
-Advanced LLM call that takes a list of messages and sends them to the language model.
+A block that facilitates multi-turn conversations using a Large Language Model (LLM).
 
 ### What it does
-Advanced LLM call that takes a list of messages and sends them to the language model.
+Takes a list of conversation messages, sends them to an LLM, and returns the model's response to continue the conversation.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -250,10 +250,10 @@ The unified interface allows switching between models without changing your work
 ## AI List Generator
 
 ### What it is
-Generate a list of values based on the given prompt using a Large Language Model (LLM).
+A block that generates lists based on prompts or source data using a Large Language Model (LLM).
 
 ### What it does
-Generate a list of values based on the given prompt using a Large Language Model (LLM).
+Takes a focus or source data, sends it to an LLM, and returns a generated list based on the input.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -424,10 +424,10 @@ Choose video style (stock video, moving images, or AI-generated), voice, backgro
 ## AI Structured Response Generator
 
 ### What it is
-Call a Large Language Model (LLM) to generate formatted object based on the given prompt.
+A block that generates structured responses using a Large Language Model (LLM).
 
 ### What it does
-Call a Large Language Model (LLM) to generate formatted object based on the given prompt.
+Takes a prompt and other parameters, sends them to an LLM, and returns a structured response in a specified format.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -467,10 +467,10 @@ Extracting specific information from unstructured text, such as generating a pro
 ## AI Text Generator
 
 ### What it is
-Call a Large Language Model (LLM) to generate a string based on the given prompt.
+A block that generates text responses using a Large Language Model (LLM).
 
 ### What it does
-Call a Large Language Model (LLM) to generate a string based on the given prompt.
+Takes a prompt and other parameters, sends them to an LLM, and returns a text response.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -505,10 +505,10 @@ Generating creative writing, such as short stories or poetry, based on a given t
 ## AI Text Summarizer
 
 ### What it is
-Utilize a Large Language Model (LLM) to summarize a long text.
+A block that summarizes long texts using a Large Language Model (LLM).
 
 ### What it does
-Utilize a Large Language Model (LLM) to summarize a long text.
+Takes a long text, breaks it into manageable chunks, summarizes each chunk, and then combines these summaries into a final summary.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

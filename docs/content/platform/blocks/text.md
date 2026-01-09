@@ -54,10 +54,10 @@ The block supports 16 programming languages including Python, JavaScript, HTML, 
 ## Combine Texts
 
 ### What it is
-This block combines multiple input texts into a single output text.
+A block that combines multiple text inputs into a single output.
 
 ### What it does
-This block combines multiple input texts into a single output text.
+Concatenates multiple text strings together, optionally inserting a specified delimiter between each input.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -86,10 +86,10 @@ Merging multiple parts of an address (street, city, state, zip code) into a sing
 ## Countdown Timer
 
 ### What it is
-This block triggers after a specified duration.
+A block that acts as a countdown timer, triggering after a specified duration.
 
 ### What it does
-This block triggers after a specified duration.
+Waits for a specified amount of time and then outputs a message, with optional repeat capability.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -128,10 +128,10 @@ The block supports a repeat parameter, allowing the timer to fire multiple times
 ## Extract Text Information
 
 ### What it is
-This block extracts the text from the given text using the pattern (regex).
+A block that extracts specific information from text using a pattern.
 
 ### What it does
-This block extracts the text from the given text using the pattern (regex).
+Searches for a regex pattern within text and retrieves a specific portion based on that pattern, supporting group extraction.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

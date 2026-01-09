@@ -1,10 +1,10 @@
 # Gmail Add Label
 
 ### What it is
-This block adds a label to a Gmail message.
+A block that adds a label to a specific email in a Gmail account.
 
 ### What it does
-This block adds a label to a Gmail message.
+Allows users to add a label (category) to a particular email message, creating the label if it doesn't exist.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -204,10 +204,10 @@ This is useful for verifying which account is connected and gathering basic mail
 ## Gmail Get Thread
 
 ### What it is
-Get a full Gmail thread by ID.
+A block that retrieves an entire Gmail thread by ID.
 
 ### What it does
-Get a full Gmail thread by ID
+Fetches all messages in a thread and decodes the text bodies for reading complete email conversations.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -241,10 +241,10 @@ The thread includes all messages, their senders, timestamps, and content, making
 ## Gmail List Labels
 
 ### What it is
-This block lists all labels in Gmail.
+A block that retrieves all labels (categories) from a Gmail account.
 
 ### What it does
-This block lists all labels in Gmail.
+Fetches and lists all labels set up in the user's Gmail account used for organizing and categorizing emails.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -267,10 +267,10 @@ Creating a dashboard that shows an overview of how many emails are in each categ
 ## Gmail Read
 
 ### What it is
-This block reads emails from Gmail.
+A block that retrieves and reads emails from a Gmail account.
 
 ### What it does
-This block reads emails from Gmail.
+Searches for and retrieves emails based on given search criteria, fetching detailed information including subject, sender, recipient, date, body content, and attachments.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -300,10 +300,10 @@ Automatically checking for new customer inquiries in a support email inbox and o
 ## Gmail Remove Label
 
 ### What it is
-This block removes a label from a Gmail message.
+A block that removes a label from a specific email in a Gmail account.
 
 ### What it does
-This block removes a label from a Gmail message.
+Allows users to remove a label (category) from a particular email message in their Gmail account.
 
 ### How it works
 <!-- MANUAL: how_it_works -->

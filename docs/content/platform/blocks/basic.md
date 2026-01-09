@@ -43,10 +43,10 @@ The block accepts either plain text or structured message objects (like those fr
 ## Add To Dictionary
 
 ### What it is
-Adds a new key-value pair to a dictionary.
+A block that adds key-value pairs to dictionaries.
 
 ### What it does
-Adds a new key-value pair to a dictionary. If no dictionary is provided, a new one is created.
+Takes an existing dictionary (or creates a new one), adds a key-value pair, and returns the updated dictionary.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -83,10 +83,10 @@ The block outputs the updated dictionary with all new entries added. This is use
 ## Add To List
 
 ### What it is
-Adds a new entry to a list.
+A block that adds new entries to lists.
 
 ### What it does
-Adds a new entry to a list. The entry can be of any type. If no list is provided, a new one is created.
+Takes an existing list (or creates a new one) and adds a new entry to it, optionally at a specified position.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -291,10 +291,10 @@ You can configure which file types to display (documents, spreadsheets, presenta
 ## Agent Input
 
 ### What it is
-Base block for user inputs.
+An input block that provides a way to accept user input in a workflow.
 
 ### What it does
-Base block for user inputs.
+Allows users to input values into the workflow, with options for naming, describing, and setting placeholder values.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -408,10 +408,10 @@ This is useful when you need numeric parameters like quantities, counts, limits,
 ## Agent Output
 
 ### What it is
-Stores the output of the graph for users to see.
+An output block that records and formats the final results of a workflow.
 
 ### What it does
-Stores the output of the graph for users to see.
+Takes a value and associated metadata, optionally formats it, and presents it as the output of the workflow.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -686,10 +686,10 @@ The block outputs a file path that other blocks can use to access the stored fil
 ## Find In Dictionary
 
 ### What it is
-Lookup the given key in the input dictionary/object/list and return the value.
+A block that retrieves values from dictionaries, objects, or lists using a specified key.
 
 ### What it does
-Lookup the given key in the input dictionary/object/list and return the value.
+Searches for a specified key in the input data structure and returns the corresponding value if found.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1036,10 +1036,10 @@ This is useful for conditional logic where you need to verify if search results 
 ## Note
 
 ### What it is
-This block is used to display a sticky note with the given text.
+A block that displays sticky notes with custom text in workflows.
 
 ### What it does
-This block is used to display a sticky note with the given text.
+Takes a text input and displays it as a sticky note in the workflow interface.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1067,10 +1067,10 @@ Adding explanatory notes or reminders within a complex workflow to help users un
 ## Print To Console
 
 ### What it is
-Print the given text to the console, this is used for a debugging purpose.
+A debugging block that outputs text to the console.
 
 ### What it does
-Print the given text to the console, this is used for a debugging purpose.
+Takes a text input and prints it to the console for debugging, then outputs a status message and passes the data through.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -1345,10 +1345,10 @@ The search is performed against the Mem0 memory store and returns memories ranke
 ## Store Value
 
 ### What it is
-This block forwards an input value as output, allowing reuse without change.
+A basic block that stores and forwards a value throughout workflows.
 
 ### What it does
-This block forwards an input value as output, allowing reuse without change.
+Takes an input value and stores it, allowing it to be reused without changes across multiple blocks.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
