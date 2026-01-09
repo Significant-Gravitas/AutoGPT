@@ -168,26 +168,21 @@ class CreateCredentialResponse(BaseModel):
 
 
 def validate_callback_url(callback_url: str) -> bool:
-    """Validate that the callback URL is from an allowed origin."""
+    """Validate that the callback URL is from an allowed origin.
+
+    Uses strict origin matching including scheme, hostname, and port.
+    This prevents OAuth token leakage to unintended local services.
+    """
     allowed_origins = settings.config.external_oauth_callback_origins
 
     try:
         parsed = urlparse(callback_url)
+        # Reconstruct origin strictly from the input URL (scheme + netloc)
+        # netloc includes hostname and port, ensuring strict validation
         callback_origin = f"{parsed.scheme}://{parsed.netloc}"
 
-        for allowed in allowed_origins:
-            # Simple origin matching
-            if callback_origin == allowed:
-                return True
-
-        # Allow localhost with any port in development (proper hostname check)
-        if parsed.hostname == "localhost":
-            for allowed in allowed_origins:
-                allowed_parsed = urlparse(allowed)
-                if allowed_parsed.hostname == "localhost":
-                    return True
-
-        return False
+        # Simple, strict allowlist check - no special cases for localhost
+        return callback_origin in allowed_origins
     except Exception:
         return False
 
