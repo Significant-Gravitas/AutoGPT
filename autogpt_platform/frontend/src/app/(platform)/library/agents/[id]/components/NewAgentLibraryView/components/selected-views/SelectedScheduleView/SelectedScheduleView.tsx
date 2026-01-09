@@ -13,7 +13,7 @@ import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
-import { SelectedScheduleActions } from "./components/SelectedScheduleActions";
+import { SelectedScheduleActions } from "./components/SelectedScheduleActions/SelectedScheduleActions";
 import { useSelectedScheduleView } from "./useSelectedScheduleView";
 
 interface Props {

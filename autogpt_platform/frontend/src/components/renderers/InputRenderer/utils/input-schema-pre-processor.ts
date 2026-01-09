@@ -1,5 +1,4 @@
 import { RJSFSchema } from "@rjsf/utils";
-import { findCustomFieldId } from "../custom/custom-registry";
 
 /**
  * Pre-processes the input schema to ensure all properties have a type defined.
@@ -20,12 +19,6 @@ export function preprocessInputSchema(schema: RJSFSchema): RJSFSchema {
     for (const [key, property] of Object.entries(processedSchema.properties)) {
       if (property && typeof property === "object") {
         const processedProperty = { ...property };
-
-        // adding $id for custom field
-        const customFieldId = findCustomFieldId(processedProperty);
-        if (customFieldId) {
-          processedProperty.$id = customFieldId;
-        }
 
         // Only add type if no type is defined AND no anyOf/oneOf/allOf is present
         if (

@@ -7665,6 +7665,7 @@
           "id": { "type": "string", "title": "Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
+          "owner_user_id": { "type": "string", "title": "Owner User Id" },
           "image_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Image Url"
@@ -7747,6 +7748,7 @@
           "id",
           "graph_id",
           "graph_version",
+          "owner_user_id",
           "image_url",
           "creator_name",
           "creator_image_url",
@@ -9686,6 +9688,7 @@
       },
       "StoreSubmission": {
         "properties": {
+          "listing_id": { "type": "string", "title": "Listing Id" },
           "agent_id": { "type": "string", "title": "Agent Id" },
           "agent_version": { "type": "integer", "title": "Agent Version" },
           "name": { "type": "string", "title": "Name" },
@@ -9757,6 +9760,7 @@
         },
         "type": "object",
         "required": [
+          "listing_id",
           "agent_id",
           "agent_version",
           "name",
@@ -9819,8 +9823,18 @@
       },
       "StoreSubmissionRequest": {
         "properties": {
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Agent Id",
+            "description": "Agent ID cannot be empty"
+          },
+          "agent_version": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Agent Version",
+            "description": "Agent version must be greater than 0"
+          },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },

@@ -6,6 +6,7 @@ export interface ExtendedFormContextType extends FormContextType {
   uiType?: BlockUIType;
   showHandles?: boolean;
   size?: "small" | "medium" | "large";
+  showOptionalToggle?: boolean;
 }
 
 export type PathSegment = {

@@ -134,7 +134,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate
+        run: poetry run prisma generate && poetry run gen-prisma-stub
 
       - id: supabase
         name: Start Supabase
