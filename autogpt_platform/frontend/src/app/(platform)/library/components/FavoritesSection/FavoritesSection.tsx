@@ -2,14 +2,13 @@
 
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
+import { Text } from "@/components/atoms/Text/Text";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { HeartIcon } from "@phosphor-icons/react";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 
 export function FavoritesSection() {
-  const isAgentFavoritingEnabled = useGetFlag(Flag.AGENT_FAVORITING);
   const {
     allAgents: favoriteAgents,
     agentLoading: isLoading,
@@ -19,28 +18,26 @@ export function FavoritesSection() {
     isFetchingNextPage,
   } = useFavoriteAgents();
 
-  // Only show this section if the feature flag is enabled
-  if (!isAgentFavoritingEnabled) {
-    return null;
-  }
-
-  // Don't show the section if there are no favorites
-  if (!isLoading && favoriteAgents.length === 0) {
+  if (isLoading || favoriteAgents.length === 0) {
     return null;
   }
 
   return (
-    <div className="mb-8">
-      <div className="flex items-center gap-[10px] p-2 pb-[10px]">
-        <HeartIcon className="h-5 w-5 fill-red-500 text-red-500" />
-        <span className="font-poppin text-[18px] font-semibold leading-[28px] text-neutral-800">
-          Favorites
-        </span>
-        {!isLoading && (
-          <span className="font-sans text-[14px] font-normal leading-6">
-            {agentCount} {agentCount === 1 ? "agent" : "agents"}
-          </span>
-        )}
+    <div className="!mb-8">
+      <div className="pb mb-3 flex items-center gap-2 p-2">
+        <HeartIcon className="h-5 w-5" weight="fill" />
+        <div className="flex items-baseline gap-2">
+          <Text variant="h4">Favorites</Text>
+          {!isLoading && (
+            <Text
+              variant="body"
+              data-testid="agents-count"
+              className="relative bottom-px text-zinc-500"
+            >
+              {agentCount}
+            </Text>
+          )}
+        </div>
       </div>
 
       <div className="relative">
@@ -70,7 +67,7 @@ export function FavoritesSection() {
         )}
       </div>
 
-      {favoriteAgents.length > 0 && <div className="mt-6 border-t pt-6" />}
+      {favoriteAgents.length > 0 && <div className="!mt-10 border-t" />}
     </div>
   );
 }
