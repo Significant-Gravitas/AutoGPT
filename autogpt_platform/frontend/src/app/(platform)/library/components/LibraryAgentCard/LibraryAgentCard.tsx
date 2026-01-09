@@ -24,7 +24,6 @@ export function LibraryAgentCard({ agent }: Props) {
 
   const {
     isFromMarketplace,
-    isAgentFavoritingEnabled,
     isFavorite,
     profile,
     creator_image_url,

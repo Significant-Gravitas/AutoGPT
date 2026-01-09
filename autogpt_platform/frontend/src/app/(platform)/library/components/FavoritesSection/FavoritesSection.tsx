@@ -24,7 +24,7 @@ export function FavoritesSection() {
 
   return (
     <div className="!mb-8">
-      <div className="pb mb-3 flex items-center gap-2 p-2">
+      <div className="mb-3 flex items-center gap-2 p-2">
         <HeartIcon className="h-5 w-5" weight="fill" />
         <div className="flex items-baseline gap-2">
           <Text variant="h4">Favorites</Text>

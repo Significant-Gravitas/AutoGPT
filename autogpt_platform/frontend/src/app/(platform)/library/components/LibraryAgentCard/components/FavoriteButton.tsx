@@ -2,10 +2,11 @@
 
 import { cn } from "@/lib/utils";
 import { HeartIcon } from "@phosphor-icons/react";
+import type { MouseEvent } from "react";
 
 interface FavoriteButtonProps {
   isFavorite: boolean;
-  onClick: (e: React.MouseEvent) => void;
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
 }
 
