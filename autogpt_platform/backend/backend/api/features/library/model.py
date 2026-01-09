@@ -48,6 +48,7 @@ class LibraryAgent(pydantic.BaseModel):
     id: str
     graph_id: str
     graph_version: int
+    owner_user_id: str  # ID of user who owns/created this agent graph
 
     image_url: str | None
 
@@ -163,6 +164,7 @@ class LibraryAgent(pydantic.BaseModel):
             id=agent.id,
             graph_id=agent.agentGraphId,
             graph_version=agent.agentGraphVersion,
+            owner_user_id=agent.userId,
             image_url=agent.imageUrl,
             creator_name=creator_name,
             creator_image_url=creator_image_url,

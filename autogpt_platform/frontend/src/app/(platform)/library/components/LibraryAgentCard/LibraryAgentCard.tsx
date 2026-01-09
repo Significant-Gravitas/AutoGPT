@@ -24,7 +24,6 @@ export function LibraryAgentCard({ agent }: Props) {
 
   const {
     isFromMarketplace,
-    isAgentFavoritingEnabled,
     isFavorite,
     profile,
     creator_image_url,
@@ -37,9 +36,8 @@ export function LibraryAgentCard({ agent }: Props) {
       data-agent-id={id}
       className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white transition-all duration-300 hover:shadow-md"
     >
-      <AgentCardMenu agent={agent} />
-      <NextLink href={`/library/agents/${id}`} className="w-full flex-shrink-0">
-        <div className="flex items-center gap-2 px-4 pt-3">
+      <NextLink href={`/library/agents/${id}`} className="flex-shrink-0">
+        <div className="relative flex items-center gap-2 px-4 pt-3">
           <Avatar className="h-4 w-4 rounded-full">
             <AvatarImage
               src={
@@ -58,13 +56,13 @@ export function LibraryAgentCard({ agent }: Props) {
             {isFromMarketplace ? "FROM MARKETPLACE" : "Built by you"}
           </Text>
         </div>
-        {isAgentFavoritingEnabled && (
-          <FavoriteButton
-            isFavorite={isFavorite}
-            onClick={handleToggleFavorite}
-          />
-        )}
       </NextLink>
+      <FavoriteButton
+        isFavorite={isFavorite}
+        onClick={handleToggleFavorite}
+        className="absolute right-10 top-0"
+      />
+      <AgentCardMenu agent={agent} />
 
       <div className="flex w-full flex-1 flex-col px-4 pb-2">
         <Link
