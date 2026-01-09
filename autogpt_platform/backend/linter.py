@@ -25,6 +25,9 @@ def run(*command: str) -> None:
 
 
 def lint():
+    # Generate Prisma types stub before running pyright to prevent type budget exhaustion
+    run("python", "gen_prisma_types_stub.py")
+
     lint_step_args: list[list[str]] = [
         ["ruff", "check", *TARGET_DIRS, "--exit-zero"],
         ["ruff", "format", "--diff", "--check", LIBS_DIR],
@@ -49,4 +52,6 @@ def format():
     run("ruff", "format", LIBS_DIR)
     run("isort", "--profile", "black", BACKEND_DIR)
     run("black", BACKEND_DIR)
+    # Generate Prisma types stub before running pyright to prevent type budget exhaustion
+    run("python", "gen_prisma_types_stub.py")
     run("pyright", *TARGET_DIRS)

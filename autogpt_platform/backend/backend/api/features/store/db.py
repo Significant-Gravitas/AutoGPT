@@ -1851,9 +1851,7 @@ async def get_admin_listings_with_versions(
         where = prisma.types.StoreListingWhereInput(**where_dict)
         include = prisma.types.StoreListingInclude(
             Versions=prisma.types.FindManyStoreListingVersionArgsFromStoreListing(
-                order_by=prisma.types._StoreListingVersion_version_OrderByInput(
-                    version="desc"
-                )
+                order_by={"version": "desc"}
             ),
             OwningUser=True,
         )
