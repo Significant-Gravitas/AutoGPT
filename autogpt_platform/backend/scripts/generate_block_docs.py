@@ -37,11 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Default output directory relative to repo root
 DEFAULT_OUTPUT_DIR = (
-    Path(__file__).parent.parent.parent.parent
-    / "docs"
-    / "content"
-    / "platform"
-    / "blocks"
+    Path(__file__).parent.parent.parent.parent / "docs" / "platform" / "blocks"
 )
 
 
