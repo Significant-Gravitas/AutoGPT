@@ -24,13 +24,38 @@ import seaborn as sns
 from pathlib import Path
 import warnings
 from collections import Counter
-from Bio import SeqIO  # Pour parser les fichiers FASTA
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
 warnings.filterwarnings('ignore')
 plt.style.use('seaborn-v0_8-whitegrid')
+
+# ============================================
+# Fonction simple pour parser les fichiers FASTA (sans BioPython)
+# ============================================
+def parse_fasta(fasta_path):
+    """Parse un fichier FASTA et retourne une liste de tuples (header, sequence)."""
+    sequences = []
+    current_header = None
+    current_seq = []
+
+    with open(fasta_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('>'):
+                if current_header is not None:
+                    sequences.append((current_header, ''.join(current_seq)))
+                current_header = line[1:]  # Enlever le '>'
+                current_seq = []
+            else:
+                current_seq.append(line)
+
+        # Ajouter la dernière séquence
+        if current_header is not None:
+            sequences.append((current_header, ''.join(current_seq)))
+
+    return sequences
 
 # Configuration des couleurs pour les nucléotides
 NUCLEOTIDE_COLORS = {
@@ -629,12 +654,12 @@ print(f"   Min: {np.min(all_distances):.2f}Å, Max: {np.max(all_distances):.2f}�
 def analyze_msa(msa_path, n_samples=5):
     """Analyse un fichier MSA."""
     try:
-        sequences = list(SeqIO.parse(msa_path, 'fasta'))
+        sequences = parse_fasta(msa_path)
 
         info = {
             'n_sequences': len(sequences),
-            'target_length': len(sequences[0].seq) if sequences else 0,
-            'headers': [seq.id for seq in sequences[:n_samples]]
+            'target_length': len(sequences[0][1]) if sequences else 0,
+            'headers': [seq[0] for seq in sequences[:n_samples]]
         }
 
         return info
@@ -666,8 +691,8 @@ print(f"\n⏳ Analyse de la profondeur des MSA ({len(all_msa_files)} fichiers)..
 
 for i, msa_file in enumerate(all_msa_files[:500]):  # Limiter pour la vitesse
     try:
-        n_seqs = sum(1 for _ in SeqIO.parse(msa_file, 'fasta'))
-        msa_depths.append(n_seqs)
+        sequences = parse_fasta(msa_file)
+        msa_depths.append(len(sequences))
     except:
         pass
 
