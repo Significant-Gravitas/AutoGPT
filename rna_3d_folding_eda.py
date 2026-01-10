@@ -853,7 +853,42 @@ print("🔧 Configuration du pipeline TBM...")
 # ### 10.1 Extraction des séquences du PDB
 
 # %%
-from gemmi import cif  # Parser CIF rapide (disponible sur Kaggle)
+# Parser CIF natif (sans dépendances externes)
+
+def parse_cif_file(cif_path):
+    """
+    Parse un fichier CIF et extrait les données atom_site.
+    Parser simple en Python pur, compatible Kaggle.
+    """
+    atom_data = []
+    in_atom_site = False
+    columns = []
+
+    with open(cif_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+
+            # Détecter le début du bloc atom_site
+            if line.startswith('_atom_site.'):
+                in_atom_site = True
+                col_name = line.split('.')[1].split()[0]
+                columns.append(col_name)
+                continue
+
+            # Si on est dans atom_site et qu'on trouve une ligne de données
+            if in_atom_site:
+                if line.startswith('_') or line.startswith('#') or line.startswith('loop_'):
+                    in_atom_site = False
+                    columns = []
+                    continue
+
+                if line and not line.startswith('_'):
+                    # Parser la ligne de données
+                    parts = line.split()
+                    if len(parts) >= len(columns):
+                        atom_data.append(dict(zip(columns, parts[:len(columns)])))
+
+    return atom_data
 
 def extract_rna_sequences_from_cif(cif_path):
     """
@@ -861,47 +896,50 @@ def extract_rna_sequences_from_cif(cif_path):
     Retourne un dict avec les infos de la structure.
     """
     try:
-        doc = cif.read(str(cif_path))
-        block = doc.sole_block()
+        atom_data = parse_cif_file(cif_path)
 
-        # Extraire les coordonnées des atomes
-        atom_site = block.find('_atom_site.',
-            ['label_atom_id', 'label_comp_id', 'label_asym_id',
-             'label_seq_id', 'Cartn_x', 'Cartn_y', 'Cartn_z',
-             'type_symbol', 'group_PDB'])
-
-        if not atom_site:
+        if not atom_data:
             return None
 
         residues = {}
         coords = {}
 
-        for row in atom_site:
-            atom_name = row[0]
-            res_name = row[1]
-            chain_id = row[2]
-            seq_id = row[3]
+        for atom in atom_data:
+            # Récupérer les champs nécessaires
+            atom_name = atom.get('label_atom_id', atom.get('auth_atom_id', ''))
+            res_name = atom.get('label_comp_id', atom.get('auth_comp_id', ''))
+            chain_id = atom.get('label_asym_id', atom.get('auth_asym_id', ''))
+            seq_id = atom.get('label_seq_id', atom.get('auth_seq_id', ''))
 
             # Filtrer uniquement les nucléotides RNA (A, U, G, C)
-            if res_name in ['A', 'U', 'G', 'C', 'ADE', 'URA', 'GUA', 'CYT']:
+            if res_name in ['A', 'U', 'G', 'C', 'ADE', 'URA', 'GUA', 'CYT',
+                           'DA', 'DU', 'DG', 'DC', 'RA', 'RU', 'RG', 'RC']:
                 # Mapper les noms longs vers courts
-                res_short = {'ADE': 'A', 'URA': 'U', 'GUA': 'G', 'CYT': 'C'}.get(res_name, res_name)
+                res_map = {'ADE': 'A', 'URA': 'U', 'GUA': 'G', 'CYT': 'C',
+                          'DA': 'A', 'DU': 'U', 'DG': 'G', 'DC': 'C',
+                          'RA': 'A', 'RU': 'U', 'RG': 'G', 'RC': 'C'}
+                res_short = res_map.get(res_name, res_name)
 
                 key = (chain_id, seq_id)
                 if key not in residues:
                     residues[key] = res_short
 
                 # Stocker les coordonnées C1'
-                if atom_name == "C1'":
+                if atom_name == "C1'" or atom_name == "C1*":
                     try:
-                        x, y, z = float(row[4]), float(row[5]), float(row[6])
+                        x = float(atom.get('Cartn_x', 0))
+                        y = float(atom.get('Cartn_y', 0))
+                        z = float(atom.get('Cartn_z', 0))
                         coords[key] = (x, y, z)
-                    except:
+                    except (ValueError, TypeError):
                         pass
+
+        if not residues:
+            return None
 
         # Construire la séquence par chaîne
         chains = {}
-        for (chain_id, seq_id), res in sorted(residues.items()):
+        for (chain_id, seq_id), res in sorted(residues.items(), key=lambda x: (x[0][0], int(x[0][1]) if x[0][1].isdigit() else 0)):
             if chain_id not in chains:
                 chains[chain_id] = {'sequence': '', 'coords': []}
             chains[chain_id]['sequence'] += res
@@ -911,7 +949,7 @@ def extract_rna_sequences_from_cif(cif_path):
                 chains[chain_id]['coords'].append(None)
 
         return {
-            'pdb_id': cif_path.stem.upper(),
+            'pdb_id': Path(cif_path).stem.upper(),
             'chains': chains
         }
 
