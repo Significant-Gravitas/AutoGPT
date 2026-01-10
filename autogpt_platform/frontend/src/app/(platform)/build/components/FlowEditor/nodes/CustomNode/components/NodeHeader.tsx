@@ -68,7 +68,10 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div>
-                      <Text variant="large-semibold" className="line-clamp-1">
+                      <Text
+                        variant="large-semibold"
+                        className="line-clamp-1 hover:cursor-text"
+                      >
                         {beautifyString(title).replace("Block", "").trim()}
                       </Text>
                     </div>

@@ -1,6 +1,8 @@
 import { FieldProps, RJSFSchema, RegistryFieldsType } from "@rjsf/utils";
 import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
+import { MultiSelectField } from "./MultiSelectField/MultiSelectField";
+import { isMultiSelectSchema } from "../utils/schema-utils";
 
 export interface CustomFieldDefinition {
   id: string;
@@ -29,6 +31,11 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
       );
     },
     component: GoogleDrivePickerField,
+  },
+  {
+    id: "custom/multi_select_field",
+    matcher: isMultiSelectSchema,
+    component: MultiSelectField,
   },
 ];
 
