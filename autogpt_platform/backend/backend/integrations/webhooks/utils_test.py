@@ -17,13 +17,22 @@ def test_webhook_ingress_url_matches_route(monkeypatch) -> None:
 
     monkeypatch.setattr(webhooks_utils.app_config, "platform_base_url", base_url)
 
-    expected_path = app.url_path_for(
-        "webhook_ingress_generic",
+    route = next(
+        route
+        for route in integrations_router.routes
+        if getattr(route, "path", None)
+        == "/{provider}/webhooks/{webhook_id}/ingress"
+        and "POST" in getattr(route, "methods", set())
+    )
+    expected_path = f"/api/integrations{route.path}".format(
         provider=provider.value,
         webhook_id=webhook_id,
     )
-    actual_path = urlparse(
-        webhooks_utils.webhook_ingress_url(provider, webhook_id)
-    ).path
+    actual_url = urlparse(webhooks_utils.webhook_ingress_url(provider, webhook_id))
+    expected_base = urlparse(base_url)
 
-    assert actual_path == expected_path
+    assert (actual_url.scheme, actual_url.netloc) == (
+        expected_base.scheme,
+        expected_base.netloc,
+    )
+    assert actual_url.path == expected_path
