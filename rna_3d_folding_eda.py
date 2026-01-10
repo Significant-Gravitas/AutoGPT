@@ -819,3 +819,630 @@ print("""
 print("=" * 70)
 print("                    🚀 PRÊT POUR LA MODÉLISATION!")
 print("=" * 70)
+
+# %% [markdown]
+# ---
+# # 🧬 PARTIE 2 : STRATÉGIES DE MODÉLISATION
+# ---
+#
+# Basé sur les solutions gagnantes de la Part 1 :
+# - **1ère place (john)** : Template-Based Modeling (TBM) pur
+# - **2ème place (odat)** : TBM avec alignement optimisé
+# - **3ème place (Eigen)** : Hybride TBM + Deep Learning
+#
+# ## Approche retenue : Template-Based Modeling
+# 95% des cibles ont des templates potentiels dans le PDB !
+
+# %% [markdown]
+# ## 🔍 10. Pipeline Template-Based Modeling (TBM)
+
+# %%
+# ============================================
+# STRATÉGIE 1 : TEMPLATE-BASED MODELING
+# ============================================
+# Pipeline :
+# 1. Parser les séquences du PDB_RNA
+# 2. Aligner la séquence cible avec les séquences PDB
+# 3. Trouver les meilleurs templates
+# 4. Copier/adapter les coordonnées 3D
+# 5. Générer 5 prédictions diversifiées
+
+print("🔧 Configuration du pipeline TBM...")
+
+# %% [markdown]
+# ### 10.1 Extraction des séquences du PDB
+
+# %%
+from gemmi import cif  # Parser CIF rapide (disponible sur Kaggle)
+
+def extract_rna_sequences_from_cif(cif_path):
+    """
+    Extrait les séquences RNA et coordonnées C1' d'un fichier CIF.
+    Retourne un dict avec les infos de la structure.
+    """
+    try:
+        doc = cif.read(str(cif_path))
+        block = doc.sole_block()
+
+        # Extraire les coordonnées des atomes
+        atom_site = block.find('_atom_site.',
+            ['label_atom_id', 'label_comp_id', 'label_asym_id',
+             'label_seq_id', 'Cartn_x', 'Cartn_y', 'Cartn_z',
+             'type_symbol', 'group_PDB'])
+
+        if not atom_site:
+            return None
+
+        residues = {}
+        coords = {}
+
+        for row in atom_site:
+            atom_name = row[0]
+            res_name = row[1]
+            chain_id = row[2]
+            seq_id = row[3]
+
+            # Filtrer uniquement les nucléotides RNA (A, U, G, C)
+            if res_name in ['A', 'U', 'G', 'C', 'ADE', 'URA', 'GUA', 'CYT']:
+                # Mapper les noms longs vers courts
+                res_short = {'ADE': 'A', 'URA': 'U', 'GUA': 'G', 'CYT': 'C'}.get(res_name, res_name)
+
+                key = (chain_id, seq_id)
+                if key not in residues:
+                    residues[key] = res_short
+
+                # Stocker les coordonnées C1'
+                if atom_name == "C1'":
+                    try:
+                        x, y, z = float(row[4]), float(row[5]), float(row[6])
+                        coords[key] = (x, y, z)
+                    except:
+                        pass
+
+        # Construire la séquence par chaîne
+        chains = {}
+        for (chain_id, seq_id), res in sorted(residues.items()):
+            if chain_id not in chains:
+                chains[chain_id] = {'sequence': '', 'coords': []}
+            chains[chain_id]['sequence'] += res
+            if (chain_id, seq_id) in coords:
+                chains[chain_id]['coords'].append(coords[(chain_id, seq_id)])
+            else:
+                chains[chain_id]['coords'].append(None)
+
+        return {
+            'pdb_id': cif_path.stem.upper(),
+            'chains': chains
+        }
+
+    except Exception as e:
+        return None
+
+# Test sur quelques fichiers
+print("📂 Test d'extraction sur quelques fichiers CIF...")
+pdb_dir = DATA_PATH / 'PDB_RNA'
+sample_cifs = list(pdb_dir.glob('*.cif'))[:5]
+
+for cif_file in sample_cifs:
+    result = extract_rna_sequences_from_cif(cif_file)
+    if result:
+        for chain_id, chain_data in result['chains'].items():
+            seq = chain_data['sequence']
+            n_coords = sum(1 for c in chain_data['coords'] if c is not None)
+            print(f"  {result['pdb_id']}_{chain_id}: {len(seq)} nt, {n_coords} coords C1'")
+            if len(seq) < 50:
+                print(f"    Séquence: {seq}")
+
+# %% [markdown]
+# ### 10.2 Construction de la base de templates
+
+# %%
+def build_template_database(pdb_dir, max_files=None, verbose=True):
+    """
+    Construit une base de données de templates à partir des fichiers CIF.
+    """
+    templates = []
+    cif_files = list(pdb_dir.glob('*.cif'))
+
+    if max_files:
+        cif_files = cif_files[:max_files]
+
+    if verbose:
+        print(f"📦 Construction de la base de templates ({len(cif_files)} fichiers)...")
+
+    for i, cif_file in enumerate(cif_files):
+        if verbose and i % 500 == 0:
+            print(f"   Progression: {i}/{len(cif_files)}")
+
+        result = extract_rna_sequences_from_cif(cif_file)
+        if result:
+            for chain_id, chain_data in result['chains'].items():
+                seq = chain_data['sequence']
+                coords = chain_data['coords']
+
+                # Filtrer les chaînes trop courtes ou sans coordonnées
+                n_valid_coords = sum(1 for c in coords if c is not None)
+                if len(seq) >= 10 and n_valid_coords >= len(seq) * 0.5:
+                    templates.append({
+                        'pdb_id': result['pdb_id'],
+                        'chain_id': chain_id,
+                        'sequence': seq,
+                        'coords': coords,
+                        'length': len(seq)
+                    })
+
+    if verbose:
+        print(f"✅ {len(templates)} templates extraits")
+
+    return templates
+
+# Construire une base de templates (limiter pour la démo)
+# En production, utiliser tous les fichiers (max_files=None)
+templates_db = build_template_database(pdb_dir, max_files=500, verbose=True)
+
+# Statistiques
+template_lengths = [t['length'] for t in templates_db]
+print(f"\n📊 Statistiques des templates:")
+print(f"   Nombre: {len(templates_db)}")
+print(f"   Longueur min: {min(template_lengths)}, max: {max(template_lengths)}")
+print(f"   Longueur moyenne: {np.mean(template_lengths):.1f}")
+
+# %% [markdown]
+# ### 10.3 Alignement de séquences (Simple)
+
+# %%
+def simple_sequence_alignment(seq1, seq2):
+    """
+    Alignement simple basé sur la similarité de séquence.
+    Retourne le score de similarité (0-1) et les positions alignées.
+    """
+    # Méthode simple : recherche de sous-chaînes communes
+    len1, len2 = len(seq1), len(seq2)
+
+    if len1 == 0 or len2 == 0:
+        return 0.0, []
+
+    # Construire une matrice de correspondance
+    matches = 0
+    aligned_positions = []
+
+    # Alignement global simple (sans gaps pour commencer)
+    min_len = min(len1, len2)
+
+    # Essayer différents décalages
+    best_score = 0
+    best_offset = 0
+
+    for offset in range(-len2 + 1, len1):
+        score = 0
+        for i in range(min_len):
+            pos1 = i
+            pos2 = i - offset
+            if 0 <= pos1 < len1 and 0 <= pos2 < len2:
+                if seq1[pos1] == seq2[pos2]:
+                    score += 1
+
+        if score > best_score:
+            best_score = score
+            best_offset = offset
+
+    # Reconstruire l'alignement avec le meilleur offset
+    for i in range(max(len1, len2)):
+        pos1 = i
+        pos2 = i - best_offset
+        if 0 <= pos1 < len1 and 0 <= pos2 < len2:
+            if seq1[pos1] == seq2[pos2]:
+                aligned_positions.append((pos1, pos2))
+
+    # Score normalisé
+    similarity = best_score / max(len1, len2)
+
+    return similarity, aligned_positions
+
+def find_best_templates(query_seq, templates_db, top_k=5):
+    """
+    Trouve les meilleurs templates pour une séquence query.
+    """
+    scores = []
+
+    for template in templates_db:
+        similarity, aligned_pos = simple_sequence_alignment(query_seq, template['sequence'])
+
+        # Bonus pour longueur similaire
+        len_ratio = min(len(query_seq), template['length']) / max(len(query_seq), template['length'])
+
+        combined_score = similarity * 0.7 + len_ratio * 0.3
+
+        scores.append({
+            'template': template,
+            'similarity': similarity,
+            'len_ratio': len_ratio,
+            'combined_score': combined_score,
+            'aligned_positions': aligned_pos
+        })
+
+    # Trier par score combiné
+    scores.sort(key=lambda x: x['combined_score'], reverse=True)
+
+    return scores[:top_k]
+
+# Test sur une séquence de validation
+print("🔍 Test de recherche de templates...")
+test_seq = validation_sequences.iloc[0]['sequence']
+print(f"   Séquence test: {test_seq[:50]}... (longueur: {len(test_seq)})")
+
+best_templates = find_best_templates(test_seq, templates_db, top_k=5)
+
+print(f"\n📋 Top 5 templates:")
+for i, match in enumerate(best_templates):
+    t = match['template']
+    print(f"   {i+1}. {t['pdb_id']}_{t['chain_id']}: "
+          f"sim={match['similarity']:.3f}, len={t['length']}, "
+          f"score={match['combined_score']:.3f}")
+
+# %% [markdown]
+# ### 10.4 Prédiction de structure par template
+
+# %%
+def predict_structure_from_template(query_seq, template_match, noise_std=0.0):
+    """
+    Prédit les coordonnées 3D en utilisant un template.
+
+    Args:
+        query_seq: Séquence cible
+        template_match: Résultat de find_best_templates
+        noise_std: Écart-type du bruit à ajouter (pour diversification)
+
+    Returns:
+        Liste de coordonnées (x, y, z) pour chaque résidu
+    """
+    template = template_match['template']
+    aligned_positions = template_match['aligned_positions']
+    template_coords = template['coords']
+
+    # Initialiser les coordonnées prédites
+    predicted_coords = [(0.0, 0.0, 0.0)] * len(query_seq)
+
+    # Copier les coordonnées des positions alignées
+    for query_pos, template_pos in aligned_positions:
+        if template_pos < len(template_coords) and template_coords[template_pos] is not None:
+            x, y, z = template_coords[template_pos]
+
+            # Ajouter du bruit pour diversification
+            if noise_std > 0:
+                x += np.random.normal(0, noise_std)
+                y += np.random.normal(0, noise_std)
+                z += np.random.normal(0, noise_std)
+
+            predicted_coords[query_pos] = (x, y, z)
+
+    # Interpoler les positions manquantes
+    predicted_coords = interpolate_missing_coords(predicted_coords)
+
+    return predicted_coords
+
+def interpolate_missing_coords(coords):
+    """
+    Interpole les coordonnées manquantes (0, 0, 0) par interpolation linéaire.
+    """
+    n = len(coords)
+    result = list(coords)
+
+    # Trouver les positions avec des coordonnées valides
+    valid_indices = [i for i, c in enumerate(coords) if c != (0.0, 0.0, 0.0)]
+
+    if len(valid_indices) < 2:
+        # Pas assez de points pour interpoler, utiliser des coordonnées par défaut
+        for i in range(n):
+            if result[i] == (0.0, 0.0, 0.0):
+                # Position sur une hélice simple
+                result[i] = (i * 5.9, 0.0, 0.0)
+        return result
+
+    # Interpoler entre les points valides
+    for i in range(n):
+        if result[i] == (0.0, 0.0, 0.0):
+            # Trouver les voisins valides les plus proches
+            prev_valid = None
+            next_valid = None
+
+            for vi in valid_indices:
+                if vi < i:
+                    prev_valid = vi
+                elif vi > i and next_valid is None:
+                    next_valid = vi
+                    break
+
+            if prev_valid is not None and next_valid is not None:
+                # Interpolation linéaire
+                t = (i - prev_valid) / (next_valid - prev_valid)
+                x = coords[prev_valid][0] + t * (coords[next_valid][0] - coords[prev_valid][0])
+                y = coords[prev_valid][1] + t * (coords[next_valid][1] - coords[prev_valid][1])
+                z = coords[prev_valid][2] + t * (coords[next_valid][2] - coords[prev_valid][2])
+                result[i] = (x, y, z)
+            elif prev_valid is not None:
+                # Extrapolation depuis le dernier point valide
+                dx = 5.9  # Distance moyenne C1'-C1'
+                result[i] = (coords[prev_valid][0] + dx * (i - prev_valid),
+                           coords[prev_valid][1],
+                           coords[prev_valid][2])
+            elif next_valid is not None:
+                # Extrapolation avant le premier point valide
+                dx = 5.9
+                result[i] = (coords[next_valid][0] - dx * (next_valid - i),
+                           coords[next_valid][1],
+                           coords[next_valid][2])
+
+    return result
+
+# Test de prédiction
+print("🧬 Test de prédiction de structure...")
+if best_templates:
+    pred_coords = predict_structure_from_template(test_seq, best_templates[0])
+    valid_coords = sum(1 for c in pred_coords if c != (0.0, 0.0, 0.0))
+    print(f"   Coordonnées prédites: {len(pred_coords)} résidus, {valid_coords} valides")
+    print(f"   Premiers résidus: {pred_coords[:3]}")
+
+# %% [markdown]
+# ### 10.5 Génération de 5 prédictions diversifiées
+
+# %%
+def generate_diverse_predictions(query_seq, templates_db, n_predictions=5):
+    """
+    Génère 5 prédictions diversifiées pour une séquence.
+
+    Stratégies de diversification :
+    1. Utiliser les top-5 templates différents
+    2. Ajouter du bruit aux coordonnées
+    3. Combiner plusieurs templates
+    """
+    predictions = []
+
+    # Trouver les meilleurs templates
+    best_templates = find_best_templates(query_seq, templates_db, top_k=10)
+
+    if not best_templates:
+        # Fallback : prédiction linéaire
+        for i in range(n_predictions):
+            coords = [(j * 5.9 + np.random.normal(0, 0.5),
+                      np.random.normal(0, 1),
+                      np.random.normal(0, 1)) for j in range(len(query_seq))]
+            predictions.append(coords)
+        return predictions
+
+    # Stratégie 1-3 : Utiliser les 3 meilleurs templates
+    for i in range(min(3, len(best_templates))):
+        noise = i * 0.2  # Augmenter le bruit progressivement
+        coords = predict_structure_from_template(query_seq, best_templates[i], noise_std=noise)
+        predictions.append(coords)
+
+    # Stratégie 4 : Moyenne des 2 meilleurs templates + bruit
+    if len(best_templates) >= 2:
+        coords1 = predict_structure_from_template(query_seq, best_templates[0])
+        coords2 = predict_structure_from_template(query_seq, best_templates[1])
+
+        avg_coords = []
+        for c1, c2 in zip(coords1, coords2):
+            avg = ((c1[0] + c2[0]) / 2 + np.random.normal(0, 0.3),
+                   (c1[1] + c2[1]) / 2 + np.random.normal(0, 0.3),
+                   (c1[2] + c2[2]) / 2 + np.random.normal(0, 0.3))
+            avg_coords.append(avg)
+        predictions.append(avg_coords)
+    else:
+        predictions.append(predict_structure_from_template(query_seq, best_templates[0], noise_std=0.5))
+
+    # Stratégie 5 : Meilleur template avec perturbation aléatoire
+    coords = predict_structure_from_template(query_seq, best_templates[0], noise_std=0.8)
+    predictions.append(coords)
+
+    # S'assurer qu'on a exactement 5 prédictions
+    while len(predictions) < n_predictions:
+        predictions.append(predict_structure_from_template(query_seq, best_templates[0],
+                                                          noise_std=np.random.uniform(0.3, 1.0)))
+
+    return predictions[:n_predictions]
+
+# Test
+print("🎯 Génération de 5 prédictions diversifiées...")
+test_predictions = generate_diverse_predictions(test_seq, templates_db, n_predictions=5)
+print(f"   Nombre de prédictions: {len(test_predictions)}")
+for i, pred in enumerate(test_predictions):
+    print(f"   Prédiction {i+1}: {len(pred)} résidus")
+
+# %% [markdown]
+# ## 📊 11. Évaluation locale (TM-score simplifié)
+
+# %%
+def calculate_tm_score_simple(pred_coords, ref_coords):
+    """
+    Calcule un TM-score simplifié entre les coordonnées prédites et de référence.
+    Note: Version simplifiée sans l'optimisation de rotation/translation.
+    """
+    n = len(ref_coords)
+    if n == 0:
+        return 0.0
+
+    # Calculer d0
+    if n >= 30:
+        d0 = 0.6 * (n - 0.5) ** (1/3) - 2.5
+    else:
+        d0_values = {12: 0.3, 15: 0.4, 19: 0.5, 23: 0.6, 29: 0.7}
+        d0 = 0.3
+        for threshold, value in d0_values.items():
+            if n >= threshold:
+                d0 = value
+
+    d0 = max(d0, 0.5)  # Minimum d0
+
+    # Centrer les coordonnées
+    pred_arr = np.array(pred_coords)
+    ref_arr = np.array(ref_coords)
+
+    pred_centered = pred_arr - np.mean(pred_arr, axis=0)
+    ref_centered = ref_arr - np.mean(ref_arr, axis=0)
+
+    # Calculer les distances
+    distances = np.sqrt(np.sum((pred_centered - ref_centered) ** 2, axis=1))
+
+    # Calculer le TM-score
+    tm_score = np.sum(1 / (1 + (distances / d0) ** 2)) / n
+
+    return tm_score
+
+# Évaluation sur le jeu de validation
+print("📊 Évaluation sur le jeu de validation...")
+
+# Prendre quelques exemples de validation
+n_eval = min(10, len(validation_sequences))
+eval_scores = []
+
+for idx in range(n_eval):
+    row = validation_sequences.iloc[idx]
+    target_id = row['target_id']
+    query_seq = row['sequence']
+
+    # Obtenir les coordonnées de référence
+    ref_data = validation_labels[validation_labels['ID'].str.startswith(target_id + '_')]
+    if len(ref_data) == 0:
+        continue
+
+    ref_data = ref_data.sort_values('resid')
+    ref_coords = list(zip(ref_data['x_1'].fillna(0),
+                          ref_data['y_1'].fillna(0),
+                          ref_data['z_1'].fillna(0)))
+
+    # Générer les prédictions
+    predictions = generate_diverse_predictions(query_seq, templates_db)
+
+    # Calculer le meilleur TM-score (best of 5)
+    best_score = 0
+    for pred in predictions:
+        # Ajuster la longueur si nécessaire
+        if len(pred) != len(ref_coords):
+            min_len = min(len(pred), len(ref_coords))
+            pred = pred[:min_len]
+            ref = ref_coords[:min_len]
+        else:
+            ref = ref_coords
+
+        score = calculate_tm_score_simple(pred, ref)
+        best_score = max(best_score, score)
+
+    eval_scores.append({'target_id': target_id, 'tm_score': best_score, 'length': len(query_seq)})
+    print(f"   {target_id}: TM-score = {best_score:.4f} (len={len(query_seq)})")
+
+if eval_scores:
+    mean_score = np.mean([s['tm_score'] for s in eval_scores])
+    print(f"\n📈 TM-score moyen (validation): {mean_score:.4f}")
+
+# %% [markdown]
+# ## 📝 12. Génération du fichier de soumission
+
+# %%
+def generate_submission(test_sequences_df, templates_db, output_path='submission.csv'):
+    """
+    Génère le fichier de soumission au format Kaggle.
+    """
+    print("📝 Génération du fichier de soumission...")
+
+    rows = []
+
+    for idx, row in test_sequences_df.iterrows():
+        target_id = row['target_id']
+        query_seq = row['sequence']
+
+        # Générer 5 prédictions
+        predictions = generate_diverse_predictions(query_seq, templates_db)
+
+        # Créer les lignes pour chaque résidu
+        for resid, nucleotide in enumerate(query_seq, start=1):
+            row_data = {
+                'ID': f"{target_id}_{resid}",
+                'resname': nucleotide,
+                'resid': resid
+            }
+
+            # Ajouter les coordonnées pour chaque prédiction
+            for pred_idx, pred_coords in enumerate(predictions, start=1):
+                if resid - 1 < len(pred_coords):
+                    x, y, z = pred_coords[resid - 1]
+                else:
+                    x, y, z = 0.0, 0.0, 0.0
+
+                # Clipper les coordonnées selon les règles
+                x = np.clip(x, -999.999, 9999.999)
+                y = np.clip(y, -999.999, 9999.999)
+                z = np.clip(z, -999.999, 9999.999)
+
+                row_data[f'x_{pred_idx}'] = round(x, 3)
+                row_data[f'y_{pred_idx}'] = round(y, 3)
+                row_data[f'z_{pred_idx}'] = round(z, 3)
+
+            rows.append(row_data)
+
+        if idx % 10 == 0:
+            print(f"   Progression: {idx + 1}/{len(test_sequences_df)}")
+
+    # Créer le DataFrame
+    submission_df = pd.DataFrame(rows)
+
+    # Ordonner les colonnes
+    coord_cols = []
+    for i in range(1, 6):
+        coord_cols.extend([f'x_{i}', f'y_{i}', f'z_{i}'])
+
+    column_order = ['ID', 'resname', 'resid'] + coord_cols
+    submission_df = submission_df[column_order]
+
+    # Sauvegarder
+    submission_df.to_csv(output_path, index=False)
+    print(f"✅ Soumission générée: {output_path}")
+    print(f"   Shape: {submission_df.shape}")
+
+    return submission_df
+
+# Génération de la soumission (décommentez pour exécuter)
+# submission = generate_submission(test_sequences, templates_db, 'submission.csv')
+
+# %% [markdown]
+# ## 🎯 13. Résumé de la stratégie
+
+# %%
+print("=" * 70)
+print("               🎯 RÉSUMÉ DE LA STRATÉGIE TBM")
+print("=" * 70)
+print("""
+📋 PIPELINE IMPLÉMENTÉ:
+
+1. EXTRACTION DES TEMPLATES
+   • Parser les fichiers CIF du PDB_RNA
+   • Extraire séquences + coordonnées C1'
+   • {n_templates} templates disponibles
+
+2. RECHERCHE DE TEMPLATES
+   • Alignement de séquence simple
+   • Score combiné: similarité + ratio de longueur
+   • Sélection des top-K templates
+
+3. PRÉDICTION DE STRUCTURE
+   • Copie des coordonnées du template
+   • Interpolation des positions manquantes
+   • 5 stratégies de diversification
+
+4. DIVERSIFICATION (5 prédictions)
+   • Prédiction 1-3: Top 3 templates
+   • Prédiction 4: Moyenne des 2 meilleurs
+   • Prédiction 5: Perturbation aléatoire
+
+📈 AMÉLIORATIONS POSSIBLES:
+   • Alignement plus sophistiqué (Smith-Waterman)
+   • Rotation/translation optimale (Kabsch algorithm)
+   • Deep Learning pour les cibles sans template
+   • Utilisation des MSA pour l'alignement
+
+🚀 Pour soumettre:
+   1. Décommenter la génération de soumission
+   2. Utiliser tous les fichiers PDB (max_files=None)
+   3. Exécuter le notebook complet
+""".format(n_templates=len(templates_db)))
+print("=" * 70)
