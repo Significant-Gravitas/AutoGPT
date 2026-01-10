@@ -858,35 +858,82 @@ print("🔧 Configuration du pipeline TBM...")
 def parse_cif_file(cif_path):
     """
     Parse un fichier CIF et extrait les données atom_site.
-    Parser simple en Python pur, compatible Kaggle.
+    Parser robuste en Python pur, compatible Kaggle.
+    Gère les valeurs entre guillemets et les formats variés.
     """
+    import re
+
     atom_data = []
-    in_atom_site = False
     columns = []
+    in_loop = False
+    collecting_columns = False
+
+    def parse_cif_line(line):
+        """Parse une ligne CIF en gérant les guillemets."""
+        tokens = []
+        current = ''
+        in_quote = False
+        quote_char = None
+
+        for char in line:
+            if char in ('"', "'") and not in_quote:
+                in_quote = True
+                quote_char = char
+            elif char == quote_char and in_quote:
+                in_quote = False
+                quote_char = None
+            elif char.isspace() and not in_quote:
+                if current:
+                    tokens.append(current)
+                    current = ''
+            else:
+                current += char
+
+        if current:
+            tokens.append(current)
+
+        return tokens
 
     with open(cif_path, 'r') as f:
         for line in f:
             line = line.strip()
 
-            # Détecter le début du bloc atom_site
-            if line.startswith('_atom_site.'):
-                in_atom_site = True
+            if not line or line.startswith('#'):
+                continue
+
+            # Détecter loop_
+            if line == 'loop_':
+                in_loop = True
+                collecting_columns = True
+                columns = []
+                continue
+
+            # Collecter les noms de colonnes atom_site
+            if collecting_columns and line.startswith('_atom_site.'):
                 col_name = line.split('.')[1].split()[0]
                 columns.append(col_name)
                 continue
 
-            # Si on est dans atom_site et qu'on trouve une ligne de données
-            if in_atom_site:
-                if line.startswith('_') or line.startswith('#') or line.startswith('loop_'):
-                    in_atom_site = False
+            # Fin de la collecte des colonnes
+            if collecting_columns and not line.startswith('_'):
+                collecting_columns = False
+
+                # Si on n'a pas de colonnes atom_site, réinitialiser
+                if not columns or not any('atom' in c.lower() or 'Cartn' in c for c in columns):
+                    in_loop = False
                     columns = []
                     continue
 
-                if line and not line.startswith('_'):
-                    # Parser la ligne de données
-                    parts = line.split()
-                    if len(parts) >= len(columns):
-                        atom_data.append(dict(zip(columns, parts[:len(columns)])))
+            # Si nouveau bloc (autre _), terminer
+            if in_loop and not collecting_columns and line.startswith('_'):
+                break
+
+            # Parser les données
+            if in_loop and not collecting_columns and columns:
+                if line.startswith('ATOM') or line.startswith('HETATM'):
+                    tokens = parse_cif_line(line)
+                    if len(tokens) >= len(columns):
+                        atom_data.append(dict(zip(columns, tokens[:len(columns)])))
 
     return atom_data
 
@@ -924,8 +971,9 @@ def extract_rna_sequences_from_cif(cif_path):
                 if key not in residues:
                     residues[key] = res_short
 
-                # Stocker les coordonnées C1'
-                if atom_name == "C1'" or atom_name == "C1*":
+                # Stocker les coordonnées C1' (plusieurs variations possibles)
+                atom_name_clean = atom_name.strip("'\"")
+                if atom_name_clean in ("C1'", "C1*", "C1", "C1'"):
                     try:
                         x = float(atom.get('Cartn_x', 0))
                         y = float(atom.get('Cartn_y', 0))
@@ -956,9 +1004,34 @@ def extract_rna_sequences_from_cif(cif_path):
     except Exception as e:
         return None
 
-# Test sur quelques fichiers
-print("📂 Test d'extraction sur quelques fichiers CIF...")
+# Débogage : afficher le contenu brut d'un fichier CIF
+print("🔍 Débogage du parser CIF...")
 pdb_dir = DATA_PATH / 'PDB_RNA'
+sample_cifs = list(pdb_dir.glob('*.cif'))[:1]
+
+if sample_cifs:
+    test_cif = sample_cifs[0]
+    print(f"   Fichier test: {test_cif.name}")
+    atom_data = parse_cif_file(test_cif)
+    print(f"   Atomes parsés: {len(atom_data)}")
+
+    if atom_data:
+        # Afficher les colonnes disponibles
+        print(f"   Colonnes: {list(atom_data[0].keys())}")
+        # Afficher quelques atomes
+        print("   Exemples d'atomes:")
+        for atom in atom_data[:3]:
+            atom_id = atom.get('label_atom_id', atom.get('auth_atom_id', 'N/A'))
+            res = atom.get('label_comp_id', atom.get('auth_comp_id', 'N/A'))
+            print(f"     - atom={atom_id}, res={res}")
+        # Chercher C1'
+        c1_atoms = [a for a in atom_data if "C1" in str(a.get('label_atom_id', ''))]
+        print(f"   Atomes contenant 'C1': {len(c1_atoms)}")
+        if c1_atoms:
+            print(f"     Exemple: {c1_atoms[0].get('label_atom_id')}")
+
+# Test sur quelques fichiers
+print("\n📂 Test d'extraction sur quelques fichiers CIF...")
 sample_cifs = list(pdb_dir.glob('*.cif'))[:5]
 
 for cif_file in sample_cifs:
@@ -1019,11 +1092,15 @@ def build_template_database(pdb_dir, max_files=None, verbose=True):
 templates_db = build_template_database(pdb_dir, max_files=500, verbose=True)
 
 # Statistiques
-template_lengths = [t['length'] for t in templates_db]
 print(f"\n📊 Statistiques des templates:")
 print(f"   Nombre: {len(templates_db)}")
-print(f"   Longueur min: {min(template_lengths)}, max: {max(template_lengths)}")
-print(f"   Longueur moyenne: {np.mean(template_lengths):.1f}")
+
+if templates_db:
+    template_lengths = [t['length'] for t in templates_db]
+    print(f"   Longueur min: {min(template_lengths)}, max: {max(template_lengths)}")
+    print(f"   Longueur moyenne: {np.mean(template_lengths):.1f}")
+else:
+    print("   ⚠️ Aucun template extrait - vérifiez le parser CIF ci-dessus")
 
 # %% [markdown]
 # ### 10.3 Alignement de séquences (Simple)
