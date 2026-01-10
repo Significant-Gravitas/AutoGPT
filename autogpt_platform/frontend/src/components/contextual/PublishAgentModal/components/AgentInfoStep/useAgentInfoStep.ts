@@ -9,7 +9,7 @@ import * as Sentry from "@sentry/nextjs";
 import {
   PublishAgentFormData,
   PublishAgentInfoInitialData,
-  publishAgentSchema,
+  publishAgentSchemaFactory,
 } from "./helpers";
 
 export interface Props {
@@ -18,6 +18,7 @@ export interface Props {
   selectedAgentId: string | null;
   selectedAgentVersion: number | null;
   initialData?: PublishAgentInfoInitialData;
+  isMarketplaceUpdate?: boolean;
 }
 
 export function useAgentInfoStep({
@@ -26,6 +27,7 @@ export function useAgentInfoStep({
   selectedAgentId,
   selectedAgentVersion,
   initialData,
+  isMarketplaceUpdate = false,
 }: Props) {
   const [agentId, setAgentId] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -36,8 +38,9 @@ export function useAgentInfoStep({
   const api = useBackendAPI();
 
   const form = useForm<PublishAgentFormData>({
-    resolver: zodResolver(publishAgentSchema),
+    resolver: zodResolver(publishAgentSchemaFactory(isMarketplaceUpdate)),
     defaultValues: {
+      changesSummary: "",
       title: "",
       subheader: "",
       slug: "",
@@ -61,6 +64,7 @@ export function useAgentInfoStep({
 
       // Update form with initial data
       form.reset({
+        changesSummary: initialData.changesSummary || "",
         title: initialData.title,
         subheader: initialData.subheader,
         slug: initialData.slug.toLocaleLowerCase().trim(),
@@ -104,9 +108,10 @@ export function useAgentInfoStep({
         agent_output_demo_url: data.agentOutputDemo || "",
         agent_id: selectedAgentId || "",
         agent_version: selectedAgentVersion || 0,
-        slug: data.slug.replace(/\s+/g, "-"),
+        slug: (data.slug || "").replace(/\s+/g, "-"),
         categories: filteredCategories,
         recommended_schedule_cron: data.recommendedScheduleCron || null,
+        changes_summary: data.changesSummary || null,
       } as any);
 
       await queryClient.invalidateQueries({

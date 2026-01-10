@@ -41,11 +41,9 @@ export const customMutator = async <
   T extends { data: any; status: number; headers: Headers },
 >(
   url: string,
-  options: RequestInit & {
-    params?: any;
-  } = {},
+  options: RequestInit,
 ): Promise<T> => {
-  const { params, ...requestOptions } = options;
+  const requestOptions = options;
   const method = (requestOptions.method || "GET") as
     | "GET"
     | "POST"
@@ -87,14 +85,11 @@ export const customMutator = async <
     headers["Content-Type"] = "application/json";
   }
 
-  const queryString = params
-    ? "?" + new URLSearchParams(params).toString()
-    : "";
-
   const baseUrl = getBaseUrl();
 
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
-  const fullUrl = `${baseUrl}${url}${queryString}`;
+  // here url also contains encoded query params
+  const fullUrl = `${baseUrl}${url}`;
 
   if (environment.isServerSide()) {
     try {
@@ -112,6 +107,19 @@ export const customMutator = async <
     headers,
     body: data,
   });
+
+  // Check if response is a redirect (3xx) and redirect is allowed
+  const allowRedirect = requestOptions.redirect !== "error";
+  const isRedirect = response.status >= 300 && response.status < 400;
+
+  // For redirect responses, return early without trying to parse body
+  if (allowRedirect && isRedirect) {
+    return {
+      status: response.status,
+      data: null,
+      headers: response.headers,
+    } as T;
+  }
 
   if (!response.ok) {
     let responseData: any = null;

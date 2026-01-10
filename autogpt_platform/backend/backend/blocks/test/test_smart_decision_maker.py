@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.model import CreateGraph
+from backend.api.rest_api import AgentServer
 from backend.data.execution import ExecutionContext
 from backend.data.model import ProviderName, User
-from backend.server.model import CreateGraph
-from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer, wait_execution
 
@@ -233,7 +233,7 @@ async def test_smart_decision_maker_tracks_llm_stats():
         # Create test input
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Should I continue with this task?",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -335,7 +335,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             retry=2,  # Set retry to 2 for testing
             agent_mode_max_iterations=0,
@@ -402,7 +402,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -462,7 +462,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -526,7 +526,7 @@ async def test_smart_decision_maker_parameter_validation():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Search for keywords",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -648,7 +648,7 @@ async def test_smart_decision_maker_raw_response_conversion():
 
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Test prompt",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             retry=2,
             agent_mode_max_iterations=0,
@@ -722,7 +722,7 @@ async def test_smart_decision_maker_raw_response_conversion():
     ):
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Simple prompt",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -778,7 +778,7 @@ async def test_smart_decision_maker_raw_response_conversion():
     ):
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Another test",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,
         )
@@ -931,7 +931,7 @@ async def test_smart_decision_maker_agent_mode():
         # Test agent mode with max_iterations = 3
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Complete this task using tools",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=3,  # Enable agent mode with 3 max iterations
         )
@@ -1020,7 +1020,7 @@ async def test_smart_decision_maker_traditional_mode_default():
         # Test default behavior (traditional mode)
         input_data = SmartDecisionMakerBlock.Input(
             prompt="Test prompt",
-            model=llm_module.LlmModel.GPT4O,
+            model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
             agent_mode_max_iterations=0,  # Traditional mode
         )

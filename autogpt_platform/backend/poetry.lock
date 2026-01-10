@@ -1907,15 +1907,31 @@ pydantic = ">=1.10,<3"
 pyjwt = ">=2.10.1,<3.0.0"
 
 [[package]]
+name = "gravitas-md2gdocs"
+version = "0.1.0"
+description = "Convert Markdown to Google Docs API requests"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "gravitas_md2gdocs-0.1.0-py3-none-any.whl", hash = "sha256:0cb0627779fdd65c1604818af4142eea1b25d055060183363de1bae4d9e46508"},
+    {file = "gravitas_md2gdocs-0.1.0.tar.gz", hash = "sha256:bb3122fe9fa35c528f3f00b785d3f1398d350082d5d03f60f56c895bdcc68033"},
+]
+
+[package.extras]
+dev = ["google-auth-oauthlib (>=1.0.0)", "pytest (>=7.0.0)", "pytest-cov (>=4.0.0)", "python-dotenv (>=1.0.0)", "ruff (>=0.1.0)"]
+google = ["google-api-python-client (>=2.0.0)", "google-auth (>=2.0.0)"]
+
+[[package]]
 name = "gravitasml"
-version = "0.1.3"
+version = "0.1.4"
 description = ""
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "gravitasml-0.1.3-py3-none-any.whl", hash = "sha256:51ff98b4564b7a61f7796f18d5f2558b919d30b3722579296089645b7bc18b85"},
-    {file = "gravitasml-0.1.3.tar.gz", hash = "sha256:04d240b9fa35878252d57a36032130b6516487468847fcdced1022c032a20f57"},
+    {file = "gravitasml-0.1.4-py3-none-any.whl", hash = "sha256:671a18b11d3d8a0e270c6a80c72cd058458b18d5ef7560d00010e962ab1bca74"},
+    {file = "gravitasml-0.1.4.tar.gz", hash = "sha256:35d0d9fec7431817482d53d9c976e375557c3e041d1eb6928e809324a8c866e3"},
 ]
 
 [package.dependencies]
@@ -7279,4 +7295,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "13b191b2a1989d3321ff713c66ff6f5f4f3b82d15df4d407e0e5dbf87d7522c4"
+content-hash = "a93ba0cea3b465cb6ec3e3f258b383b09f84ea352ccfdbfa112902cde5653fc6"

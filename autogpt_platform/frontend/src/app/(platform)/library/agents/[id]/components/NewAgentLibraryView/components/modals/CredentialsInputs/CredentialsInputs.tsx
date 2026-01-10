@@ -15,13 +15,14 @@ import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsMod
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
 import { getCredentialDisplayName } from "./helpers";
-import { useCredentialsInputs } from "./useCredentialsInputs";
-
-type UseCredentialsInputsReturn = ReturnType<typeof useCredentialsInputs>;
+import {
+  CredentialsInputState,
+  useCredentialsInput,
+} from "./useCredentialsInput";
 
 function isLoaded(
-  data: UseCredentialsInputsReturn,
-): data is Extract<UseCredentialsInputsReturn, { isLoading: false }> {
+  data: CredentialsInputState,
+): data is Extract<CredentialsInputState, { isLoading: false }> {
   return data.isLoading === false;
 }
 
@@ -33,21 +34,23 @@ type Props = {
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
+  showTitle?: boolean;
 };
 
 export function CredentialsInput({
   schema,
   className,
-  selectedCredentials,
-  onSelectCredentials,
+  selectedCredentials: selectedCredential,
+  onSelectCredentials: onSelectCredential,
   siblingInputs,
   onLoaded,
   readOnly = false,
+  showTitle = true,
 }: Props) {
-  const hookData = useCredentialsInputs({
+  const hookData = useCredentialsInput({
     schema,
-    selectedCredentials,
-    onSelectCredentials,
+    selectedCredential,
+    onSelectCredential,
     siblingInputs,
     onLoaded,
     readOnly,
@@ -89,12 +92,14 @@ export function CredentialsInput({
 
   return (
     <div className={cn("mb-6", className)}>
-      <div className="mb-2 flex items-center gap-2">
-        <Text variant="large-medium">{displayName} credentials</Text>
-        {schema.description && (
-          <InformationTooltip description={schema.description} />
-        )}
-      </div>
+      {showTitle && (
+        <div className="mb-2 flex items-center gap-2">
+          <Text variant="large-medium">{displayName} credentials</Text>
+          {schema.description && (
+            <InformationTooltip description={schema.description} />
+          )}
+        </div>
+      )}
 
       {hasCredentialsToShow ? (
         <>
@@ -103,7 +108,7 @@ export function CredentialsInput({
               credentials={credentialsToShow}
               provider={provider}
               displayName={displayName}
-              selectedCredentials={selectedCredentials}
+              selectedCredentials={selectedCredential}
               onSelectCredential={handleCredentialSelect}
               readOnly={readOnly}
             />
@@ -138,6 +143,7 @@ export function CredentialsInput({
               size="small"
               onClick={handleActionButtonClick}
               className="w-fit"
+              type="button"
             >
               {actionButtonText}
             </Button>
@@ -150,6 +156,7 @@ export function CredentialsInput({
             size="small"
             onClick={handleActionButtonClick}
             className="w-fit"
+            type="button"
           >
             {actionButtonText}
           </Button>
@@ -164,7 +171,7 @@ export function CredentialsInput({
               open={isAPICredentialsModalOpen}
               onClose={() => setAPICredentialsModalOpen(false)}
               onCredentialsCreate={(credsMeta) => {
-                onSelectCredentials(credsMeta);
+                onSelectCredential(credsMeta);
                 setAPICredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}
@@ -183,7 +190,7 @@ export function CredentialsInput({
               open={isUserPasswordCredentialsModalOpen}
               onClose={() => setUserPasswordCredentialsModalOpen(false)}
               onCredentialsCreate={(creds) => {
-                onSelectCredentials(creds);
+                onSelectCredential(creds);
                 setUserPasswordCredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}
@@ -195,7 +202,7 @@ export function CredentialsInput({
               open={isHostScopedCredentialsModalOpen}
               onClose={() => setHostScopedCredentialsModalOpen(false)}
               onCredentialsCreate={(creds) => {
-                onSelectCredentials(creds);
+                onSelectCredential(creds);
                 setHostScopedCredentialsModalOpen(false);
               }}
               siblingInputs={siblingInputs}

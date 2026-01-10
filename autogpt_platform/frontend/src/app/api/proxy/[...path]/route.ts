@@ -6,6 +6,10 @@ import {
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
+// Increase body size limit to 256MB to match backend file upload limit
+export const maxDuration = 300; // 5 minutes timeout for large uploads
+export const dynamic = "force-dynamic";
+
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
   return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
