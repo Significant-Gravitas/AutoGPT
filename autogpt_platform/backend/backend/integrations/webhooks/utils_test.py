@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 
 import fastapi
+from fastapi.routing import APIRoute
 
 from backend.api.features.integrations.router import router as integrations_router
 from backend.integrations.providers import ProviderName
@@ -20,9 +21,9 @@ def test_webhook_ingress_url_matches_route(monkeypatch) -> None:
     route = next(
         route
         for route in integrations_router.routes
-        if getattr(route, "path", None)
-        == "/{provider}/webhooks/{webhook_id}/ingress"
-        and "POST" in getattr(route, "methods", set())
+        if isinstance(route, APIRoute)
+        and route.path == "/{provider}/webhooks/{webhook_id}/ingress"
+        and "POST" in route.methods
     )
     expected_path = f"/api/integrations{route.path}".format(
         provider=provider.value,
