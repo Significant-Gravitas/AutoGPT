@@ -1,7 +1,11 @@
 import { getUiOptions, RJSFSchema, UiSchema } from "@rjsf/utils";
 
 export function isAnyOfSchema(schema: RJSFSchema | undefined): boolean {
-  return Array.isArray(schema?.anyOf) && schema!.anyOf.length > 0;
+  return (
+    Array.isArray(schema?.anyOf) &&
+    schema!.anyOf.length > 0 &&
+    schema?.enum === undefined
+  );
 }
 
 export const isAnyOfChild = (
