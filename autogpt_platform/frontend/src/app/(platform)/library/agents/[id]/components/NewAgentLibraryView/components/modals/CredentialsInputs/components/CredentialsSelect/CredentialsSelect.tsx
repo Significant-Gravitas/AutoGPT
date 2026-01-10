@@ -23,7 +23,9 @@ interface Props {
   displayName: string;
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredential: (credentialId: string) => void;
+  onClearCredential?: () => void;
   readOnly?: boolean;
+  allowNone?: boolean;
 }
 
 export function CredentialsSelect({
@@ -32,20 +34,30 @@ export function CredentialsSelect({
   displayName,
   selectedCredentials,
   onSelectCredential,
+  onClearCredential,
   readOnly = false,
+  allowNone = true,
 }: Props) {
-  // Auto-select first credential if none is selected
+  // Auto-select first credential if none is selected (only if allowNone is false)
   useEffect(() => {
-    if (!selectedCredentials && credentials.length > 0) {
+    if (!allowNone && !selectedCredentials && credentials.length > 0) {
       onSelectCredential(credentials[0].id);
     }
-  }, [selectedCredentials, credentials, onSelectCredential]);
+  }, [allowNone, selectedCredentials, credentials, onSelectCredential]);
+
+  const handleValueChange = (value: string) => {
+    if (value === "__none__") {
+      onClearCredential?.();
+    } else {
+      onSelectCredential(value);
+    }
+  };
 
   return (
     <div className="mb-4 w-full">
       <Select
-        value={selectedCredentials?.id || ""}
-        onValueChange={(value) => onSelectCredential(value)}
+        value={selectedCredentials?.id || (allowNone ? "__none__" : "")}
+        onValueChange={handleValueChange}
       >
         <SelectTrigger className="h-auto min-h-12 w-full rounded-medium border-zinc-200 p-0 pr-4 shadow-none">
           {selectedCredentials ? (
@@ -70,6 +82,15 @@ export function CredentialsSelect({
           )}
         </SelectTrigger>
         <SelectContent>
+          {allowNone && (
+            <SelectItem key="__none__" value="__none__">
+              <div className="flex items-center gap-2">
+                <Text variant="body" className="tracking-tight text-gray-500">
+                  None (skip this credential)
+                </Text>
+              </div>
+            </SelectItem>
+          )}
           {credentials.map((credential) => (
             <SelectItem key={credential.id} value={credential.id}>
               <div className="flex items-center gap-2">
