@@ -1559,10 +1559,234 @@ if best_templates:
     print(f"   Premiers résidus: {pred_coords[:3]}")
 
 # %% [markdown]
-# ### 10.5 Génération de 5 prédictions diversifiées
+# ## 🔋 11. Energy-Based Model (EBM) pour Raffinement
+#
+# Module de scoring et raffinement basé sur des contraintes physiques :
+# - Distances C1'-C1' consécutives (~5.9Å)
+# - Éviter les clashes stériques
+# - Contraintes de rayon de giration
 
 # %%
-def generate_diverse_predictions(query_seq, templates_db, n_predictions=5, target_id=None, msa_dir=None):
+import math
+
+def calculate_distance(coord1, coord2):
+    """Calcule la distance euclidienne entre deux points 3D."""
+    return math.sqrt(
+        (coord1[0] - coord2[0])**2 +
+        (coord1[1] - coord2[1])**2 +
+        (coord1[2] - coord2[2])**2
+    )
+
+def energy_bond_distance(coords, ideal_dist=5.9, k_bond=1.0):
+    """
+    Énergie des distances entre nucléotides consécutifs.
+    Distance idéale C1'-C1' ≈ 5.9 Angströms.
+    """
+    energy = 0.0
+    for i in range(len(coords) - 1):
+        if coords[i] == (0.0, 0.0, 0.0) or coords[i+1] == (0.0, 0.0, 0.0):
+            continue
+        dist = calculate_distance(coords[i], coords[i+1])
+        energy += k_bond * (dist - ideal_dist)**2
+    return energy
+
+def energy_clash(coords, min_dist=3.5, k_clash=10.0):
+    """
+    Énergie de répulsion pour éviter les clashes stériques.
+    Pénalise les atomes non-consécutifs trop proches.
+    """
+    energy = 0.0
+    n = len(coords)
+    for i in range(n):
+        if coords[i] == (0.0, 0.0, 0.0):
+            continue
+        # Vérifier seulement les atomes à distance > 2 dans la séquence
+        for j in range(i + 3, n):
+            if coords[j] == (0.0, 0.0, 0.0):
+                continue
+            dist = calculate_distance(coords[i], coords[j])
+            if dist < min_dist:
+                # Répulsion forte quand trop proche
+                energy += k_clash * (min_dist - dist)**2
+    return energy
+
+def energy_radius_of_gyration(coords, sequence_length):
+    """
+    Énergie basée sur le rayon de giration.
+    Les RNA ont un Rg qui dépend de leur longueur.
+    Rg attendu ≈ 2.0 * N^0.4 (approximation empirique)
+    """
+    valid_coords = [c for c in coords if c != (0.0, 0.0, 0.0)]
+    if len(valid_coords) < 2:
+        return 0.0
+
+    # Centroïde
+    cx = sum(c[0] for c in valid_coords) / len(valid_coords)
+    cy = sum(c[1] for c in valid_coords) / len(valid_coords)
+    cz = sum(c[2] for c in valid_coords) / len(valid_coords)
+
+    # Rayon de giration
+    rg_sq = sum((c[0]-cx)**2 + (c[1]-cy)**2 + (c[2]-cz)**2 for c in valid_coords) / len(valid_coords)
+    rg = math.sqrt(rg_sq)
+
+    # Rg attendu (formule empirique pour RNA)
+    expected_rg = 2.0 * (sequence_length ** 0.4)
+
+    # Pénaliser les déviations
+    k_rg = 0.1
+    return k_rg * (rg - expected_rg)**2
+
+def total_energy(coords, sequence_length):
+    """
+    Calcule l'énergie totale de la structure.
+    Plus l'énergie est basse, meilleure est la structure.
+    """
+    e_bond = energy_bond_distance(coords)
+    e_clash = energy_clash(coords)
+    e_rg = energy_radius_of_gyration(coords, sequence_length)
+
+    return {
+        'total': e_bond + e_clash + e_rg,
+        'bond': e_bond,
+        'clash': e_clash,
+        'rg': e_rg
+    }
+
+def score_structure(coords, sequence_length):
+    """
+    Score une structure (0-1, plus c'est haut mieux c'est).
+    Inverse de l'énergie normalisée.
+    """
+    energy = total_energy(coords, sequence_length)
+    # Normaliser par la longueur
+    normalized_energy = energy['total'] / sequence_length
+    # Convertir en score (sigmoïde inverse)
+    score = 1.0 / (1.0 + normalized_energy)
+    return score, energy
+
+print("🔋 Fonctions EBM définies")
+
+# %% [markdown]
+# ### 11.1 Raffinement par descente de gradient
+
+# %%
+def refine_structure(coords, sequence_length, n_iterations=50, learning_rate=0.1):
+    """
+    Raffine une structure par descente de gradient sur l'énergie.
+    Déplace légèrement les atomes pour minimiser l'énergie.
+    """
+    # Convertir en liste mutable
+    refined = [list(c) for c in coords]
+
+    initial_energy = total_energy(coords, sequence_length)['total']
+
+    for iteration in range(n_iterations):
+        # Calculer le gradient numérique pour chaque atome
+        epsilon = 0.1
+
+        for i in range(len(refined)):
+            if refined[i] == [0.0, 0.0, 0.0]:
+                continue
+
+            # Gradient pour chaque dimension
+            for dim in range(3):
+                # Énergie actuelle
+                current_coords = [tuple(c) for c in refined]
+                e_current = total_energy(current_coords, sequence_length)['total']
+
+                # Énergie avec perturbation
+                refined[i][dim] += epsilon
+                perturbed_coords = [tuple(c) for c in refined]
+                e_perturbed = total_energy(perturbed_coords, sequence_length)['total']
+                refined[i][dim] -= epsilon
+
+                # Gradient
+                gradient = (e_perturbed - e_current) / epsilon
+
+                # Mise à jour (descente de gradient)
+                refined[i][dim] -= learning_rate * gradient
+
+    # Reconvertir en tuples
+    refined_coords = [tuple(c) for c in refined]
+
+    final_energy = total_energy(refined_coords, sequence_length)['total']
+    improvement = (initial_energy - final_energy) / initial_energy if initial_energy > 0 else 0
+
+    return refined_coords, improvement
+
+def refine_structure_fast(coords, sequence_length, n_iterations=20):
+    """
+    Version rapide du raffinement - corrige seulement les violations majeures.
+    """
+    refined = [list(c) for c in coords]
+    ideal_dist = 5.9
+
+    for _ in range(n_iterations):
+        # Corriger les distances consécutives
+        for i in range(len(refined) - 1):
+            if refined[i] == [0.0, 0.0, 0.0] or refined[i+1] == [0.0, 0.0, 0.0]:
+                continue
+
+            dist = calculate_distance(refined[i], refined[i+1])
+            if dist < 0.1:  # Éviter division par zéro
+                continue
+
+            # Si distance trop différente de l'idéal, corriger
+            if abs(dist - ideal_dist) > 1.0:
+                # Direction du vecteur
+                dx = (refined[i+1][0] - refined[i][0]) / dist
+                dy = (refined[i+1][1] - refined[i][1]) / dist
+                dz = (refined[i+1][2] - refined[i][2]) / dist
+
+                # Correction (déplacer vers la distance idéale)
+                correction = (dist - ideal_dist) * 0.3
+                refined[i+1][0] -= dx * correction
+                refined[i+1][1] -= dy * correction
+                refined[i+1][2] -= dz * correction
+
+    return [tuple(c) for c in refined]
+
+print("✅ Fonctions de raffinement définies")
+
+# %% [markdown]
+# ### 11.2 Test de l'EBM sur une structure
+
+# %%
+# Test de l'EBM
+print("🧪 Test de l'Energy-Based Model...")
+
+if best_templates:
+    test_coords = predict_structure_from_template(test_seq, best_templates[0])
+
+    # Scorer la structure originale
+    score_before, energy_before = score_structure(test_coords, len(test_seq))
+    print(f"\n📊 Structure originale:")
+    print(f"   Score: {score_before:.4f}")
+    print(f"   Énergie totale: {energy_before['total']:.2f}")
+    print(f"   - Bond: {energy_before['bond']:.2f}")
+    print(f"   - Clash: {energy_before['clash']:.2f}")
+    print(f"   - Rg: {energy_before['rg']:.2f}")
+
+    # Raffiner la structure
+    refined_coords = refine_structure_fast(test_coords, len(test_seq), n_iterations=30)
+
+    # Scorer après raffinement
+    score_after, energy_after = score_structure(refined_coords, len(test_seq))
+    print(f"\n📊 Structure raffinée:")
+    print(f"   Score: {score_after:.4f}")
+    print(f"   Énergie totale: {energy_after['total']:.2f}")
+    print(f"   - Bond: {energy_after['bond']:.2f}")
+    print(f"   - Clash: {energy_after['clash']:.2f}")
+    print(f"   - Rg: {energy_after['rg']:.2f}")
+
+    improvement = (score_after - score_before) / score_before * 100 if score_before > 0 else 0
+    print(f"\n{'✅' if improvement > 0 else '⚠️'} Amélioration du score: {improvement:+.1f}%")
+
+# %% [markdown]
+# ### 11.3 Intégration dans le pipeline de prédiction
+
+# %%
+def generate_diverse_predictions(query_seq, templates_db, n_predictions=5, target_id=None, msa_dir=None, use_ebm=True):
     """
     Génère 5 prédictions diversifiées pour une séquence.
 
@@ -1570,8 +1794,10 @@ def generate_diverse_predictions(query_seq, templates_db, n_predictions=5, targe
     1. Utiliser les top-5 templates différents
     2. Ajouter du bruit aux coordonnées
     3. Combiner plusieurs templates
+    4. Raffinement EBM (si activé)
 
     Si target_id et msa_dir sont fournis, utilise les MSA pour améliorer la recherche.
+    Si use_ebm=True, raffine les structures et les classe par score énergétique.
     """
     predictions = []
 
@@ -1620,14 +1846,36 @@ def generate_diverse_predictions(query_seq, templates_db, n_predictions=5, targe
         predictions.append(predict_structure_from_template(query_seq, best_templates[0],
                                                           noise_std=np.random.uniform(0.3, 1.0)))
 
-    return predictions[:n_predictions]
+    predictions = predictions[:n_predictions]
 
-# Test
-print("🎯 Génération de 5 prédictions diversifiées...")
-test_predictions = generate_diverse_predictions(test_seq, templates_db, n_predictions=5)
+    # === EBM: Raffinement et classement ===
+    if use_ebm:
+        seq_len = len(query_seq)
+        scored_predictions = []
+
+        for i, pred in enumerate(predictions):
+            # Raffiner la structure
+            refined = refine_structure_fast(pred, seq_len, n_iterations=20)
+            # Scorer
+            score, _ = score_structure(refined, seq_len)
+            scored_predictions.append((score, refined))
+
+        # Trier par score (meilleur en premier)
+        scored_predictions.sort(key=lambda x: x[0], reverse=True)
+
+        # Retourner les structures raffinées, ordonnées par qualité
+        predictions = [pred for _, pred in scored_predictions]
+
+    return predictions
+
+# Test avec EBM
+print("🎯 Génération de 5 prédictions diversifiées (avec EBM)...")
+test_predictions = generate_diverse_predictions(test_seq, templates_db, n_predictions=5, use_ebm=True)
 print(f"   Nombre de prédictions: {len(test_predictions)}")
+print(f"\n📊 Scores EBM des prédictions (triées par qualité):")
 for i, pred in enumerate(test_predictions):
-    print(f"   Prédiction {i+1}: {len(pred)} résidus")
+    score, energy = score_structure(pred, len(test_seq))
+    print(f"   Prédiction {i+1}: score={score:.4f}, énergie={energy['total']:.1f}")
 
 # %% [markdown]
 # ## 📊 11. Évaluation locale (TM-score simplifié)
@@ -1719,7 +1967,7 @@ if eval_scores:
 # ## 📝 12. Génération du fichier de soumission
 
 # %%
-def generate_submission(test_sequences_df, templates_db, output_path='submission.csv', use_msa=True):
+def generate_submission(test_sequences_df, templates_db, output_path='submission.csv', use_msa=True, use_ebm=True):
     """
     Génère le fichier de soumission au format Kaggle.
 
@@ -1728,12 +1976,15 @@ def generate_submission(test_sequences_df, templates_db, output_path='submission
         templates_db: Base de templates
         output_path: Chemin du fichier de sortie
         use_msa: Utiliser les MSA pour améliorer les prédictions (défaut: True)
+        use_ebm: Utiliser l'EBM pour raffiner et classer les prédictions (défaut: True)
     """
     print("📝 Génération du fichier de soumission...")
 
     msa_dir = DATA_PATH / 'MSA' if use_msa else None
     if use_msa:
         print("   🧬 Utilisation des MSA activée")
+    if use_ebm:
+        print("   🔋 Utilisation de l'EBM activée")
 
     rows = []
 
@@ -1741,10 +1992,10 @@ def generate_submission(test_sequences_df, templates_db, output_path='submission
         target_id = row['target_id']
         query_seq = row['sequence']
 
-        # Générer 5 prédictions (avec MSA si disponible)
+        # Générer 5 prédictions (avec MSA et EBM si activés)
         predictions = generate_diverse_predictions(
             query_seq, templates_db,
-            target_id=target_id, msa_dir=msa_dir
+            target_id=target_id, msa_dir=msa_dir, use_ebm=use_ebm
         )
 
         # Créer les lignes pour chaque résidu
@@ -1805,42 +2056,44 @@ print("=" * 70)
 print("               🎯 RÉSUMÉ DE LA STRATÉGIE TBM")
 print("=" * 70)
 print("""
-📋 PIPELINE TBM + MSA IMPLÉMENTÉ:
+📋 PIPELINE TBM + MSA + EBM IMPLÉMENTÉ:
 
 1. EXTRACTION DES TEMPLATES
    • Parser les fichiers CIF du PDB_RNA
    • Extraire séquences + coordonnées C1'
    • {n_templates} templates disponibles
 
-2. EXPLOITATION DES MSA ✨ NOUVEAU
+2. EXPLOITATION DES MSA
    • Extraction des IDs PDB des homologues
    • Calcul des scores de conservation
-   • Bonus pour les templates trouvés via MSA
+   • Bonus pour les templates trouvés via MSA (x1.5)
 
 3. RECHERCHE DE TEMPLATES (MSA-améliorée)
    • Alignement pondéré par conservation
-   • Priorité aux templates MSA (x1.5 bonus)
+   • Priorité aux templates MSA
    • Score combiné: similarité + longueur + conservation
 
-4. PRÉDICTION DE STRUCTURE
-   • Copie des coordonnées du template
-   • Interpolation des positions manquantes
-   • 5 stratégies de diversification
+4. ENERGY-BASED MODEL (EBM) ✨ NOUVEAU
+   • Scoring basé sur contraintes physiques
+   • Distances C1'-C1' (~5.9Å)
+   • Évitement des clashes stériques
+   • Rayon de giration réaliste
+   • Raffinement par minimisation d'énergie
 
 5. DIVERSIFICATION (5 prédictions)
    • Prédiction 1-3: Top 3 templates
    • Prédiction 4: Moyenne des 2 meilleurs
    • Prédiction 5: Perturbation aléatoire
+   • Toutes raffinées et triées par score EBM
 
 📈 AMÉLIORATIONS POSSIBLES:
    • Alignement avec gaps (Needleman-Wunsch)
    • Rotation/translation optimale (Kabsch algorithm)
-   • Multi-template averaging pondéré
+   • EBM appris sur données PDB
 
 🚀 Pour soumettre:
    1. Décommenter la génération de soumission
    2. Utiliser tous les fichiers PDB (max_files=None)
-   3. Exécuter le notebook complet
-   4. use_msa=True pour activer MSA (défaut)
+   3. use_msa=True, use_ebm=True (défauts)
 """.format(n_templates=len(templates_db)))
 print("=" * 70)
