@@ -1103,7 +1103,267 @@ else:
     print("   ⚠️ Aucun template extrait - vérifiez le parser CIF ci-dessus")
 
 # %% [markdown]
-# ### 10.3 Alignement de séquences (Simple)
+# ### 10.3 Exploitation des MSA (Multiple Sequence Alignments)
+#
+# Les MSA contiennent des séquences homologues qui peuvent :
+# - Identifier des templates supplémentaires dans le PDB
+# - Révéler les positions conservées (plus fiables structurellement)
+# - Améliorer le scoring des alignements
+
+# %%
+# Chargement et analyse des MSA
+
+def load_msa(msa_path):
+    """
+    Charge un fichier MSA au format FASTA.
+    Retourne la séquence query et les séquences homologues.
+    """
+    sequences = parse_fasta(msa_path)
+    if not sequences:
+        return None, []
+
+    # La première séquence est généralement la query
+    query_header, query_seq = sequences[0]
+    homologs = [(h, s) for h, s in sequences[1:]]
+
+    return (query_header, query_seq), homologs
+
+def calculate_conservation(msa_sequences):
+    """
+    Calcule le score de conservation pour chaque position du MSA.
+    Score = fréquence du nucléotide le plus commun (0-1).
+    """
+    if not msa_sequences:
+        return []
+
+    # Aligner toutes les séquences (elles doivent avoir la même longueur dans un MSA)
+    seq_length = len(msa_sequences[0][1])
+    conservation = []
+
+    for pos in range(seq_length):
+        nucleotides = []
+        for _, seq in msa_sequences:
+            if pos < len(seq) and seq[pos] not in ('-', '.'):
+                nucleotides.append(seq[pos])
+
+        if nucleotides:
+            # Fréquence du nucléotide le plus commun
+            counts = Counter(nucleotides)
+            max_freq = max(counts.values()) / len(nucleotides)
+            conservation.append(max_freq)
+        else:
+            conservation.append(0.0)
+
+    return conservation
+
+def extract_pdb_ids_from_msa(homologs):
+    """
+    Extrait les identifiants PDB des séquences homologues.
+    Les headers MSA contiennent souvent des références PDB.
+    Format typique: >1ABC_A ou >pdb|1ABC|A
+    """
+    import re
+    pdb_ids = []
+
+    # Patterns courants pour les IDs PDB
+    patterns = [
+        r'([0-9][A-Za-z0-9]{3})_([A-Za-z])',  # 1ABC_A
+        r'pdb\|([0-9][A-Za-z0-9]{3})\|([A-Za-z])',  # pdb|1ABC|A
+        r'^([0-9][A-Za-z0-9]{3})([A-Za-z])\s',  # 1ABCA
+    ]
+
+    for header, seq in homologs:
+        for pattern in patterns:
+            match = re.search(pattern, header)
+            if match:
+                pdb_id = match.group(1).upper()
+                chain_id = match.group(2).upper()
+                pdb_ids.append((pdb_id, chain_id, seq))
+                break
+
+    return pdb_ids
+
+def find_msa_templates(target_id, msa_dir, templates_db):
+    """
+    Trouve des templates en utilisant les homologues du MSA.
+    Retourne les templates correspondant aux séquences du MSA.
+    """
+    msa_file = msa_dir / f"{target_id}.fasta"
+
+    if not msa_file.exists():
+        return [], []
+
+    query, homologs = load_msa(msa_file)
+    if not query:
+        return [], []
+
+    # Extraire les IDs PDB des homologues
+    pdb_refs = extract_pdb_ids_from_msa(homologs)
+
+    # Créer un index des templates par PDB ID
+    template_index = {}
+    for t in templates_db:
+        key = (t['pdb_id'], t['chain_id'])
+        template_index[key] = t
+
+    # Trouver les templates correspondants
+    msa_templates = []
+    for pdb_id, chain_id, msa_seq in pdb_refs:
+        key = (pdb_id, chain_id)
+        if key in template_index:
+            msa_templates.append({
+                'template': template_index[key],
+                'msa_sequence': msa_seq,
+                'source': 'msa'
+            })
+
+    # Calculer la conservation
+    all_seqs = [query] + homologs
+    conservation = calculate_conservation(all_seqs)
+
+    return msa_templates, conservation
+
+# Test sur quelques cibles
+print("🧬 Test d'exploitation des MSA...")
+msa_dir = DATA_PATH / 'MSA'
+msa_files = list(msa_dir.glob('*.fasta'))[:5]
+
+for msa_file in msa_files:
+    query, homologs = load_msa(msa_file)
+    if query:
+        conservation = calculate_conservation([query] + homologs)
+        pdb_refs = extract_pdb_ids_from_msa(homologs)
+
+        avg_conservation = np.mean(conservation) if conservation else 0
+        print(f"  {msa_file.stem}:")
+        print(f"    - {len(homologs)} homologues")
+        print(f"    - {len(pdb_refs)} refs PDB trouvées")
+        print(f"    - Conservation moyenne: {avg_conservation:.2f}")
+
+# %% [markdown]
+# ### 10.4 Alignement amélioré avec MSA
+#
+# L'alignement utilise maintenant :
+# - Les scores de conservation pour pondérer les matches
+# - Les séquences MSA pour trouver des templates directs
+
+# %%
+def weighted_sequence_alignment(seq1, seq2, conservation=None):
+    """
+    Alignement de séquences pondéré par la conservation.
+    Les positions conservées ont plus de poids.
+    """
+    len1, len2 = len(seq1), len(seq2)
+
+    if len1 == 0 or len2 == 0:
+        return 0.0, []
+
+    # Poids par défaut
+    if conservation is None:
+        conservation = [1.0] * len1
+
+    best_score = 0
+    best_offset = 0
+
+    for offset in range(-len2 + 1, len1):
+        score = 0
+        for i in range(max(len1, len2)):
+            pos1 = i
+            pos2 = i - offset
+            if 0 <= pos1 < len1 and 0 <= pos2 < len2:
+                if seq1[pos1] == seq2[pos2]:
+                    # Pondérer par la conservation
+                    weight = conservation[pos1] if pos1 < len(conservation) else 1.0
+                    score += weight
+
+        if score > best_score:
+            best_score = score
+            best_offset = offset
+
+    # Reconstruire l'alignement
+    aligned_positions = []
+    matches = 0
+    total_weight = sum(conservation) if conservation else len1
+
+    for i in range(max(len1, len2)):
+        pos1 = i
+        pos2 = i - best_offset
+        if 0 <= pos1 < len1 and 0 <= pos2 < len2:
+            aligned_positions.append((pos1, pos2))
+            if seq1[pos1] == seq2[pos2]:
+                matches += 1
+
+    # Score normalisé
+    normalized_score = best_score / total_weight if total_weight > 0 else 0
+
+    return normalized_score, aligned_positions
+
+def find_best_templates_with_msa(query_seq, target_id, templates_db, msa_dir, top_k=5):
+    """
+    Trouve les meilleurs templates en utilisant MSA + alignement classique.
+    Priorité aux templates trouvés dans le MSA.
+    """
+    # 1. Chercher des templates via MSA
+    msa_templates, conservation = find_msa_templates(target_id, msa_dir, templates_db)
+
+    results = []
+
+    # 2. Scorer les templates MSA (prioritaires)
+    for msa_t in msa_templates:
+        template = msa_t['template']
+        # Utiliser l'alignement pondéré par conservation
+        score, aligned_pos = weighted_sequence_alignment(
+            query_seq,
+            template['sequence'],
+            conservation
+        )
+
+        # Bonus pour les templates MSA
+        score *= 1.5
+
+        results.append({
+            'template': template,
+            'score': score,
+            'aligned_positions': aligned_pos,
+            'source': 'msa',
+            'conservation': conservation
+        })
+
+    # 3. Compléter avec l'alignement classique si besoin
+    if len(results) < top_k:
+        for template in templates_db:
+            # Éviter les doublons
+            if any(r['template']['pdb_id'] == template['pdb_id'] and
+                   r['template']['chain_id'] == template['chain_id'] for r in results):
+                continue
+
+            score, aligned_pos = weighted_sequence_alignment(
+                query_seq,
+                template['sequence'],
+                conservation if conservation else None
+            )
+
+            # Ajuster le score par la longueur
+            len_ratio = min(len(query_seq), template['length']) / max(len(query_seq), template['length'])
+            final_score = score * 0.7 + len_ratio * 0.3
+
+            results.append({
+                'template': template,
+                'score': final_score,
+                'aligned_positions': aligned_pos,
+                'source': 'alignment',
+                'conservation': conservation
+            })
+
+    # Trier par score
+    results.sort(key=lambda x: x['score'], reverse=True)
+
+    return results[:top_k]
+
+print("✅ Fonctions MSA définies")
+
+# %% [markdown]
+# ### 10.5 Alignement de séquences (Simple - Fallback)
 
 # %%
 def simple_sequence_alignment(seq1, seq2):
@@ -1302,7 +1562,7 @@ if best_templates:
 # ### 10.5 Génération de 5 prédictions diversifiées
 
 # %%
-def generate_diverse_predictions(query_seq, templates_db, n_predictions=5):
+def generate_diverse_predictions(query_seq, templates_db, n_predictions=5, target_id=None, msa_dir=None):
     """
     Génère 5 prédictions diversifiées pour une séquence.
 
@@ -1310,11 +1570,16 @@ def generate_diverse_predictions(query_seq, templates_db, n_predictions=5):
     1. Utiliser les top-5 templates différents
     2. Ajouter du bruit aux coordonnées
     3. Combiner plusieurs templates
+
+    Si target_id et msa_dir sont fournis, utilise les MSA pour améliorer la recherche.
     """
     predictions = []
 
-    # Trouver les meilleurs templates
-    best_templates = find_best_templates(query_seq, templates_db, top_k=10)
+    # Trouver les meilleurs templates (avec ou sans MSA)
+    if target_id and msa_dir and msa_dir.exists():
+        best_templates = find_best_templates_with_msa(query_seq, target_id, templates_db, msa_dir, top_k=10)
+    else:
+        best_templates = find_best_templates(query_seq, templates_db, top_k=10)
 
     if not best_templates:
         # Fallback : prédiction linéaire
@@ -1454,11 +1719,21 @@ if eval_scores:
 # ## 📝 12. Génération du fichier de soumission
 
 # %%
-def generate_submission(test_sequences_df, templates_db, output_path='submission.csv'):
+def generate_submission(test_sequences_df, templates_db, output_path='submission.csv', use_msa=True):
     """
     Génère le fichier de soumission au format Kaggle.
+
+    Args:
+        test_sequences_df: DataFrame avec les séquences test
+        templates_db: Base de templates
+        output_path: Chemin du fichier de sortie
+        use_msa: Utiliser les MSA pour améliorer les prédictions (défaut: True)
     """
     print("📝 Génération du fichier de soumission...")
+
+    msa_dir = DATA_PATH / 'MSA' if use_msa else None
+    if use_msa:
+        print("   🧬 Utilisation des MSA activée")
 
     rows = []
 
@@ -1466,8 +1741,11 @@ def generate_submission(test_sequences_df, templates_db, output_path='submission
         target_id = row['target_id']
         query_seq = row['sequence']
 
-        # Générer 5 prédictions
-        predictions = generate_diverse_predictions(query_seq, templates_db)
+        # Générer 5 prédictions (avec MSA si disponible)
+        predictions = generate_diverse_predictions(
+            query_seq, templates_db,
+            target_id=target_id, msa_dir=msa_dir
+        )
 
         # Créer les lignes pour chaque résidu
         for resid, nucleotide in enumerate(query_seq, start=1):
@@ -1527,37 +1805,42 @@ print("=" * 70)
 print("               🎯 RÉSUMÉ DE LA STRATÉGIE TBM")
 print("=" * 70)
 print("""
-📋 PIPELINE IMPLÉMENTÉ:
+📋 PIPELINE TBM + MSA IMPLÉMENTÉ:
 
 1. EXTRACTION DES TEMPLATES
    • Parser les fichiers CIF du PDB_RNA
    • Extraire séquences + coordonnées C1'
    • {n_templates} templates disponibles
 
-2. RECHERCHE DE TEMPLATES
-   • Alignement de séquence simple
-   • Score combiné: similarité + ratio de longueur
-   • Sélection des top-K templates
+2. EXPLOITATION DES MSA ✨ NOUVEAU
+   • Extraction des IDs PDB des homologues
+   • Calcul des scores de conservation
+   • Bonus pour les templates trouvés via MSA
 
-3. PRÉDICTION DE STRUCTURE
+3. RECHERCHE DE TEMPLATES (MSA-améliorée)
+   • Alignement pondéré par conservation
+   • Priorité aux templates MSA (x1.5 bonus)
+   • Score combiné: similarité + longueur + conservation
+
+4. PRÉDICTION DE STRUCTURE
    • Copie des coordonnées du template
    • Interpolation des positions manquantes
    • 5 stratégies de diversification
 
-4. DIVERSIFICATION (5 prédictions)
+5. DIVERSIFICATION (5 prédictions)
    • Prédiction 1-3: Top 3 templates
    • Prédiction 4: Moyenne des 2 meilleurs
    • Prédiction 5: Perturbation aléatoire
 
 📈 AMÉLIORATIONS POSSIBLES:
-   • Alignement plus sophistiqué (Smith-Waterman)
+   • Alignement avec gaps (Needleman-Wunsch)
    • Rotation/translation optimale (Kabsch algorithm)
-   • Deep Learning pour les cibles sans template
-   • Utilisation des MSA pour l'alignement
+   • Multi-template averaging pondéré
 
 🚀 Pour soumettre:
    1. Décommenter la génération de soumission
    2. Utiliser tous les fichiers PDB (max_files=None)
    3. Exécuter le notebook complet
+   4. use_msa=True pour activer MSA (défaut)
 """.format(n_templates=len(templates_db)))
 print("=" * 70)
