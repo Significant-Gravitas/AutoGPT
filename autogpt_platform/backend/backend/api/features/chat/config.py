@@ -45,6 +45,13 @@ class ChatConfig(BaseSettings):
         default=3, description="Maximum number of agent schedules"
     )
 
+    # Langfuse Prompt Management Configuration
+    # Note: Langfuse credentials are in Settings().secrets (settings.py)
+    langfuse_prompt_name: str = Field(
+        default="CoPilot Prompt",
+        description="Name of the prompt in Langfuse to fetch",
+    )
+
     @field_validator("api_key", mode="before")
     @classmethod
     def get_api_key(cls, v):
