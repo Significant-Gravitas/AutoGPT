@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import orjson
+from langfuse import Langfuse
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionChunk, ChatCompletionToolParam
 
@@ -12,6 +13,7 @@ from backend.data.understanding import (
     get_business_understanding,
 )
 from backend.util.exceptions import NotFoundError
+from backend.util.settings import Settings
 
 from . import db as chat_db
 from .config import ChatConfig
@@ -41,7 +43,52 @@ from .tools import execute_tool, tools
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
+settings = Settings()
 client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+
+# Langfuse client (lazy initialization)
+_langfuse_client: Langfuse | None = None
+
+
+def _get_langfuse_client() -> Langfuse:
+    """Get or create the Langfuse client for prompt management."""
+    global _langfuse_client
+    if _langfuse_client is None:
+        if not settings.secrets.langfuse_public_key or not settings.secrets.langfuse_secret_key:
+            raise ValueError(
+                "Langfuse credentials not configured. "
+                "Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
+            )
+        _langfuse_client = Langfuse(
+            public_key=settings.secrets.langfuse_public_key,
+            secret_key=settings.secrets.langfuse_secret_key,
+            host=settings.secrets.langfuse_host or "https://cloud.langfuse.com",
+        )
+    return _langfuse_client
+
+
+def _get_langfuse_prompt() -> str:
+    """Fetch the latest production prompt from Langfuse.
+
+    Returns:
+        The compiled prompt text from Langfuse.
+
+    Raises:
+        Exception: If Langfuse is unavailable or prompt fetch fails.
+    """
+    try:
+        langfuse = _get_langfuse_client()
+        # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
+        prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
+        compiled = prompt.compile()
+        logger.info(
+            f"Fetched prompt '{config.langfuse_prompt_name}' from Langfuse "
+            f"(version: {prompt.version})"
+        )
+        return compiled
+    except Exception as e:
+        logger.error(f"Failed to fetch prompt from Langfuse: {e}")
+        raise
 
 
 async def _is_first_session(user_id: str) -> bool:
@@ -78,7 +125,12 @@ async def _build_system_prompt(
             effective_prompt_type = "onboarding"
 
     # Start with the base system prompt for the specified type
-    base_prompt = config.get_system_prompt_for_type(effective_prompt_type)
+    if effective_prompt_type == "default":
+        # Fetch from Langfuse for the default prompt
+        base_prompt = _get_langfuse_prompt()
+    else:
+        # Use local file for other prompt types (e.g., onboarding)
+        base_prompt = config.get_system_prompt_for_type(effective_prompt_type)
 
     # If user is authenticated, try to fetch their business understanding
     if user_id:

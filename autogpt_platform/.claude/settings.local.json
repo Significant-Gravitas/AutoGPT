@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "WebFetch(domain:langfuse.com)",
+      "Bash(poetry install:*)"
+    ]
+  }
+}
