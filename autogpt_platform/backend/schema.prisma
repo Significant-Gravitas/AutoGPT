@@ -1141,22 +1141,3 @@ model OAuthRefreshToken {
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
 }
-
-// APScheduler tables - managed by APScheduler, not Prisma
-model apscheduler_jobs {
-  id            String  @id @db.VarChar(191)
-  next_run_time Float?
-  job_state     Bytes
-
-  @@index([next_run_time])
-  @@ignore
-}
-
-model apscheduler_jobs_batched_notifications {
-  id            String  @id @db.VarChar(191)
-  next_run_time Float?
-  job_state     Bytes
-
-  @@index([next_run_time])
-  @@ignore
-}

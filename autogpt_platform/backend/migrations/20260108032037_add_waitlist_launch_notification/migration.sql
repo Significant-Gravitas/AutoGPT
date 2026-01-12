@@ -51,9 +51,3 @@ ALTER TABLE "_joinedWaitlists" ADD CONSTRAINT "_joinedWaitlists_A_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "_joinedWaitlists" ADD CONSTRAINT "_joinedWaitlists_B_fkey" FOREIGN KEY ("B") REFERENCES "WaitlistEntry"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- RenameIndex
-ALTER INDEX "ix_platform_apscheduler_jobs_next_run_time" RENAME TO "apscheduler_jobs_next_run_time_idx";
-
--- RenameIndex
-ALTER INDEX "ix_platform_apscheduler_jobs_batched_notifications_next_0b54" RENAME TO "apscheduler_jobs_batched_notifications_next_run_time_idx";
