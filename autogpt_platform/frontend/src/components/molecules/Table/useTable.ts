@@ -29,7 +29,7 @@ export function useTable({
   });
 
   useEffect(() => {
-    if (defaultValues && defaultValues.length > 0) {
+    if (defaultValues !== undefined) {
       setRows(defaultValues);
     }
   }, [defaultValues]);
