@@ -3,6 +3,7 @@ import { CredentialsField } from "./CredentialField/CredentialField";
 import { GoogleDrivePickerField } from "./GoogleDrivePickerField/GoogleDrivePickerField";
 import { MultiSelectField } from "./MultiSelectField/MultiSelectField";
 import { isMultiSelectSchema } from "../utils/schema-utils";
+import { TableField } from "./TableField/TableField";
 
 export interface CustomFieldDefinition {
   id: string;
@@ -36,6 +37,17 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
     id: "custom/multi_select_field",
     matcher: isMultiSelectSchema,
     component: MultiSelectField,
+  },
+  {
+    id: "custom/table_field",
+    matcher: (schema: any) => {
+      return (
+        schema.type === "array" &&
+        "format" in schema &&
+        schema.format === "table"
+      );
+    },
+    component: TableField,
   },
 ];
 
