@@ -13,6 +13,11 @@ export const AnyOfField = (props: FieldProps) => {
   const { SchemaField: _SchemaField } = fields;
   const { nodeId } = registry.formContext;
 
+  const parentCustomFieldId = findCustomFieldId(schema);
+  if (parentCustomFieldId) {
+    return null;
+  }
+
   const { isInputConnected } = useEdgeStore();
 
   const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
