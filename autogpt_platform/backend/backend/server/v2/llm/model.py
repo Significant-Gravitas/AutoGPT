@@ -138,7 +138,10 @@ class ToggleLlmModelRequest(pydantic.BaseModel):
     is_enabled: bool
     migrate_to_slug: Optional[str] = None
     migration_reason: Optional[str] = None  # e.g., "Provider outage"
-    custom_credit_cost: Optional[int] = None  # Custom pricing during migration
+    # Custom pricing override for migrated workflows. When set, billing should use
+    # this cost instead of the target model's cost for affected nodes.
+    # See LlmModelMigration in schema.prisma for full documentation.
+    custom_credit_cost: Optional[int] = None
 
 
 class ToggleLlmModelResponse(pydantic.BaseModel):
@@ -168,6 +171,7 @@ class LlmModelMigration(pydantic.BaseModel):
     target_model_slug: str
     reason: Optional[str] = None
     node_count: int
+    # Custom pricing override - billing should use this instead of target model's cost
     custom_credit_cost: Optional[int] = None
     is_reverted: bool = False
     created_at: str  # ISO datetime string

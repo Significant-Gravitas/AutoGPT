@@ -90,7 +90,8 @@ function MigrationRow({ migration }: { migration: LlmModelMigration }) {
         </TableCell>
         <TableCell>
           <div className="text-sm">
-            {migration.custom_credit_cost !== null
+            {migration.custom_credit_cost !== null &&
+            migration.custom_credit_cost !== undefined
               ? `${migration.custom_credit_cost} credits`
               : "—"}
           </div>

@@ -145,7 +145,7 @@ async def toggle_llm_model(
 
     Optional fields:
     - `migration_reason`: Reason for the migration (e.g., "Provider outage")
-    - `custom_credit_cost`: Custom pricing during the migration period
+    - `custom_credit_cost`: Custom pricing override for billing during migration
     """
     try:
         result = await llm_db.toggle_model(

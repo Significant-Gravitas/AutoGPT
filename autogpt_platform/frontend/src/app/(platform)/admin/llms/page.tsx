@@ -1,5 +1,5 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
-import { getLlmRegistryPageData } from "./useLlmRegistryPage";
+import { getLlmRegistryPageData } from "./getLlmRegistryPage";
 import { LlmRegistryDashboard } from "./components/LlmRegistryDashboard";
 
 async function LlmRegistryPage() {

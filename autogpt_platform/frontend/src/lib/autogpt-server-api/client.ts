@@ -43,8 +43,6 @@ import type {
   LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
-  LlmModel,
-  LlmModelCreator,
   MyAgentsResponse,
   NodeExecutionResult,
   NotificationPreference,
@@ -54,19 +52,6 @@ import type {
   ProfileDetails,
   RefundRequest,
   ReviewSubmissionRequest,
-  CreateLlmModelRequest,
-  UpdateLlmModelRequest,
-  ToggleLlmModelRequest,
-  ToggleLlmModelResponse,
-  LlmModelMigration,
-  LlmMigrationsResponse,
-  RevertMigrationResponse,
-  UpsertLlmProviderRequest,
-  UpsertLlmCreatorRequest,
-  LlmModelsResponse,
-  LlmCreatorsResponse,
-  LlmProvider,
-  LlmProvidersResponse,
   Schedule,
   ScheduleCreatable,
   ScheduleID,
@@ -391,143 +376,6 @@ export default class BackendAPI {
       `/integrations/${provider}/credentials/${id}`,
       force ? { force: true } : undefined,
     );
-  }
-
-  ////////////////////////////////////////
-  /////////////// LLM MODELS /////////////
-  ////////////////////////////////////////
-
-  listLlmModels(): Promise<LlmModelsResponse> {
-    return this._get("/llm/models");
-  }
-
-  listLlmProviders(includeModels = true): Promise<LlmProvidersResponse> {
-    const query = includeModels ? { include_models: true } : undefined;
-    return this._get("/llm/providers", query);
-  }
-
-  listAdminLlmProviders(includeModels = true): Promise<LlmProvidersResponse> {
-    const query = includeModels ? { include_models: true } : undefined;
-    return this._get("/llm/admin/llm/providers", query);
-  }
-
-  createAdminLlmProvider(
-    payload: UpsertLlmProviderRequest,
-  ): Promise<LlmProvider> {
-    return this._request("POST", "/llm/admin/llm/providers", payload);
-  }
-
-  updateAdminLlmProvider(
-    providerId: string,
-    payload: UpsertLlmProviderRequest,
-  ): Promise<LlmProvider> {
-    return this._request(
-      "PATCH",
-      `/llm/admin/llm/providers/${providerId}`,
-      payload,
-    );
-  }
-
-  listAdminLlmModels(providerId?: string): Promise<LlmModelsResponse> {
-    const query = providerId ? { provider_id: providerId } : undefined;
-    return this._get("/llm/admin/llm/models", query);
-  }
-
-  createAdminLlmModel(payload: CreateLlmModelRequest): Promise<LlmModel> {
-    return this._request("POST", "/llm/admin/llm/models", payload);
-  }
-
-  updateAdminLlmModel(
-    modelId: string,
-    payload: UpdateLlmModelRequest,
-  ): Promise<LlmModel> {
-    return this._request("PATCH", `/llm/admin/llm/models/${modelId}`, payload);
-  }
-
-  toggleAdminLlmModel(
-    modelId: string,
-    payload: ToggleLlmModelRequest,
-  ): Promise<ToggleLlmModelResponse> {
-    return this._request(
-      "PATCH",
-      `/llm/admin/llm/models/${modelId}/toggle`,
-      payload,
-    );
-  }
-
-  getAdminLlmModelUsage(
-    modelId: string,
-  ): Promise<{ model_slug: string; node_count: number }> {
-    return this._get(`/llm/admin/llm/models/${modelId}/usage`);
-  }
-
-  deleteAdminLlmModel(
-    modelId: string,
-    replacementModelSlug: string,
-  ): Promise<{
-    deleted_model_slug: string;
-    deleted_model_display_name: string;
-    replacement_model_slug: string;
-    nodes_migrated: number;
-    message: string;
-  }> {
-    return this._request("DELETE", `/llm/admin/llm/models/${modelId}`, {
-      replacement_model_slug: replacementModelSlug,
-    });
-  }
-
-  // Migration management
-  listAdminLlmMigrations(
-    includeReverted: boolean = false,
-  ): Promise<LlmMigrationsResponse> {
-    return this._get(
-      `/llm/admin/llm/migrations?include_reverted=${includeReverted}`,
-    );
-  }
-
-  getAdminLlmMigration(migrationId: string): Promise<LlmModelMigration> {
-    return this._get(`/llm/admin/llm/migrations/${migrationId}`);
-  }
-
-  revertAdminLlmMigration(
-    migrationId: string,
-  ): Promise<RevertMigrationResponse> {
-    return this._request(
-      "POST",
-      `/llm/admin/llm/migrations/${migrationId}/revert`,
-    );
-  }
-
-  // Creator management
-  listAdminLlmCreators(): Promise<LlmCreatorsResponse> {
-    return this._get("/llm/admin/llm/creators");
-  }
-
-  getAdminLlmCreator(creatorId: string): Promise<LlmModelCreator> {
-    return this._get(`/llm/admin/llm/creators/${creatorId}`);
-  }
-
-  createAdminLlmCreator(
-    payload: UpsertLlmCreatorRequest,
-  ): Promise<LlmModelCreator> {
-    return this._request("POST", "/llm/admin/llm/creators", payload);
-  }
-
-  updateAdminLlmCreator(
-    creatorId: string,
-    payload: UpsertLlmCreatorRequest,
-  ): Promise<LlmModelCreator> {
-    return this._request(
-      "PATCH",
-      `/llm/admin/llm/creators/${creatorId}`,
-      payload,
-    );
-  }
-
-  deleteAdminLlmCreator(
-    creatorId: string,
-  ): Promise<{ success: boolean; message: string }> {
-    return this._request("DELETE", `/llm/admin/llm/creators/${creatorId}`);
   }
 
   // API Key related requests

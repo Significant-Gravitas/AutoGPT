@@ -302,7 +302,9 @@ async def toggle_model(
         migrate_to_slug: If disabling and this is provided, migrate all workflows
                          using this model to the specified replacement model
         migration_reason: Optional reason for the migration (e.g., "Provider outage")
-        custom_credit_cost: Optional custom pricing during the migration period
+        custom_credit_cost: Optional custom pricing override for migrated workflows.
+                           When set, the billing system should use this cost instead
+                           of the target model's cost for affected nodes.
 
     Returns:
         ToggleLlmModelResponse with the updated model and optional migration stats

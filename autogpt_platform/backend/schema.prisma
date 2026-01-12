@@ -991,6 +991,11 @@ enum APIKeyStatus {
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 
+// LlmCostUnit: Defines how LLM MODEL costs are calculated (per run or per token).
+// This is distinct from BlockCostType (in backend/data/block.py) which defines
+// how BLOCK EXECUTION costs are calculated (per run, per byte, or per second).
+// LlmCostUnit is for pricing individual LLM model API calls in the registry,
+// while BlockCostType is for billing platform block executions.
 enum LlmCostUnit {
   RUN
   TOKENS
@@ -1106,9 +1111,17 @@ model LlmModelMigration {
   migratedNodeIds Json @default("[]")
   nodeCount       Int // Number of nodes migrated
 
-  // Optional custom pricing during the migration period
-  // If set, this cost should be applied instead of the target model's cost
-  // Note: Requires billing system integration to fully work
+  // Custom pricing override for migrated workflows during the migration period.
+  // Use case: When migrating users from an expensive model (e.g., GPT-4) to a cheaper
+  // one (e.g., GPT-3.5), you may want to temporarily maintain the original pricing
+  // to avoid billing surprises, or offer a discount during the transition.
+  //
+  // IMPORTANT: This field is intended for integration with the billing system.
+  // When billing calculates costs for nodes affected by this migration, it should
+  // check if customCreditCost is set and use it instead of the target model's cost.
+  // If null, the target model's normal cost applies.
+  //
+  // TODO: Integrate with billing system to apply this override during cost calculation.
   customCreditCost Int?
 
   // Revert tracking
