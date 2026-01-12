@@ -22,7 +22,7 @@ CREATE TABLE "WaitlistEntry" (
     "categories" TEXT[],
     "status" "WaitlistExternalStatus" NOT NULL DEFAULT 'NOT_STARTED',
     "votes" INTEGER NOT NULL DEFAULT 0,
-    "unafilliatedEmailUsers" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "unaffiliatedEmailUsers" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "isDeleted" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "WaitlistEntry_pkey" PRIMARY KEY ("id")

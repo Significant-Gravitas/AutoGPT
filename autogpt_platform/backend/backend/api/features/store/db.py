@@ -2075,7 +2075,7 @@ async def add_user_to_waitlist(
     Add a user to a waitlist.
 
     For logged-in users: connects via joinedUsers relation
-    For anonymous users: adds email to unafilliatedEmailUsers array
+    For anonymous users: adds email to unaffiliatedEmailUsers array
     """
     logger.debug(f"Adding user {user_id or email} to waitlist {waitlist_id}")
 
@@ -2123,16 +2123,16 @@ async def add_user_to_waitlist(
                         where={"id": waitlist_id}
                     )
                     if current_waitlist and email in (
-                        current_waitlist.unafilliatedEmailUsers or []
+                        current_waitlist.unaffiliatedEmailUsers or []
                     ):
                         updated_emails: list[str] = [
                             e
-                            for e in (current_waitlist.unafilliatedEmailUsers or [])
+                            for e in (current_waitlist.unaffiliatedEmailUsers or [])
                             if e != email
                         ]
                         await tx.waitlistentry.update(
                             where={"id": waitlist_id},
-                            data={"unafilliatedEmailUsers": updated_emails},
+                            data={"unaffiliatedEmailUsers": updated_emails},
                         )
         elif email:
             # Add email to unaffiliated list if not already present
@@ -2144,13 +2144,13 @@ async def add_user_to_waitlist(
                 )
                 if current_waitlist:
                     current_emails: list[str] = list(
-                        current_waitlist.unafilliatedEmailUsers or []
+                        current_waitlist.unaffiliatedEmailUsers or []
                     )
                     if email not in current_emails:
                         current_emails.append(email)
                         await tx.waitlistentry.update(
                             where={"id": waitlist_id},
-                            data={"unafilliatedEmailUsers": current_emails},
+                            data={"unaffiliatedEmailUsers": current_emails},
                         )
                         logger.info(f"Email {email} added to waitlist {waitlist_id}")
                     else:
@@ -2178,7 +2178,7 @@ def _waitlist_to_admin_response(
     """Convert a WaitlistEntry to WaitlistAdminResponse."""
     joined_count = len(waitlist.joinedUsers) if waitlist.joinedUsers else 0
     email_count = (
-        len(waitlist.unafilliatedEmailUsers) if waitlist.unafilliatedEmailUsers else 0
+        len(waitlist.unaffiliatedEmailUsers) if waitlist.unaffiliatedEmailUsers else 0
     )
 
     return store_model.WaitlistAdminResponse(
@@ -2366,7 +2366,7 @@ async def get_waitlist_signups_admin(
             )
 
         # Add email signups
-        for email in waitlist.unafilliatedEmailUsers or []:
+        for email in waitlist.unaffiliatedEmailUsers or []:
             signups.append(
                 store_model.WaitlistSignup(
                     type="email",
@@ -2487,9 +2487,9 @@ async def notify_waitlist_users_on_launch(
             # since they don't have user IDs for the notification system.
             # This could be done via a separate email service.
             # For now, we log these for potential manual follow-up or future implementation.
-            if waitlist.unafilliatedEmailUsers:
+            if waitlist.unaffiliatedEmailUsers:
                 logger.info(
-                    f"Waitlist {waitlist.id} has {len(waitlist.unafilliatedEmailUsers)} "
+                    f"Waitlist {waitlist.id} has {len(waitlist.unaffiliatedEmailUsers)} "
                     f"unaffiliated email users that need email notifications"
                 )
 

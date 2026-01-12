@@ -966,7 +966,7 @@ model WaitlistEntry {
   joinedUsers            User[]                 @relation("joinedWaitlists")
   // NOTE: DO NOT DOUBLE SEND TO THESE USERS, IF THEY HAVE SIGNED UP SINCE THEY MAY HAVE ALREADY RECEIVED AN EMAIL
   // DOUBLE CHECK WHEN SENDING THAT THEY ARE NOT IN THE JOINED USERS LIST ALSO
-  unafilliatedEmailUsers String[]               @default([])
+  unaffiliatedEmailUsers String[]               @default([])
 
   isDeleted Boolean @default(false)
 }

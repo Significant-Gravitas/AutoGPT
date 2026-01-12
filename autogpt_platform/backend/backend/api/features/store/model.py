@@ -290,7 +290,7 @@ class WaitlistAdminResponse(pydantic.BaseModel):
     agentOutputDemoUrl: str | None = None
     status: prisma.enums.WaitlistExternalStatus
     votes: int
-    signupCount: int  # Total count of joinedUsers + unafilliatedEmailUsers
+    signupCount: int  # Total count of joinedUsers + unaffiliatedEmailUsers
     storeListingId: str | None = None
     owningUserId: str
 
