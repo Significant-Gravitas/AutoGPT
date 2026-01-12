@@ -13,10 +13,12 @@ import prisma
 from openai import OpenAI
 from prisma.enums import ContentType
 
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.json import dumps
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+
 
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -132,9 +134,9 @@ async def store_content_embedding(
         metadata_json = dumps(metadata or {})
 
         # Upsert the embedding
-        await client.execute_raw(
+        await execute_raw_with_schema(
             """
-            INSERT INTO platform."UnifiedContentEmbedding" (
+            INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
                 "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
             )
             VALUES ($1, $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
@@ -151,6 +153,7 @@ async def store_content_embedding(
             embedding_str,
             searchable_text,
             metadata_json,
+            client=client,
         )
 
         logger.info(f"Stored embedding for {content_type}:{content_id}")
@@ -192,9 +195,7 @@ async def get_content_embedding(
     Returns dict with contentType, contentId, embedding, timestamps or None if not found.
     """
     try:
-        client = prisma.get_client()
-
-        result = await client.query_raw(
+        result = await query_raw_with_schema(
             """
             SELECT
                 "contentType",
@@ -205,7 +206,7 @@ async def get_content_embedding(
                 "metadata",
                 "createdAt",
                 "updatedAt"
-            FROM platform."UnifiedContentEmbedding"
+            FROM {schema_prefix}"UnifiedContentEmbedding"
             WHERE "contentType" = $1 AND "contentId" = $2 AND ("userId" = $3 OR ($3 IS NULL AND "userId" IS NULL))
             """,
             content_type,
@@ -311,13 +312,14 @@ async def delete_content_embedding(content_type: ContentType, content_id: str) -
     try:
         client = prisma.get_client()
 
-        await client.execute_raw(
+        await execute_raw_with_schema(
             """
-            DELETE FROM platform."UnifiedContentEmbedding"
+            DELETE FROM {schema_prefix}"UnifiedContentEmbedding"
             WHERE "contentType" = $1 AND "contentId" = $2
             """,
             content_type,
             content_id,
+            client=client,
         )
 
         logger.info(f"Deleted embedding for {content_type}:{content_id}")
@@ -338,13 +340,11 @@ async def get_embedding_stats() -> dict[str, Any]:
     - Versions without embeddings
     """
     try:
-        client = prisma.get_client()
-
         # Count approved versions
-        approved_result = await client.query_raw(
+        approved_result = await query_raw_with_schema(
             """
             SELECT COUNT(*) as count
-            FROM platform."StoreListingVersion"
+            FROM {schema_prefix}"StoreListingVersion"
             WHERE "submissionStatus" = 'APPROVED'
             AND "isDeleted" = false
             """
@@ -352,11 +352,11 @@ async def get_embedding_stats() -> dict[str, Any]:
         total_approved = approved_result[0]["count"] if approved_result else 0
 
         # Count versions with embeddings
-        embedded_result = await client.query_raw(
+        embedded_result = await query_raw_with_schema(
             """
             SELECT COUNT(*) as count
-            FROM platform."StoreListingVersion" slv
-            JOIN platform."UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
+            FROM {schema_prefix}"StoreListingVersion" slv
+            JOIN {schema_prefix}"UnifiedContentEmbedding" uce ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
             """
@@ -396,10 +396,8 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
         Dict with success/failure counts
     """
     try:
-        client = prisma.get_client()
-
         # Find approved versions without embeddings
-        missing = await client.query_raw(
+        missing = await query_raw_with_schema(
             """
             SELECT
                 slv.id,
@@ -407,8 +405,8 @@ async def backfill_missing_embeddings(batch_size: int = 10) -> dict[str, Any]:
                 slv.description,
                 slv."subHeading",
                 slv.categories
-            FROM platform."StoreListingVersion" slv
-            LEFT JOIN platform."UnifiedContentEmbedding" uce
+            FROM {schema_prefix}"StoreListingVersion" slv
+            LEFT JOIN {schema_prefix}"UnifiedContentEmbedding" uce
                 ON slv.id = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
             WHERE slv."submissionStatus" = 'APPROVED'
             AND slv."isDeleted" = false
