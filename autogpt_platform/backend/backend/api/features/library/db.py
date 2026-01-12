@@ -489,7 +489,7 @@ async def update_agent_version_in_library(
     agent_graph_version: int,
 ) -> library_model.LibraryAgent:
     """
-    Updates the agent version in the library if useGraphIsActiveVersion is True.
+    Updates the agent version in the library for any agent owned by the user.
 
     Args:
         user_id: Owner of the LibraryAgent.
@@ -498,20 +498,31 @@ async def update_agent_version_in_library(
 
     Raises:
         DatabaseError: If there's an error with the update.
+        NotFoundError: If no library agent is found for this user and agent.
     """
     logger.debug(
         f"Updating agent version in library for user #{user_id}, "
         f"agent #{agent_graph_id} v{agent_graph_version}"
     )
-    try:
-        library_agent = await prisma.models.LibraryAgent.prisma().find_first_or_raise(
+    async with transaction() as tx:
+        library_agent = await prisma.models.LibraryAgent.prisma(tx).find_first_or_raise(
             where={
                 "userId": user_id,
                 "agentGraphId": agent_graph_id,
-                "useGraphIsActiveVersion": True,
             },
         )
-        lib = await prisma.models.LibraryAgent.prisma().update(
+
+        # Delete any conflicting LibraryAgent for the target version
+        await prisma.models.LibraryAgent.prisma(tx).delete_many(
+            where={
+                "userId": user_id,
+                "agentGraphId": agent_graph_id,
+                "agentGraphVersion": agent_graph_version,
+                "id": {"not": library_agent.id},
+            }
+        )
+
+        lib = await prisma.models.LibraryAgent.prisma(tx).update(
             where={"id": library_agent.id},
             data={
                 "AgentGraph": {
@@ -525,13 +536,13 @@ async def update_agent_version_in_library(
             },
             include={"AgentGraph": True},
         )
-        if lib is None:
-            raise NotFoundError(f"Library agent {library_agent.id} not found")
 
-        return library_model.LibraryAgent.from_db(lib)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating agent version in library: {e}")
-        raise DatabaseError("Failed to update agent version in library") from e
+    if lib is None:
+        raise NotFoundError(
+            f"Failed to update library agent for {agent_graph_id} v{agent_graph_version}"
+        )
+
+    return library_model.LibraryAgent.from_db(lib)
 
 
 async def update_library_agent(
@@ -825,6 +836,7 @@ async def add_store_agent_to_library(
                     }
                 },
                 "isCreatedByUser": False,
+                "useGraphIsActiveVersion": False,
                 "settings": SafeJson(
                     _initialize_graph_settings(graph_model).model_dump()
                 ),

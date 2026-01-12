@@ -88,6 +88,8 @@ export const CredentialsField = (props: FieldProps) => {
         showTitle={false}
         readOnly={formContext?.readOnly}
         isOptional={!isRequired}
+        className="w-full"
+        variant="node"
       />
 
       {/* Optional credentials toggle - only show in builder canvas, not run dialogs */}

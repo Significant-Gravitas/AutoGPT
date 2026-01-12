@@ -227,7 +227,7 @@ backend/blocks/my_provider/
 
 ## Best Practices
 
-1. **Error Handling**: Error output pin is already defined on BlockSchemaOutput
+1. **Error Handling**: Use `BlockInputError` for validation failures and `BlockExecutionError` for runtime errors (import from `backend.util.exceptions`). These inherit from `ValueError` so the executor treats them as user-fixable. See [Error Handling in new_blocks.md](new_blocks.md#error-handling) for details.
 2. **Credentials**: Use the provider's `credentials_field()` method
 3. **Validation**: Use SchemaField constraints (ge, le, min_length, etc.)
 4. **Categories**: Choose appropriate categories for discoverability

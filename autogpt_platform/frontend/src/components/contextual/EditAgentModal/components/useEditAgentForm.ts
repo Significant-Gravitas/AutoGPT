@@ -47,7 +47,7 @@ export const useEditAgentForm = ({
     changes_summary: z
       .string()
       .min(1, "Changes summary is required")
-      .max(200, "Changes summary must be less than 200 characters"),
+      .max(500, "Changes summary must be less than 500 characters"),
     agentOutputDemo: z
       .string()
       .refine(validateYouTubeUrl, "Please enter a valid YouTube URL"),

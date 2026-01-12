@@ -133,7 +133,7 @@ export function EditAgentForm({
               <Input
                 id={field.name}
                 label="Changes Summary"
-                type="text"
+                type="textarea"
                 placeholder="Briefly describe what you changed"
                 error={form.formState.errors.changes_summary?.message}
                 {...field}
