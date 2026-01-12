@@ -5,7 +5,6 @@ import { JsonTextField } from "./JsonTextField/JsonTextField";
 import { MultiSelectField } from "./MultiSelectField/MultiSelectField";
 import { isMultiSelectSchema } from "../utils/schema-utils";
 
-
 export interface CustomFieldDefinition {
   id: string;
   matcher: (schema: any) => boolean;
@@ -44,10 +43,10 @@ export const CUSTOM_FIELDS: CustomFieldDefinition[] = [
     component: JsonTextField,
   },
   {
-     id: "custom/multi_select_field",
+    id: "custom/multi_select_field",
     matcher: isMultiSelectSchema,
     component: MultiSelectField,
-  }
+  },
 ];
 
 export function findCustomFieldId(schema: any): string | null {
