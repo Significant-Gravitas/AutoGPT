@@ -10316,18 +10316,6 @@
       "StoreWaitlistEntry": {
         "properties": {
           "waitlistId": { "type": "string", "title": "Waitlistid" },
-          "storeListing": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/StoreListingWithVersions" },
-              { "type": "null" }
-            ]
-          },
-          "owner": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/User" },
-              { "type": "null" }
-            ]
-          },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
           "subHeading": { "type": "string", "title": "Subheading" },
@@ -10361,7 +10349,8 @@
           "description",
           "categories"
         ],
-        "title": "StoreWaitlistEntry"
+        "title": "StoreWaitlistEntry",
+        "description": "Public waitlist entry - no PII fields exposed."
       },
       "StoreWaitlistsAllResponse": {
         "properties": {
@@ -11857,128 +11846,6 @@
           "expires_in_hours"
         ],
         "title": "UploadFileResponse"
-      },
-      "User": {
-        "properties": {
-          "id": { "type": "string", "title": "Id", "description": "User ID" },
-          "email": {
-            "type": "string",
-            "title": "Email",
-            "description": "User email address"
-          },
-          "email_verified": {
-            "type": "boolean",
-            "title": "Email Verified",
-            "description": "Whether email is verified",
-            "default": true
-          },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name",
-            "description": "User display name"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "When user was created"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "When user was last updated"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata",
-            "description": "User metadata as dict"
-          },
-          "integrations": {
-            "type": "string",
-            "title": "Integrations",
-            "description": "Encrypted integrations data",
-            "default": ""
-          },
-          "stripe_customer_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Stripe Customer Id",
-            "description": "Stripe customer ID"
-          },
-          "top_up_config": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/AutoTopUpConfig" },
-              { "type": "null" }
-            ],
-            "description": "Top up configuration"
-          },
-          "max_emails_per_day": {
-            "type": "integer",
-            "title": "Max Emails Per Day",
-            "description": "Maximum emails per day",
-            "default": 3
-          },
-          "notify_on_agent_run": {
-            "type": "boolean",
-            "title": "Notify On Agent Run",
-            "description": "Notify on agent run",
-            "default": true
-          },
-          "notify_on_zero_balance": {
-            "type": "boolean",
-            "title": "Notify On Zero Balance",
-            "description": "Notify on zero balance",
-            "default": true
-          },
-          "notify_on_low_balance": {
-            "type": "boolean",
-            "title": "Notify On Low Balance",
-            "description": "Notify on low balance",
-            "default": true
-          },
-          "notify_on_block_execution_failed": {
-            "type": "boolean",
-            "title": "Notify On Block Execution Failed",
-            "description": "Notify on block execution failure",
-            "default": true
-          },
-          "notify_on_continuous_agent_error": {
-            "type": "boolean",
-            "title": "Notify On Continuous Agent Error",
-            "description": "Notify on continuous agent error",
-            "default": true
-          },
-          "notify_on_daily_summary": {
-            "type": "boolean",
-            "title": "Notify On Daily Summary",
-            "description": "Notify on daily summary",
-            "default": true
-          },
-          "notify_on_weekly_summary": {
-            "type": "boolean",
-            "title": "Notify On Weekly Summary",
-            "description": "Notify on weekly summary",
-            "default": true
-          },
-          "notify_on_monthly_summary": {
-            "type": "boolean",
-            "title": "Notify On Monthly Summary",
-            "description": "Notify on monthly summary",
-            "default": true
-          },
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "User timezone (IANA timezone identifier or 'not-set')",
-            "default": "not-set"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["id", "email", "created_at", "updated_at"],
-        "title": "User",
-        "description": "Application-layer User model with snake_case convention."
       },
       "UserHistoryResponse": {
         "properties": {

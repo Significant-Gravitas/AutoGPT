@@ -75,7 +75,7 @@ export function WaitlistTable() {
 
     return (
       <span
-        className={`rounded-full px-2 py-1 text-xs font-medium ${statusColors[status] || "bg-gray-100"}`}
+        className={`rounded-full px-2 py-1 text-xs font-medium ${statusColors[status] || "bg-gray-100 text-gray-700"}`}
       >
         {status.replace(/_/g, " ")}
       </span>
