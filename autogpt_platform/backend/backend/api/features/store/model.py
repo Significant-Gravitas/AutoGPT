@@ -4,7 +4,6 @@ from typing import List
 import prisma.enums
 import pydantic
 
-from backend.data.model import User
 from backend.util.models import Pagination
 
 
@@ -220,9 +219,9 @@ class ReviewSubmissionRequest(pydantic.BaseModel):
 
 
 class StoreWaitlistEntry(pydantic.BaseModel):
+    """Public waitlist entry - no PII fields exposed."""
+
     waitlistId: str
-    storeListing: StoreListingWithVersions | None = None
-    owner: User | None = None
     slug: str
 
     # Content fields
