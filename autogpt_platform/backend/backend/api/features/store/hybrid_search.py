@@ -149,9 +149,11 @@ async def hybrid_search(
 
         # Optimized hybrid search query:
         # 1. Direct join to UnifiedContentEmbedding via contentId=storeListingVersionId (no redundant JOINs)
-        # 2. UNION ALL approach to enable index usage for both lexical and semantic branches
+        # 2. UNION ALL approach (DISTINCT already in subqueries)
         # 3. COUNT(*) OVER() to get total count in single query
-        # 4. Simplified category matching with array_to_string
+        # 4. Optimized category matching with EXISTS + unnest
+        # 5. Pre-calculated max lexical score to avoid window function overhead
+        # 6. Simplified recency calculation with linear decay
         sql_query = f"""
             WITH candidates AS (
                 -- Lexical matches (uses GIN index on search column)
@@ -160,7 +162,7 @@ async def hybrid_search(
                 WHERE {where_clause}
                 AND sa.search @@ plainto_tsquery('english', {query_param})
 
-                UNION
+                UNION ALL
 
                 -- Semantic matches (uses HNSW index on embedding)
                 SELECT DISTINCT sa."storeListingVersionId"
@@ -188,30 +190,37 @@ async def hybrid_search(
                     COALESCE(1 - (uce.embedding <=> {embedding_param}::vector), 0) as semantic_score,
                     -- Lexical score: ts_rank_cd (will be normalized later)
                     COALESCE(ts_rank_cd(sa.search, plainto_tsquery('english', {query_param})), 0) as lexical_raw,
-                    -- Category match: check if query appears in any category
+                    -- Category match: optimized with unnest for better performance
                     CASE
-                        WHEN LOWER(array_to_string(sa.categories, ' ')) LIKE '%' || {query_lower_param} || '%'
+                        WHEN EXISTS (
+                            SELECT 1 FROM unnest(sa.categories) cat
+                            WHERE LOWER(cat) LIKE '%' || {query_lower_param} || '%'
+                        )
                         THEN 1.0
                         ELSE 0.0
                     END as category_score,
-                    -- Recency score: exponential decay over 90 days
-                    EXP(-EXTRACT(EPOCH FROM (NOW() - sa.updated_at)) / (90 * 24 * 3600)) as recency_score
+                    -- Recency score: linear decay over 90 days (simpler than exponential)
+                    GREATEST(0, 1 - EXTRACT(EPOCH FROM (NOW() - sa.updated_at)) / (90 * 24 * 3600)) as recency_score
                 FROM candidates c
                 INNER JOIN {{schema_prefix}}"StoreAgent" sa
                     ON c."storeListingVersionId" = sa."storeListingVersionId"
                 LEFT JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
                     ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
             ),
+            max_lexical AS (
+                SELECT MAX(lexical_raw) as max_val FROM search_scores
+            ),
             normalized AS (
                 SELECT
-                    *,
-                    -- Normalize lexical score by max in result set
+                    ss.*,
+                    -- Normalize lexical score by pre-calculated max
                     CASE
-                        WHEN MAX(lexical_raw) OVER () > 0
-                        THEN lexical_raw / MAX(lexical_raw) OVER ()
+                        WHEN ml.max_val > 0
+                        THEN ss.lexical_raw / ml.max_val
                         ELSE 0
                     END as lexical_score
-                FROM search_scores
+                FROM search_scores ss
+                CROSS JOIN max_lexical ml
             ),
             scored AS (
                 SELECT
