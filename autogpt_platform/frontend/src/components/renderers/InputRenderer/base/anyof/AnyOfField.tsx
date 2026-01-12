@@ -12,18 +12,7 @@ export const AnyOfField = (props: FieldProps) => {
   const { fields } = registry;
   const { SchemaField: _SchemaField } = fields;
   const { nodeId } = registry.formContext;
-
-  const parentCustomFieldId = findCustomFieldId(schema);
-  if (parentCustomFieldId) {
-    return null;
-  }
-
   const { isInputConnected } = useEdgeStore();
-
-  const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
-
-  const Widget = getWidget({ type: "string" }, "select", registry.widgets);
-
   const {
     handleOptionChange,
     enumOptions,
@@ -31,6 +20,15 @@ export const AnyOfField = (props: FieldProps) => {
     optionSchema,
     field_id,
   } = useAnyOfField(props);
+
+  const parentCustomFieldId = findCustomFieldId(schema);
+  if (parentCustomFieldId) {
+    return null;
+  }
+
+  const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
+
+  const Widget = getWidget({ type: "string" }, "select", registry.widgets);
 
   const handleId = getHandleId({
     uiOptions,
