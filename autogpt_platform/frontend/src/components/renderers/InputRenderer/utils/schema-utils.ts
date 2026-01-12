@@ -1,7 +1,11 @@
 import { getUiOptions, RJSFSchema, UiSchema } from "@rjsf/utils";
 
 export function isAnyOfSchema(schema: RJSFSchema | undefined): boolean {
-  return Array.isArray(schema?.anyOf) && schema!.anyOf.length > 0;
+  return (
+    Array.isArray(schema?.anyOf) &&
+    schema!.anyOf.length > 0 &&
+    schema?.enum === undefined
+  );
 }
 
 export const isAnyOfChild = (
@@ -32,4 +36,22 @@ export function isOptionalType(schema: RJSFSchema | undefined): {
 }
 export function isAnyOfSelector(name: string) {
   return name.includes("anyof_select");
+}
+
+export function isMultiSelectSchema(schema: RJSFSchema | undefined): boolean {
+  if (typeof schema !== "object" || schema === null) {
+    return false;
+  }
+
+  if ("anyOf" in schema || "oneOf" in schema) {
+    return false;
+  }
+
+  return !!(
+    schema.type === "object" &&
+    schema.properties &&
+    Object.values(schema.properties).every(
+      (prop: any) => prop.type === "boolean",
+    )
+  );
 }
