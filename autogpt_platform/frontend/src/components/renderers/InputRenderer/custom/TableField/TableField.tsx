@@ -1,6 +1,6 @@
 import { descriptionId, FieldProps, getTemplate, titleId } from "@rjsf/utils";
 import { Table, RowData } from "@/components/molecules/Table/Table";
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 
 export const TableField = (props: FieldProps) => {
   const { schema, formData, onChange, fieldPathId, registry, uiSchema } = props;
@@ -12,12 +12,9 @@ export const TableField = (props: FieldProps) => {
     return Object.keys(properties);
   }, [properties]);
 
-  const handleChange = useCallback(
-    (rows: RowData[]) => {
-      onChange(rows, fieldPathId?.path.slice(0, -1));
-    },
-    [onChange, fieldPathId?.path],
-  );
+  const handleChange = (rows: RowData[]) => {
+    onChange(rows, fieldPathId?.path.slice(0, -1));
+  };
 
   const TitleFieldTemplate = getTemplate("TitleFieldTemplate", registry);
   const DescriptionFieldTemplate = getTemplate(

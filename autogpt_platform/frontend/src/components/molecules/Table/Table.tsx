@@ -26,7 +26,7 @@ export interface TableProps {
   readOnly?: boolean;
 }
 
-export const Table = React.memo(function Table({
+export function Table({
   columns,
   defaultValues,
   onChange,
@@ -128,6 +128,6 @@ export const Table = React.memo(function Table({
       </div>
     </div>
   );
-});
+}
 
 export { type RowData } from "./useTable";
