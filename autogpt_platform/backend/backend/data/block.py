@@ -637,8 +637,11 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             - should_pause: True if execution should be paused for review
             - input_data_to_use: The input data to use (may be modified by reviewer)
         """
-        # Skip review if not required or safe mode is disabled
-        if not self.requires_human_review or not execution_context.safe_mode:
+        if not (
+            self.requires_human_review
+            and execution_context.safe_mode
+            and execution_context.is_ai_generated_graph
+        ):
             return False, input_data
 
         from backend.blocks.helpers.review import HITLReviewHelper

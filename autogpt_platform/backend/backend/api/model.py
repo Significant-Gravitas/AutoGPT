@@ -43,6 +43,7 @@ GraphExecutionSource = Literal["builder", "library", "onboarding"]
 class CreateGraph(pydantic.BaseModel):
     graph: Graph
     source: GraphCreationSource | None = None
+    is_ai_generated: bool = False
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):

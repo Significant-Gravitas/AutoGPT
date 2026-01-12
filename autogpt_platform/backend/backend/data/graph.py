@@ -63,6 +63,16 @@ logger = logging.getLogger(__name__)
 
 class GraphSettings(BaseModel):
     human_in_the_loop_safe_mode: bool | None = None
+    is_ai_generated_graph: bool = False
+
+    @classmethod
+    def from_graph(
+        cls, graph: "GraphModel", is_ai_generated: bool = False
+    ) -> "GraphSettings":
+        return cls(
+            human_in_the_loop_safe_mode=(True if graph.has_human_in_the_loop else None),
+            is_ai_generated_graph=is_ai_generated,
+        )
 
 
 class Link(BaseDbModel):

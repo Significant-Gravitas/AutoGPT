@@ -877,6 +877,7 @@ async def add_graph_execution(
                 if settings.human_in_the_loop_safe_mode is not None
                 else True
             ),
+            is_ai_generated_graph=settings.is_ai_generated_graph,
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
             ),

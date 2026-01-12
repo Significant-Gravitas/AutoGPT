@@ -82,6 +82,7 @@ class ExecutionContext(BaseModel):
     """
 
     safe_mode: bool = True
+    is_ai_generated_graph: bool = False
     user_timezone: str = "UTC"
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
