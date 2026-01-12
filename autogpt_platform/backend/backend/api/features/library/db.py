@@ -797,7 +797,9 @@ async def add_store_agent_to_library(
                 "isCreatedByUser": False,
                 "useGraphIsActiveVersion": False,
                 "settings": SafeJson(
-                    GraphSettings.from_graph(graph_model).model_dump()
+                    GraphSettings.from_graph(
+                        graph_model, is_ai_generated=False
+                    ).model_dump()
                 ),
             },
             include=library_agent_include(
