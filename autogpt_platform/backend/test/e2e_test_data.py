@@ -412,7 +412,9 @@ class TestDataCreator:
                         # Use the API function to create library agent
                         library_agents.extend(
                             v.model_dump()
-                            for v in await create_library_agent(graph, user["id"])
+                            for v in await create_library_agent(
+                                graph, user["id"], is_ai_generated=False
+                            )
                         )
                 except Exception as e:
                     print(f"Error creating library agent: {e}")

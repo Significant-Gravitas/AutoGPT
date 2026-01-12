@@ -34,7 +34,8 @@
       "is_favorite": false,
       "recommended_schedule_cron": null,
       "settings": {
-        "human_in_the_loop_safe_mode": null
+        "human_in_the_loop_safe_mode": null,
+        "is_ai_generated_graph": false
       },
       "marketplace_listing": null
     },
@@ -72,7 +73,8 @@
       "is_favorite": false,
       "recommended_schedule_cron": null,
       "settings": {
-        "human_in_the_loop_safe_mode": null
+        "human_in_the_loop_safe_mode": null,
+        "is_ai_generated_graph": false
       },
       "marketplace_listing": null
     }

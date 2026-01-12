@@ -404,8 +404,8 @@ async def add_generated_agent_image(
 async def create_library_agent(
     graph: graph_db.GraphModel,
     user_id: str,
+    is_ai_generated: bool,
     create_library_agents_for_sub_graphs: bool = True,
-    is_ai_generated: bool = False,
 ) -> list[library_model.LibraryAgent]:
     """
     Adds an agent to the user's library (LibraryAgent table).
@@ -1189,8 +1189,14 @@ async def fork_library_agent(
         )
         new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
-        # Create a library agent for the new graph
-        return (await create_library_agent(new_graph, user_id))[0]
+        # Create a library agent for the new graph, preserving is_ai_generated flag
+        return (
+            await create_library_agent(
+                new_graph,
+                user_id,
+                is_ai_generated=original_agent.settings.is_ai_generated_graph,
+            )
+        )[0]
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error cloning library agent: {e}")
         raise DatabaseError("Failed to fork library agent") from e

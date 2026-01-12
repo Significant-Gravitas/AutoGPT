@@ -166,6 +166,7 @@ async def get_or_create_library_agent(
     library_agents = await library_db.create_library_agent(
         graph=graph,
         user_id=user_id,
+        is_ai_generated=False,
         create_library_agents_for_sub_graphs=False,
     )
     assert len(library_agents) == 1, "Expected 1 library agent to be created"

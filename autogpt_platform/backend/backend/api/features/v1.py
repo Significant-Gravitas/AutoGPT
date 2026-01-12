@@ -764,7 +764,7 @@ async def create_new_graph(
 
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(
-        graph, user_id=user_id, is_ai_generated=create_graph.is_ai_generated
+        graph, user_id, is_ai_generated=create_graph.is_ai_generated
     )
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
