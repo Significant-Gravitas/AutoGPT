@@ -90,7 +90,7 @@ jobs:
 
       - name: Generate Prisma Client
         working-directory: autogpt_platform/backend
-        run: poetry run prisma generate
+        run: poetry run prisma generate && poetry run gen-prisma-stub
 
       # Frontend Node.js/pnpm setup (mirrors platform-frontend-ci.yml)
       - name: Set up Node.js
