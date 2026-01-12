@@ -2,14 +2,9 @@
 
 import Image from "next/image";
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
-import { StoreWaitlistEntry } from "@/lib/autogpt-server-api/types";
-import { Check } from "lucide-react";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import type { StoreWaitlistEntry } from "@/app/api/__generated__/models/storeWaitlistEntry";
+import { Check } from "@phosphor-icons/react";
 
 interface WaitlistDetailModalProps {
   waitlist: StoreWaitlistEntry;
@@ -25,12 +20,18 @@ export function WaitlistDetailModal({
   onJoin,
 }: WaitlistDetailModalProps) {
   return (
-    <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[700px]">
-        <DialogHeader>
-          <DialogTitle>{waitlist.name}</DialogTitle>
-        </DialogHeader>
-
+    <Dialog
+      title={waitlist.name}
+      controlled={{
+        isOpen: true,
+        set: async (open) => {
+          if (!open) onClose();
+        },
+      }}
+      onClose={onClose}
+      styling={{ maxWidth: "700px" }}
+    >
+      <Dialog.Content>
         <div className="space-y-6">
           {/* Main Image */}
           {waitlist.imageUrls.length > 0 && (
@@ -109,24 +110,26 @@ export function WaitlistDetailModal({
           )}
 
           {/* Join Button */}
-          {isMember ? (
-            <Button
-              disabled
-              className="w-full rounded-full bg-green-600 text-white hover:bg-green-600 dark:bg-green-700 dark:hover:bg-green-700"
-            >
-              <Check className="mr-2 h-4 w-4" />
-              You&apos;re on the waitlist
-            </Button>
-          ) : (
-            <Button
-              onClick={onJoin}
-              className="w-full rounded-full bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-            >
-              Join waitlist
-            </Button>
-          )}
+          <Dialog.Footer>
+            {isMember ? (
+              <Button
+                disabled
+                className="w-full rounded-full bg-green-600 text-white hover:bg-green-600 dark:bg-green-700 dark:hover:bg-green-700"
+              >
+                <Check size={16} className="mr-2" />
+                You&apos;re on the waitlist
+              </Button>
+            ) : (
+              <Button
+                onClick={onJoin}
+                className="w-full rounded-full bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+              >
+                Join waitlist
+              </Button>
+            )}
+          </Dialog.Footer>
         </div>
-      </DialogContent>
+      </Dialog.Content>
     </Dialog>
   );
 }

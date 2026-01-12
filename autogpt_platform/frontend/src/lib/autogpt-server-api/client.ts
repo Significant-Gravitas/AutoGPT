@@ -67,13 +67,6 @@ import type {
   User,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
-  StoreWaitlistEntry,
-  StoreWaitlistsAllResponse,
-  WaitlistAdminListResponse,
-  WaitlistAdminResponse,
-  WaitlistCreateRequest,
-  WaitlistSignupListResponse,
-  WaitlistUpdateRequest,
   WebSocketNotification,
 } from "./types";
 
@@ -621,67 +614,6 @@ export default class BackendAPI {
     const url = `/store/admin/submissions/download/${storeListingVersionId}`;
 
     return this._get(url);
-  }
-
-  /////////////////////////////////////////
-  ///////// Waitlist Admin API ////////////
-  /////////////////////////////////////////
-
-  getWaitlistsAdmin(): Promise<WaitlistAdminListResponse> {
-    return this._get("/store/admin/waitlist");
-  }
-
-  getWaitlistAdmin(waitlistId: string): Promise<WaitlistAdminResponse> {
-    return this._get(`/store/admin/waitlist/${waitlistId}`);
-  }
-
-  createWaitlist(data: WaitlistCreateRequest): Promise<WaitlistAdminResponse> {
-    return this._request("POST", "/store/admin/waitlist", data);
-  }
-
-  updateWaitlist(
-    waitlistId: string,
-    data: WaitlistUpdateRequest,
-  ): Promise<WaitlistAdminResponse> {
-    return this._request("PUT", `/store/admin/waitlist/${waitlistId}`, data);
-  }
-
-  deleteWaitlist(waitlistId: string): Promise<void> {
-    return this._request("DELETE", `/store/admin/waitlist/${waitlistId}`);
-  }
-
-  getWaitlistSignups(waitlistId: string): Promise<WaitlistSignupListResponse> {
-    return this._get(`/store/admin/waitlist/${waitlistId}/signups`);
-  }
-
-  linkWaitlistToListing(
-    waitlistId: string,
-    storeListingId: string,
-  ): Promise<WaitlistAdminResponse> {
-    return this._request("POST", `/store/admin/waitlist/${waitlistId}/link`, {
-      store_listing_id: storeListingId,
-    });
-  }
-
-  /////////////////////////////////////////
-  ///////// Public Waitlist API ///////////
-  /////////////////////////////////////////
-
-  getWaitlists(): Promise<StoreWaitlistsAllResponse> {
-    return this._get("/store/waitlist");
-  }
-
-  joinWaitlist(
-    waitlistId: string,
-    email?: string,
-  ): Promise<StoreWaitlistEntry> {
-    return this._request("POST", `/store/waitlist/${waitlistId}/join`, {
-      email: email || null,
-    });
-  }
-
-  getMyWaitlistMemberships(): Promise<string[]> {
-    return this._get("/store/waitlist/my-memberships");
   }
 
   ////////////////////////////////////////

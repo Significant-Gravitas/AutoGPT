@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Table,
   TableBody,
@@ -10,59 +11,58 @@ import {
   TableRow,
 } from "@/components/__legacy__/ui/table";
 import { Button } from "@/components/atoms/Button/Button";
-import { getWaitlistsAdmin, deleteWaitlist } from "../actions";
-import type { WaitlistAdminResponse } from "@/lib/autogpt-server-api/types";
+import {
+  useGetV2ListAllWaitlists,
+  useDeleteV2DeleteWaitlist,
+  getGetV2ListAllWaitlistsQueryKey,
+} from "@/app/api/__generated__/endpoints/admin/admin";
+import type { WaitlistAdminResponse } from "@/app/api/__generated__/models/waitlistAdminResponse";
 import { EditWaitlistDialog } from "./EditWaitlistDialog";
 import { WaitlistSignupsDialog } from "./WaitlistSignupsDialog";
 import { Trash, PencilSimple, Users, Link } from "@phosphor-icons/react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export function WaitlistTable() {
-  const [waitlists, setWaitlists] = useState<WaitlistAdminResponse[]>([]);
-  const [loading, setLoading] = useState(true);
   const [editingWaitlist, setEditingWaitlist] =
     useState<WaitlistAdminResponse | null>(null);
   const [viewingSignups, setViewingSignups] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  async function loadWaitlists() {
-    try {
-      const response = await getWaitlistsAdmin();
-      setWaitlists(response.waitlists);
-    } catch (error) {
-      console.error("Error loading waitlists:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load waitlists",
-      });
-    } finally {
-      setLoading(false);
-    }
+  const { data: response, isLoading, error } = useGetV2ListAllWaitlists();
+
+  const deleteWaitlistMutation = useDeleteV2DeleteWaitlist({
+    mutation: {
+      onSuccess: () => {
+        toast({
+          title: "Success",
+          description: "Waitlist deleted successfully",
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListAllWaitlistsQueryKey(),
+        });
+      },
+      onError: (error) => {
+        console.error("Error deleting waitlist:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to delete waitlist",
+        });
+      },
+    },
+  });
+
+  function handleDelete(waitlistId: string) {
+    if (!confirm("Are you sure you want to delete this waitlist?")) return;
+    deleteWaitlistMutation.mutate({ waitlistId });
   }
 
-  useEffect(() => {
-    loadWaitlists();
-  }, []);
-
-  async function handleDelete(waitlistId: string) {
-    if (!confirm("Are you sure you want to delete this waitlist?")) return;
-
-    try {
-      await deleteWaitlist(waitlistId);
-      toast({
-        title: "Success",
-        description: "Waitlist deleted successfully",
-      });
-      loadWaitlists();
-    } catch (error) {
-      console.error("Error deleting waitlist:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to delete waitlist",
-      });
-    }
+  function handleWaitlistSaved() {
+    setEditingWaitlist(null);
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListAllWaitlistsQueryKey(),
+    });
   }
 
   function formatStatus(status: string) {
@@ -91,9 +91,19 @@ export function WaitlistTable() {
     }).format(new Date(dateStr));
   }
 
-  if (loading) {
+  if (isLoading) {
     return <div className="py-10 text-center">Loading waitlists...</div>;
   }
+
+  if (error) {
+    return (
+      <div className="py-10 text-center text-red-500">
+        Error loading waitlists. Please try again.
+      </div>
+    );
+  }
+
+  const waitlists = response?.status === 200 ? response.data.waitlists : [];
 
   if (waitlists.length === 0) {
     return (
@@ -165,6 +175,7 @@ export function WaitlistTable() {
                       size="small"
                       onClick={() => handleDelete(waitlist.id)}
                       title="Delete"
+                      disabled={deleteWaitlistMutation.isPending}
                     >
                       <Trash size={16} className="text-red-500" />
                     </Button>
@@ -180,10 +191,7 @@ export function WaitlistTable() {
         <EditWaitlistDialog
           waitlist={editingWaitlist}
           onClose={() => setEditingWaitlist(null)}
-          onSave={() => {
-            setEditingWaitlist(null);
-            loadWaitlists();
-          }}
+          onSave={handleWaitlistSaved}
         />
       )}
 

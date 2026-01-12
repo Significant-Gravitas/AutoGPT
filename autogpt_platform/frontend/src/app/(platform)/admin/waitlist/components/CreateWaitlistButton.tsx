@@ -1,29 +1,62 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/__legacy__/ui/dialog";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Label } from "@/components/__legacy__/ui/label";
-import { Textarea } from "@/components/__legacy__/ui/textarea";
-import { createWaitlist } from "../actions";
+  usePostV2CreateWaitlist,
+  getGetV2ListAllWaitlistsQueryKey,
+} from "@/app/api/__generated__/endpoints/admin/admin";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus } from "@phosphor-icons/react";
 
 export function CreateWaitlistButton() {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const createWaitlistMutation = usePostV2CreateWaitlist({
+    mutation: {
+      onSuccess: (response) => {
+        if (response.status === 200) {
+          toast({
+            title: "Success",
+            description: "Waitlist created successfully",
+          });
+          setOpen(false);
+          setFormData({
+            name: "",
+            slug: "",
+            subHeading: "",
+            description: "",
+            categories: "",
+            imageUrls: "",
+            videoUrl: "",
+            agentOutputDemoUrl: "",
+          });
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListAllWaitlistsQueryKey(),
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to create waitlist",
+          });
+        }
+      },
+      onError: (error) => {
+        console.error("Error creating waitlist:", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to create waitlist",
+        });
+      },
+    },
+  });
 
   const [formData, setFormData] = useState({
     name: "",
@@ -36,12 +69,10 @@ export function CreateWaitlistButton() {
     agentOutputDemoUrl: "",
   });
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) {
+  function handleInputChange(id: string, value: string) {
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [id]: value,
     }));
   }
 
@@ -52,12 +83,11 @@ export function CreateWaitlistButton() {
       .replace(/^-|-$/g, "");
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
 
-    try {
-      await createWaitlist({
+    createWaitlistMutation.mutate({
+      data: {
         name: formData.name,
         slug: formData.slug || generateSlug(formData.name),
         subHeading: formData.subHeading,
@@ -70,164 +100,118 @@ export function CreateWaitlistButton() {
           : [],
         videoUrl: formData.videoUrl || null,
         agentOutputDemoUrl: formData.agentOutputDemoUrl || null,
-      });
-
-      toast({
-        title: "Success",
-        description: "Waitlist created successfully",
-      });
-
-      setOpen(false);
-      setFormData({
-        name: "",
-        slug: "",
-        subHeading: "",
-        description: "",
-        categories: "",
-        imageUrls: "",
-        videoUrl: "",
-        agentOutputDemoUrl: "",
-      });
-      router.refresh();
-    } catch (error) {
-      console.error("Error creating waitlist:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to create waitlist",
-      });
-    } finally {
-      setLoading(false);
-    }
+      },
+    });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Waitlist
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>Create New Waitlist</DialogTitle>
-          <DialogDescription>
+    <>
+      <Button onClick={() => setOpen(true)}>
+        <Plus size={16} className="mr-2" />
+        Create Waitlist
+      </Button>
+
+      <Dialog
+        title="Create New Waitlist"
+        controlled={{
+          isOpen: open,
+          set: async (isOpen) => setOpen(isOpen),
+        }}
+        onClose={() => setOpen(false)}
+        styling={{ maxWidth: "600px" }}
+      >
+        <Dialog.Content>
+          <p className="mb-4 text-sm text-zinc-500">
             Create a new waitlist for an upcoming agent. Users can sign up to be
             notified when it launches.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="SEO Analysis Agent"
-                required
-              />
-            </div>
+          </p>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            <Input
+              id="name"
+              label="Name"
+              value={formData.name}
+              onChange={(e) => handleInputChange("name", e.target.value)}
+              placeholder="SEO Analysis Agent"
+              required
+            />
 
-            <div className="grid gap-2">
-              <Label htmlFor="slug">Slug</Label>
-              <Input
-                id="slug"
-                name="slug"
-                value={formData.slug}
-                onChange={handleChange}
-                placeholder="seo-analysis-agent (auto-generated if empty)"
-              />
-            </div>
+            <Input
+              id="slug"
+              label="Slug"
+              value={formData.slug}
+              onChange={(e) => handleInputChange("slug", e.target.value)}
+              placeholder="seo-analysis-agent (auto-generated if empty)"
+            />
 
-            <div className="grid gap-2">
-              <Label htmlFor="subHeading">Subheading *</Label>
-              <Input
-                id="subHeading"
-                name="subHeading"
-                value={formData.subHeading}
-                onChange={handleChange}
-                placeholder="Analyze your website's SEO in minutes"
-                required
-              />
-            </div>
+            <Input
+              id="subHeading"
+              label="Subheading"
+              value={formData.subHeading}
+              onChange={(e) => handleInputChange("subHeading", e.target.value)}
+              placeholder="Analyze your website's SEO in minutes"
+              required
+            />
 
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description *</Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                placeholder="Detailed description of what this agent does..."
-                rows={4}
-                required
-              />
-            </div>
+            <Input
+              id="description"
+              label="Description"
+              type="textarea"
+              value={formData.description}
+              onChange={(e) => handleInputChange("description", e.target.value)}
+              placeholder="Detailed description of what this agent does..."
+              rows={4}
+              required
+            />
 
-            <div className="grid gap-2">
-              <Label htmlFor="categories">Categories (comma-separated)</Label>
-              <Input
-                id="categories"
-                name="categories"
-                value={formData.categories}
-                onChange={handleChange}
-                placeholder="SEO, Marketing, Analysis"
-              />
-            </div>
+            <Input
+              id="categories"
+              label="Categories (comma-separated)"
+              value={formData.categories}
+              onChange={(e) => handleInputChange("categories", e.target.value)}
+              placeholder="SEO, Marketing, Analysis"
+            />
 
-            <div className="grid gap-2">
-              <Label htmlFor="imageUrls">Image URLs (comma-separated)</Label>
-              <Input
-                id="imageUrls"
-                name="imageUrls"
-                value={formData.imageUrls}
-                onChange={handleChange}
-                placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg"
-              />
-            </div>
+            <Input
+              id="imageUrls"
+              label="Image URLs (comma-separated)"
+              value={formData.imageUrls}
+              onChange={(e) => handleInputChange("imageUrls", e.target.value)}
+              placeholder="https://example.com/image1.jpg, https://example.com/image2.jpg"
+            />
 
-            <div className="grid gap-2">
-              <Label htmlFor="videoUrl">Video URL (optional)</Label>
-              <Input
-                id="videoUrl"
-                name="videoUrl"
-                value={formData.videoUrl}
-                onChange={handleChange}
-                placeholder="https://youtube.com/watch?v=..."
-              />
-            </div>
+            <Input
+              id="videoUrl"
+              label="Video URL (optional)"
+              value={formData.videoUrl}
+              onChange={(e) => handleInputChange("videoUrl", e.target.value)}
+              placeholder="https://youtube.com/watch?v=..."
+            />
 
-            <div className="grid gap-2">
-              <Label htmlFor="agentOutputDemoUrl">
-                Output Demo URL (optional)
-              </Label>
-              <Input
-                id="agentOutputDemoUrl"
-                name="agentOutputDemoUrl"
-                value={formData.agentOutputDemoUrl}
-                onChange={handleChange}
-                placeholder="https://example.com/demo-output.mp4"
-              />
-            </div>
-          </div>
+            <Input
+              id="agentOutputDemoUrl"
+              label="Output Demo URL (optional)"
+              value={formData.agentOutputDemoUrl}
+              onChange={(e) =>
+                handleInputChange("agentOutputDemoUrl", e.target.value)
+              }
+              placeholder="https://example.com/demo-output.mp4"
+            />
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={loading}>
-              Create Waitlist
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <Dialog.Footer>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={createWaitlistMutation.isPending}>
+                Create Waitlist
+              </Button>
+            </Dialog.Footer>
+          </form>
+        </Dialog.Content>
+      </Dialog>
+    </>
   );
 }
