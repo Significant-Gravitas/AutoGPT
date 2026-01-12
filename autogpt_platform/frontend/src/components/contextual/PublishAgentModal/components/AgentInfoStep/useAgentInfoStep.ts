@@ -53,21 +53,24 @@ export function useAgentInfoStep({
   useEffect(() => {
     if (initialData?.agent_id) {
       setAgentId(initialData.agent_id);
-      const initialImages = [
-        ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
-        ...(initialData.additionalImages || []),
-      ];
-      setImages(initialImages);
-
-      // Update form with initial data
+      setImages(
+        Array.from(
+          new Set([
+            ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
+            ...(initialData.additionalImages || []),
+          ]),
+        ),
+      );
       form.reset({
-        changesSummary: initialData.changesSummary || "",
+        changesSummary: isMarketplaceUpdate
+          ? ""
+          : initialData.changesSummary || "",
         title: initialData.title,
         subheader: initialData.subheader,
         slug: initialData.slug.toLocaleLowerCase().trim(),
         youtubeLink: initialData.youtubeLink,
         category: initialData.category,
-        description: initialData.description,
+        description: isMarketplaceUpdate ? "" : initialData.description,
         recommendedScheduleCron: initialData.recommendedScheduleCron || "",
         instructions: initialData.instructions || "",
         agentOutputDemo: initialData.agentOutputDemo || "",
@@ -149,12 +152,7 @@ export function useAgentInfoStep({
     agentId,
     images,
     isSubmitting,
-    initialImages: initialData
-      ? [
-          ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
-          ...(initialData.additionalImages || []),
-        ]
-      : [],
+    initialImages: images,
     initialSelectedImage: initialData?.thumbnailSrc || null,
     handleImagesChange,
     handleSubmit: form.handleSubmit(handleFormSubmit),

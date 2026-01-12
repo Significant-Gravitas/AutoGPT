@@ -244,7 +244,10 @@ class BaseGraph(BaseDbModel):
         return any(
             node.block_id
             for node in self.nodes
-            if node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
+            if (
+                node.block.block_type == BlockType.HUMAN_IN_THE_LOOP
+                or node.block.requires_human_review
+            )
         )
 
     @property
