@@ -8,7 +8,6 @@ import {
 } from "@/components/__legacy__/ui/carousel";
 import { WaitlistCard } from "../WaitlistCard/WaitlistCard";
 import { WaitlistDetailModal } from "../WaitlistDetailModal/WaitlistDetailModal";
-import { JoinWaitlistModal } from "../JoinWaitlistModal/JoinWaitlistModal";
 import type { StoreWaitlistEntry } from "@/app/api/__generated__/models/storeWaitlistEntry";
 import { useWaitlistSection } from "./useWaitlistSection";
 
@@ -17,27 +16,13 @@ export function WaitlistSection() {
     useWaitlistSection();
   const [selectedWaitlist, setSelectedWaitlist] =
     useState<StoreWaitlistEntry | null>(null);
-  const [joiningWaitlist, setJoiningWaitlist] =
-    useState<StoreWaitlistEntry | null>(null);
 
-  function handleCardClick(waitlist: StoreWaitlistEntry) {
+  function handleOpenModal(waitlist: StoreWaitlistEntry) {
     setSelectedWaitlist(waitlist);
-  }
-
-  function handleJoinClick(waitlist: StoreWaitlistEntry) {
-    setJoiningWaitlist(waitlist);
-  }
-
-  function handleJoinFromDetail() {
-    if (selectedWaitlist) {
-      setJoiningWaitlist(selectedWaitlist);
-      setSelectedWaitlist(null);
-    }
   }
 
   function handleJoinSuccess(waitlistId: string) {
     markAsJoined(waitlistId);
-    setJoiningWaitlist(null);
   }
 
   // Don't render if loading, error, or no waitlists
@@ -78,8 +63,8 @@ export function WaitlistSection() {
                   description={waitlist.description}
                   imageUrl={waitlist.imageUrls[0] || null}
                   isMember={joinedWaitlistIds.has(waitlist.waitlistId)}
-                  onCardClick={() => handleCardClick(waitlist)}
-                  onJoinClick={() => handleJoinClick(waitlist)}
+                  onCardClick={() => handleOpenModal(waitlist)}
+                  onJoinClick={() => handleOpenModal(waitlist)}
                 />
               </CarouselItem>
             ))}
@@ -96,29 +81,20 @@ export function WaitlistSection() {
               description={waitlist.description}
               imageUrl={waitlist.imageUrls[0] || null}
               isMember={joinedWaitlistIds.has(waitlist.waitlistId)}
-              onCardClick={() => handleCardClick(waitlist)}
-              onJoinClick={() => handleJoinClick(waitlist)}
+              onCardClick={() => handleOpenModal(waitlist)}
+              onJoinClick={() => handleOpenModal(waitlist)}
             />
           ))}
         </div>
       </div>
 
-      {/* Detail Modal */}
+      {/* Single Modal for both viewing and joining */}
       {selectedWaitlist && (
         <WaitlistDetailModal
           waitlist={selectedWaitlist}
           isMember={joinedWaitlistIds.has(selectedWaitlist.waitlistId)}
           onClose={() => setSelectedWaitlist(null)}
-          onJoin={handleJoinFromDetail}
-        />
-      )}
-
-      {/* Join Modal */}
-      {joiningWaitlist && (
-        <JoinWaitlistModal
-          waitlist={joiningWaitlist}
-          onClose={() => setJoiningWaitlist(null)}
-          onSuccess={() => handleJoinSuccess(joiningWaitlist.waitlistId)}
+          onJoinSuccess={handleJoinSuccess}
         />
       )}
     </div>

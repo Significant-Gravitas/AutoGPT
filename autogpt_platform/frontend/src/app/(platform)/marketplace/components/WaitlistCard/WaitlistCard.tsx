@@ -30,7 +30,7 @@ export function WaitlistCard({
 
   return (
     <div
-      className="flex h-[24rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-background transition-all duration-300 hover:shadow-lg dark:hover:shadow-gray-700"
+      className="flex h-[24rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-white transition-all duration-300 hover:shadow-lg dark:bg-zinc-900 dark:hover:shadow-gray-700"
       onClick={onCardClick}
       data-testid="waitlist-card"
       role="button"
@@ -43,7 +43,7 @@ export function WaitlistCard({
       }}
     >
       {/* Image Section */}
-      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-3xl md:aspect-[2.17/1]">
+      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-large md:aspect-[2.17/1]">
         {imageUrl ? (
           <Image
             src={imageUrl}
@@ -73,7 +73,7 @@ export function WaitlistCard({
 
         {/* Description */}
         <div className="mt-2 flex w-full flex-col">
-          <p className="line-clamp-3 text-sm font-normal leading-relaxed text-neutral-600 dark:text-neutral-400">
+          <p className="line-clamp-5 text-sm font-normal leading-relaxed text-neutral-600 dark:text-neutral-400">
             {description}
           </p>
         </div>
@@ -93,7 +93,7 @@ export function WaitlistCard({
           ) : (
             <Button
               onClick={handleJoinClick}
-              className="w-full rounded-full bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+              className="w-full rounded-full bg-zinc-800 text-white hover:bg-zinc-700 dark:bg-zinc-700 dark:hover:bg-zinc-600"
             >
               Join waitlist
             </Button>
