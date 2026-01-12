@@ -9,7 +9,7 @@ import {
 import { WaitlistCard } from "../WaitlistCard/WaitlistCard";
 import { WaitlistDetailModal } from "../WaitlistDetailModal/WaitlistDetailModal";
 import { JoinWaitlistModal } from "../JoinWaitlistModal/JoinWaitlistModal";
-import { StoreWaitlistEntry } from "@/lib/autogpt-server-api/types";
+import type { StoreWaitlistEntry } from "@/app/api/__generated__/models/storeWaitlistEntry";
 import { useWaitlistSection } from "./useWaitlistSection";
 
 export function WaitlistSection() {
@@ -69,7 +69,7 @@ export function WaitlistSection() {
           <CarouselContent>
             {waitlists.map((waitlist) => (
               <CarouselItem
-                key={waitlist.waitlist_id}
+                key={waitlist.waitlistId}
                 className="min-w-64 max-w-71"
               >
                 <WaitlistCard
@@ -77,7 +77,7 @@ export function WaitlistSection() {
                   subHeading={waitlist.subHeading}
                   description={waitlist.description}
                   imageUrl={waitlist.imageUrls[0] || null}
-                  isMember={joinedWaitlistIds.has(waitlist.waitlist_id)}
+                  isMember={joinedWaitlistIds.has(waitlist.waitlistId)}
                   onCardClick={() => handleCardClick(waitlist)}
                   onJoinClick={() => handleJoinClick(waitlist)}
                 />
@@ -90,12 +90,12 @@ export function WaitlistSection() {
         <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
           {waitlists.map((waitlist) => (
             <WaitlistCard
-              key={waitlist.waitlist_id}
+              key={waitlist.waitlistId}
               name={waitlist.name}
               subHeading={waitlist.subHeading}
               description={waitlist.description}
               imageUrl={waitlist.imageUrls[0] || null}
-              isMember={joinedWaitlistIds.has(waitlist.waitlist_id)}
+              isMember={joinedWaitlistIds.has(waitlist.waitlistId)}
               onCardClick={() => handleCardClick(waitlist)}
               onJoinClick={() => handleJoinClick(waitlist)}
             />
@@ -107,7 +107,7 @@ export function WaitlistSection() {
       {selectedWaitlist && (
         <WaitlistDetailModal
           waitlist={selectedWaitlist}
-          isMember={joinedWaitlistIds.has(selectedWaitlist.waitlist_id)}
+          isMember={joinedWaitlistIds.has(selectedWaitlist.waitlistId)}
           onClose={() => setSelectedWaitlist(null)}
           onJoin={handleJoinFromDetail}
         />
@@ -118,7 +118,7 @@ export function WaitlistSection() {
         <JoinWaitlistModal
           waitlist={joiningWaitlist}
           onClose={() => setJoiningWaitlist(null)}
-          onSuccess={() => handleJoinSuccess(joiningWaitlist.waitlist_id)}
+          onSuccess={() => handleJoinSuccess(joiningWaitlist.waitlistId)}
         />
       )}
     </div>

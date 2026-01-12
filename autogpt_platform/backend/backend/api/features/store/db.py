@@ -1988,7 +1988,7 @@ def _waitlist_to_store_entry(
 ) -> store_model.StoreWaitlistEntry:
     """Convert a WaitlistEntry to StoreWaitlistEntry for public display."""
     return store_model.StoreWaitlistEntry(
-        waitlist_id=waitlist.id,
+        waitlistId=waitlist.id,
         slug=waitlist.slug,
         name=waitlist.name,
         subHeading=waitlist.subHeading,
@@ -2084,14 +2084,24 @@ async def add_user_to_waitlist(
                 logger.info(f"User {user_id} joined waitlist {waitlist_id}")
 
             # If user was previously in email list, remove them
-            if email and email in (waitlist.unafilliatedEmailUsers or []):
-                updated_emails: list[str] = [
-                    e for e in (waitlist.unafilliatedEmailUsers or []) if e != email
-                ]
-                await prisma.models.WaitlistEntry.prisma().update(
-                    where={"id": waitlist_id},
-                    data={"unafilliatedEmailUsers": updated_emails},
-                )
+            # Use transaction to prevent race conditions
+            if email:
+                async with transaction() as tx:
+                    current_waitlist = await tx.waitlistentry.find_unique(
+                        where={"id": waitlist_id}
+                    )
+                    if current_waitlist and email in (
+                        current_waitlist.unafilliatedEmailUsers or []
+                    ):
+                        updated_emails: list[str] = [
+                            e
+                            for e in (current_waitlist.unafilliatedEmailUsers or [])
+                            if e != email
+                        ]
+                        await tx.waitlistentry.update(
+                            where={"id": waitlist_id},
+                            data={"unafilliatedEmailUsers": updated_emails},
+                        )
         elif email:
             # Add email to unaffiliated list if not already present
             # Use transaction to prevent race conditions with concurrent signups
@@ -2114,7 +2124,11 @@ async def add_user_to_waitlist(
                     else:
                         logger.debug(f"Email {email} already on waitlist {waitlist_id}")
 
-        return _waitlist_to_store_entry(waitlist)
+        # Re-fetch to return updated data
+        updated_waitlist = await prisma.models.WaitlistEntry.prisma().find_unique(
+            where={"id": waitlist_id}
+        )
+        return _waitlist_to_store_entry(updated_waitlist or waitlist)
 
     except ValueError:
         raise
@@ -2235,7 +2249,8 @@ async def update_waitlist_admin(
     logger.info(f"Updating waitlist {waitlist_id}")
 
     try:
-        # Build update data from non-None fields
+        # Build update data from explicitly provided fields
+        # Use model_fields_set to allow clearing fields by setting them to None
         field_mappings = {
             "name": data.name,
             "slug": data.slug,
@@ -2248,11 +2263,11 @@ async def update_waitlist_admin(
             "storeListingId": data.storeListingId,
         }
         update_data: dict[str, typing.Any] = {
-            k: v for k, v in field_mappings.items() if v is not None
+            k: v for k, v in field_mappings.items() if k in data.model_fields_set
         }
 
         # Handle status separately due to enum conversion
-        if data.status is not None:
+        if "status" in data.model_fields_set and data.status is not None:
             update_data["status"] = prisma.enums.WaitlistExternalStatus(data.status)
 
         if not update_data:
@@ -2408,8 +2423,12 @@ async def notify_waitlist_users_on_launch(
         launched_at = datetime.now(tz=timezone.utc)
 
         for waitlist in waitlists:
+            # Track notification results for this waitlist
+            users_to_notify = waitlist.joinedUsers or []
+            failed_user_ids: list[str] = []
+
             # Notify registered users
-            for user in waitlist.joinedUsers or []:
+            for user in users_to_notify:
                 try:
                     notification_data = WaitlistLaunchData(
                         agent_name=agent_name,
@@ -2430,6 +2449,7 @@ async def notify_waitlist_users_on_launch(
                     logger.error(
                         f"Failed to send waitlist launch notification to user {user.id}: {e}"
                     )
+                    failed_user_ids.append(user.id)
 
             # Note: For unaffiliated email users, you would need to send emails directly
             # since they don't have user IDs for the notification system.
@@ -2441,12 +2461,18 @@ async def notify_waitlist_users_on_launch(
                     f"unaffiliated email users that need email notifications"
                 )
 
-            # Update waitlist status to DONE
-            await prisma.models.WaitlistEntry.prisma().update(
-                where={"id": waitlist.id},
-                data={"status": prisma.enums.WaitlistExternalStatus.DONE},
-            )
-            logger.info(f"Updated waitlist {waitlist.id} status to DONE")
+            # Only mark waitlist as DONE if all registered user notifications succeeded
+            if not failed_user_ids:
+                await prisma.models.WaitlistEntry.prisma().update(
+                    where={"id": waitlist.id},
+                    data={"status": prisma.enums.WaitlistExternalStatus.DONE},
+                )
+                logger.info(f"Updated waitlist {waitlist.id} status to DONE")
+            else:
+                logger.warning(
+                    f"Waitlist {waitlist.id} not marked as DONE due to "
+                    f"{len(failed_user_ids)} failed notifications"
+                )
 
         logger.info(
             f"Sent {notification_count} waitlist launch notifications for store listing {store_listing_id}"

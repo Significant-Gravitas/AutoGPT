@@ -2,21 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Label } from "@/components/__legacy__/ui/label";
-import { StoreWaitlistEntry } from "@/lib/autogpt-server-api/types";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Input } from "@/components/atoms/Input/Input";
+import type { StoreWaitlistEntry } from "@/app/api/__generated__/models/storeWaitlistEntry";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import BackendAPI from "@/lib/autogpt-server-api/client";
-import { Check } from "lucide-react";
+import { usePostV2AddSelfToTheAgentWaitlist } from "@/app/api/__generated__/endpoints/store/store";
+import { Check } from "@phosphor-icons/react";
 
 interface JoinWaitlistModalProps {
   waitlist: StoreWaitlistEntry;
@@ -31,70 +23,101 @@ export function JoinWaitlistModal({
 }: JoinWaitlistModalProps) {
   const { user } = useSupabaseStore();
   const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const { toast } = useToast();
+  const joinWaitlistMutation = usePostV2AddSelfToTheAgentWaitlist();
 
-  async function handleJoin() {
-    setLoading(true);
-    try {
-      const api = new BackendAPI();
-      await api.joinWaitlist(waitlist.waitlist_id, user ? undefined : email);
+  function handleJoin() {
+    joinWaitlistMutation.mutate(
+      {
+        waitlistId: waitlist.waitlistId,
+        data: { email: user ? undefined : email },
+      },
+      {
+        onSuccess: (response) => {
+          if (response.status === 200) {
+            setSuccess(true);
+            toast({
+              title: "You're on the list!",
+              description: `We'll notify you when ${waitlist.name} is ready.`,
+            });
 
-      setSuccess(true);
-      toast({
-        title: "You're on the list!",
-        description: `We'll notify you when ${waitlist.name} is ready.`,
-      });
-
-      // Close after a short delay to show success state
-      setTimeout(() => {
-        onSuccess?.();
-        onClose();
-      }, 1500);
-    } catch (error) {
-      console.error("Error joining waitlist:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to join waitlist. Please try again.",
-      });
-    } finally {
-      setLoading(false);
-    }
+            // Close after a short delay to show success state
+            setTimeout(() => {
+              onSuccess?.();
+              onClose();
+            }, 1500);
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: "Failed to join waitlist. Please try again.",
+            });
+          }
+        },
+        onError: () => {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to join waitlist. Please try again.",
+          });
+        },
+      },
+    );
   }
 
   if (success) {
     return (
-      <Dialog open={true} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[400px]">
+      <Dialog
+        title=""
+        controlled={{
+          isOpen: true,
+          set: async (open) => {
+            if (!open) onClose();
+          },
+        }}
+        onClose={onClose}
+        styling={{ maxWidth: "400px" }}
+      >
+        <Dialog.Content>
           <div className="flex flex-col items-center justify-center py-8">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-              <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <Check
+                className="h-8 w-8 text-green-600 dark:text-green-400"
+                size={32}
+                weight="bold"
+              />
             </div>
-            <DialogTitle className="mb-2 text-center text-xl">
+            <h2 className="mb-2 text-center text-xl font-semibold">
               You&apos;re on the list!
-            </DialogTitle>
-            <DialogDescription className="text-center">
+            </h2>
+            <p className="text-center text-zinc-500">
               We&apos;ll notify you when {waitlist.name} is ready.
-            </DialogDescription>
+            </p>
           </div>
-        </DialogContent>
+        </Dialog.Content>
       </Dialog>
     );
   }
 
   return (
-    <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle>Join waitlist</DialogTitle>
-          <DialogDescription>
-            {user
-              ? `Get notified when ${waitlist.name} is ready to use.`
-              : `Enter your email to get notified when ${waitlist.name} is ready.`}
-          </DialogDescription>
-        </DialogHeader>
+    <Dialog
+      title="Join waitlist"
+      controlled={{
+        isOpen: true,
+        set: async (open) => {
+          if (!open) onClose();
+        },
+      }}
+      onClose={onClose}
+      styling={{ maxWidth: "400px" }}
+    >
+      <Dialog.Content>
+        <p className="mb-4 text-sm text-zinc-500">
+          {user
+            ? `Get notified when ${waitlist.name} is ready to use.`
+            : `Enter your email to get notified when ${waitlist.name} is ready.`}
+        </p>
 
         <div className="py-4">
           {user ? (
@@ -107,34 +130,32 @@ export function JoinWaitlistModal({
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
+            <Input
+              id="email"
+              label="Email address"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <Dialog.Footer>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button
             onClick={handleJoin}
-            loading={loading}
+            loading={joinWaitlistMutation.isPending}
             disabled={!user && !email}
             className="bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
           >
             {user ? "Join waitlist" : "Join with email"}
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </Dialog.Footer>
+      </Dialog.Content>
     </Dialog>
   );
 }

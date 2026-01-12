@@ -220,7 +220,7 @@ class ReviewSubmissionRequest(pydantic.BaseModel):
 
 
 class StoreWaitlistEntry(pydantic.BaseModel):
-    waitlist_id: str
+    waitlistId: str
     storeListing: StoreListingWithVersions | None = None
     owner: User | None = None
     slug: str

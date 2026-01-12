@@ -5185,9 +5185,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "string",
-                "description": "The ID of the store listing",
-                "title": "Store Listing Id"
+                "$ref": "#/components/schemas/Body_postV2Link_waitlist_to_store_listing"
               }
             }
           }
@@ -6914,6 +6912,18 @@
         },
         "type": "object",
         "title": "Body_postV2Execute a preset"
+      },
+      "Body_postV2Link_waitlist_to_store_listing": {
+        "properties": {
+          "store_listing_id": {
+            "type": "string",
+            "title": "Store Listing Id",
+            "description": "The ID of the store listing"
+          }
+        },
+        "type": "object",
+        "required": ["store_listing_id"],
+        "title": "Body_postV2Link waitlist to store listing"
       },
       "Body_postV2Upload_submission_media": {
         "properties": {
@@ -10291,7 +10301,7 @@
       },
       "StoreWaitlistEntry": {
         "properties": {
-          "waitlist_id": { "type": "string", "title": "Waitlist Id" },
+          "waitlistId": { "type": "string", "title": "Waitlistid" },
           "storeListing": {
             "anyOf": [
               { "$ref": "#/components/schemas/StoreListingWithVersions" },
@@ -10329,7 +10339,7 @@
         },
         "type": "object",
         "required": [
-          "waitlist_id",
+          "waitlistId",
           "slug",
           "name",
           "subHeading",

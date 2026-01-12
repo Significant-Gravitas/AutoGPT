@@ -14,7 +14,7 @@ import { getWaitlistsAdmin, deleteWaitlist } from "../actions";
 import type { WaitlistAdminResponse } from "@/lib/autogpt-server-api/types";
 import { EditWaitlistDialog } from "./EditWaitlistDialog";
 import { WaitlistSignupsDialog } from "./WaitlistSignupsDialog";
-import { Trash2, Edit, Users, Link } from "lucide-react";
+import { Trash, PencilSimple, Users, Link } from "@phosphor-icons/react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export function WaitlistTable() {
@@ -136,7 +136,7 @@ export function WaitlistTable() {
                 <TableCell>
                   {waitlist.storeListingId ? (
                     <span className="text-green-600">
-                      <Link className="inline h-4 w-4" /> Linked
+                      <Link size={16} className="inline" /> Linked
                     </span>
                   ) : (
                     <span className="text-gray-400">Not linked</span>
@@ -150,7 +150,7 @@ export function WaitlistTable() {
                       onClick={() => setViewingSignups(waitlist.id)}
                       title="View signups"
                     >
-                      <Users className="h-4 w-4" />
+                      <Users size={16} />
                     </Button>
                     <Button
                       variant="ghost"
@@ -158,7 +158,7 @@ export function WaitlistTable() {
                       onClick={() => setEditingWaitlist(waitlist)}
                       title="Edit"
                     >
-                      <Edit className="h-4 w-4" />
+                      <PencilSimple size={16} />
                     </Button>
                     <Button
                       variant="ghost"
@@ -166,7 +166,7 @@ export function WaitlistTable() {
                       onClick={() => handleDelete(waitlist.id)}
                       title="Delete"
                     >
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <Trash size={16} className="text-red-500" />
                     </Button>
                   </div>
                 </TableCell>

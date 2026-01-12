@@ -1,26 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/__legacy__/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/__legacy__/ui/table";
-import { getWaitlistSignups } from "../actions";
-import type { WaitlistSignupListResponse } from "@/lib/autogpt-server-api/types";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import { User, Mail, Download } from "lucide-react";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { User, Envelope, DownloadSimple } from "@phosphor-icons/react";
+import { useGetV2GetWaitlistSignups } from "@/app/api/__generated__/endpoints/admin/admin";
 
 type WaitlistSignupsDialogProps = {
   waitlistId: string;
@@ -31,31 +14,13 @@ export function WaitlistSignupsDialog({
   waitlistId,
   onClose,
 }: WaitlistSignupsDialogProps) {
-  const [loading, setLoading] = useState(true);
-  const [signups, setSignups] = useState<WaitlistSignupListResponse | null>(
-    null,
-  );
-  const { toast } = useToast();
+  const {
+    data: signupsResponse,
+    isLoading,
+    isError,
+  } = useGetV2GetWaitlistSignups(waitlistId);
 
-  useEffect(() => {
-    async function loadSignups() {
-      try {
-        const response = await getWaitlistSignups(waitlistId);
-        setSignups(response);
-      } catch (error) {
-        console.error("Error loading signups:", error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load signups",
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadSignups();
-  }, [waitlistId, toast]);
+  const signups = signupsResponse?.status === 200 ? signupsResponse.data : null;
 
   function exportToCSV() {
     if (!signups) return;
@@ -84,79 +49,108 @@ export function WaitlistSignupsDialog({
     window.URL.revokeObjectURL(url);
   }
 
-  return (
-    <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[700px]">
-        <DialogHeader>
-          <DialogTitle>Waitlist Signups</DialogTitle>
-          <DialogDescription>
-            {signups
-              ? `${signups.totalCount} total signups`
-              : "Loading signups..."}
-          </DialogDescription>
-        </DialogHeader>
+  function renderContent() {
+    if (isLoading) {
+      return <div className="py-10 text-center">Loading signups...</div>;
+    }
 
-        {loading ? (
-          <div className="py-10 text-center">Loading signups...</div>
-        ) : signups && signups.signups.length > 0 ? (
-          <>
-            <div className="flex justify-end">
-              <Button variant="secondary" size="small" onClick={exportToCSV}>
-                <Download className="mr-2 h-4 w-4" />
-                Export CSV
-              </Button>
-            </div>
-            <div className="max-h-[400px] overflow-y-auto rounded-md border">
-              <Table>
-                <TableHeader className="bg-gray-50">
-                  <TableRow>
-                    <TableHead className="font-medium">Type</TableHead>
-                    <TableHead className="font-medium">
-                      Email / Username
-                    </TableHead>
-                    <TableHead className="font-medium">User ID</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {signups.signups.map((signup, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        {signup.type === "user" ? (
-                          <span className="flex items-center gap-1 text-blue-600">
-                            <User className="h-4 w-4" /> User
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-gray-600">
-                            <Mail className="h-4 w-4" /> Email
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {signup.type === "user"
-                          ? signup.username || signup.email
-                          : signup.email}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {signup.userId || "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </>
-        ) : (
-          <div className="py-10 text-center text-gray-500">
-            No signups yet for this waitlist.
-          </div>
-        )}
+    if (isError) {
+      return (
+        <div className="py-10 text-center text-red-500">
+          Failed to load signups. Please try again.
+        </div>
+      );
+    }
 
+    if (!signups || signups.signups.length === 0) {
+      return (
+        <div className="py-10 text-center text-gray-500">
+          No signups yet for this waitlist.
+        </div>
+      );
+    }
+
+    return (
+      <>
         <div className="flex justify-end">
+          <Button variant="secondary" size="small" onClick={exportToCSV}>
+            <DownloadSimple className="mr-2 h-4 w-4" size={16} />
+            Export CSV
+          </Button>
+        </div>
+        <div className="max-h-[400px] overflow-y-auto rounded-md border">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-gray-800">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-medium">
+                  Type
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium">
+                  Email / Username
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium">
+                  User ID
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {signups.signups.map((signup, index) => (
+                <tr key={index}>
+                  <td className="px-4 py-3">
+                    {signup.type === "user" ? (
+                      <span className="flex items-center gap-1 text-blue-600">
+                        <User className="h-4 w-4" size={16} /> User
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-gray-600">
+                        <Envelope className="h-4 w-4" size={16} /> Email
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {signup.type === "user"
+                      ? signup.username || signup.email
+                      : signup.email}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm">
+                    {signup.userId || "-"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <Dialog
+      title="Waitlist Signups"
+      controlled={{
+        isOpen: true,
+        set: async (open) => {
+          if (!open) onClose();
+        },
+      }}
+      onClose={onClose}
+      styling={{ maxWidth: "700px" }}
+    >
+      <Dialog.Content>
+        <p className="mb-4 text-sm text-zinc-500">
+          {signups
+            ? `${signups.totalCount} total signups`
+            : "Loading signups..."}
+        </p>
+
+        {renderContent()}
+
+        <Dialog.Footer>
           <Button variant="secondary" onClick={onClose}>
             Close
           </Button>
-        </div>
-      </DialogContent>
+        </Dialog.Footer>
+      </Dialog.Content>
     </Dialog>
   );
 }

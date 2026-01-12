@@ -1167,7 +1167,7 @@ export type WaitlistUpdateRequest = {
 
 // Public Waitlist Types
 export type StoreWaitlistEntry = {
-  waitlist_id: string;
+  waitlistId: string;
   slug: string;
   name: string;
   subHeading: string;
