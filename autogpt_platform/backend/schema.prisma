@@ -2,7 +2,7 @@ datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
-  extensions = [pgvector(map: "vector")]
+  extensions = [pgvector(map: "vector", schema: "platform")]
 }
 
 generator client {
@@ -934,8 +934,8 @@ model UnifiedContentEmbedding {
   contentId   String      // DB ID (storeListingVersionId) or file identifier (block.id, file_path)
   userId      String?     // NULL for public content (store, blocks, docs), userId for private content (library agents)
   
-  // Search data  
-  embedding      Unsupported("public.vector(1536)")  // pgvector embedding from public schema
+  // Search data
+  embedding      Unsupported("vector(1536)")  // pgvector embedding (extension in platform schema)
   searchableText String                        // Combined text for search and fallback
   metadata       Json        @default("{}")    // Content-specific metadata
   

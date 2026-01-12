@@ -1,8 +1,6 @@
--- CreateExtension in public schema (standard location for pgvector)
-CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
-
--- Grant usage on public schema to platform users
-GRANT USAGE ON SCHEMA public TO postgres;
+-- CreateExtension in platform schema (avoids search_path issues with Prisma)
+-- Note: Platform schema is configured via DATABASE_URL schema parameter
+CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "platform";
 
 -- CreateEnum
 CREATE TYPE "ContentType" AS ENUM ('STORE_AGENT', 'BLOCK', 'INTEGRATION', 'DOCUMENTATION', 'LIBRARY_AGENT');
@@ -15,7 +13,7 @@ CREATE TABLE "UnifiedContentEmbedding" (
     "contentType" "ContentType" NOT NULL,
     "contentId" TEXT NOT NULL,
     "userId" TEXT,
-    "embedding" public.vector(1536) NOT NULL,
+    "embedding" vector(1536) NOT NULL,
     "searchableText" TEXT NOT NULL,
     "metadata" JSONB NOT NULL DEFAULT '{}',
 
