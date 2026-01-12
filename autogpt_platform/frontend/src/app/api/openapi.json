@@ -6613,6 +6613,11 @@
               { "type": "null" }
             ],
             "title": "Source"
+          },
+          "is_ai_generated": {
+            "type": "boolean",
+            "title": "Is Ai Generated",
+            "default": false
           }
         },
         "type": "object",
@@ -7558,6 +7563,11 @@
           "human_in_the_loop_safe_mode": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Human In The Loop Safe Mode"
+          },
+          "is_ai_generated_graph": {
+            "type": "boolean",
+            "title": "Is Ai Generated Graph",
+            "default": false
           }
         },
         "type": "object",
