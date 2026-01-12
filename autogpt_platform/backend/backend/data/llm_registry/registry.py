@@ -183,8 +183,10 @@ async def refresh_llm_registry() -> None:
                 creator=creator,
             )
 
-        _dynamic_models.clear()
-        _dynamic_models.update(dynamic)
+        # Atomic swap - build new structures then replace references
+        # This ensures readers never see partially updated state
+        global _dynamic_models
+        _dynamic_models = dynamic
         _refresh_cached_schema()
         logger.info(
             "LLM registry refreshed with %s dynamic models (enabled: %s, disabled: %s)",
@@ -196,15 +198,17 @@ async def refresh_llm_registry() -> None:
 
 def _refresh_cached_schema() -> None:
     """Refresh cached schema options and discriminator mapping."""
+    global _schema_options, _discriminator_mapping
+
+    # Build new structures
     new_options = _build_schema_options()
-    _schema_options.clear()
-    _schema_options.extend(new_options)
-    _discriminator_mapping.clear()
-    _discriminator_mapping.update(
-        {slug: entry.metadata.provider for slug, entry in _dynamic_models.items()}
-    )
+    new_mapping = {slug: entry.metadata.provider for slug, entry in _dynamic_models.items()}
     for slug, metadata in _static_metadata.items():
-        _discriminator_mapping.setdefault(slug, metadata.provider)
+        new_mapping.setdefault(slug, metadata.provider)
+
+    # Atomic swap - replace references to ensure readers see consistent state
+    _schema_options = new_options
+    _discriminator_mapping = new_mapping
 
 
 def get_llm_model_metadata(slug: str) -> ModelMetadata | None:
@@ -237,20 +241,22 @@ def get_llm_model_schema_options() -> list[dict[str, str]]:
     """
     Get schema options for LLM model selection dropdown.
 
-    Returns cached schema options that are refreshed when the registry is updated
-    via refresh_llm_registry() (called on startup and via Redis pub/sub notifications).
+    Returns a copy of cached schema options that are refreshed when the registry is
+    updated via refresh_llm_registry() (called on startup and via Redis pub/sub).
     """
-    return _schema_options
+    # Return a copy to prevent external mutation
+    return list(_schema_options)
 
 
 def get_llm_discriminator_mapping() -> dict[str, str]:
     """
     Get discriminator mapping for LLM models.
 
-    Returns cached discriminator mapping that is refreshed when the registry is updated
-    via refresh_llm_registry() (called on startup and via Redis pub/sub notifications).
+    Returns a copy of cached discriminator mapping that is refreshed when the registry
+    is updated via refresh_llm_registry() (called on startup and via Redis pub/sub).
     """
-    return _discriminator_mapping
+    # Return a copy to prevent external mutation
+    return dict(_discriminator_mapping)
 
 
 def get_dynamic_model_slugs() -> set[str]:
@@ -334,27 +340,20 @@ def get_default_model_slug() -> str | None:
     """
     Get the default model slug to use for block defaults.
 
-    Returns the recommended model if set, otherwise falls back to "gpt-4o"
-    if available and enabled, then first enabled model alphabetically.
+    Returns the recommended model if set (configured via admin UI),
+    otherwise returns the first enabled model alphabetically.
     Returns None if no models are available or enabled.
     """
-    # First, check for recommended model
+    # Return the recommended model if one is set and enabled
     for model in _dynamic_models.values():
         if model.is_recommended and model.is_enabled:
             return model.slug
 
-    # Fallback to gpt-4o if available and enabled
-    fallback_slug = "gpt-4o"
-    fallback_model = _dynamic_models.get(fallback_slug)
-    if fallback_model and fallback_model.is_enabled:
-        return fallback_slug
-
-    # Find first enabled model alphabetically
+    # No recommended model set - find first enabled model alphabetically
     for model in sorted(_dynamic_models.values(), key=lambda m: m.display_name.lower()):
         if model.is_enabled:
             logger.warning(
-                "Preferred model '%s' not available, using '%s' as default",
-                fallback_slug,
+                "No recommended model set, using '%s' as default",
                 model.slug,
             )
             return model.slug

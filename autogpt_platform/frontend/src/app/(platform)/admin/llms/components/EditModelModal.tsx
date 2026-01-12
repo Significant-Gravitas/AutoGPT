@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
 import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
@@ -17,9 +18,26 @@ export function EditModelModal({
   providers: LlmProvider[];
   creators: LlmModelCreator[];
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const cost = model.costs?.[0];
   const provider = providers.find((p) => p.id === model.provider_id);
+
+  async function handleSubmit(formData: FormData) {
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      await updateLlmModelAction(formData);
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update model");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <Dialog
@@ -36,13 +54,12 @@ export function EditModelModal({
         <div className="mb-4 text-sm text-muted-foreground">
           Update model metadata and pricing information.
         </div>
-        <form
-          action={async (formData) => {
-            await updateLlmModelAction(formData);
-            setOpen(false);
-          }}
-          className="space-y-4"
-        >
+        {error && (
+          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        <form action={handleSubmit} className="space-y-4">
           <input type="hidden" name="model_id" value={model.id} />
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -172,11 +189,21 @@ export function EditModelModal({
           <input type="hidden" name="credential_type" value="api_key" />
 
           <Dialog.Footer>
-            <Button variant="ghost" size="small" onClick={() => setOpen(false)}>
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={() => setOpen(false)}
+              disabled={isSubmitting}
+            >
               Cancel
             </Button>
-            <Button variant="primary" size="small" type="submit">
-              Update Model
+            <Button
+              variant="primary"
+              size="small"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Updating..." : "Update Model"}
             </Button>
           </Dialog.Footer>
         </form>

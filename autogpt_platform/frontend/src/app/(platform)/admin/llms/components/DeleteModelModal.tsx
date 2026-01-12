@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
 import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
@@ -13,6 +14,7 @@ export function DeleteModelModal({
   model: LlmModel;
   availableModels: LlmModel[];
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selectedReplacement, setSelectedReplacement] = useState<string>("");
   const [isDeleting, setIsDeleting] = useState(false);
@@ -47,6 +49,7 @@ export function DeleteModelModal({
     try {
       await deleteLlmModelAction(formData);
       setOpen(false);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete model");
     } finally {

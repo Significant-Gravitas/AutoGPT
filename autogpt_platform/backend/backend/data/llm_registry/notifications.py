@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Any
 
-from backend.data.redis_client import get_redis
+from backend.data.redis_client import connect_async
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 REGISTRY_REFRESH_CHANNEL = "llm_registry:refresh"
 
 
-def publish_registry_refresh_notification() -> None:
+async def publish_registry_refresh_notification() -> None:
     """
     Publish a notification to Redis that the LLM registry has been updated.
     All executor services subscribed to this channel will refresh their registry.
     """
     try:
-        redis = get_redis()
-        redis.publish(REGISTRY_REFRESH_CHANNEL, "refresh")
+        redis = await connect_async()
+        await redis.publish(REGISTRY_REFRESH_CHANNEL, "refresh")
         logger.info("Published LLM registry refresh notification to Redis")
     except Exception as exc:
         logger.warning(
@@ -45,8 +45,6 @@ async def subscribe_to_registry_refresh(
     Args:
         on_refresh: Async callable to execute when a refresh notification is received
     """
-    from backend.data.redis_client import connect_async
-
     try:
         redis = await connect_async()
         pubsub = redis.pubsub()

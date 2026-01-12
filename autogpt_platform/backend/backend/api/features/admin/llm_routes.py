@@ -53,7 +53,7 @@ async def _refresh_runtime_state() -> None:
     # Notify all executor services to refresh their registry cache
     from backend.data.llm_registry import publish_registry_refresh_notification
 
-    publish_registry_refresh_notification()
+    await publish_registry_refresh_notification()
     logger.info("Published registry refresh notification")
 
 

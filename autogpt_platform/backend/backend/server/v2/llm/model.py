@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 import prisma.enums
 import pydantic
+
+# Pattern for valid model slugs: alphanumeric start, then alphanumeric, dots, underscores, slashes, hyphens
+SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$")
 
 
 class LlmModelCost(pydantic.BaseModel):
@@ -119,6 +123,18 @@ class CreateLlmModelRequest(pydantic.BaseModel):
     capabilities: dict[str, Any] = pydantic.Field(default_factory=dict)
     metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
     costs: list[LlmModelCostInput]
+
+    @pydantic.field_validator("slug")
+    @classmethod
+    def validate_slug(cls, v: str) -> str:
+        if not v or len(v) > 100:
+            raise ValueError("Slug must be 1-100 characters")
+        if not SLUG_PATTERN.match(v):
+            raise ValueError(
+                "Slug must start with alphanumeric and contain only "
+                "alphanumeric characters, dots, underscores, slashes, or hyphens"
+            )
+        return v
 
 
 class UpdateLlmModelRequest(pydantic.BaseModel):
