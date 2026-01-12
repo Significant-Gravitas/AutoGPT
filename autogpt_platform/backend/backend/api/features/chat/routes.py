@@ -189,6 +189,9 @@ async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
     user_id: str | None = Depends(auth.get_user_id),
+    prompt_type: str = Query(
+        default="default", description="Prompt type: 'default' or 'onboarding'"
+    ),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -202,6 +205,7 @@ async def stream_chat_post(
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
         user_id: Optional authenticated user ID.
+        prompt_type: Prompt type - 'default' for regular chat, 'onboarding' for new user guidance.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -223,6 +227,7 @@ async def stream_chat_post(
             user_id=user_id,
             session=session,  # Pass pre-fetched session to avoid double-fetch
             context=request.context,
+            prompt_type=prompt_type,
         ):
             yield chunk.to_sse()
 
@@ -317,133 +322,6 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
-
-
-# ========== Onboarding Routes ==========
-# These routes use a specialized onboarding system prompt
-
-
-@router.post(
-    "/onboarding/sessions",
-)
-async def create_onboarding_session(
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
-) -> CreateSessionResponse:
-    """
-    Create a new onboarding chat session.
-
-    Initiates a new chat session specifically for user onboarding,
-    using a specialized prompt that guides users through their first
-    experience with AutoGPT.
-
-    Args:
-        user_id: The optional authenticated user ID parsed from the JWT.
-
-    Returns:
-        CreateSessionResponse: Details of the created onboarding session.
-    """
-    logger.info(
-        f"Creating onboarding session with user_id: "
-        f"...{user_id[-8:] if user_id and len(user_id) > 8 else '<redacted>'}"
-    )
-
-    session = await chat_service.create_chat_session(user_id)
-
-    return CreateSessionResponse(
-        id=session.session_id,
-        created_at=session.started_at.isoformat(),
-        user_id=session.user_id or None,
-    )
-
-
-@router.get(
-    "/onboarding/sessions/{session_id}",
-)
-async def get_onboarding_session(
-    session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
-) -> SessionDetailResponse:
-    """
-    Retrieve the details of an onboarding chat session.
-
-    Args:
-        session_id: The unique identifier for the onboarding session.
-        user_id: The optional authenticated user ID.
-
-    Returns:
-        SessionDetailResponse: Details for the requested session.
-    """
-    session = await chat_service.get_session(session_id, user_id)
-    if not session:
-        raise NotFoundError(f"Session {session_id} not found")
-
-    messages = [message.model_dump() for message in session.messages]
-    logger.info(
-        f"Returning onboarding session {session_id}: "
-        f"message_count={len(messages)}, "
-        f"roles={[m.get('role') for m in messages]}"
-    )
-
-    return SessionDetailResponse(
-        id=session.session_id,
-        created_at=session.started_at.isoformat(),
-        updated_at=session.updated_at.isoformat(),
-        user_id=session.user_id or None,
-        messages=messages,
-    )
-
-
-@router.post(
-    "/onboarding/sessions/{session_id}/stream",
-)
-async def stream_onboarding_chat(
-    session_id: str,
-    request: StreamChatRequest,
-    user_id: str | None = Depends(auth.get_user_id),
-):
-    """
-    Stream onboarding chat responses for a session.
-
-    Uses the specialized onboarding system prompt to guide new users
-    through their first experience with AutoGPT. Streams AI responses
-    in real time over Server-Sent Events (SSE).
-
-    Args:
-        session_id: The onboarding session identifier.
-        request: Request body containing message and optional context.
-        user_id: Optional authenticated user ID.
-
-    Returns:
-        StreamingResponse: SSE-formatted response chunks.
-    """
-    session = await chat_service.get_session(session_id, user_id)
-
-    if not session:
-        raise NotFoundError(f"Session {session_id} not found.")
-    if session.user_id is None and user_id is not None:
-        session = await chat_service.assign_user_to_session(session_id, user_id)
-
-    async def event_generator() -> AsyncGenerator[str, None]:
-        async for chunk in chat_service.stream_chat_completion(
-            session_id,
-            request.message,
-            is_user_message=request.is_user_message,
-            user_id=user_id,
-            session=session,
-            context=request.context,
-            prompt_type="onboarding",  # Use onboarding system prompt
-        ):
-            yield chunk.to_sse()
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 # ========== Health Check ==========

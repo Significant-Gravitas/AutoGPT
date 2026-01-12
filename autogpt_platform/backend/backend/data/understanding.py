@@ -249,77 +249,44 @@ async def upsert_business_understanding(
     update_data: UserBusinessUnderstandingUpdateInput = {}
     create_data: dict[str, Any] = {"userId": user_id}
 
+    # Field mappings: (pydantic_field, db_field)
+    string_fields = [
+        ("user_name", "userName"),
+        ("job_title", "jobTitle"),
+        ("business_name", "businessName"),
+        ("industry", "industry"),
+        ("business_size", "businessSize"),
+        ("user_role", "userRole"),
+        ("additional_notes", "additionalNotes"),
+    ]
+    list_fields = [
+        ("key_workflows", "keyWorkflows"),
+        ("daily_activities", "dailyActivities"),
+        ("pain_points", "painPoints"),
+        ("bottlenecks", "bottlenecks"),
+        ("manual_tasks", "manualTasks"),
+        ("automation_goals", "automationGoals"),
+        ("current_software", "currentSoftware"),
+        ("existing_automation", "existingAutomation"),
+    ]
+
     # String fields - overwrite if provided
-    if data.user_name is not None:
-        update_data["userName"] = data.user_name
-        create_data["userName"] = data.user_name
-    if data.job_title is not None:
-        update_data["jobTitle"] = data.job_title
-        create_data["jobTitle"] = data.job_title
-    if data.business_name is not None:
-        update_data["businessName"] = data.business_name
-        create_data["businessName"] = data.business_name
-    if data.industry is not None:
-        update_data["industry"] = data.industry
-        create_data["industry"] = data.industry
-    if data.business_size is not None:
-        update_data["businessSize"] = data.business_size
-        create_data["businessSize"] = data.business_size
-    if data.user_role is not None:
-        update_data["userRole"] = data.user_role
-        create_data["userRole"] = data.user_role
-    if data.additional_notes is not None:
-        update_data["additionalNotes"] = data.additional_notes
-        create_data["additionalNotes"] = data.additional_notes
+    for pydantic_field, db_field in string_fields:
+        value = getattr(data, pydantic_field)
+        if value is not None:
+            update_data[db_field] = value  # type: ignore[literal-required]
+            create_data[db_field] = value
 
     # List fields - merge with existing
-    if data.key_workflows is not None:
-        existing_list = _json_to_list(existing.keyWorkflows) if existing else None
-        merged = _merge_lists(existing_list, data.key_workflows)
-        update_data["keyWorkflows"] = SafeJson(merged)
-        create_data["keyWorkflows"] = SafeJson(merged)
-
-    if data.daily_activities is not None:
-        existing_list = _json_to_list(existing.dailyActivities) if existing else None
-        merged = _merge_lists(existing_list, data.daily_activities)
-        update_data["dailyActivities"] = SafeJson(merged)
-        create_data["dailyActivities"] = SafeJson(merged)
-
-    if data.pain_points is not None:
-        existing_list = _json_to_list(existing.painPoints) if existing else None
-        merged = _merge_lists(existing_list, data.pain_points)
-        update_data["painPoints"] = SafeJson(merged)
-        create_data["painPoints"] = SafeJson(merged)
-
-    if data.bottlenecks is not None:
-        existing_list = _json_to_list(existing.bottlenecks) if existing else None
-        merged = _merge_lists(existing_list, data.bottlenecks)
-        update_data["bottlenecks"] = SafeJson(merged)
-        create_data["bottlenecks"] = SafeJson(merged)
-
-    if data.manual_tasks is not None:
-        existing_list = _json_to_list(existing.manualTasks) if existing else None
-        merged = _merge_lists(existing_list, data.manual_tasks)
-        update_data["manualTasks"] = SafeJson(merged)
-        create_data["manualTasks"] = SafeJson(merged)
-
-    if data.automation_goals is not None:
-        existing_list = _json_to_list(existing.automationGoals) if existing else None
-        merged = _merge_lists(existing_list, data.automation_goals)
-        update_data["automationGoals"] = SafeJson(merged)
-        create_data["automationGoals"] = SafeJson(merged)
-
-    if data.current_software is not None:
-        existing_list = _json_to_list(existing.currentSoftware) if existing else None
-        merged = _merge_lists(existing_list, data.current_software)
-        update_data["currentSoftware"] = SafeJson(merged)
-        create_data["currentSoftware"] = SafeJson(merged)
-
-    if data.existing_automation is not None:
-        existing_list = _json_to_list(existing.existingAutomation) if existing else None
-        merged = _merge_lists(existing_list, data.existing_automation)
-        update_data["existingAutomation"] = SafeJson(merged)
-        create_data["existingAutomation"] = SafeJson(merged)
+    for pydantic_field, db_field in list_fields:
+        value = getattr(data, pydantic_field)
+        if value is not None:
+            existing_list = (
+                _json_to_list(getattr(existing, db_field)) if existing else None
+            )
+            merged = _merge_lists(existing_list, value)
+            update_data[db_field] = SafeJson(merged)  # type: ignore[literal-required]
+            create_data[db_field] = SafeJson(merged)
 
     # Upsert
     record = await UserBusinessUnderstanding.prisma().upsert(
