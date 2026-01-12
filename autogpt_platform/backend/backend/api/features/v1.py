@@ -892,7 +892,9 @@ async def _update_library_agent_version_and_settings(
     library = await library_db.update_agent_version_in_library(
         user_id, agent_graph.id, agent_graph.version
     )
-    updated_settings = GraphSettings.from_graph(agent_graph)
+    updated_settings = GraphSettings.from_graph(
+        agent_graph, is_ai_generated=library.settings.is_ai_generated_graph
+    )
     if updated_settings != library.settings:
         library = await library_db.update_library_agent(
             library_agent_id=library.id,
