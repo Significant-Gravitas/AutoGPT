@@ -291,4 +291,3 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     ],
   },
 ];
-

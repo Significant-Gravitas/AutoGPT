@@ -77,4 +77,3 @@ export const highlightFirstBlockInSearch = () => {
     firstBlock.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 };
-

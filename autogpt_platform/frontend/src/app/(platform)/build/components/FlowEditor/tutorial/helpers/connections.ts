@@ -24,4 +24,3 @@ export const isConnectionMade = (
     return edge.source === sourceNode.id && edge.target === targetNode.id;
   });
 };
-

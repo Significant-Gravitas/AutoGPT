@@ -220,4 +220,3 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     },
   },
 ];
-

@@ -38,4 +38,3 @@ export const createWelcomeSteps = (tour: any): StepOptions[] => [
     ],
   },
 ];
-

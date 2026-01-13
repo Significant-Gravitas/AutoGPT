@@ -1,15 +1,6 @@
-/**
- * Completion step - Congratulations
- */
-
 import { StepOptions } from "shepherd.js";
-import { ICONS } from "../icons";
 
-/**
- * Creates the completion steps
- */
 export const createCompletionSteps = (tour: any): StepOptions[] => [
-  // Congratulations
   {
     id: "congratulations",
     title: "Congratulations! 🎉",

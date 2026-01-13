@@ -1,13 +1,8 @@
-/**
- * Connection steps for connecting two Calculator blocks
- */
-
 import { StepOptions } from "shepherd.js";
 import {
   fitViewToScreen,
   highlightElement,
   removeAllHighlights,
-  getCalculatorNodes,
 } from "../helpers";
 import { ICONS } from "../icons";
 import { banner } from "../styles";
@@ -161,7 +156,6 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
       ],
     },
 
-    // Connect blocks: Input - Point to A input of second Calculator
     {
       id: "connect-blocks-input",
       title: "Connect the Blocks: Input",

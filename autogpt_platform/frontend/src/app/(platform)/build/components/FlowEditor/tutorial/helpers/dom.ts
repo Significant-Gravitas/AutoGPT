@@ -212,4 +212,3 @@ export const watchSearchInput = (
     input.removeEventListener("input", handler);
   };
 };
-

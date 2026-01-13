@@ -1,8 +1,3 @@
-/**
- * Save steps - Steps 17-18
- * Save the agent
- */
-
 import { StepOptions } from "shepherd.js";
 import { TUTORIAL_SELECTORS } from "../constants";
 import {
@@ -13,12 +8,7 @@ import {
 } from "../helpers";
 import { ICONS } from "../icons";
 import { banner } from "../styles";
-
-/**
- * Creates the save steps
- */
 export const createSaveSteps = (tour: any): StepOptions[] => [
-  // STEP 17: Save - Open Popover
   {
     id: "open-save",
     title: "Save Your Agent",
@@ -49,7 +39,6 @@ export const createSaveSteps = (tour: any): StepOptions[] => [
     },
   },
 
-  // STEP 18: Save - Fill Details
   {
     id: "save-details",
     title: "Name Your Agent",
@@ -80,4 +69,3 @@ export const createSaveSteps = (tour: any): StepOptions[] => [
     buttons: [],
   },
 ];
-

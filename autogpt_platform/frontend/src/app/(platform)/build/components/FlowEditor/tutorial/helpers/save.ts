@@ -48,4 +48,3 @@ export const isAgentSaved = (): boolean => {
   ) as HTMLInputElement;
   return !!(versionInput && versionInput.value && versionInput.value !== "-");
 };
-

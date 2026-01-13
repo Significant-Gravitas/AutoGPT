@@ -108,4 +108,3 @@ export const fitViewToScreen = () => {
     fitViewButton.click();
   }
 };
-

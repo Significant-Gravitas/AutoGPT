@@ -123,4 +123,3 @@ export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
     ],
   },
 ];
-

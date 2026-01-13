@@ -39,4 +39,3 @@ export const clearBlockMenuSearch = () => {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 };
-
