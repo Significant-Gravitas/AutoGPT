@@ -98,51 +98,41 @@ async def _is_first_session(user_id: str) -> bool:
 
 
 async def _build_system_prompt(
-    user_id: str | None, prompt_type: str = "default"
+    user_id: str | None
 ) -> str:
     """Build the full system prompt including business understanding if available.
 
     Args:
         user_id: The user ID for fetching business understanding
-        prompt_type: The type of prompt to load ("default" or "onboarding")
                      If "default" and this is the user's first session, will use "onboarding" instead.
 
     Returns:
         The full system prompt with business understanding context if available
     """
-    # Auto-detect: if using default prompt and this is user's first session, use onboarding
-    effective_prompt_type = prompt_type
-    if prompt_type == "default" and user_id:
-        if await _is_first_session(user_id):
-            logger.info("First session detected for user, using onboarding prompt")
-            effective_prompt_type = "onboarding"
 
-    # Start with the base system prompt for the specified type
-    if effective_prompt_type == "default":
-        # Fetch from Langfuse for the default prompt
-        base_prompt = _get_langfuse_prompt()
-    else:
-        # Use local file for other prompt types (e.g., onboarding)
-        base_prompt = config.get_system_prompt_for_type(effective_prompt_type)
+
+    langfuse = _get_langfuse_client()
+
+    # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
+    prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
+    compiled = prompt.compile()
+    # Auto-detect: if using default prompt and this is user's first session, use onboarding
 
     # If user is authenticated, try to fetch their business understanding
+    understanding = None
     if user_id:
         try:
             understanding = await get_business_understanding(user_id)
-            if understanding:
-                context = format_understanding_for_prompt(understanding)
-                if context:
-                    return (
-                        f"{base_prompt}\n\n---\n\n"
-                        f"{context}\n\n"
-                        "Use this context to provide more personalized recommendations "
-                        "and to better understand the user's business needs when "
-                        "suggesting agents and automations."
-                    )
         except Exception as e:
             logger.warning(f"Failed to fetch business understanding: {e}")
+            understanding = None
+    if understanding:
+        context = format_understanding_for_prompt(understanding)
+    else: 
+        context = "This is the first time you are meeting the user. Geet them and introduce them to the platform"
 
-    return base_prompt
+    compiled = prompt.compile(users_information=context)
+    return compiled
 
 
 async def _generate_session_title(message: str) -> str | None:
@@ -168,8 +158,7 @@ async def _generate_session_title(message: str) -> str | None:
                 },
                 {"role": "user", "content": message[:500]},  # Limit input length
             ],
-            max_tokens=20,
-            temperature=0.7,
+            max_tokens=20
         )
         title = response.choices[0].message.content
         if title:
@@ -239,7 +228,6 @@ async def stream_chat_completion(
     retry_count: int = 0,
     session: ChatSession | None = None,
     context: dict[str, str] | None = None,  # {url: str, content: str}
-    prompt_type: str = "default",
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Main entry point for streaming chat completions with database handling.
 
@@ -251,7 +239,6 @@ async def stream_chat_completion(
         user_message: User's input message
         user_id: User ID for authentication (None for anonymous)
         session: Optional pre-loaded session object (for recursive calls to avoid Redis refetch)
-        prompt_type: The type of prompt to use ("default" or "onboarding")
 
     Yields:
         StreamBaseResponse objects formatted as SSE
@@ -337,7 +324,7 @@ async def stream_chat_completion(
             asyncio.create_task(_update_title())
 
     # Build system prompt with business understanding
-    system_prompt = await _build_system_prompt(user_id, prompt_type)
+    system_prompt = await _build_system_prompt(user_id)
 
     assistant_response = ChatMessage(
         role="assistant",
@@ -478,7 +465,6 @@ async def stream_chat_completion(
             user_id=user_id,
             retry_count=retry_count + 1,
             session=session,
-            prompt_type=prompt_type,
         ):
             yield chunk
         return  # Exit after retry to avoid double-saving in finally block
@@ -524,7 +510,6 @@ async def stream_chat_completion(
             session_id=session.session_id,
             user_id=user_id,
             session=session,  # Pass session object to avoid Redis refetch
-            prompt_type=prompt_type,
         ):
             yield chunk
 

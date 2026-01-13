@@ -189,9 +189,6 @@ async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
     user_id: str | None = Depends(auth.get_user_id),
-    prompt_type: str = Query(
-        default="default", description="Prompt type: 'default' or 'onboarding'"
-    ),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -205,7 +202,6 @@ async def stream_chat_post(
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
         user_id: Optional authenticated user ID.
-        prompt_type: Prompt type - 'default' for regular chat, 'onboarding' for new user guidance.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -227,7 +223,6 @@ async def stream_chat_post(
             user_id=user_id,
             session=session,  # Pass pre-fetched session to avoid double-fetch
             context=request.context,
-            prompt_type=prompt_type,
         ):
             yield chunk.to_sse()
 

@@ -27,12 +27,6 @@ class ChatConfig(BaseSettings):
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
-    # System Prompt Configuration
-    system_prompt_path: str = Field(
-        default="prompts/chat_system.md",
-        description="Path to system prompt file relative to chat module",
-    )
-
     # Streaming Configuration
     max_context_messages: int = Field(
         default=50, ge=1, le=200, description="Maximum context messages"
@@ -88,73 +82,6 @@ class ChatConfig(BaseSettings):
         "default": "prompts/chat_system.md",
         "onboarding": "prompts/onboarding_system.md",
     }
-
-    def get_system_prompt_for_type(
-        self, prompt_type: str = "default", **template_vars
-    ) -> str:
-        """Load and render a system prompt by type.
-
-        Args:
-            prompt_type: The type of prompt to load ("default" or "onboarding")
-            **template_vars: Variables to substitute in the template
-
-        Returns:
-            Rendered system prompt string
-        """
-        prompt_path_str = self.PROMPT_PATHS.get(
-            prompt_type, self.PROMPT_PATHS["default"]
-        )
-        return self._load_prompt_from_path(prompt_path_str, **template_vars)
-
-    def get_system_prompt(self, **template_vars) -> str:
-        """Load and render the default system prompt from file.
-
-        Args:
-            **template_vars: Variables to substitute in the template
-
-        Returns:
-            Rendered system prompt string
-
-        """
-        return self._load_prompt_from_path(self.system_prompt_path, **template_vars)
-
-    def _load_prompt_from_path(self, prompt_path_str: str, **template_vars) -> str:
-        """Load and render a system prompt from a given path.
-
-        Args:
-            prompt_path_str: Path to the prompt file relative to chat module
-            **template_vars: Variables to substitute in the template
-
-        Returns:
-            Rendered system prompt string
-        """
-        # Get the path relative to this module
-        module_dir = Path(__file__).parent
-        prompt_path = module_dir / prompt_path_str
-
-        # Check for .j2 extension first (Jinja2 template)
-        j2_path = Path(str(prompt_path) + ".j2")
-        if j2_path.exists():
-            try:
-                from jinja2 import Template
-
-                template = Template(j2_path.read_text())
-                return template.render(**template_vars)
-            except ImportError:
-                # Jinja2 not installed, fall back to reading as plain text
-                return j2_path.read_text()
-
-        # Check for markdown file
-        if prompt_path.exists():
-            content = prompt_path.read_text()
-
-            # Simple variable substitution if Jinja2 is not available
-            for key, value in template_vars.items():
-                placeholder = f"{{{key}}}"
-                content = content.replace(placeholder, str(value))
-
-            return content
-        raise FileNotFoundError(f"System prompt file not found: {prompt_path}")
 
     class Config:
         """Pydantic config."""
