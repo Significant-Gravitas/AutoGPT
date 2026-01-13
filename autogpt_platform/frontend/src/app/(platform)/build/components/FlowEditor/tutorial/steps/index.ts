@@ -10,13 +10,13 @@ import { createRunSteps } from "./run";
 import { createCompletionSteps } from "./completion";
 
 export const createTutorialSteps = (tour: any): StepOptions[] => [
-  ...createWelcomeSteps(tour), // Step 1
-  ...createBlockMenuSteps(tour), // Steps 2-5
-  ...createBlockBasicsSteps(tour), // Steps 6-8
-  ...createConfigureCalculatorSteps(tour), // Step 9
-  ...createSecondCalculatorSteps(tour), // Steps 10-12
-  ...createConnectionSteps(tour), // Steps 13-15
-  ...createSaveSteps(tour), // Steps 16-17
-  ...createRunSteps(tour), // Steps 18-21
-  ...createCompletionSteps(tour), // Step 22
+  ...createWelcomeSteps(tour),
+  ...createBlockMenuSteps(tour),
+  ...createBlockBasicsSteps(tour),
+  ...createConfigureCalculatorSteps(tour),
+  ...createSecondCalculatorSteps(tour),
+  ...createConnectionSteps(tour),
+  ...createSaveSteps(tour),
+  ...createRunSteps(tour),
+  ...createCompletionSteps(tour),
 ];

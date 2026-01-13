@@ -1,46 +1,8 @@
-/* ============================================
-   Tutorial Styles for New Builder
-   Prefix: new-builder- to avoid collision with old builder
-   
-   Note: Typography classes (body, small, content, action, etc.)
-   are now using Tailwind utilities directly in steps.ts
-   ============================================ */
-
-/* ============================================
-   Disabled state - pointer-events disabled, dimmed
-   Class name: new-builder-tutorial-disable (matches CSS_CLASSES.DISABLE)
-   ============================================ */
-.new-builder-tutorial-disable {
-  pointer-events: none !important;
-  opacity: 0.4 !important;
-  filter: grayscale(50%);
-}
-
-/* ============================================
-   Highlight state - brings element to front with glow
-   Class name: new-builder-tutorial-highlight (matches CSS_CLASSES.HIGHLIGHT)
-   ============================================ */
-/* .new-builder-tutorial-highlight {
-  position: relative;
-  z-index: 10000 !important;
-  opacity: 1 !important;
-  filter: none !important;
-  box-shadow:
-    0 0 0 4px white,
-    0 0 0 6px #7c3aed,
-    0 0 30px 8px rgba(124, 58, 237, 0.4) !important;
-  border-radius: 1rem;
-} */
-
 .new-builder-tutorial-highlight * {
   opacity: 1 !important;
   filter: none !important;
 }
 
-/* ============================================
-   Pulse animation for attention
-   Class name: new-builder-tutorial-pulse (matches CSS_CLASSES.PULSE)
-   ============================================ */
 .new-builder-tutorial-pulse {
   animation: new-builder-tutorial-pulse 2s ease-in-out infinite;
 }
@@ -61,10 +23,6 @@
   }
 }
 
-/* ============================================
-   Shepherd.js - Main element container
-   SCOPED: Only applies to new builder tutorial (.new-builder-tour)
-   ============================================ */
 .shepherd-element.new-builder-tour {
   max-width: 420px !important;
   border-radius: 1rem !important;
@@ -76,9 +34,6 @@
   font-family: var(--font-geist-sans), system-ui, sans-serif !important;
 }
 
-/* ============================================
-   Shepherd.js - Header section
-   ============================================ */
 .shepherd-element.new-builder-tour .shepherd-header {
   padding: 1rem 1.25rem 0.5rem !important;
   border-radius: 1rem 1rem 0 0 !important;
@@ -93,17 +48,11 @@
   color: #18181b !important; /* zinc-900 */
 }
 
-/* ============================================
-   Shepherd.js - Text content
-   ============================================ */
 .shepherd-element.new-builder-tour .shepherd-text {
   padding: 0 1.25rem 1rem !important;
   color: #52525b !important; /* zinc-600 */
 }
 
-/* ============================================
-   Shepherd.js - Footer section
-   ============================================ */
 .shepherd-element.new-builder-tour .shepherd-footer {
   padding: 0.75rem 1.25rem 1rem !important;
   border-top: 1px solid #e4e4e7 !important; /* zinc-200 */
@@ -112,9 +61,6 @@
   justify-content: flex-end !important;
 }
 
-/* ============================================
-   Shepherd.js - Button base styles
-   ============================================ */
 .shepherd-element.new-builder-tour .shepherd-button {
   display: inline-flex !important;
   align-items: center !important;
@@ -133,9 +79,6 @@
   cursor: pointer !important;
 }
 
-/* ============================================
-   Shepherd.js - Primary button
-   ============================================ */
 .shepherd-element.new-builder-tour
   .shepherd-button:not(.shepherd-button-secondary) {
   background-color: #27272a !important; /* zinc-800 */
@@ -154,9 +97,6 @@
   transform: scale(0.98);
 }
 
-/* ============================================
-   Shepherd.js - Secondary button
-   ============================================ */
 .shepherd-element.new-builder-tour .shepherd-button-secondary {
   background-color: #f4f4f5 !important; /* zinc-100 */
   border: 1px solid #f4f4f5 !important;
@@ -173,9 +113,6 @@
   transform: scale(0.98);
 }
 
-/* ============================================
-   Shepherd.js - Cancel/close icon
-   ============================================ */
 .shepherd-element.new-builder-tour .shepherd-cancel-icon {
   color: #a1a1aa !important; /* zinc-400 */
   transition: color 150ms ease !important;
@@ -187,9 +124,6 @@
   color: #52525b !important; /* zinc-600 */
 }
 
-/* ============================================
-   Shepherd.js - Arrow styling
-   ============================================ */
 .shepherd-element.new-builder-tour .shepherd-arrow {
   transform: scale(1.2) !important;
 }
@@ -198,15 +132,12 @@
   background: white !important;
 }
 
-/* ============================================
-   Shepherd.js - Placement spacing (12px = 0.75rem)
-   ============================================ */
 .shepherd-element.new-builder-tour[data-popper-placement^="top"] {
-  margin-bottom: 20px !important;
+  margin-bottom: 40px !important;
 }
 
 .shepherd-element.new-builder-tour[data-popper-placement^="bottom"] {
-  margin-top: 20px !important;
+  margin-top: 40px !important;
 }
 
 .shepherd-element.new-builder-tour[data-popper-placement^="left"] {
