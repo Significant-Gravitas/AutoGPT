@@ -565,10 +565,10 @@ async def stream_chat_completion(
             yield chunk
 
     # End Langfuse generation with output and usage
-    # Using v3 SDK: update() then end()
     if generation:
         latest_usage = session.usage[-1] if session.usage else None
         generation.update(
+            model=config.model,
             output={
                 "content": assistant_response.content,
                 "tool_calls": accumulated_tool_calls or None,
