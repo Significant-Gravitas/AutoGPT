@@ -276,7 +276,7 @@ def ensure_embeddings_coverage():
             f"Found {stats['without_embeddings']} agents without embeddings "
             f"({stats['coverage_percent']}% coverage)"
         )
-        result = await backfill_missing_embeddings(batch_size=50)
+        result = await backfill_missing_embeddings(batch_size=10)
         logger.info(
             f"Embedding backfill completed: {result['success']} succeeded, "
             f"{result['failed']} failed"
