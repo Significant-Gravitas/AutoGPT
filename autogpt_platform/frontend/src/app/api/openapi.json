@@ -6969,20 +6969,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Message"
           },
-          "created_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Created At"
-          },
-          "updated_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Updated At"
-          },
           "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
@@ -7101,26 +7087,18 @@
             "title": "Preset Id"
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
+          "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Updated At"
-          },
-          "started_at": {
-            "type": "string",
-            "format": "date-time",
             "title": "Started At"
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
             "title": "Ended At"
           },
           "is_shared": {
@@ -7155,8 +7133,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "created_at",
-          "updated_at",
           "started_at",
           "ended_at",
           "stats",
@@ -7256,26 +7232,18 @@
             "title": "Preset Id"
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
+          "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Updated At"
-          },
-          "started_at": {
-            "type": "string",
-            "format": "date-time",
             "title": "Started At"
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
             "title": "Ended At"
           },
           "is_shared": {
@@ -7305,8 +7273,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "created_at",
-          "updated_at",
           "started_at",
           "ended_at",
           "stats"
@@ -7354,26 +7320,18 @@
             "title": "Preset Id"
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
+          "started_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Updated At"
-          },
-          "started_at": {
-            "type": "string",
-            "format": "date-time",
             "title": "Started At"
           },
           "ended_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
             "title": "Ended At"
           },
           "is_shared": {
@@ -7413,8 +7371,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "created_at",
-          "updated_at",
           "started_at",
           "ended_at",
           "stats",
