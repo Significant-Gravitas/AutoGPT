@@ -155,10 +155,10 @@ async def store_content_embedding(
             INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
                 "id", "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
             )
-            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::public.vector, $5, $6::jsonb, NOW(), NOW())
+            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
             ON CONFLICT ("contentType", "contentId", "userId")
             DO UPDATE SET
-                "embedding" = $4::public.vector,
+                "embedding" = $4::vector,
                 "searchableText" = $5,
                 "metadata" = $6::jsonb,
                 "updatedAt" = NOW()

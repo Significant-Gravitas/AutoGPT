@@ -38,6 +38,11 @@ POOL_TIMEOUT = os.getenv("DB_POOL_TIMEOUT")
 if POOL_TIMEOUT:
     DATABASE_URL = add_param(DATABASE_URL, "pool_timeout", POOL_TIMEOUT)
 
+# Add public schema to search_path for pgvector type access
+# The vector extension is in public schema, but search_path is set to platform only via schema parameter
+# This allows using ::vector without schema qualification
+DATABASE_URL = add_param(DATABASE_URL, "options", "-c search_path=platform,public")
+
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
 prisma = Prisma(
