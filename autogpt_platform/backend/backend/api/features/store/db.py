@@ -104,12 +104,23 @@ async def get_store_agents(
                         continue
 
             except Exception as hybrid_error:
-                # If hybrid search fails (e.g., missing embeddings table),
-                # fallback to basic search logic below
-                logger.warning(
-                    f"Hybrid search failed, falling back to basic search: {hybrid_error}"
+                # Hybrid search failure is critical - embeddings should always be available
+                logger.error(
+                    f"Hybrid search failed unexpectedly: {hybrid_error}",
+                    exc_info=True,
+                    extra={
+                        "query": search_query,
+                        "featured": featured,
+                        "creators": creators,
+                        "category": category,
+                    },
                 )
-                search_used_hybrid = False
+                # Re-raise the error instead of silent fallback
+                # This ensures we catch issues in production rather than degrading silently
+                raise fastapi.HTTPException(
+                    status_code=500,
+                    detail="Search service temporarily unavailable. Please try again.",
+                ) from hybrid_error
 
         if not search_used_hybrid:
             # Fallback path - use basic search or no search
