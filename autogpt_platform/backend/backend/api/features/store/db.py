@@ -1543,28 +1543,30 @@ async def review_store_submission(
                     },
                 )
 
+                # Generate embedding for approved listing (blocking - admin operation, lower SLA)
+                # CRITICAL: Inside transaction to ensure atomic operation
+                # If embedding fails, entire transaction rolls back (listing stays pending)
+                embedding_success = await ensure_embedding(
+                    version_id=store_listing_version_id,
+                    name=store_listing_version.name,
+                    description=store_listing_version.description,
+                    sub_heading=store_listing_version.subHeading,
+                    categories=store_listing_version.categories or [],
+                    tx=tx,
+                )
+                if not embedding_success:
+                    raise ValueError(
+                        f"Failed to generate embedding for listing {store_listing_version_id}. "
+                        "This is likely due to OpenAI API being unavailable. "
+                        "Please try again later or contact support if the issue persists."
+                    )
+
                 await prisma.models.StoreListing.prisma(tx).update(
                     where={"id": store_listing_version.StoreListing.id},
                     data={
                         "hasApprovedVersion": True,
                         "ActiveVersion": {"connect": {"id": store_listing_version_id}},
                     },
-                )
-
-            # Generate embedding for approved listing (blocking - admin operation, lower SLA)
-            # If embedding fails, approval fails to ensure all approved agents are searchable
-            embedding_success = await ensure_embedding(
-                version_id=store_listing_version_id,
-                name=store_listing_version.name,
-                description=store_listing_version.description,
-                sub_heading=store_listing_version.subHeading,
-                categories=store_listing_version.categories or [],
-            )
-            if not embedding_success:
-                raise ValueError(
-                    f"Failed to generate embedding for listing {store_listing_version_id}. "
-                    "This is likely due to OpenAI API being unavailable. "
-                    "Please try again later or contact support if the issue persists."
                 )
 
         # If rejecting an approved agent, update the StoreListing accordingly
