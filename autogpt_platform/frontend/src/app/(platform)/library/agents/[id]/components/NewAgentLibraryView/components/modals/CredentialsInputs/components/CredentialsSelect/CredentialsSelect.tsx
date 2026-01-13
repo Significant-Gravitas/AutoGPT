@@ -65,7 +65,7 @@ export function CredentialsSelect({
       >
         <SelectTrigger
           className={cn(
-            "h-auto min-h-12 w-full rounded-medium border-zinc-200 p-0 pr-4 shadow-none",
+            "h-auto min-h-12 w-full rounded-medium p-0 pr-4 shadow-none",
             variant === "node" && "overflow-hidden",
           )}
         >
@@ -86,6 +86,39 @@ export function CredentialsSelect({
                 asSelectTrigger={true}
                 variant={variant}
               />
+            </SelectValue>
+          ) : allowNone ? (
+            <SelectValue key="__none__" asChild>
+              <div
+                className={cn(
+                  "flex items-center gap-3 rounded-medium border border-zinc-200 bg-white p-3 transition-colors",
+                  variant === "node"
+                    ? "min-w-0 flex-1 overflow-hidden border-0 bg-transparent"
+                    : "border-0 bg-transparent",
+                )}
+              >
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200">
+                  <Text
+                    variant="body"
+                    className="text-xs font-medium text-zinc-500"
+                  >
+                    —
+                  </Text>
+                </div>
+                <div
+                  className={cn(
+                    "flex min-w-0 flex-1 flex-nowrap items-center gap-4",
+                    variant === "node" && "overflow-hidden",
+                  )}
+                >
+                  <Text
+                    variant="body"
+                    className={cn("tracking-tight text-zinc-500")}
+                  >
+                    None (skip this credential)
+                  </Text>
+                </div>
+              </div>
             </SelectValue>
           ) : (
             <SelectValue key="placeholder" placeholder="Select credential" />

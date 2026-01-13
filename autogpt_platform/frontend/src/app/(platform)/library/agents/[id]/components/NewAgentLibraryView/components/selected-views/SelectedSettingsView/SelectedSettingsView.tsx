@@ -1,11 +1,12 @@
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Text } from "@/components/atoms/Text/Text";
-import { Switch } from "@/components/atoms/Switch/Switch";
 import { Button } from "@/components/atoms/Button/Button";
-import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import { Text } from "@/components/atoms/Text/Text";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
-import { SelectedViewLayout } from "../SelectedViewLayout";
+import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
+import { SelectedViewLayout } from "../SelectedViewLayout";
+import { SystemCredentialsSection } from "./components/SystemCredentialsSection";
 
 interface Props {
   agent: LibraryAgent;
@@ -16,8 +17,12 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
   const { currentSafeMode, isPending, hasHITLBlocks, handleToggle } =
     useAgentSafeMode(agent);
 
+  const hasCredentialsSchema =
+    agent.credentials_input_schema &&
+    Object.keys(agent.credentials_input_schema.properties || {}).length > 0;
+
   return (
-    <SelectedViewLayout agent={agent} onSelectSettings={() => {}}>
+    <SelectedViewLayout agent={agent}>
       <div className="flex flex-col gap-4">
         <div
           className={`${AGENT_LIBRARY_SECTION_PADDING_X} mb-8 flex items-center gap-3`}
@@ -33,15 +38,8 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
           <Text variant="h2">Agent Settings</Text>
         </div>
 
-        <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
-          {!hasHITLBlocks ? (
-            <div className="rounded-xl border border-zinc-100 bg-white p-6">
-              <Text variant="body" className="text-muted-foreground">
-                This agent doesn&apos;t have any human-in-the-loop blocks, so
-                there are no settings to configure.
-              </Text>
-            </div>
-          ) : (
+        <div className={`${AGENT_LIBRARY_SECTION_PADDING_X} space-y-6`}>
+          {hasHITLBlocks && (
             <div className="flex w-full max-w-2xl flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
               <div className="flex w-full items-start justify-between gap-4">
                 <div className="flex-1">
@@ -58,6 +56,16 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
                   className="mt-1"
                 />
               </div>
+            </div>
+          )}
+
+          {hasCredentialsSchema && <SystemCredentialsSection agent={agent} />}
+
+          {!hasHITLBlocks && !hasCredentialsSchema && (
+            <div className="rounded-xl border border-zinc-100 bg-white p-6">
+              <Text variant="body" className="text-muted-foreground">
+                This agent doesn&apos;t have any configurable settings.
+              </Text>
             </div>
           )}
         </div>

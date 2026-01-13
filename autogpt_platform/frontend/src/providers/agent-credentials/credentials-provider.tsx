@@ -1,5 +1,4 @@
-import { createContext, useCallback, useEffect, useState } from "react";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -10,8 +9,9 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
+import { createContext, useCallback, useEffect, useState } from "react";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -71,6 +71,8 @@ export default function CredentialsProvider({
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
+
+  console.log("providers", providers);
 
   const addCredentials = useCallback(
     (
@@ -218,17 +220,7 @@ export default function CredentialsProvider({
     [api, onFailToast],
   );
 
-  // Fetch provider names on mount
-  useEffect(() => {
-    api
-      .listProviders()
-      .then((names) => {
-        setProviderNames(names);
-      })
-      .catch(onFailToast("load provider names"));
-  }, [api, onFailToast]);
-
-  useEffect(() => {
+  const loadCredentials = useCallback(() => {
     if (!isLoggedIn || providerNames.length === 0) {
       if (isLoggedIn == false) setProviders({});
       return;
@@ -287,6 +279,20 @@ export default function CredentialsProvider({
     oAuthCallback,
     onFailToast,
   ]);
+
+  // Fetch provider names on mount
+  useEffect(() => {
+    api
+      .listProviders()
+      .then((names) => {
+        setProviderNames(names);
+      })
+      .catch(onFailToast("Load provider names"));
+  }, [api, onFailToast]);
+
+  useEffect(() => {
+    loadCredentials();
+  }, [loadCredentials]);
 
   return (
     <CredentialsProvidersContext.Provider value={providers}>

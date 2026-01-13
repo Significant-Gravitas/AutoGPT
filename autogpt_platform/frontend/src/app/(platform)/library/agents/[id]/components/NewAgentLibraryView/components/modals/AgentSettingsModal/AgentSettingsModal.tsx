@@ -1,0 +1,131 @@
+"use client";
+
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Button } from "@/components/atoms/Button/Button";
+import { Switch } from "@/components/atoms/Switch/Switch";
+import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
+import { GearIcon } from "@phosphor-icons/react";
+import { useMemo, useState } from "react";
+import { useAgentSystemCredentials } from "../../../hooks/useAgentSystemCredentials";
+import { SystemCredentialRow } from "../../selected-views/SelectedSettingsView/components/SystemCredentialRow";
+
+interface Props {
+  agent: LibraryAgent;
+  controlledOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function AgentSettingsModal({
+  agent,
+  controlledOpen,
+  onOpenChange,
+}: Props) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalIsOpen;
+
+  function setIsOpen(open: boolean) {
+    if (onOpenChange) {
+      onOpenChange(open);
+    } else {
+      setInternalIsOpen(open);
+    }
+  }
+
+  const { currentSafeMode, isPending, hasHITLBlocks, handleToggle } =
+    useAgentSafeMode(agent);
+
+  const { hasSystemCredentials, systemCredentials } =
+    useAgentSystemCredentials(agent);
+
+  // Only show credential fields that have system credentials
+  const credentialFieldsWithSystemCreds = useMemo(() => {
+    return systemCredentials.map((item) => ({
+      fieldKey: item.key,
+      schema: item.schema,
+      systemCredential: item.credential,
+    }));
+  }, [systemCredentials]);
+
+  const hasAnySettings = hasHITLBlocks || hasSystemCredentials;
+
+  return (
+    <Dialog
+      controlled={{ isOpen, set: setIsOpen }}
+      styling={{ maxWidth: "600px", maxHeight: "90vh" }}
+      title="Agent Settings"
+    >
+      {controlledOpen === undefined && (
+        <Dialog.Trigger>
+          <Button
+            variant="ghost"
+            size="small"
+            className="m-0 min-w-0 rounded-full p-0 px-1"
+            aria-label="Agent Settings"
+          >
+            <GearIcon size={18} className="text-zinc-600" />
+            <Text variant="small">Agent Settings</Text>
+          </Button>
+        </Dialog.Trigger>
+      )}
+      <Dialog.Content>
+        <div className="space-y-6">
+          {hasHITLBlocks && (
+            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+              <div className="flex w-full items-start justify-between gap-4">
+                <div className="flex-1">
+                  <Text variant="large-semibold">Require human approval</Text>
+                  <Text variant="large" className="mt-1 text-zinc-900">
+                    The agent will pause and wait for your review before
+                    continuing
+                  </Text>
+                </div>
+                <Switch
+                  checked={currentSafeMode || false}
+                  onCheckedChange={handleToggle}
+                  disabled={isPending}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          )}
+
+          {hasSystemCredentials && (
+            <div className="flex w-full max-w-2xl flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+              <div>
+                <Text variant="large-semibold">System Credentials</Text>
+                <Text variant="body" className="mt-1 text-muted-foreground">
+                  These credentials are managed by AutoGPT and used by the agent
+                  to access various services. You can switch to your own
+                  credentials if preferred.
+                </Text>
+              </div>
+              <div className="w-full space-y-4">
+                {credentialFieldsWithSystemCreds.map(
+                  ({ fieldKey, schema, systemCredential }) => (
+                    <SystemCredentialRow
+                      key={fieldKey}
+                      credentialKey={fieldKey}
+                      agentId={agent.id.toString()}
+                      schema={schema}
+                      systemCredential={systemCredential}
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {!hasAnySettings && (
+            <div className="py-6">
+              <Text variant="body" className="text-muted-foreground">
+                This agent doesn&apos;t have any configurable settings.
+              </Text>
+            </div>
+          )}
+        </div>
+      </Dialog.Content>
+    </Dialog>
+  );
+}

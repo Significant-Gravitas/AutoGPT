@@ -241,11 +241,7 @@ export function RunAgentModal({
                   <Button
                     variant="secondary"
                     onClick={handleOpenScheduleModal}
-                    disabled={
-                      isExecuting ||
-                      isSettingUpTrigger ||
-                      !allRequiredInputsAreSet
-                    }
+                    disabled={isExecuting || isSettingUpTrigger}
                   >
                     Schedule Task
                   </Button>
