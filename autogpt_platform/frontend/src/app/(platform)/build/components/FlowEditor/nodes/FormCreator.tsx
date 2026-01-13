@@ -44,18 +44,20 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
         : hardcodedValues;
 
     return (
-      <FormRenderer
-        jsonSchema={jsonSchema}
-        handleChange={handleChange}
-        uiSchema={uiSchema}
-        initialValues={initialValues}
-        formContext={{
-          nodeId: nodeId,
-          uiType: uiType,
-          showHandles: showHandles,
-          size: "small",
-        }}
-      />
+      <div className={className}>
+        <FormRenderer
+          jsonSchema={jsonSchema}
+          handleChange={handleChange}
+          uiSchema={uiSchema}
+          initialValues={initialValues}
+          formContext={{
+            nodeId: nodeId,
+            uiType: uiType,
+            showHandles: showHandles,
+            size: "small",
+          }}
+        />
+      </div>
     );
   },
 );
