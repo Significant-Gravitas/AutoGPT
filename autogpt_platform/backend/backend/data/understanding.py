@@ -251,7 +251,7 @@ async def upsert_business_understanding(
 
     # Field mappings: (pydantic_field, db_field)
     string_fields = [
-        ("user_name", "userName"),
+        ("user_name", "usersName"),
         ("job_title", "jobTitle"),
         ("business_name", "businessName"),
         ("industry", "industry"),

@@ -131,8 +131,8 @@ model UserBusinessUnderstanding {
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // User info
-  userName String?
-  jobTitle String?
+  usersName String?
+  jobTitle  String?
 
   // Business basics (string columns)
   businessName String?

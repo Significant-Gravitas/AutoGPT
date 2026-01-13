@@ -7,7 +7,7 @@ CREATE TABLE "UserBusinessUnderstanding" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT NOT NULL,
-    "userName" TEXT,
+    "usersName" TEXT,
     "jobTitle" TEXT,
     "businessName" TEXT,
     "industry" TEXT,
