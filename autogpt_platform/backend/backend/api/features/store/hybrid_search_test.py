@@ -46,7 +46,9 @@ async def test_hybrid_search_with_schema_handling():
             }
         ]
 
-        with patch("backend.api.features.store.embeddings.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
             mock_embed.return_value = [0.1] * 1536  # Mock embedding
 
             results, total = await hybrid_search(
@@ -81,7 +83,7 @@ async def test_hybrid_search_with_public_schema():
             mock_query.return_value = []
 
             with patch(
-                "backend.api.features.store.embeddings.embed_query"
+                "backend.api.features.store.hybrid_search.embed_query"
             ) as mock_embed:
                 mock_embed.return_value = [0.1] * 1536
 
@@ -112,7 +114,7 @@ async def test_hybrid_search_with_custom_schema():
             mock_query.return_value = []
 
             with patch(
-                "backend.api.features.store.embeddings.embed_query"
+                "backend.api.features.store.hybrid_search.embed_query"
             ) as mock_embed:
                 mock_embed.return_value = [0.1] * 1536
 
@@ -160,7 +162,9 @@ async def test_hybrid_search_with_filters():
     ) as mock_query:
         mock_query.return_value = []
 
-        with patch("backend.api.features.store.embeddings.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
             mock_embed.return_value = [0.1] * 1536
 
             # Test with featured filter
@@ -197,7 +201,9 @@ async def test_hybrid_search_weights():
     ) as mock_query:
         mock_query.return_value = []
 
-        with patch("backend.api.features.store.embeddings.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
             mock_embed.return_value = [0.1] * 1536
 
             results, total = await hybrid_search(
@@ -234,7 +240,9 @@ async def test_hybrid_search_min_score_filtering():
             }
         ]
 
-        with patch("backend.api.features.store.embeddings.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
             mock_embed.return_value = [0.1] * 1536
 
             # Test with custom min_score
@@ -260,7 +268,9 @@ async def test_hybrid_search_pagination():
     ) as mock_query:
         mock_query.return_value = []
 
-        with patch("backend.api.features.store.embeddings.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
             mock_embed.return_value = [0.1] * 1536
 
             # Test page 2 with page_size 10
@@ -292,7 +302,9 @@ async def test_hybrid_search_error_handling():
         # Simulate database error
         mock_query.side_effect = Exception("Database connection error")
 
-        with patch("backend.api.features.store.embeddings.embed_query") as mock_embed:
+        with patch(
+            "backend.api.features.store.hybrid_search.embed_query"
+        ) as mock_embed:
             mock_embed.return_value = [0.1] * 1536
 
             # Should raise exception

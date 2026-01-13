@@ -66,6 +66,8 @@ async def get_store_agents(
         # If search_query is provided, use hybrid search (embeddings + tsvector)
         if search_query:
             # Use hybrid search combining semantic and lexical signals
+            # No fallback - if this fails, it indicates a configuration/infrastructure issue
+            # that needs to be fixed (missing API key, OpenAI API down, etc.)
             agents, total = await hybrid_search(
                 query=search_query,
                 featured=featured,
