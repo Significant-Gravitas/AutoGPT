@@ -141,7 +141,7 @@ async def store_content_embedding(
             INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
                 "id", "contentType", "contentId", "userId", "embedding", "searchableText", "metadata", "createdAt", "updatedAt"
             )
-            VALUES (gen_random_uuid()::text, $1::"ContentType", $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
+            VALUES (gen_random_uuid()::text, $1::{schema_prefix}"ContentType", $2, $3, $4::vector, $5, $6::jsonb, NOW(), NOW())
             ON CONFLICT ("contentType", "contentId", "userId")
             DO UPDATE SET
                 "embedding" = $4::vector,
@@ -209,7 +209,7 @@ async def get_content_embedding(
                 "createdAt",
                 "updatedAt"
             FROM {schema_prefix}"UnifiedContentEmbedding"
-            WHERE "contentType" = $1::"ContentType" AND "contentId" = $2 AND ("userId" = $3 OR ($3 IS NULL AND "userId" IS NULL))
+            WHERE "contentType" = $1::{schema_prefix}"ContentType" AND "contentId" = $2 AND ("userId" = $3 OR ($3 IS NULL AND "userId" IS NULL))
             """,
             content_type,
             content_id,
@@ -317,7 +317,7 @@ async def delete_content_embedding(content_type: ContentType, content_id: str) -
         await execute_raw_with_schema(
             """
             DELETE FROM {schema_prefix}"UnifiedContentEmbedding"
-            WHERE "contentType" = $1::"ContentType" AND "contentId" = $2
+            WHERE "contentType" = $1::{schema_prefix}"ContentType" AND "contentId" = $2
             """,
             content_type,
             content_id,
