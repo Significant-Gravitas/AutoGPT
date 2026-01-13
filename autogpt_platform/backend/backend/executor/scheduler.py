@@ -23,6 +23,10 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.api.features.store.embeddings import (
+    backfill_missing_embeddings,
+    get_embedding_stats,
+)
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
@@ -254,6 +258,34 @@ def execution_accuracy_alerts():
     return report_execution_accuracy_alerts()
 
 
+def ensure_embeddings_coverage():
+    """
+    Ensure approved store agents have embeddings for hybrid search.
+
+    Checks if there are missing embeddings and only processes if needed.
+    Runs in small batches to avoid rate limits.
+    """
+
+    async def _ensure():
+        stats = await get_embedding_stats()
+        if stats["without_embeddings"] == 0:
+            logger.info("All approved agents have embeddings, skipping backfill")
+            return {"processed": 0, "success": 0, "failed": 0}
+
+        logger.info(
+            f"Found {stats['without_embeddings']} agents without embeddings "
+            f"({stats['coverage_percent']}% coverage)"
+        )
+        result = await backfill_missing_embeddings(batch_size=50)
+        logger.info(
+            f"Embedding backfill completed: {result['success']} succeeded, "
+            f"{result['failed']} failed"
+        )
+        return result
+
+    return run_async(_ensure())
+
+
 # Monitoring functions are now imported from monitoring module
 
 
@@ -472,6 +504,15 @@ class Scheduler(AppService):
                 replace_existing=True,
                 seconds=config.execution_accuracy_check_interval_hours
                 * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Embedding Coverage - Daily maintenance at 2 AM UTC
+            self.scheduler.add_job(
+                ensure_embeddings_coverage,
+                id="ensure_embeddings_coverage",
+                trigger=CronTrigger.from_crontab("0 2 * * *"),
+                replace_existing=True,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

@@ -23,19 +23,20 @@ logger = logging.getLogger(__name__)
 class HybridSearchWeights:
     """Weights for combining search signals."""
 
-    semantic: float = 0.35  # Embedding cosine similarity
-    lexical: float = 0.35  # tsvector ts_rank_cd score
+    semantic: float = 0.30  # Embedding cosine similarity
+    lexical: float = 0.30  # tsvector ts_rank_cd score
     category: float = 0.20  # Category match boost
     recency: float = 0.10  # Newer agents ranked higher
+    popularity: float = 0.10  # Agent usage/runs (PageRank-like)
 
 
 DEFAULT_WEIGHTS = HybridSearchWeights()
 
 # Minimum relevance score threshold - agents below this are filtered out
-# With weights (0.35 semantic + 0.35 lexical + 0.20 category + 0.10 recency):
-# - 0.20 means at least ~50% semantic match OR strong lexical match required
+# With weights (0.30 semantic + 0.30 lexical + 0.20 category + 0.10 recency + 0.10 popularity):
+# - 0.20 means at least ~60% semantic match OR strong lexical match required
 # - Ensures only genuinely relevant results are returned
-# - Recency alone (0.10 max) won't pass the threshold
+# - Recency/popularity alone (0.10 each) won't pass the threshold
 DEFAULT_MIN_SCORE = 0.20
 
 
@@ -63,6 +64,7 @@ class HybridSearchResult:
     lexical_score: float = 0.0
     category_score: float = 0.0
     recency_score: float = 0.0
+    popularity_score: float = 0.0
 
 
 async def hybrid_search(
@@ -155,8 +157,9 @@ async def hybrid_search(
     # 2. UNION approach (deduplicates agents matching both branches)
     # 3. COUNT(*) OVER() to get total count in single query
     # 4. Optimized category matching with EXISTS + unnest
-    # 5. Pre-calculated max lexical score to avoid window function overhead
+    # 5. Pre-calculated max values for lexical and popularity normalization
     # 6. Simplified recency calculation with linear decay
+    # 7. Logarithmic popularity scaling to prevent viral agents from dominating
     sql_query = f"""
             WITH candidates AS (
                 -- Lexical matches (uses GIN index on search column)
@@ -203,7 +206,9 @@ async def hybrid_search(
                         ELSE 0.0
                     END as category_score,
                     -- Recency score: linear decay over 90 days (simpler than exponential)
-                    GREATEST(0, 1 - EXTRACT(EPOCH FROM (NOW() - sa.updated_at)) / (90 * 24 * 3600)) as recency_score
+                    GREATEST(0, 1 - EXTRACT(EPOCH FROM (NOW() - sa.updated_at)) / (90 * 24 * 3600)) as recency_score,
+                    -- Popularity raw: agent runs count (will be normalized with log scaling)
+                    sa.runs as popularity_raw
                 FROM candidates c
                 INNER JOIN {{schema_prefix}}"StoreAgent" sa
                     ON c."storeListingVersionId" = sa."storeListingVersionId"
@@ -213,6 +218,9 @@ async def hybrid_search(
             max_lexical AS (
                 SELECT MAX(lexical_raw) as max_val FROM search_scores
             ),
+            max_popularity AS (
+                SELECT MAX(popularity_raw) as max_val FROM search_scores
+            ),
             normalized AS (
                 SELECT
                     ss.*,
@@ -221,9 +229,17 @@ async def hybrid_search(
                         WHEN ml.max_val > 0
                         THEN ss.lexical_raw / ml.max_val
                         ELSE 0
-                    END as lexical_score
+                    END as lexical_score,
+                    -- Normalize popularity with logarithmic scaling to prevent viral agents from dominating
+                    -- LOG(1 + runs) / LOG(1 + max_runs) ensures score is 0-1 range
+                    CASE
+                        WHEN mp.max_val > 0 AND ss.popularity_raw > 0
+                        THEN LN(1 + ss.popularity_raw) / LN(1 + mp.max_val)
+                        ELSE 0
+                    END as popularity_score
                 FROM search_scores ss
                 CROSS JOIN max_lexical ml
+                CROSS JOIN max_popularity mp
             ),
             scored AS (
                 SELECT
@@ -244,11 +260,13 @@ async def hybrid_search(
                     lexical_score,
                     category_score,
                     recency_score,
+                    popularity_score,
                     (
                         {weights.semantic} * semantic_score +
                         {weights.lexical} * lexical_score +
                         {weights.category} * category_score +
-                        {weights.recency} * recency_score
+                        {weights.recency} * recency_score +
+                        {weights.popularity} * popularity_score
                     ) as combined_score
                 FROM normalized
             ),
