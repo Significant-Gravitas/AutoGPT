@@ -17,7 +17,6 @@ import {
   ensurePathExists,
   parseHandleIdToPath,
 } from "@/components/renderers/InputRenderer/helpers";
-import { IncompatibilityInfo } from "../hooks/useSubAgentUpdate";
 import { IncompatibilityInfo } from "../hooks/useSubAgentUpdate/types";
 
 // Resolution mode data stored per node
@@ -85,18 +84,15 @@ type NodeStore = {
     backendId: string,
     errors: { [key: string]: string },
   ) => void;
-  clearAllNodeErrors: () => void; // Add this
 
   syncHardcodedValuesWithHandleIds: (nodeId: string) => void;
 
-  // Credentials optional helpers
   setCredentialsOptional: (nodeId: string, optional: boolean) => void;
   clearAllNodeErrors: () => void;
 
-  // Sub-agent resolution mode state
   nodesInResolutionMode: Set<string>;
-  brokenEdgeIDs: Map<string, Set<string>>; // nodeId -> Set of broken edge IDs
-  nodeResolutionData: Map<string, NodeResolutionData>; // nodeId -> resolution data
+  brokenEdgeIDs: Map<string, Set<string>>;
+  nodeResolutionData: Map<string, NodeResolutionData>;
   setNodeResolutionMode: (
     nodeID: string,
     inResolution: boolean,
@@ -109,7 +105,6 @@ type NodeStore = {
   isEdgeBroken: (edgeID: string) => boolean;
   clearResolutionState: () => void;
 
-  // Helper functions for input renderers
   isInputBroken: (nodeID: string, handleID: string) => boolean;
   getInputTypeMismatch: (
     nodeID: string,

@@ -31,6 +31,8 @@ export const OutputHandler = ({
   const [isOutputVisible, setIsOutputVisible] = useState(true);
   const brokenOutputs = useBrokenOutputs(nodeId);
 
+  console.log("brokenOutputs", brokenOutputs);
+
   const showHandles = uiType !== BlockUIType.OUTPUT;
 
   const renderOutputHandles = (
@@ -47,6 +49,7 @@ export const OutputHandler = ({
         const shouldShow = isConnected || isOutputVisible;
         const { displayType, colorClass, hexColor } =
           getTypeDisplayInfo(fieldSchema);
+        const isBroken = brokenOutputs.has(fullKey);
 
         return shouldShow ? (
           <div key={fullKey} className="flex flex-col items-end gap-2">
@@ -67,15 +70,29 @@ export const OutputHandler = ({
                   </Tooltip>
                 </TooltipProvider>
               )}
-              <Text variant="body" className="text-slate-700">
+              <Text
+                variant="body"
+                className={cn(
+                  "text-slate-700",
+                  isBroken && "text-red-500 line-through",
+                )}
+              >
                 {fieldTitle}
               </Text>
-              <Text variant="small" as="span" className={colorClass}>
+              <Text
+                variant="small"
+                as="span"
+                className={cn(
+                  colorClass,
+                  isBroken && "!text-red-500 line-through",
+                )}
+              >
                 ({displayType})
               </Text>
 
               {showHandles && (
                 <OutputNodeHandle
+                  isBroken={isBroken}
                   field_name={fullKey}
                   nodeId={nodeId}
                   hexColor={hexColor}

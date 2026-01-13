@@ -20,8 +20,8 @@ import { NodeDataRenderer } from "./components/NodeOutput/NodeOutput";
 import { NodeRightClickMenu } from "./components/NodeRightClickMenu";
 import { StickyNoteBlock } from "./components/StickyNoteBlock";
 import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
-import { mergeSchemaForResolution } from "./helpers";
-import { useNodeStore } from "../../../../stores/nodeStore";
+import { SubAgentUpdateFeature } from "./components/SubAgentUpdate/SubAgentUpdateFeature";
+import { useCustomNode } from "./useCustomNode";
 
 export type CustomNodeData = {
   hardcodedValues: {
@@ -47,53 +47,10 @@ export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
   ({ data, id: nodeId, selected }) => {
-    // Subscribe to the actual resolution mode state for this node
-    const isInResolutionMode = useNodeStore((state) =>
-      state.nodesInResolutionMode.has(nodeId),
-    );
-    const resolutionData = useNodeStore((state) =>
-      state.nodeResolutionData.get(nodeId),
-    );
+    const { inputSchema, outputSchema } = useCustomNode({ data, nodeId });
 
     const isAgent = data.uiType === BlockUIType.AGENT;
 
-    // Get base schemas for agent nodes
-    const currentInputSchema = isAgent
-      ? (data.hardcodedValues.input_schema ?? {})
-      : data.inputSchema;
-    const currentOutputSchema = isAgent
-      ? (data.hardcodedValues.output_schema ?? {})
-      : data.outputSchema;
-
-    // During resolution mode, merge old connected inputs/outputs with new schema
-    // so users can see and delete the broken connections
-    const inputSchema = useMemo(() => {
-      if (isAgent && isInResolutionMode && resolutionData) {
-        // Use the stored old schema from resolution data for merging
-        return mergeSchemaForResolution(
-          resolutionData.currentSchema.input_schema,
-          resolutionData.pendingUpdate.input_schema,
-          resolutionData,
-          "input",
-        );
-      }
-      return currentInputSchema;
-    }, [isAgent, isInResolutionMode, resolutionData, currentInputSchema]);
-
-    const outputSchema = useMemo(() => {
-      if (isAgent && isInResolutionMode && resolutionData) {
-        // Use the stored old schema from resolution data for merging
-        return mergeSchemaForResolution(
-          resolutionData.currentSchema.output_schema,
-          resolutionData.pendingUpdate.output_schema,
-          resolutionData,
-          "output",
-        );
-      }
-      return currentOutputSchema;
-    }, [isAgent, isInResolutionMode, resolutionData, currentOutputSchema]);
-
-    // Handle sticky note separately
     if (data.uiType === BlockUIType.NOTE) {
       return (
         <StickyNoteBlock data={data} selected={selected} nodeId={nodeId} />
@@ -126,8 +83,6 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
 
     const hasErrors = hasConfigErrors || hasOutputError;
 
-    // Currently all blockTypes design are similar - that's why i am using the same component for all of them
-    // If in future - if we need some drastic change in some blockTypes design - we can create separate components for them
     const node = (
       <NodeContainer selected={selected} nodeId={nodeId} hasErrors={hasErrors}>
         <div className="rounded-xlarge bg-white">

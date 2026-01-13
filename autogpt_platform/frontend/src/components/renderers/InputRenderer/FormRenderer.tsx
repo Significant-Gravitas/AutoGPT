@@ -20,7 +20,6 @@ export const FormRenderer = ({
   uiSchema,
   initialValues,
   formContext,
-  className,
 }: FormRendererProps) => {
   const preprocessedSchema = useMemo(() => {
     return preprocessInputSchema(jsonSchema);
@@ -31,10 +30,8 @@ export const FormRenderer = ({
     return generateUiSchemaForCustomFields(preprocessedSchema, uiSchema);
   }, [preprocessedSchema, uiSchema]);
 
-  console.log("preprocessedSchema", preprocessedSchema);
-
   return (
-    <div className={"mb-6 mt-4"}>
+    <div className={"mx-4 mb-6 mt-4"}>
       <Form
         formContext={formContext}
         idPrefix="agpt"
