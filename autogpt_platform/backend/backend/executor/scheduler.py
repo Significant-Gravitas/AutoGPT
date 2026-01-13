@@ -302,6 +302,13 @@ def ensure_embeddings_coverage():
             # No more missing embeddings
             break
 
+        if result["success"] == 0 and result["processed"] > 0:
+            # All attempts in this batch failed - stop to avoid infinite loop
+            logger.error(
+                f"All {result['processed']} embedding attempts failed - stopping backfill"
+            )
+            break
+
         # Small delay between batches to avoid rate limits
         time.sleep(1)
 
