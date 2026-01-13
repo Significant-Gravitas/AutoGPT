@@ -1528,7 +1528,7 @@ async def review_store_submission(
                 )
 
                 # Update the AgentGraph with store listing data
-                await prisma.models.AgentGraph.prisma().update(
+                await prisma.models.AgentGraph.prisma(tx).update(
                     where={
                         "graphVersionId": {
                             "id": store_listing_version.agentGraphId,
@@ -1543,9 +1543,8 @@ async def review_store_submission(
                     },
                 )
 
-                # Generate embedding for approved listing (blocking - admin operation, lower SLA)
-                # CRITICAL: Inside transaction to ensure atomic operation
-                # If embedding fails, entire transaction rolls back (listing stays pending)
+                # Generate embedding for approved listing (blocking - admin operation)
+                # Inside transaction: if embedding fails, entire transaction rolls back
                 embedding_success = await ensure_embedding(
                     version_id=store_listing_version_id,
                     name=store_listing_version.name,

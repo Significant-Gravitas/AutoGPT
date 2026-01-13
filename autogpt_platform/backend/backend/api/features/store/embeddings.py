@@ -7,6 +7,7 @@ Handles generation and storage of OpenAI embeddings for all content types
 
 import asyncio
 import logging
+from functools import cache
 from typing import Any
 
 import prisma
@@ -23,6 +24,20 @@ logger = logging.getLogger(__name__)
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM = 1536
+
+
+@cache
+def get_openai_client() -> OpenAI | None:
+    """
+    Get or create a singleton OpenAI client for connection reuse.
+
+    Returns None if API key is not configured.
+    """
+    settings = Settings()
+    api_key = settings.secrets.openai_internal_api_key
+    if not api_key:
+        return None
+    return OpenAI(api_key=api_key)
 
 
 def build_searchable_text(
@@ -62,15 +77,13 @@ async def generate_embedding(text: str) -> list[float] | None:
     Generate embedding for text using OpenAI API.
 
     Returns None if embedding generation fails.
+    Uses singleton client for connection reuse and better performance.
     """
     try:
-        settings = Settings()
-        api_key = settings.secrets.openai_internal_api_key
-        if not api_key:
+        client = get_openai_client()
+        if not client:
             logger.error("openai_internal_api_key not set, cannot generate embedding")
             return None
-
-        client = OpenAI(api_key=api_key)
 
         # Truncate text to avoid token limits (~32k chars for safety)
         truncated_text = text[:32000]
