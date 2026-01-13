@@ -589,9 +589,8 @@ class ClaudeCodeBlock(Block):
             )
 
             yield "response", response
-            if files:
-                # Convert FileOutput objects to dicts for serialization
-                yield "files", [f.model_dump() for f in files]
+            # Always yield files (empty list if none) to match Output schema
+            yield "files", [f.model_dump() for f in files]
             # Always yield conversation_history so user can restore context on fresh sandbox
             yield "conversation_history", conversation_history
             # Always yield session_id so user can continue conversation
