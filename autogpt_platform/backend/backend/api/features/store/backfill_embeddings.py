@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import asyncio
+import logging
 import sys
 
 import prisma
@@ -17,55 +18,77 @@ from backend.api.features.store.embeddings import (
     get_embedding_stats,
 )
 
+logger = logging.getLogger(__name__)
+
 
 async def main(batch_size: int = 100) -> int:
-    """Run the backfill process."""
-    # Initialize Prisma client
+    """Run the backfill process - processes ALL missing embeddings in batches."""
     client = prisma.Prisma()
     await client.connect()
     prisma.register(client)
 
     try:
-        # Get current stats
-        print("Current embedding stats:")
         stats = await get_embedding_stats()
-        print(f"  Total approved: {stats['total_approved']}")
-        print(f"  With embeddings: {stats['with_embeddings']}")
-        print(f"  Without embeddings: {stats['without_embeddings']}")
-        print(f"  Coverage: {stats['coverage_percent']}%")
+        logger.info(
+            f"Current coverage: {stats['with_embeddings']}/{stats['total_approved']} "
+            f"({stats['coverage_percent']}%)"
+        )
 
         if stats["without_embeddings"] == 0:
-            print("\nAll agents already have embeddings. Nothing to do.")
+            logger.info("All agents have embeddings - nothing to backfill")
             return 0
 
-        # Run backfill
-        print(f"\nBackfilling up to {batch_size} embeddings...")
-        result = await backfill_missing_embeddings(batch_size=batch_size)
-        print(f"  Processed: {result['processed']}")
-        print(f"  Success: {result['success']}")
-        print(f"  Failed: {result['failed']}")
+        logger.info(
+            f"Backfilling {stats['without_embeddings']} missing embeddings "
+            f"(batch size: {batch_size})"
+        )
 
-        # Get final stats
-        print("\nFinal embedding stats:")
+        total_processed = 0
+        total_success = 0
+        total_failed = 0
+
+        while True:
+            result = await backfill_missing_embeddings(batch_size=batch_size)
+            if result["processed"] == 0:
+                break
+
+            total_processed += result["processed"]
+            total_success += result["success"]
+            total_failed += result["failed"]
+
+            logger.info(
+                f"Batch complete: {result['success']}/{result['processed']} succeeded"
+            )
+
+            await asyncio.sleep(1)
+
+        # Final stats
         stats = await get_embedding_stats()
-        print(f"  Total approved: {stats['total_approved']}")
-        print(f"  With embeddings: {stats['with_embeddings']}")
-        print(f"  Without embeddings: {stats['without_embeddings']}")
-        print(f"  Coverage: {stats['coverage_percent']}%")
+        logger.info(
+            f"Backfill complete: {total_success}/{total_processed} succeeded, "
+            f"{total_failed} failed"
+        )
+        logger.info(f"Final coverage: {stats['coverage_percent']}%")
 
-        return 0 if result["failed"] == 0 else 1
+        return 0 if total_failed == 0 else 1
 
     finally:
         await client.disconnect()
 
 
 if __name__ == "__main__":
+    # Configure logging for CLI usage
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
+
     parser = argparse.ArgumentParser(description="Backfill embeddings for store agents")
     parser.add_argument(
         "--batch-size",
         type=int,
         default=100,
-        help="Number of embeddings to generate (default: 100)",
+        help="Number of embeddings to generate per batch (default: 100)",
     )
     args = parser.parse_args()
 

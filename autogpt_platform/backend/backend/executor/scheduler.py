@@ -262,11 +262,13 @@ def ensure_embeddings_coverage():
     """
     Ensure approved store agents have embeddings for hybrid search.
 
-    Checks if there are missing embeddings and only processes if needed.
-    Runs in small batches to avoid rate limits.
+    Processes ALL missing embeddings in batches until 100% coverage.
+    Critical: missing embeddings = agents invisible in hybrid search.
     """
 
     async def _ensure():
+        import asyncio
+
         stats = await get_embedding_stats()
         if stats["without_embeddings"] == 0:
             logger.info("All approved agents have embeddings, skipping backfill")
@@ -274,14 +276,37 @@ def ensure_embeddings_coverage():
 
         logger.info(
             f"Found {stats['without_embeddings']} agents without embeddings "
-            f"({stats['coverage_percent']}% coverage)"
+            f"({stats['coverage_percent']}% coverage) - processing all"
         )
-        result = await backfill_missing_embeddings(batch_size=10)
+
+        total_processed = 0
+        total_success = 0
+        total_failed = 0
+
+        # Process in batches until no more missing embeddings
+        while True:
+            result = await backfill_missing_embeddings(batch_size=10)
+
+            total_processed += result["processed"]
+            total_success += result["success"]
+            total_failed += result["failed"]
+
+            if result["processed"] == 0:
+                # No more missing embeddings
+                break
+
+            # Small delay between batches to avoid rate limits
+            await asyncio.sleep(1)
+
         logger.info(
-            f"Embedding backfill completed: {result['success']} succeeded, "
-            f"{result['failed']} failed"
+            f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
+            f"{total_failed} failed"
         )
-        return result
+        return {
+            "processed": total_processed,
+            "success": total_success,
+            "failed": total_failed,
+        }
 
     return run_async(_ensure())
 
@@ -507,11 +532,14 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # Embedding Coverage - Daily maintenance at 2 AM UTC
+            # Embedding Coverage - Every 6 hours
+            # Ensures all approved agents have embeddings for hybrid search
+            # Critical: missing embeddings = agents invisible in search
             self.scheduler.add_job(
                 ensure_embeddings_coverage,
                 id="ensure_embeddings_coverage",
-                trigger=CronTrigger.from_crontab("0 2 * * *"),
+                trigger="interval",
+                hours=6,
                 replace_existing=True,
                 jobstore=Jobstores.EXECUTION.value,
             )

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 import fastapi
 import prisma.enums
@@ -59,50 +59,59 @@ async def get_store_agents(
 
     search_used_hybrid = False
     store_agents: list[store_model.StoreAgent] = []
+    agents: list[dict[str, Any]] = []
     total = 0
     total_pages = 0
 
     try:
         # If search_query is provided, use hybrid search (embeddings + tsvector)
         if search_query:
-            # Use hybrid search combining semantic and lexical signals
-            # No fallback - if this fails, it indicates a configuration/infrastructure issue
-            # that needs to be fixed (missing API key, OpenAI API down, etc.)
-            agents, total = await hybrid_search(
-                query=search_query,
-                featured=featured,
-                creators=creators,
-                category=category,
-                sorted_by="relevance",  # Use hybrid scoring for relevance
-                page=page,
-                page_size=page_size,
-            )
-            search_used_hybrid = True
+            # Try hybrid search combining semantic and lexical signals
+            # Falls back to lexical-only if OpenAI unavailable (user-facing, high SLA)
+            try:
+                agents, total = await hybrid_search(
+                    query=search_query,
+                    featured=featured,
+                    creators=creators,
+                    category=category,
+                    sorted_by="relevance",  # Use hybrid scoring for relevance
+                    page=page,
+                    page_size=page_size,
+                )
+                search_used_hybrid = True
+            except Exception as e:
+                # Log error but fall back to lexical search for better UX
+                logger.error(
+                    f"Hybrid search failed (likely OpenAI unavailable), "
+                    f"falling back to lexical search: {e}"
+                )
+                # search_used_hybrid remains False, will use fallback path below
 
-            # Convert hybrid search results (dict format)
-            total_pages = (total + page_size - 1) // page_size
-            store_agents: list[store_model.StoreAgent] = []
-            for agent in agents:
-                try:
-                    store_agent = store_model.StoreAgent(
-                        slug=agent["slug"],
-                        agent_name=agent["agent_name"],
-                        agent_image=(
-                            agent["agent_image"][0] if agent["agent_image"] else ""
-                        ),
-                        creator=agent["creator_username"] or "Needs Profile",
-                        creator_avatar=agent["creator_avatar"] or "",
-                        sub_heading=agent["sub_heading"],
-                        description=agent["description"],
-                        runs=agent["runs"],
-                        rating=agent["rating"],
-                    )
-                    store_agents.append(store_agent)
-                except Exception as e:
-                    logger.error(
-                        f"Error parsing Store agent from hybrid search results: {e}"
-                    )
-                    continue
+            # Convert hybrid search results (dict format) if hybrid succeeded
+            if search_used_hybrid:
+                total_pages = (total + page_size - 1) // page_size
+                store_agents: list[store_model.StoreAgent] = []
+                for agent in agents:
+                    try:
+                        store_agent = store_model.StoreAgent(
+                            slug=agent["slug"],
+                            agent_name=agent["agent_name"],
+                            agent_image=(
+                                agent["agent_image"][0] if agent["agent_image"] else ""
+                            ),
+                            creator=agent["creator_username"] or "Needs Profile",
+                            creator_avatar=agent["creator_avatar"] or "",
+                            sub_heading=agent["sub_heading"],
+                            description=agent["description"],
+                            runs=agent["runs"],
+                            rating=agent["rating"],
+                        )
+                        store_agents.append(store_agent)
+                    except Exception as e:
+                        logger.error(
+                            f"Error parsing Store agent from hybrid search results: {e}"
+                        )
+                        continue
 
         if not search_used_hybrid:
             # Fallback path - use basic search or no search
@@ -130,7 +139,7 @@ async def get_store_agents(
             elif sorted_by == "name":
                 order_by.append({"agent_name": "asc"})
 
-            agents = await prisma.models.StoreAgent.prisma().find_many(
+            db_agents = await prisma.models.StoreAgent.prisma().find_many(
                 where=where_clause,
                 order=order_by,
                 skip=(page - 1) * page_size,
@@ -141,7 +150,7 @@ async def get_store_agents(
             total_pages = (total + page_size - 1) // page_size
 
             store_agents: list[store_model.StoreAgent] = []
-            for agent in agents:
+            for agent in db_agents:
                 try:
                     # Create the StoreAgent object safely
                     store_agent = store_model.StoreAgent(
@@ -1542,20 +1551,20 @@ async def review_store_submission(
                     },
                 )
 
-            # Generate embedding for approved listing (non-blocking)
-            try:
-                await ensure_embedding(
-                    version_id=store_listing_version_id,
-                    name=store_listing_version.name,
-                    description=store_listing_version.description,
-                    sub_heading=store_listing_version.subHeading,
-                    categories=store_listing_version.categories or [],
-                )
-            except Exception as e:
-                # Don't fail approval if embedding generation fails
-                logger.error(
-                    f"Failed to generate embedding for approved listing "
-                    f"{store_listing_version_id}: {e}"
+            # Generate embedding for approved listing (blocking - admin operation, lower SLA)
+            # If embedding fails, approval fails to ensure all approved agents are searchable
+            embedding_success = await ensure_embedding(
+                version_id=store_listing_version_id,
+                name=store_listing_version.name,
+                description=store_listing_version.description,
+                sub_heading=store_listing_version.subHeading,
+                categories=store_listing_version.categories or [],
+            )
+            if not embedding_success:
+                raise ValueError(
+                    f"Failed to generate embedding for listing {store_listing_version_id}. "
+                    "This is likely due to OpenAI API being unavailable. "
+                    "Please try again later or contact support if the issue persists."
                 )
 
         # If rejecting an approved agent, update the StoreListing accordingly
