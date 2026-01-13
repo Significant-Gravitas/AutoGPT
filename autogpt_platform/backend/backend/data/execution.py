@@ -153,8 +153,14 @@ class GraphExecutionMeta(BaseDbModel):
     nodes_input_masks: Optional[dict[str, BlockInput]]
     preset_id: Optional[str]
     status: ExecutionStatus
-    started_at: Optional[datetime]
-    ended_at: Optional[datetime]
+    started_at: Optional[datetime] = Field(
+        None,
+        description="When execution started running. Null if not yet started (QUEUED).",
+    )
+    ended_at: Optional[datetime] = Field(
+        None,
+        description="When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW).",
+    )
     is_shared: bool = False
     share_token: Optional[str] = None
 
