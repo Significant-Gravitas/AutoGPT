@@ -6814,12 +6814,6 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
             "description": "Host pattern for host-scoped credentials"
-          },
-          "is_system": {
-            "type": "boolean",
-            "title": "Is System",
-            "description": "Whether this is a system-managed credential",
-            "default": false
           }
         },
         "type": "object",

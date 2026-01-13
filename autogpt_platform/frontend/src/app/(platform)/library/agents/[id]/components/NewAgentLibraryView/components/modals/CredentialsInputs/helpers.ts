@@ -99,7 +99,7 @@ export function getCredentialDisplayName(
 }
 
 export const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
-export const MASKED_KEY_LENGTH = 30;
+export const MASKED_KEY_LENGTH = 15;
 
 export function isSystemCredential(credential: {
   title?: string | null;

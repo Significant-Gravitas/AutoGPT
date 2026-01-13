@@ -108,9 +108,6 @@ class CredentialsMetaResponse(BaseModel):
     host: str | None = Field(
         default=None, description="Host pattern for host-scoped credentials"
     )
-    is_system: bool = Field(
-        default=False, description="Whether this is a system-managed credential"
-    )
 
 
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
@@ -178,7 +175,6 @@ async def callback(
         f"Successfully processed OAuth callback for user {user_id} "
         f"and provider {provider.value}"
     )
-    from backend.integrations.credentials_store import is_system_credential
 
     return CredentialsMetaResponse(
         id=credentials.id,
@@ -190,7 +186,6 @@ async def callback(
         host=(
             credentials.host if isinstance(credentials, HostScopedCredentials) else None
         ),
-        is_system=is_system_credential(credentials.id),
     )
 
 
@@ -198,24 +193,8 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    from backend.integrations.credentials_store import (
-        DEFAULT_CREDENTIALS,
-        is_system_credential,
-    )
-
-    # Get user credentials and configured system credentials
     credentials = await creds_manager.store.get_all_creds(user_id)
-    
-    # Create a set of credential IDs we've already included
-    included_ids = {cred.id for cred in credentials}
-    
-    # Always include all system credentials, even if not configured
-    # This ensures the frontend can identify system credentials
-    for system_cred in DEFAULT_CREDENTIALS:
-        if system_cred.id not in included_ids:
-            credentials.append(system_cred)
-            included_ids.add(system_cred.id)
-    
+
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -225,7 +204,6 @@ async def list_credentials(
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
             host=cred.host if isinstance(cred, HostScopedCredentials) else None,
-            is_system=is_system_credential(cred.id),
         )
         for cred in credentials
     ]
@@ -238,23 +216,8 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    from backend.integrations.credentials_store import (
-        DEFAULT_CREDENTIALS,
-        is_system_credential,
-    )
-
-    # Get user credentials and configured system credentials for this provider
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
-    
-    # Create a set of credential IDs we've already included
-    included_ids = {cred.id for cred in credentials}
-    
-    # Always include system credentials for this provider, even if not configured
-    for system_cred in DEFAULT_CREDENTIALS:
-        if system_cred.provider == provider and system_cred.id not in included_ids:
-            credentials.append(system_cred)
-            included_ids.add(system_cred.id)
-    
+
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -264,7 +227,6 @@ async def list_credentials_by_provider(
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
             host=cred.host if isinstance(cred, HostScopedCredentials) else None,
-            is_system=is_system_credential(cred.id),
         )
         for cred in credentials
     ]

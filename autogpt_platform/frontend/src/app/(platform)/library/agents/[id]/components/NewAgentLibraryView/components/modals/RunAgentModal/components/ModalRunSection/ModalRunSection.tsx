@@ -1,10 +1,9 @@
-import { CredentialsInput } from "@/app/(platform)/library/agents/[id]/components/NewAgentLibraryView/components/modals/CredentialsInputs/CredentialsInputs";
 import { Input } from "@/components/atoms/Input/Input";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
-import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
-import { useContext, useMemo } from "react";
+import { useMemo } from "react";
 import { RunAgentInputs } from "../../../RunAgentInputs/RunAgentInputs";
 import { useRunAgentModalContext } from "../../context";
+import { CredentialsGroupedView } from "../CredentialsGroupedView/CredentialsGroupedView";
 import { ModalSection } from "../ModalSection/ModalSection";
 import { WebhookTriggerBanner } from "../WebhookTriggerBanner/WebhookTriggerBanner";
 
@@ -19,49 +18,15 @@ export function ModalRunSection() {
     inputValues,
     setInputValue,
     agentInputFields,
-    inputCredentials,
-    setInputCredentialsValue,
     agentCredentialsInputFields,
   } = useRunAgentModalContext();
 
-  const allProviders = useContext(CredentialsProvidersContext);
-
   const inputFields = Object.entries(agentInputFields || {});
 
-  // Sort credential fields: user credentials first, system credentials at the bottom
-  const sortedCredentialFields = useMemo(() => {
-    if (!allProviders || !agentCredentialsInputFields) return [];
-
-    const entries = Object.entries(agentCredentialsInputFields);
-
-    return entries.sort(([_keyA, schemaA], [_keyB, schemaB]) => {
-      const providerNamesA = schemaA.credentials_provider || [];
-      const providerNamesB = schemaB.credentials_provider || [];
-
-      // Check if A has system credentials
-      const aHasSystemCred = providerNamesA.some((providerName: string) => {
-        const providerData = allProviders[providerName];
-        if (!providerData) return false;
-        return providerData.savedCredentials.some(
-          (cred: { is_system?: boolean }) => cred.is_system === true,
-        );
-      });
-
-      // Check if B has system credentials
-      const bHasSystemCred = providerNamesB.some((providerName: string) => {
-        const providerData = allProviders[providerName];
-        if (!providerData) return false;
-        return providerData.savedCredentials.some(
-          (cred: { is_system?: boolean }) => cred.is_system === true,
-        );
-      });
-
-      // User credentials first, system credentials at the bottom
-      if (aHasSystemCred && !bHasSystemCred) return 1;
-      if (!aHasSystemCred && bHasSystemCred) return -1;
-      return 0;
-    });
-  }, [agentCredentialsInputFields, allProviders]);
+  const credentialFields = useMemo(() => {
+    if (!agentCredentialsInputFields) return [];
+    return Object.entries(agentCredentialsInputFields);
+  }, [agentCredentialsInputFields]);
 
   const requiredCredentials = new Set(
     (agent.credentials_input_schema?.required as string[]) || [],
@@ -129,32 +94,15 @@ export function ModalRunSection() {
         </ModalSection>
       ) : null}
 
-      {sortedCredentialFields.length > 0 ? (
+      {credentialFields.length > 0 ? (
         <ModalSection
           title="Task Credentials"
           subtitle="These are the credentials the agent will use to perform this task"
         >
-          <div className="space-y-6">
-            {sortedCredentialFields.map(([key, inputSubSchema]) => {
-              const selectedCred = inputCredentials?.[key];
-
-              return (
-                <CredentialsInput
-                  key={key}
-                  schema={
-                    { ...inputSubSchema, discriminator: undefined } as any
-                  }
-                  selectedCredentials={selectedCred}
-                  onSelectCredentials={(value) => {
-                    setInputCredentialsValue(key, value);
-                  }}
-                  siblingInputs={inputValues}
-                  isOptional={!requiredCredentials.has(key)}
-                  collapseSystemCredentials
-                />
-              );
-            })}
-          </div>
+          <CredentialsGroupedView
+            credentialFields={credentialFields}
+            requiredCredentials={requiredCredentials}
+          />
         </ModalSection>
       ) : null}
     </div>

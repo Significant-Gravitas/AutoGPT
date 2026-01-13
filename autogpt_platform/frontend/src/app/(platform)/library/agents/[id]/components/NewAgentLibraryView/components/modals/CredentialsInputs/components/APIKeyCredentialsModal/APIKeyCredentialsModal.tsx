@@ -66,6 +66,19 @@ export function APIKeyCredentialsModal({
           >
             <FormField
               control={form.control}
+              name="title"
+              render={({ field }) => (
+                <Input
+                  id="title"
+                  label="Name"
+                  type="text"
+                  placeholder="Enter a name for this API Key..."
+                  {...field}
+                />
+              )}
+            />
+            <FormField
+              control={form.control}
               name="apiKey"
               render={({ field }) => (
                 <>
@@ -92,19 +105,7 @@ export function APIKeyCredentialsModal({
                 </>
               )}
             />
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <Input
-                  id="title"
-                  label="Name"
-                  type="text"
-                  placeholder="Enter a name for this API Key..."
-                  {...field}
-                />
-              )}
-            />
+
             <FormField
               control={form.control}
               name="expiresAt"
@@ -114,7 +115,26 @@ export function APIKeyCredentialsModal({
                   label="Expiration Date"
                   type="datetime-local"
                   placeholder="Select expiration date..."
-                  {...field}
+                  value={field.value}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) {
+                      const dateTime = new Date(value);
+                      dateTime.setHours(0, 0, 0, 0);
+                      const year = dateTime.getFullYear();
+                      const month = String(dateTime.getMonth() + 1).padStart(
+                        2,
+                        "0",
+                      );
+                      const day = String(dateTime.getDate()).padStart(2, "0");
+                      const normalizedValue = `${year}-${month}-${day}T00:00`;
+                      field.onChange(normalizedValue);
+                    } else {
+                      field.onChange(value);
+                    }
+                  }}
+                  onBlur={field.onBlur}
+                  name={field.name}
                 />
               )}
             />
