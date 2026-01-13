@@ -46,11 +46,11 @@ async def test_run_agent(setup_test_data):
 
     # Verify the response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
     # Parse the result JSON to verify the execution started
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
     assert "execution_id" in result_data
     assert "graph_id" in result_data
     assert result_data["graph_id"] == graph.id
@@ -86,11 +86,11 @@ async def test_run_agent_missing_inputs(setup_test_data):
 
     # Verify that we get an error response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
     # The tool should return an ErrorResponse when setup info indicates not ready
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
     assert "message" in result_data
 
 
@@ -118,10 +118,10 @@ async def test_run_agent_invalid_agent_id(setup_test_data):
 
     # Verify that we get an error response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
     assert "message" in result_data
     # Should get an error about failed setup or not found
     assert any(
@@ -158,12 +158,12 @@ async def test_run_agent_with_llm_credentials(setup_llm_test_data):
 
     # Verify the response
     assert response is not None
-    assert hasattr(response, "result")
+    assert hasattr(response, "output")
 
     # Parse the result JSON to verify the execution started
 
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should successfully start execution since credentials are available
     assert "execution_id" in result_data
@@ -195,9 +195,9 @@ async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_da
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return agent_details type showing available inputs
     assert result_data.get("type") == "agent_details"
@@ -230,9 +230,9 @@ async def test_run_agent_with_use_defaults(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should execute successfully
     assert "execution_id" in result_data
@@ -260,9 +260,9 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return setup_requirements type with missing credentials
     assert result_data.get("type") == "setup_requirements"
@@ -292,9 +292,9 @@ async def test_run_agent_invalid_slug_format(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return error
     assert result_data.get("type") == "error"
@@ -318,9 +318,9 @@ async def test_run_agent_unauthenticated():
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Base tool returns need_login type for unauthenticated users
     assert result_data.get("type") == "need_login"
@@ -350,9 +350,9 @@ async def test_run_agent_schedule_without_cron(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return error about missing cron
     assert result_data.get("type") == "error"
@@ -382,9 +382,9 @@ async def test_run_agent_schedule_without_name(setup_test_data):
     )
 
     assert response is not None
-    assert hasattr(response, "result")
-    assert isinstance(response.result, str)
-    result_data = orjson.loads(response.result)
+    assert hasattr(response, "output")
+    assert isinstance(response.output, str)
+    result_data = orjson.loads(response.output)
 
     # Should return error about missing schedule_name
     assert result_data.get("type") == "error"

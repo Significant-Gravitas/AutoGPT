@@ -5,10 +5,10 @@ import pytest
 
 from . import service as chat_service
 from .response_model import (
-    StreamEnd,
     StreamError,
-    StreamTextChunk,
-    StreamToolExecutionResult,
+    StreamFinish,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,9 +34,9 @@ async def test_stream_chat_completion():
         logger.info(chunk)
         if isinstance(chunk, StreamError):
             has_errors = True
-        if isinstance(chunk, StreamTextChunk):
-            assistant_message += chunk.content
-        if isinstance(chunk, StreamEnd):
+        if isinstance(chunk, StreamTextDelta):
+            assistant_message += chunk.delta
+        if isinstance(chunk, StreamFinish):
             has_ended = True
 
     assert has_ended, "Chat completion did not end"
@@ -68,9 +68,9 @@ async def test_stream_chat_completion_with_tool_calls():
         if isinstance(chunk, StreamError):
             has_errors = True
 
-        if isinstance(chunk, StreamEnd):
+        if isinstance(chunk, StreamFinish):
             has_ended = True
-        if isinstance(chunk, StreamToolExecutionResult):
+        if isinstance(chunk, StreamToolOutputAvailable):
             had_tool_calls = True
 
     assert has_ended, "Chat completion did not end"

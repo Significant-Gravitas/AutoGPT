@@ -8,8 +8,8 @@ from backend.api.features.store import db as store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
-    AgentCarouselResponse,
     AgentInfo,
+    AgentsFoundResponse,
     ErrorResponse,
     NoResultsResponse,
     ToolResponseBase,
@@ -36,7 +36,7 @@ async def search_agents(
         user_id: User ID (required for library search)
 
     Returns:
-        AgentCarouselResponse, NoResultsResponse, or ErrorResponse
+        AgentsFoundResponse, NoResultsResponse, or ErrorResponse
     """
     if not query:
         return ErrorResponse(
@@ -142,7 +142,7 @@ async def search_agents(
         "/library/agents/{agent_id}. Use agent_output to get execution results, or run_agent to execute."
     )
 
-    return AgentCarouselResponse(
+    return AgentsFoundResponse(
         message=message,
         title=title,
         agents=agents,

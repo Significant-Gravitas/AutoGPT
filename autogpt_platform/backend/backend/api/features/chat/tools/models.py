@@ -12,7 +12,7 @@ from backend.data.model import CredentialsMetaInput
 class ResponseType(str, Enum):
     """Types of tool responses."""
 
-    AGENT_CAROUSEL = "agent_carousel"
+    AGENTS_FOUND = "agents_found"
     AGENT_DETAILS = "agent_details"
     SETUP_REQUIREMENTS = "setup_requirements"
     EXECUTION_STARTED = "execution_started"
@@ -53,14 +53,14 @@ class AgentInfo(BaseModel):
     graph_id: str | None = None
 
 
-class AgentCarouselResponse(ToolResponseBase):
+class AgentsFoundResponse(ToolResponseBase):
     """Response for find_agent tool."""
 
-    type: ResponseType = ResponseType.AGENT_CAROUSEL
+    type: ResponseType = ResponseType.AGENTS_FOUND
     title: str = "Available Agents"
     agents: list[AgentInfo]
     count: int
-    name: str = "agent_carousel"
+    name: str = "agents_found"
 
 
 class NoResultsResponse(ToolResponseBase):

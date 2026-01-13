@@ -225,6 +225,8 @@ async def stream_chat_post(
             context=request.context,
         ):
             yield chunk.to_sse()
+        # AI SDK protocol termination
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -233,6 +235,7 @@ async def stream_chat_post(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
+            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
         },
     )
 
@@ -281,6 +284,8 @@ async def stream_chat_get(
             session=session,  # Pass pre-fetched session to avoid double-fetch
         ):
             yield chunk.to_sse()
+        # AI SDK protocol termination
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -289,6 +294,7 @@ async def stream_chat_get(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
+            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
         },
     )
 

@@ -12,7 +12,7 @@ from .find_library_agent import FindLibraryAgentTool
 from .run_agent import RunAgentTool
 
 if TYPE_CHECKING:
-    from backend.api.features.chat.response_model import StreamToolExecutionResult
+    from backend.api.features.chat.response_model import StreamToolOutputAvailable
 
 # Initialize tool instances
 add_understanding_tool = AddUnderstandingTool()
@@ -37,7 +37,7 @@ async def execute_tool(
     user_id: str | None,
     session: ChatSession,
     tool_call_id: str,
-) -> "StreamToolExecutionResult":
+) -> "StreamToolOutputAvailable":
 
     tool_map: dict[str, BaseTool] = {
         "add_understanding": add_understanding_tool,

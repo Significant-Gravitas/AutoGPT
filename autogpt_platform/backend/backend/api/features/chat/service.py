@@ -1,6 +1,5 @@
 import logging
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
 from typing import Any
 
 import orjson
@@ -22,13 +21,15 @@ from .model import create_chat_session as model_create_chat_session
 from .model import get_chat_session, update_session_title, upsert_chat_session
 from .response_model import (
     StreamBaseResponse,
-    StreamEnd,
     StreamError,
-    StreamTextChunk,
-    StreamTextEnded,
-    StreamToolCall,
-    StreamToolCallStart,
-    StreamToolExecutionResult,
+    StreamFinish,
+    StreamStart,
+    StreamTextDelta,
+    StreamTextEnd,
+    StreamTextStart,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
     StreamUsage,
 )
 from .tools import execute_tool, tools
@@ -377,6 +378,15 @@ async def stream_chat_completion(
     accumulated_tool_calls: list[dict[str, Any]] = []
     should_retry = False
 
+    # Generate unique IDs for AI SDK protocol
+    import uuid as uuid_module
+
+    message_id = str(uuid_module.uuid4())
+    text_block_id = str(uuid_module.uuid4())
+
+    # Yield message start
+    yield StreamStart(messageId=message_id)
+
     # Create Langfuse generation for each LLM call, linked to the prompt
     # Using v3 SDK: start_observation with as_type="generation"
     generation = (
@@ -396,53 +406,63 @@ async def stream_chat_completion(
             session=session,
             tools=tools,
             system_prompt=system_prompt,
+            text_block_id=text_block_id,
         ):
 
-            if isinstance(chunk, StreamTextChunk):
-                content = chunk.content or ""
+            if isinstance(chunk, StreamTextStart):
+                # Emit text-start before first text delta
+                if not has_received_text:
+                    yield chunk
+            elif isinstance(chunk, StreamTextDelta):
+                delta = chunk.delta or ""
                 assert assistant_response.content is not None
-                assistant_response.content += content
+                assistant_response.content += delta
                 has_received_text = True
                 yield chunk
-            elif isinstance(chunk, StreamToolCallStart):
-                # Emit text_ended before first tool call, but only if we've received text
+            elif isinstance(chunk, StreamTextEnd):
+                # Emit text-end after text completes
                 if has_received_text and not text_streaming_ended:
-                    yield StreamTextEnded()
+                    text_streaming_ended = True
+                    yield chunk
+            elif isinstance(chunk, StreamToolInputStart):
+                # Emit text-end before first tool call, but only if we've received text
+                if has_received_text and not text_streaming_ended:
+                    yield StreamTextEnd(id=text_block_id)
                     text_streaming_ended = True
                 yield chunk
-            elif isinstance(chunk, StreamToolCall):
+            elif isinstance(chunk, StreamToolInputAvailable):
                 # Accumulate tool calls in OpenAI format
                 accumulated_tool_calls.append(
                     {
-                        "id": chunk.tool_id,
+                        "id": chunk.toolCallId,
                         "type": "function",
                         "function": {
-                            "name": chunk.tool_name,
-                            "arguments": orjson.dumps(chunk.arguments).decode("utf-8"),
+                            "name": chunk.toolName,
+                            "arguments": orjson.dumps(chunk.input).decode("utf-8"),
                         },
                     }
                 )
-            elif isinstance(chunk, StreamToolExecutionResult):
+            elif isinstance(chunk, StreamToolOutputAvailable):
                 result_content = (
-                    chunk.result
-                    if isinstance(chunk.result, str)
-                    else orjson.dumps(chunk.result).decode("utf-8")
+                    chunk.output
+                    if isinstance(chunk.output, str)
+                    else orjson.dumps(chunk.output).decode("utf-8")
                 )
                 tool_response_messages.append(
                     ChatMessage(
                         role="tool",
                         content=result_content,
-                        tool_call_id=chunk.tool_id,
+                        tool_call_id=chunk.toolCallId,
                     )
                 )
                 has_done_tool_call = True
                 # Track if any tool execution failed
                 if not chunk.success:
                     logger.warning(
-                        f"Tool {chunk.tool_name} (ID: {chunk.tool_id}) execution failed"
+                        f"Tool {chunk.toolName} (ID: {chunk.toolCallId}) execution failed"
                     )
                 yield chunk
-            elif isinstance(chunk, StreamEnd):
+            elif isinstance(chunk, StreamFinish):
                 if not has_done_tool_call:
                     has_yielded_end = True
                     yield chunk
@@ -451,9 +471,9 @@ async def stream_chat_completion(
             elif isinstance(chunk, StreamUsage):
                 session.usage.append(
                     Usage(
-                        prompt_tokens=chunk.prompt_tokens,
-                        completion_tokens=chunk.completion_tokens,
-                        total_tokens=chunk.total_tokens,
+                        prompt_tokens=chunk.promptTokens,
+                        completion_tokens=chunk.completionTokens,
+                        total_tokens=chunk.totalTokens,
                     )
                 )
             else:
@@ -495,15 +515,10 @@ async def stream_chat_completion(
                         f"Max retries ({config.max_retries}) exceeded: {error_message}"
                     )
 
-                error_response = StreamError(
-                    message=error_message,
-                    timestamp=datetime.now(UTC).isoformat(),
-                )
+                error_response = StreamError(errorText=error_message)
                 yield error_response
             if not has_yielded_end:
-                yield StreamEnd(
-                    timestamp=datetime.now(UTC).isoformat(),
-                )
+                yield StreamFinish()
             return
 
     # Handle retry outside of exception handler to avoid nesting
@@ -599,6 +614,7 @@ async def _stream_chat_chunks(
     session: ChatSession,
     tools: list[ChatCompletionToolParam],
     system_prompt: str | None = None,
+    text_block_id: str | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """
     Pure streaming function for OpenAI chat completions with tool calling.
@@ -651,14 +667,17 @@ async def _stream_chat_chunks(
             # Track which tool call indices have had their start event emitted
             emitted_start_for_idx: set[int] = set()
 
+            # Track if we've started the text block
+            text_started = False
+
             # Process the stream
             chunk: ChatCompletionChunk
             async for chunk in stream:
                 if chunk.usage:
                     yield StreamUsage(
-                        prompt_tokens=chunk.usage.prompt_tokens,
-                        completion_tokens=chunk.usage.completion_tokens,
-                        total_tokens=chunk.usage.total_tokens,
+                        promptTokens=chunk.usage.prompt_tokens,
+                        completionTokens=chunk.usage.completion_tokens,
+                        totalTokens=chunk.usage.total_tokens,
                     )
 
                 if chunk.choices:
@@ -672,10 +691,14 @@ async def _stream_chat_chunks(
 
                     # Handle content streaming
                     if delta.content:
-                        # Stream the text chunk
-                        text_response = StreamTextChunk(
-                            content=delta.content,
-                            timestamp=datetime.now(UTC).isoformat(),
+                        # Emit text-start on first text content
+                        if not text_started and text_block_id:
+                            yield StreamTextStart(id=text_block_id)
+                            text_started = True
+                        # Stream the text delta
+                        text_response = StreamTextDelta(
+                            id=text_block_id or "",
+                            delta=delta.content,
                         )
                         yield text_response
 
@@ -717,16 +740,15 @@ async def _stream_chat_chunks(
                                         "arguments"
                                     ] += tc_chunk.function.arguments
 
-                            # Emit StreamToolCallStart only after we have the tool call ID
+                            # Emit StreamToolInputStart only after we have the tool call ID
                             if (
                                 idx not in emitted_start_for_idx
                                 and tool_calls[idx]["id"]
                                 and tool_calls[idx]["function"]["name"]
                             ):
-                                yield StreamToolCallStart(
-                                    tool_id=tool_calls[idx]["id"],
-                                    tool_name=tool_calls[idx]["function"]["name"],
-                                    timestamp=datetime.now(UTC).isoformat(),
+                                yield StreamToolInputStart(
+                                    toolCallId=tool_calls[idx]["id"],
+                                    toolName=tool_calls[idx]["function"]["name"],
                                 )
                                 emitted_start_for_idx.add(idx)
             logger.info(f"Stream complete. Finish reason: {finish_reason}")
@@ -744,26 +766,18 @@ async def _stream_chat_chunks(
                         extra={"tool_call": tool_call},
                     )
                     yield StreamError(
-                        message=f"Invalid tool call arguments for tool {tool_call.get('function', {}).get('name', 'unknown')}: {e}",
-                        timestamp=datetime.now(UTC).isoformat(),
+                        errorText=f"Invalid tool call arguments for tool {tool_call.get('function', {}).get('name', 'unknown')}: {e}",
                     )
                     # Re-raise to trigger retry logic in the parent function
                     raise
 
-            yield StreamEnd(
-                timestamp=datetime.now(UTC).isoformat(),
-            )
+            yield StreamFinish()
             return
         except Exception as e:
             logger.error(f"Error in stream: {e!s}", exc_info=True)
-            error_response = StreamError(
-                message=str(e),
-                timestamp=datetime.now(UTC).isoformat(),
-            )
+            error_response = StreamError(errorText=str(e))
             yield error_response
-            yield StreamEnd(
-                timestamp=datetime.now(UTC).isoformat(),
-            )
+            yield StreamFinish()
             return
 
 
@@ -781,6 +795,7 @@ async def _yield_tool_call(
         TypeError: If tool call structure is invalid
     """
     tool_name = tool_calls[yield_idx]["function"]["name"]
+    tool_call_id = tool_calls[yield_idx]["id"]
     logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
 
     # Parse tool call arguments - handle empty arguments gracefully
@@ -790,17 +805,16 @@ async def _yield_tool_call(
     else:
         arguments = {}
 
-    yield StreamToolCall(
-        tool_id=tool_calls[yield_idx]["id"],
-        tool_name=tool_name,
-        arguments=arguments,
-        timestamp=datetime.now(UTC).isoformat(),
+    yield StreamToolInputAvailable(
+        toolCallId=tool_call_id,
+        toolName=tool_name,
+        input=arguments,
     )
 
-    tool_execution_response: StreamToolExecutionResult = await execute_tool(
+    tool_execution_response: StreamToolOutputAvailable = await execute_tool(
         tool_name=tool_name,
         parameters=arguments,
-        tool_call_id=tool_calls[yield_idx]["id"],
+        tool_call_id=tool_call_id,
         user_id=session.user_id,
         session=session,
     )
