@@ -148,9 +148,8 @@ async def test_hybrid_search_without_embeddings():
                 page_size=20,
             )
 
-        # Verify error message is helpful
-        assert "Failed to generate query embedding" in str(exc_info.value)
-        assert "openai_internal_api_key" in str(exc_info.value)
+        # Verify error message is generic (doesn't leak implementation details)
+        assert "Search service temporarily unavailable" in str(exc_info.value)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -216,10 +215,15 @@ async def test_hybrid_search_weights():
             # Verify custom weights were used in the query
             call_args = mock_query.call_args
             sql_template = call_args[0][0]
+            params = call_args[0][1:]  # Get all parameters passed
 
-            # Check that weights appear in the SQL
-            assert "0.5" in sql_template  # semantic weight
-            assert "0.3" in sql_template  # lexical weight
+            # Check that SQL uses parameterized weights (not f-string interpolation)
+            assert "$" in sql_template  # Verify parameterization is used
+
+            # Check that custom weights are in the params
+            assert 0.5 in params  # semantic weight
+            assert 0.3 in params  # lexical weight
+            assert 0.1 in params  # category and recency weights
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -256,7 +260,14 @@ async def test_hybrid_search_min_score_filtering():
             # Verify min_score was applied in query
             call_args = mock_query.call_args
             sql_template = call_args[0][0]
-            assert "combined_score >= 0.5" in sql_template or ">= 0.5" in sql_template
+            params = call_args[0][1:]  # Get all parameters
+
+            # Check that SQL uses parameterized min_score
+            assert "combined_score >=" in sql_template
+            assert "$" in sql_template  # Verify parameterization
+
+            # Check that custom min_score is in the params
+            assert 0.5 in params
 
 
 @pytest.mark.asyncio(loop_scope="session")

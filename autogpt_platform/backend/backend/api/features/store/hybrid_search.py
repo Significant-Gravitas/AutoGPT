@@ -99,6 +99,18 @@ async def hybrid_search(
         Tuple of (results list, total count). Returns empty list if no
         results meet the minimum relevance threshold.
     """
+    # Validate inputs
+    query = query.strip()
+    if not query:
+        return [], 0  # Empty query returns no results
+
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 1
+    if page_size > 100:  # Cap at reasonable limit to prevent performance issues
+        page_size = 100
+
     if weights is None:
         weights = DEFAULT_WEIGHTS
     if min_score is None:
@@ -141,15 +153,44 @@ async def hybrid_search(
 
     # Embedding is required for hybrid search - fail fast if unavailable
     if query_embedding is None:
-        raise ValueError(
-            "Failed to generate query embedding. Hybrid search requires embeddings. "
+        # Log detailed error server-side
+        logger.error(
+            "Failed to generate query embedding. "
             "Check that openai_internal_api_key is configured and OpenAI API is accessible."
         )
+        # Raise generic error to client
+        raise ValueError("Search service temporarily unavailable")
 
     # Add embedding parameter
     embedding_str = embedding_to_vector_string(query_embedding)
     params.append(embedding_str)
     embedding_param = f"${param_index}"
+    param_index += 1
+
+    # Add weight parameters for SQL calculation
+    params.append(weights.semantic)
+    weight_semantic_param = f"${param_index}"
+    param_index += 1
+
+    params.append(weights.lexical)
+    weight_lexical_param = f"${param_index}"
+    param_index += 1
+
+    params.append(weights.category)
+    weight_category_param = f"${param_index}"
+    param_index += 1
+
+    params.append(weights.recency)
+    weight_recency_param = f"${param_index}"
+    param_index += 1
+
+    params.append(weights.popularity)
+    weight_popularity_param = f"${param_index}"
+    param_index += 1
+
+    # Add min_score parameter
+    params.append(min_score)
+    min_score_param = f"${param_index}"
     param_index += 1
 
     # Optimized hybrid search query:
@@ -170,12 +211,14 @@ async def hybrid_search(
 
                 UNION
 
-                -- Semantic matches (uses HNSW index on embedding)
+                -- Semantic matches (uses HNSW index on embedding with KNN)
                 SELECT sa."storeListingVersionId"
                 FROM {{schema_prefix}}"StoreAgent" sa
                 INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
                     ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
                 WHERE {where_clause}
+                ORDER BY uce.embedding <=> {embedding_param}::vector
+                LIMIT 200
             ),
             search_scores AS (
                 SELECT
@@ -262,11 +305,11 @@ async def hybrid_search(
                     recency_score,
                     popularity_score,
                     (
-                        {weights.semantic} * semantic_score +
-                        {weights.lexical} * lexical_score +
-                        {weights.category} * category_score +
-                        {weights.recency} * recency_score +
-                        {weights.popularity} * popularity_score
+                        {weight_semantic_param} * semantic_score +
+                        {weight_lexical_param} * lexical_score +
+                        {weight_category_param} * category_score +
+                        {weight_recency_param} * recency_score +
+                        {weight_popularity_param} * popularity_score
                     ) as combined_score
                 FROM normalized
             ),
@@ -275,7 +318,7 @@ async def hybrid_search(
                     *,
                     COUNT(*) OVER () as total_count
                 FROM scored
-                WHERE combined_score >= {min_score}
+                WHERE combined_score >= {min_score_param}
             )
             SELECT * FROM filtered
             ORDER BY combined_score DESC
@@ -285,26 +328,20 @@ async def hybrid_search(
     # Add pagination params
     params.extend([page_size, offset])
 
-    try:
-        # Execute search query - includes total_count via window function
-        results = await query_raw_with_schema(sql_query, *params)
+    # Execute search query - includes total_count via window function
+    results = await query_raw_with_schema(sql_query, *params)
 
-        # Extract total count from first result (all rows have same count)
-        total = results[0]["total_count"] if results else 0
+    # Extract total count from first result (all rows have same count)
+    total = results[0]["total_count"] if results else 0
 
-        # Remove total_count from results before returning
-        for result in results:
-            result.pop("total_count", None)
+    # Remove total_count from results before returning
+    for result in results:
+        result.pop("total_count", None)
 
-        logger.info(
-            f"Hybrid search for '{query}': {len(results)} results, {total} total"
-        )
+    # Log without sensitive query content
+    logger.info(f"Hybrid search: {len(results)} results, {total} total")
 
-        return results, total
-
-    except Exception as e:
-        logger.error(f"Hybrid search failed: {e}")
-        raise
+    return results, total
 
 
 async def hybrid_search_simple(
