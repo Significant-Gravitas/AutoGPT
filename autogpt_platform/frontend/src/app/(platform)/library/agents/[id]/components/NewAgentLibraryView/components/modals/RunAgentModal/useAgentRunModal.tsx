@@ -22,14 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  NONE_CREDENTIAL_MARKER,
-  useAgentCredentialPreferencesStore,
-} from "../../../stores/agentCredentialPreferencesStore";
-import {
-  filterSystemCredentials,
-  getSystemCredentials,
-} from "../CredentialsInputs/helpers";
+import { getSystemCredentials } from "../CredentialsInputs/helpers";
 import { showExecutionErrorToast } from "./errorHelpers";
 
 export type RunVariant =
@@ -77,47 +70,27 @@ export function useAgentRunModal(
   }, [callbacks?.initialInputValues, callbacks?.initialInputCredentials]);
 
   const allProviders = useContext(CredentialsProvidersContext);
-  const store = useAgentCredentialPreferencesStore();
 
-  // Initialize credentials from saved preferences or default system credentials
-  // This ensures credentials are used even when the field is not displayed
+  // Initialize credentials with default system credentials
   useEffect(() => {
     if (!allProviders || !agent.credentials_input_schema?.properties) return;
     if (callbacks?.initialInputCredentials) {
       hasInitializedSystemCreds.current = true;
-      return; // Don't override if initial credentials provided
+      return;
     }
-    if (hasInitializedSystemCreds.current) return; // Already initialized
+    if (hasInitializedSystemCreds.current) return;
 
     const properties = agent.credentials_input_schema.properties as Record<
       string,
       any
     >;
 
-    // Use functional update to get current state and avoid stale closures
     setInputCredentials((currentCreds) => {
       const credsToAdd: Record<string, any> = {};
 
       for (const [key, schema] of Object.entries(properties)) {
-        // Skip if already set
         if (currentCreds[key]) continue;
 
-        // First, check if user has a saved preference
-        const savedPreference = store.getCredentialPreference(
-          agent.id.toString(),
-          key,
-        );
-        // Check if "None" was explicitly selected (special marker)
-        if (savedPreference === NONE_CREDENTIAL_MARKER) {
-          // User explicitly selected "None" - don't add any credential
-          continue;
-        }
-        if (savedPreference) {
-          credsToAdd[key] = savedPreference;
-          continue;
-        }
-
-        // Otherwise, find default system credentials for this field
         const providerNames = schema.credentials_provider || [];
         const supportedTypes = schema.credentials_types || [];
         const requiredScopes = schema.credentials_scopes;
@@ -132,7 +105,6 @@ export function useAgentRunModal(
           const matchingSystemCreds = systemCreds.filter((cred) => {
             if (!supportedTypes.includes(cred.type)) return false;
 
-            // For OAuth2 credentials, check scopes
             if (
               cred.type === "oauth2" &&
               requiredScopes &&
@@ -148,7 +120,6 @@ export function useAgentRunModal(
             return true;
           });
 
-          // If there's exactly one system credential, use it as default
           if (matchingSystemCreds.length === 1) {
             const systemCred = matchingSystemCreds[0];
             credsToAdd[key] = {
@@ -157,12 +128,11 @@ export function useAgentRunModal(
               provider: providerName,
               title: systemCred.title,
             };
-            break; // Use first matching provider
+            break;
           }
         }
       }
 
-      // Only update if we found credentials to add
       if (Object.keys(credsToAdd).length > 0) {
         hasInitializedSystemCreds.current = true;
         return {
@@ -171,95 +141,11 @@ export function useAgentRunModal(
         };
       }
 
-      return currentCreds; // No changes
+      return currentCreds;
     });
   }, [
     allProviders,
     agent.credentials_input_schema,
-    agent.id,
-    store,
-    callbacks?.initialInputCredentials,
-  ]);
-
-  // Sync credentials with preferences store when modal opens
-  useEffect(() => {
-    if (!isOpen || !allProviders || !agent.credentials_input_schema?.properties)
-      return;
-    if (callbacks?.initialInputCredentials) return; // Don't override if initial credentials provided
-
-    const properties = agent.credentials_input_schema.properties as Record<
-      string,
-      any
-    >;
-
-    setInputCredentials((currentCreds) => {
-      const updatedCreds: Record<string, any> = { ...currentCreds };
-
-      for (const [key, schema] of Object.entries(properties)) {
-        const savedPreference = store.getCredentialPreference(
-          agent.id.toString(),
-          key,
-        );
-
-        if (savedPreference === NONE_CREDENTIAL_MARKER) {
-          // User explicitly selected "None" - remove from credentials
-          delete updatedCreds[key];
-        } else if (savedPreference) {
-          // User has a saved preference - use it
-          updatedCreds[key] = savedPreference;
-        } else if (!updatedCreds[key]) {
-          // No preference and no current credential - try to find default system credential
-          const providerNames = schema.credentials_provider || [];
-          const supportedTypes = schema.credentials_types || [];
-          const requiredScopes = schema.credentials_scopes;
-
-          for (const providerName of providerNames) {
-            const providerData = allProviders[providerName];
-            if (!providerData) continue;
-
-            const systemCreds = getSystemCredentials(
-              providerData.savedCredentials,
-            );
-            const matchingSystemCreds = systemCreds.filter((cred) => {
-              if (!supportedTypes.includes(cred.type)) return false;
-
-              if (
-                cred.type === "oauth2" &&
-                requiredScopes &&
-                requiredScopes.length > 0
-              ) {
-                const grantedScopes = new Set(cred.scopes || []);
-                const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
-                  grantedScopes,
-                );
-                if (!hasAllRequiredScopes) return false;
-              }
-
-              return true;
-            });
-
-            if (matchingSystemCreds.length === 1) {
-              const systemCred = matchingSystemCreds[0];
-              updatedCreds[key] = {
-                id: systemCred.id,
-                type: systemCred.type,
-                provider: providerName,
-                title: systemCred.title,
-              };
-              break;
-            }
-          }
-        }
-      }
-
-      return updatedCreds;
-    });
-  }, [
-    isOpen,
-    agent.id,
-    agent.credentials_input_schema,
-    allProviders,
-    store,
     callbacks?.initialInputCredentials,
   ]);
 
@@ -276,7 +162,6 @@ export function useAgentRunModal(
           toast({
             title: "Agent execution started",
           });
-          // Invalidate runs list for this graph
           queryClient.invalidateQueries({
             queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
           });
@@ -373,83 +258,23 @@ export function useAgentRunModal(
   }, [agentInputSchema.required, inputValues]);
 
   const [allCredentialsAreSet, missingCredentials] = useMemo(() => {
-    // Only check required credentials from schema, not all properties
-    // Credentials marked as optional in node metadata won't be in the required array
     const requiredCredentials = new Set(
       (agent.credentials_input_schema?.required as string[]) || [],
     );
 
-    // Filter out credential fields that only have system credentials available
-    // System credentials should not be required in the run modal
-    // Also check if user has a saved preference (including NONE_MARKER)
-    const requiredCredentialsToCheck = [...requiredCredentials].filter(
-      (key) => {
-        // Check if user has a saved preference first
-        const savedPreference = store.getCredentialPreference(
-          agent.id.toString(),
-          key,
-        );
-        // If "None" was explicitly selected, don't require it
-        if (savedPreference === NONE_CREDENTIAL_MARKER) {
-          return false;
-        }
-        // If user has a saved preference, it should be checked
-        if (savedPreference) {
-          return true;
-        }
-
-        const schema = agentCredentialsInputFields[key];
-        if (!schema || !allProviders) return true; // If we can't check, include it
-
-        const providerNames = schema.credentials_provider || [];
-        const supportedTypes = schema.credentials_types || [];
-
-        // Check if any provider has non-system credentials available
-        for (const providerName of providerNames) {
-          const providerData = allProviders[providerName];
-          if (!providerData) continue;
-
-          const userCreds = filterSystemCredentials(
-            providerData.savedCredentials,
-          );
-          const matchingUserCreds = userCreds.filter((cred) =>
-            supportedTypes.includes(cred.type),
-          );
-
-          // If there are user credentials available, this field should be checked
-          if (matchingUserCreds.length > 0) {
-            return true;
-          }
-        }
-
-        // If only system credentials are available, exclude from required check
-        return false;
-      },
-    );
-
-    // Check if required credentials have valid id (not just key existence)
-    // A credential is valid only if it has an id field set
-    const missing = requiredCredentialsToCheck.filter((key) => {
+    const missing = [...requiredCredentials].filter((key) => {
       const cred = inputCredentials[key];
       return !cred || !cred.id;
     });
 
     return [missing.length === 0, missing];
-  }, [
-    agent.credentials_input_schema,
-    agentCredentialsInputFields,
-    inputCredentials,
-    allProviders,
-    agent.id,
-    store,
-  ]);
+  }, [agent.credentials_input_schema, inputCredentials]);
 
   const credentialsRequired = useMemo(
     () => Object.keys(agentCredentialsInputFields || {}).length > 0,
     [agentCredentialsInputFields],
   );
 
-  // Final readiness flag combining inputs + credentials when credentials are shown
   const allRequiredInputsAreSet = useMemo(
     () =>
       allRequiredInputsAreSetRaw &&
@@ -488,7 +313,6 @@ export function useAgentRunModal(
       defaultRunType === "automatic-trigger" ||
       defaultRunType === "manual-trigger"
     ) {
-      // Setup trigger
       if (!presetName.trim()) {
         toast({
           title: "⚠️ Trigger name required",
@@ -509,9 +333,6 @@ export function useAgentRunModal(
         },
       });
     } else {
-      // Manual execution
-      // Filter out incomplete credentials (optional ones not selected)
-      // Only send credentials that have a valid id field
       const validCredentials = Object.fromEntries(
         Object.entries(inputCredentials).filter(([_, cred]) => cred && cred.id),
       );
@@ -545,41 +366,24 @@ export function useAgentRunModal(
   }, [agentInputFields]);
 
   return {
-    // UI state
     isOpen,
     setIsOpen,
-
-    // Run mode
     defaultRunType: defaultRunType as RunVariant,
-
-    // Form: regular inputs
     inputValues,
     setInputValues,
-
-    // Form: credentials
     inputCredentials,
     setInputCredentials,
-
-    // Preset/trigger labels
     presetName,
     presetDescription,
     setPresetName,
     setPresetDescription,
-
-    // Validation/readiness
     allRequiredInputsAreSet,
     missingInputs,
-
-    // Schemas for rendering
     agentInputFields,
     agentCredentialsInputFields,
     hasInputFields,
-
-    // Async states
     isExecuting: executeGraphMutation.isPending,
     isSettingUpTrigger: setupTriggerMutation.isPending,
-
-    // Actions
     handleRun,
   };
 }

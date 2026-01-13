@@ -25,7 +25,6 @@ type Params = {
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
   isOptional?: boolean;
-  allowSystemCredentials?: boolean; // Allow system credentials (for settings only)
 };
 
 export function useCredentialsInput({
@@ -36,7 +35,6 @@ export function useCredentialsInput({
   onLoaded,
   readOnly = false,
   isOptional = false,
-  allowSystemCredentials = false,
 }: Params) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -87,22 +85,14 @@ export function useCredentialsInput({
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
-    const availableCreds = allowSystemCredentials
-      ? credentials.savedCredentials
-      : filterSystemCredentials(credentials.savedCredentials);
+    const availableCreds = credentials.savedCredentials;
     if (
       selectedCredential &&
       !availableCreds.some((c) => c.id === selectedCredential.id)
     ) {
       onSelectCredential(undefined);
     }
-  }, [
-    credentials,
-    selectedCredential,
-    onSelectCredential,
-    readOnly,
-    allowSystemCredentials,
-  ]);
+  }, [credentials, selectedCredential, onSelectCredential, readOnly]);
 
   // The available credential, if there is only one
   const singleCredential = useMemo(() => {
@@ -110,11 +100,9 @@ export function useCredentialsInput({
       return null;
     }
 
-    const credsToUse = allowSystemCredentials
-      ? credentials.savedCredentials
-      : filterSystemCredentials(credentials.savedCredentials);
+    const credsToUse = filterSystemCredentials(credentials.savedCredentials);
     return credsToUse.length === 1 ? credsToUse[0] : null;
-  }, [credentials, allowSystemCredentials]);
+  }, [credentials]);
 
   // Auto-select the one available credential
   // Prioritize system credentials if available
@@ -236,12 +224,12 @@ export function useCredentialsInput({
     supportsHostScoped,
     savedCredentials,
     oAuthCallback,
+    isSystemProvider,
   } = credentials;
 
-  // Filter system credentials unless explicitly allowed (for settings)
-  const filteredCredentials = allowSystemCredentials
-    ? savedCredentials
-    : filterSystemCredentials(savedCredentials);
+  // Split credentials into user and system
+  const userCredentials = filterSystemCredentials(savedCredentials);
+  const systemCredentials = getSystemCredentials(savedCredentials);
 
   async function handleOAuthLogin() {
     setOAuthError(null);
@@ -397,7 +385,10 @@ export function useCredentialsInput({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
-    credentialsToShow: filteredCredentials,
+    isSystemProvider,
+    userCredentials,
+    systemCredentials,
+    allCredentials: savedCredentials,
     selectedCredential,
     oAuthError,
     isAPICredentialsModalOpen,
@@ -412,7 +403,7 @@ export function useCredentialsInput({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
-      filteredCredentials.length > 0,
+      userCredentials.length > 0,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,

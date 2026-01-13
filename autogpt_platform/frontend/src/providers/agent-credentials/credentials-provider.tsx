@@ -32,6 +32,8 @@ export type CredentialsProviderData = {
   provider: CredentialsProviderName;
   providerName: string;
   savedCredentials: CredentialsMetaResponse[];
+  /** Whether this provider has platform credits available (system credentials) */
+  isSystemProvider: boolean;
   oAuthCallback: (
     code: string,
     state_token: string,
@@ -68,11 +70,12 @@ export default function CredentialsProvider({
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
   const [providerNames, setProviderNames] = useState<string[]>([]);
+  const [systemProviders, setSystemProviders] = useState<Set<string>>(
+    new Set(),
+  );
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
-
-  console.log("providers", providers);
 
   const addCredentials = useCallback(
     (
@@ -243,27 +246,32 @@ export default function CredentialsProvider({
         setProviders((prev) => ({
           ...prev,
           ...Object.fromEntries(
-            providerNames.map((provider) => [
-              provider,
-              {
+            providerNames.map((provider) => {
+              const providerCredentials = credentialsByProvider[provider] ?? [];
+
+              return [
                 provider,
-                providerName: toDisplayName(provider as string),
-                savedCredentials: credentialsByProvider[provider] ?? [],
-                oAuthCallback: (code: string, state_token: string) =>
-                  oAuthCallback(provider, code, state_token),
-                createAPIKeyCredentials: (
-                  credentials: APIKeyCredentialsCreatable,
-                ) => createAPIKeyCredentials(provider, credentials),
-                createUserPasswordCredentials: (
-                  credentials: UserPasswordCredentialsCreatable,
-                ) => createUserPasswordCredentials(provider, credentials),
-                createHostScopedCredentials: (
-                  credentials: HostScopedCredentialsCreatable,
-                ) => createHostScopedCredentials(provider, credentials),
-                deleteCredentials: (id: string, force: boolean = false) =>
-                  deleteCredentials(provider, id, force),
-              } satisfies CredentialsProviderData,
-            ]),
+                {
+                  provider,
+                  providerName: toDisplayName(provider as string),
+                  savedCredentials: providerCredentials,
+                  isSystemProvider: systemProviders.has(provider),
+                  oAuthCallback: (code: string, state_token: string) =>
+                    oAuthCallback(provider, code, state_token),
+                  createAPIKeyCredentials: (
+                    credentials: APIKeyCredentialsCreatable,
+                  ) => createAPIKeyCredentials(provider, credentials),
+                  createUserPasswordCredentials: (
+                    credentials: UserPasswordCredentialsCreatable,
+                  ) => createUserPasswordCredentials(provider, credentials),
+                  createHostScopedCredentials: (
+                    credentials: HostScopedCredentialsCreatable,
+                  ) => createHostScopedCredentials(provider, credentials),
+                  deleteCredentials: (id: string, force: boolean = false) =>
+                    deleteCredentials(provider, id, force),
+                } satisfies CredentialsProviderData,
+              ];
+            }),
           ),
         }));
       })
@@ -272,6 +280,7 @@ export default function CredentialsProvider({
     api,
     isLoggedIn,
     providerNames,
+    systemProviders,
     createAPIKeyCredentials,
     createUserPasswordCredentials,
     createHostScopedCredentials,
@@ -280,12 +289,12 @@ export default function CredentialsProvider({
     onFailToast,
   ]);
 
-  // Fetch provider names on mount
+  // Fetch provider names and system providers on mount
   useEffect(() => {
-    api
-      .listProviders()
-      .then((names) => {
+    Promise.all([api.listProviders(), api.listSystemProviders()])
+      .then(([names, systemList]) => {
         setProviderNames(names);
+        setSystemProviders(new Set(systemList));
       })
       .catch(onFailToast("Load provider names"));
   }, [api, onFailToast]);

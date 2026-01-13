@@ -6,7 +6,6 @@ import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { SelectedViewLayout } from "../SelectedViewLayout";
-import { SystemCredentialsSection } from "./components/SystemCredentialsSection";
 
 interface Props {
   agent: LibraryAgent;
@@ -16,10 +15,6 @@ interface Props {
 export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
   const { currentSafeMode, isPending, hasHITLBlocks, handleToggle } =
     useAgentSafeMode(agent);
-
-  const hasCredentialsSchema =
-    agent.credentials_input_schema &&
-    Object.keys(agent.credentials_input_schema.properties || {}).length > 0;
 
   return (
     <SelectedViewLayout agent={agent}>
@@ -39,7 +34,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
         </div>
 
         <div className={`${AGENT_LIBRARY_SECTION_PADDING_X} space-y-6`}>
-          {hasHITLBlocks && (
+          {hasHITLBlocks ? (
             <div className="flex w-full max-w-2xl flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
               <div className="flex w-full items-start justify-between gap-4">
                 <div className="flex-1">
@@ -57,11 +52,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
                 />
               </div>
             </div>
-          )}
-
-          {hasCredentialsSchema && <SystemCredentialsSection agent={agent} />}
-
-          {!hasHITLBlocks && !hasCredentialsSchema && (
+          ) : (
             <div className="rounded-xl border border-zinc-100 bg-white p-6">
               <Text variant="body" className="text-muted-foreground">
                 This agent doesn&apos;t have any configurable settings.

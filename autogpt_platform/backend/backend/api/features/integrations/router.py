@@ -872,6 +872,18 @@ async def list_providers() -> List[str]:
     return all_providers
 
 
+@router.get("/providers/system", response_model=List[str])
+async def list_system_providers() -> List[str]:
+    """
+    Get a list of providers that have platform credits (system credentials) available.
+
+    These providers can be used without the user providing their own API keys.
+    """
+    from backend.integrations.credentials_store import SYSTEM_PROVIDERS
+
+    return list(SYSTEM_PROVIDERS)
+
+
 @router.get("/providers/names", response_model=ProviderNamesResponse)
 async def get_provider_names() -> ProviderNamesResponse:
     """

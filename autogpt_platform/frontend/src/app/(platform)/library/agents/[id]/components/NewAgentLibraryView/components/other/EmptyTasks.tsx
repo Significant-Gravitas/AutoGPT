@@ -20,7 +20,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useAgentMissingCredentials } from "../../hooks/useAgentMissingCredentials";
 import { RunAgentModal } from "../modals/RunAgentModal/RunAgentModal";
 import { RunDetailCard } from "../selected-views/RunDetailCard/RunDetailCard";
 import { EmptyTasksIllustration } from "./EmptyTasksIllustration";
@@ -45,7 +44,6 @@ export function EmptyTasks({
   const [isDeletingAgent, setIsDeletingAgent] = useState(false);
 
   const { mutateAsync: deleteAgent } = useDeleteV2DeleteLibraryAgent();
-  const { hasMissingCredentials } = useAgentMissingCredentials(agent);
 
   async function handleDeleteAgent() {
     if (!agent.id) return;
@@ -126,7 +124,6 @@ export function EmptyTasks({
                   variant="primary"
                   size="large"
                   className="inline-flex w-[19.75rem]"
-                  disabled={hasMissingCredentials}
                 >
                   Setup your task
                 </Button>

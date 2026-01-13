@@ -7,9 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useAgentSafeMode } from "@/hooks/useAgentSafeMode";
 import { GearIcon } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
-import { useAgentSystemCredentials } from "../../../hooks/useAgentSystemCredentials";
-import { SystemCredentialRow } from "../../selected-views/SelectedSettingsView/components/SystemCredentialRow";
+import { useState } from "react";
 
 interface Props {
   agent: LibraryAgent;
@@ -36,19 +34,7 @@ export function AgentSettingsModal({
   const { currentSafeMode, isPending, hasHITLBlocks, handleToggle } =
     useAgentSafeMode(agent);
 
-  const { hasSystemCredentials, systemCredentials } =
-    useAgentSystemCredentials(agent);
-
-  // Only show credential fields that have system credentials
-  const credentialFieldsWithSystemCreds = useMemo(() => {
-    return systemCredentials.map((item) => ({
-      fieldKey: item.key,
-      schema: item.schema,
-      systemCredential: item.credential,
-    }));
-  }, [systemCredentials]);
-
-  const hasAnySettings = hasHITLBlocks || hasSystemCredentials;
+  if (!hasHITLBlocks) return null;
 
   return (
     <Dialog
@@ -71,59 +57,23 @@ export function AgentSettingsModal({
       )}
       <Dialog.Content>
         <div className="space-y-6">
-          {hasHITLBlocks && (
-            <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
-              <div className="flex w-full items-start justify-between gap-4">
-                <div className="flex-1">
-                  <Text variant="large-semibold">Require human approval</Text>
-                  <Text variant="large" className="mt-1 text-zinc-900">
-                    The agent will pause and wait for your review before
-                    continuing
-                  </Text>
-                </div>
-                <Switch
-                  checked={currentSafeMode || false}
-                  onCheckedChange={handleToggle}
-                  disabled={isPending}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          )}
-
-          {hasSystemCredentials && (
-            <div className="flex w-full max-w-2xl flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
-              <div>
-                <Text variant="large-semibold">System Credentials</Text>
-                <Text variant="body" className="mt-1 text-muted-foreground">
-                  These credentials are managed by AutoGPT and used by the agent
-                  to access various services. You can switch to your own
-                  credentials if preferred.
+          <div className="flex w-full flex-col items-start gap-4 rounded-xl border border-zinc-100 bg-white p-6">
+            <div className="flex w-full items-start justify-between gap-4">
+              <div className="flex-1">
+                <Text variant="large-semibold">Require human approval</Text>
+                <Text variant="large" className="mt-1 text-zinc-900">
+                  The agent will pause and wait for your review before
+                  continuing
                 </Text>
               </div>
-              <div className="w-full space-y-4">
-                {credentialFieldsWithSystemCreds.map(
-                  ({ fieldKey, schema, systemCredential }) => (
-                    <SystemCredentialRow
-                      key={fieldKey}
-                      credentialKey={fieldKey}
-                      agentId={agent.id.toString()}
-                      schema={schema}
-                      systemCredential={systemCredential}
-                    />
-                  ),
-                )}
-              </div>
+              <Switch
+                checked={currentSafeMode || false}
+                onCheckedChange={handleToggle}
+                disabled={isPending}
+                className="mt-1"
+              />
             </div>
-          )}
-
-          {!hasAnySettings && (
-            <div className="py-6">
-              <Text variant="body" className="text-muted-foreground">
-                This agent doesn&apos;t have any configurable settings.
-              </Text>
-            </div>
-          )}
+          </div>
         </div>
       </Dialog.Content>
     </Dialog>

@@ -1,13 +1,7 @@
 "use client";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Text } from "@/components/atoms/Text/Text";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/molecules/Alert/Alert";
 import { Breadcrumbs } from "@/components/molecules/Breadcrumbs/Breadcrumbs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { cn } from "@/lib/utils";
@@ -31,7 +25,6 @@ import { SelectedTriggerView } from "./components/selected-views/SelectedTrigger
 import { SelectedViewLayout } from "./components/selected-views/SelectedViewLayout";
 import { SidebarRunsList } from "./components/sidebar/SidebarRunsList/SidebarRunsList";
 import { AGENT_LIBRARY_SECTION_PADDING_X } from "./helpers";
-import { useAgentMissingCredentials } from "./hooks/useAgentMissingCredentials";
 import { useMarketplaceUpdate } from "./hooks/useMarketplaceUpdate";
 import { useNewAgentLibraryView } from "./useNewAgentLibraryView";
 
@@ -68,10 +61,6 @@ export function NewAgentLibraryView() {
   } = useMarketplaceUpdate({ agent });
 
   const [changelogOpen, setChangelogOpen] = useState(false);
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-
-  const { hasMissingCredentials, isLoading: isLoadingCredentials } =
-    useAgentMissingCredentials(agent);
 
   useEffect(() => {
     if (agent) {
@@ -156,23 +145,6 @@ export function NewAgentLibraryView() {
               />
               <AgentSettingsModal agent={agent} />
             </div>
-            {hasMissingCredentials && !isLoadingCredentials && (
-              <Alert variant="warning">
-                <AlertTitle>Missing credentials</AlertTitle>
-                <AlertDescription>
-                  <Text variant="small" className="text-zinc-800">
-                    This agent requires credentials that are not configured.{" "}
-                    <button
-                      onClick={() => setSettingsModalOpen(true)}
-                      className="font-medium underline hover:no-underline"
-                    >
-                      Configure credentials
-                    </button>{" "}
-                    to run tasks.
-                  </Text>
-                </AlertDescription>
-              </Alert>
-            )}
           </div>
           <div className="flex min-h-0 flex-1">
             <EmptyTasks
@@ -183,13 +155,6 @@ export function NewAgentLibraryView() {
             />
           </div>
         </div>
-        {agent && (
-          <AgentSettingsModal
-            agent={agent}
-            controlledOpen={settingsModalOpen}
-            onOpenChange={setSettingsModalOpen}
-          />
-        )}
         {renderPublishAgentModal()}
         {renderVersionChangelog()}
       </>
@@ -200,25 +165,6 @@ export function NewAgentLibraryView() {
     <>
       <div className="mx-4 grid h-full grid-cols-1 gap-0 pt-3 md:ml-4 md:mr-0 md:gap-4 lg:grid-cols-[25%_70%]">
         <SectionWrap className="mb-3 block">
-          {hasMissingCredentials && !isLoadingCredentials && (
-            <div className={cn("mb-4", AGENT_LIBRARY_SECTION_PADDING_X)}>
-              <Alert variant="warning">
-                <AlertTitle>Missing credentials</AlertTitle>
-                <AlertDescription>
-                  <Text variant="small" className="text-zinc-800">
-                    This agent requires credentials that are not configured.{" "}
-                    <button
-                      onClick={() => setSettingsModalOpen(true)}
-                      className="font-medium underline hover:no-underline"
-                    >
-                      Configure credentials
-                    </button>{" "}
-                    to run tasks.
-                  </Text>
-                </AlertDescription>
-              </Alert>
-            </div>
-          )}
           <div
             className={cn(
               "border-b border-zinc-100 pb-5",
@@ -328,13 +274,6 @@ export function NewAgentLibraryView() {
           </SelectedViewLayout>
         )}
       </div>
-      {agent && (
-        <AgentSettingsModal
-          agent={agent}
-          controlledOpen={settingsModalOpen}
-          onOpenChange={setSettingsModalOpen}
-        />
-      )}
       {renderPublishAgentModal()}
       {renderVersionChangelog()}
     </>
