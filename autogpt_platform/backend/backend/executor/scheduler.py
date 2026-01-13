@@ -710,6 +710,11 @@ class Scheduler(AppService):
         """Manually trigger execution accuracy alert checking."""
         return execution_accuracy_alerts()
 
+    @expose
+    def execute_ensure_embeddings_coverage(self):
+        """Manually trigger embedding backfill for approved store agents."""
+        return ensure_embeddings_coverage()
+
 
 class SchedulerClient(AppServiceClient):
     @classmethod
