@@ -198,9 +198,24 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    from backend.integrations.credentials_store import is_system_credential
+    from backend.integrations.credentials_store import (
+        DEFAULT_CREDENTIALS,
+        is_system_credential,
+    )
 
+    # Get user credentials and configured system credentials
     credentials = await creds_manager.store.get_all_creds(user_id)
+    
+    # Create a set of credential IDs we've already included
+    included_ids = {cred.id for cred in credentials}
+    
+    # Always include all system credentials, even if not configured
+    # This ensures the frontend can identify system credentials
+    for system_cred in DEFAULT_CREDENTIALS:
+        if system_cred.id not in included_ids:
+            credentials.append(system_cred)
+            included_ids.add(system_cred.id)
+    
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -223,9 +238,23 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    from backend.integrations.credentials_store import is_system_credential
+    from backend.integrations.credentials_store import (
+        DEFAULT_CREDENTIALS,
+        is_system_credential,
+    )
 
+    # Get user credentials and configured system credentials for this provider
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
+    
+    # Create a set of credential IDs we've already included
+    included_ids = {cred.id for cred in credentials}
+    
+    # Always include system credentials for this provider, even if not configured
+    for system_cred in DEFAULT_CREDENTIALS:
+        if system_cred.provider == provider and system_cred.id not in included_ids:
+            credentials.append(system_cred)
+            included_ids.add(system_cred.id)
+    
     return [
         CredentialsMetaResponse(
             id=cred.id,

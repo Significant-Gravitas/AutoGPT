@@ -26,7 +26,7 @@ type CredentialRowProps = {
   provider: string;
   displayName: string;
   onSelect: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   readOnly?: boolean;
   showCaret?: boolean;
   asSelectTrigger?: boolean;
@@ -100,7 +100,7 @@ export function CredentialRow({
       {showCaret && !asSelectTrigger && (
         <CaretDown className="h-4 w-4 shrink-0 text-gray-400" />
       )}
-      {!readOnly && !showCaret && !asSelectTrigger && (
+      {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

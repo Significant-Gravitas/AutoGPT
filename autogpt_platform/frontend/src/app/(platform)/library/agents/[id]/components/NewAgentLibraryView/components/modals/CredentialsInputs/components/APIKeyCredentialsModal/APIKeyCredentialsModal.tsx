@@ -1,11 +1,11 @@
-import { Input } from "@/components/atoms/Input/Input";
-import { Button } from "@/components/atoms/Button/Button";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   Form,
   FormDescription,
   FormField,
 } from "@/components/__legacy__/ui/form";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
@@ -60,7 +60,10 @@ export function APIKeyCredentialsModal({
         )}
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-2 px-2"
+          >
             <FormField
               control={form.control}
               name="apiKey"
@@ -70,8 +73,7 @@ export function APIKeyCredentialsModal({
                     id="apiKey"
                     label="API Key"
                     type="password"
-                    placeholder="Enter API key..."
-                    size="small"
+                    placeholder="Enter API Key..."
                     hint={
                       schema.credentials_scopes ? (
                         <FormDescription>
@@ -98,8 +100,7 @@ export function APIKeyCredentialsModal({
                   id="title"
                   label="Name"
                   type="text"
-                  placeholder="Enter a name for this API key..."
-                  size="small"
+                  placeholder="Enter a name for this API Key..."
                   {...field}
                 />
               )}
@@ -113,13 +114,12 @@ export function APIKeyCredentialsModal({
                   label="Expiration Date"
                   type="datetime-local"
                   placeholder="Select expiration date..."
-                  size="small"
                   {...field}
                 />
               )}
             />
-            <Button type="submit" size="small" className="min-w-68">
-              Save & use this API key
+            <Button type="submit" className="min-w-68">
+              Add API Key
             </Button>
           </form>
         </Form>

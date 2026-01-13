@@ -10,11 +10,10 @@ import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { CredentialRow } from "./components/CredentialRow/CredentialRow";
 import { CredentialsSelect } from "./components/CredentialsSelect/CredentialsSelect";
-import { DeleteConfirmationModal } from "./components/DeleteConfirmationModal/DeleteConfirmationModal";
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
-import { getCredentialDisplayName } from "./helpers";
+import { isSystemCredential } from "./helpers";
 import {
   CredentialsInputState,
   useCredentialsInput,
@@ -37,6 +36,7 @@ type Props = {
   isOptional?: boolean;
   showTitle?: boolean;
   variant?: "default" | "node";
+  allowSystemCredentials?: boolean; // Allow system credentials (for settings only)
 };
 
 export function CredentialsInput({
@@ -50,6 +50,7 @@ export function CredentialsInput({
   isOptional = false,
   showTitle = true,
   variant = "default",
+  allowSystemCredentials = false,
 }: Props) {
   const hookData = useCredentialsInput({
     schema,
@@ -59,6 +60,7 @@ export function CredentialsInput({
     onLoaded,
     readOnly,
     isOptional,
+    allowSystemCredentials,
   });
 
   if (!isLoaded(hookData)) {
@@ -79,21 +81,22 @@ export function CredentialsInput({
     isHostScopedCredentialsModalOpen,
     isOAuth2FlowInProgress,
     oAuthPopupController,
-    credentialToDelete,
-    deleteCredentialsMutation,
     actionButtonText,
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
-    setCredentialToDelete,
     handleActionButtonClick,
     handleCredentialSelect,
-    handleDeleteCredential,
-    handleDeleteConfirm,
   } = hookData;
 
   const displayName = toDisplayName(provider);
   const hasCredentialsToShow = credentialsToShow.length > 0;
+  const selectedCredentialIsSystem =
+    selectedCredential && isSystemCredential(selectedCredential);
+
+  if (readOnly && selectedCredentialIsSystem) {
+    return null;
+  }
 
   return (
     <div className={cn("mb-6", className)}>
@@ -137,15 +140,6 @@ export function CredentialsInput({
                     provider={provider}
                     displayName={displayName}
                     onSelect={() => handleCredentialSelect(credential.id)}
-                    onDelete={() =>
-                      handleDeleteCredential({
-                        id: credential.id,
-                        title: getCredentialDisplayName(
-                          credential,
-                          displayName,
-                        ),
-                      })
-                    }
                     readOnly={readOnly}
                   />
                 );
@@ -229,13 +223,6 @@ export function CredentialsInput({
               Error: {oAuthError}
             </Text>
           ) : null}
-
-          <DeleteConfirmationModal
-            credentialToDelete={credentialToDelete}
-            isDeleting={deleteCredentialsMutation.isPending}
-            onClose={() => setCredentialToDelete(null)}
-            onConfirm={handleDeleteConfirm}
-          />
         </>
       )}
     </div>

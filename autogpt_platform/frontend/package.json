@@ -117,6 +117,7 @@
   },
   "devDependencies": {
     "@chromatic-com/storybook": "4.1.2",
+    "@opentelemetry/instrumentation": "0.209.0",
     "@playwright/test": "1.56.1",
     "@storybook/addon-a11y": "9.1.5",
     "@storybook/addon-docs": "9.1.5",
@@ -140,6 +141,7 @@
     "eslint": "8.57.1",
     "eslint-config-next": "15.5.7",
     "eslint-plugin-storybook": "9.1.5",
+    "import-in-the-middle": "2.0.2",
     "msw": "2.11.6",
     "msw-storybook-addon": "2.0.6",
     "orval": "7.13.0",
@@ -147,7 +149,7 @@
     "postcss": "8.5.6",
     "prettier": "3.6.2",
     "prettier-plugin-tailwindcss": "0.7.1",
-    "require-in-the-middle": "7.5.2",
+    "require-in-the-middle": "8.0.1",
     "storybook": "9.1.5",
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3"

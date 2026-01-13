@@ -6,10 +6,11 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   filterSystemCredentials,
   getActionButtonText,
+  getSystemCredentials,
   OAUTH_TIMEOUT_MS,
   OAuthPopupResultMessage,
 } from "./helpers";
@@ -24,6 +25,7 @@ type Params = {
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
   isOptional?: boolean;
+  allowSystemCredentials?: boolean; // Allow system credentials (for settings only)
 };
 
 export function useCredentialsInput({
@@ -34,6 +36,7 @@ export function useCredentialsInput({
   onLoaded,
   readOnly = false,
   isOptional = false,
+  allowSystemCredentials = false,
 }: Params) {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -55,6 +58,7 @@ export function useCredentialsInput({
   const api = useBackendAPI();
   const queryClient = useQueryClient();
   const credentials = useCredentials(schema, siblingInputs);
+  const hasAttemptedAutoSelect = useRef(false);
 
   const deleteCredentialsMutation = useDeleteV1DeleteCredentials({
     mutation: {
@@ -83,14 +87,22 @@ export function useCredentialsInput({
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
-    const filtered = filterSystemCredentials(credentials.savedCredentials);
+    const availableCreds = allowSystemCredentials
+      ? credentials.savedCredentials
+      : filterSystemCredentials(credentials.savedCredentials);
     if (
       selectedCredential &&
-      !filtered.some((c) => c.id === selectedCredential.id)
+      !availableCreds.some((c) => c.id === selectedCredential.id)
     ) {
       onSelectCredential(undefined);
     }
-  }, [credentials, selectedCredential, onSelectCredential, readOnly]);
+  }, [
+    credentials,
+    selectedCredential,
+    onSelectCredential,
+    readOnly,
+    allowSystemCredentials,
+  ]);
 
   // The available credential, if there is only one
   const singleCredential = useMemo(() => {
@@ -98,23 +110,111 @@ export function useCredentialsInput({
       return null;
     }
 
-    const filtered = filterSystemCredentials(credentials.savedCredentials);
-    return filtered.length === 1 ? filtered[0] : null;
-  }, [credentials]);
+    const credsToUse = allowSystemCredentials
+      ? credentials.savedCredentials
+      : filterSystemCredentials(credentials.savedCredentials);
+    return credsToUse.length === 1 ? credsToUse[0] : null;
+  }, [credentials, allowSystemCredentials]);
 
-  // Auto-select the one available credential (only if not optional)
+  // Auto-select the one available credential
+  // Prioritize system credentials if available
+  // For system credentials, always auto-select even if optional (they should be used by default)
   useEffect(() => {
     if (readOnly) return;
-    if (isOptional) return; // Don't auto-select when credential is optional
-    if (singleCredential && !selectedCredential) {
+    if (!credentials || !("savedCredentials" in credentials)) return;
+
+    // Early return if already selected to prevent infinite loops
+    const currentSelectedId = selectedCredential?.id;
+    if (currentSelectedId) {
+      hasAttemptedAutoSelect.current = true;
+      return;
+    }
+
+    // If selectedCredential is explicitly undefined and isOptional is true,
+    // don't auto-select - this could mean "None" was explicitly selected
+    // The parent component should handle setting the initial value
+    if (selectedCredential === undefined && isOptional) {
+      // Mark as attempted to prevent auto-selection when "None" is a valid choice
+      hasAttemptedAutoSelect.current = true;
+      return;
+    }
+
+    // Only attempt auto-selection once per credential load
+    if (hasAttemptedAutoSelect.current) return;
+
+    const supportedTypes = schema.credentials_types || [];
+    const requiredScopes = schema.credentials_scopes;
+    const savedCreds = credentials.savedCredentials;
+    const systemCreds = getSystemCredentials(savedCreds);
+
+    // Filter system credentials by type and scopes (same logic as useCredentials)
+    const matchingSystemCreds = systemCreds.filter((cred) => {
+      // Check type match
+      if (!supportedTypes.includes(cred.type)) {
+        return false;
+      }
+
+      // For OAuth2 credentials, check scopes
+      if (
+        cred.type === "oauth2" &&
+        requiredScopes &&
+        requiredScopes.length > 0
+      ) {
+        const grantedScopes = new Set(cred.scopes || []);
+        const hasAllRequiredScopes = new Set(requiredScopes).isSubsetOf(
+          grantedScopes,
+        );
+        if (!hasAllRequiredScopes) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // First, try to auto-select system credential if available
+    if (matchingSystemCreds.length === 1) {
+      const systemCred = matchingSystemCreds[0];
+      const credProvider = credentials.provider;
+      hasAttemptedAutoSelect.current = true;
+      onSelectCredential({
+        id: systemCred.id,
+        type: systemCred.type,
+        provider: credProvider,
+        title: (systemCred as any).title,
+      });
+      return;
+    }
+
+    // Otherwise, auto-select single credential if there's only one (and not optional)
+    if (!isOptional && singleCredential) {
+      hasAttemptedAutoSelect.current = true;
       onSelectCredential(singleCredential);
     }
   }, [
-    singleCredential,
-    selectedCredential,
-    onSelectCredential,
+    singleCredential?.id, // Only depend on the ID, not the whole object
+    selectedCredential?.id, // Only depend on the ID, not the whole object
     readOnly,
     isOptional,
+    credentials,
+    schema.credentials_types,
+    schema.credentials_scopes,
+    // Note: onSelectCredential removed from deps to prevent infinite loops
+    // It should be stable, but if it's not, the ref will prevent multiple calls
+  ]);
+
+  // Reset the ref when credentials change significantly
+  useEffect(() => {
+    if (credentials && "savedCredentials" in credentials) {
+      hasAttemptedAutoSelect.current = false;
+    }
+  }, [
+    credentials && "savedCredentials" in credentials
+      ? credentials.savedCredentials.length
+      : 0,
+    credentials && "savedCredentials" in credentials
+      ? credentials.provider
+      : null,
   ]);
 
   if (
@@ -138,7 +238,10 @@ export function useCredentialsInput({
     oAuthCallback,
   } = credentials;
 
-  const filteredCredentials = filterSystemCredentials(savedCredentials);
+  // Filter system credentials unless explicitly allowed (for settings)
+  const filteredCredentials = allowSystemCredentials
+    ? savedCredentials
+    : filterSystemCredentials(savedCredentials);
 
   async function handleOAuthLogin() {
     setOAuthError(null);
