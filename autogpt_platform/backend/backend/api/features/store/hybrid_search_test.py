@@ -193,6 +193,7 @@ async def test_hybrid_search_weights():
         lexical=0.3,
         category=0.1,
         recency=0.1,
+        popularity=0.0,
     )
 
     with patch(

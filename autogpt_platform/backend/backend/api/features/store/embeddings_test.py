@@ -43,8 +43,8 @@ async def test_build_searchable_text_empty_fields():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.api.features.store.embeddings.OpenAI")
-async def test_generate_embedding_success(mock_openai_class):
+@patch("backend.util.clients.get_openai_client")
+async def test_generate_embedding_success(mock_get_client):
     """Test successful embedding generation."""
     # Mock OpenAI response
     mock_client = MagicMock()
@@ -52,73 +52,62 @@ async def test_generate_embedding_success(mock_openai_class):
     mock_response.data = [MagicMock()]
     mock_response.data[0].embedding = [0.1, 0.2, 0.3] * 512  # 1536 dimensions
     mock_client.embeddings.create.return_value = mock_response
-    mock_openai_class.return_value = mock_client
+    mock_get_client.return_value = mock_client
 
-    with patch("backend.api.features.store.embeddings.Settings") as mock_settings:
-        mock_settings.return_value.secrets.openai_internal_api_key = "test-key"
+    result = await embeddings.generate_embedding("test text")
 
-        result = await embeddings.generate_embedding("test text")
+    assert result is not None
+    assert len(result) == 1536
+    assert result[0] == 0.1
 
-        assert result is not None
-        assert len(result) == 1536
-        assert result[0] == 0.1
-
-        mock_client.embeddings.create.assert_called_once_with(
-            model="text-embedding-3-small", input="test text"
-        )
+    mock_client.embeddings.create.assert_called_once_with(
+        model="text-embedding-3-small", input="test text"
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.api.features.store.embeddings.OpenAI")
-async def test_generate_embedding_no_api_key(mock_openai_class):
+@patch("backend.util.clients.get_openai_client")
+async def test_generate_embedding_no_api_key(mock_get_client):
     """Test embedding generation without API key."""
-    with patch("backend.api.features.store.embeddings.Settings") as mock_settings:
-        mock_settings.return_value.secrets.openai_internal_api_key = ""
+    mock_get_client.return_value = None
 
-        result = await embeddings.generate_embedding("test text")
+    result = await embeddings.generate_embedding("test text")
 
-        assert result is None
-        mock_openai_class.assert_not_called()
+    assert result is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.api.features.store.embeddings.OpenAI")
-async def test_generate_embedding_api_error(mock_openai_class):
+@patch("backend.util.clients.get_openai_client")
+async def test_generate_embedding_api_error(mock_get_client):
     """Test embedding generation with API error."""
     mock_client = MagicMock()
     mock_client.embeddings.create.side_effect = Exception("API Error")
-    mock_openai_class.return_value = mock_client
+    mock_get_client.return_value = mock_client
 
-    with patch("backend.api.features.store.embeddings.Settings") as mock_settings:
-        mock_settings.return_value.secrets.openai_internal_api_key = "test-key"
+    result = await embeddings.generate_embedding("test text")
 
-        result = await embeddings.generate_embedding("test text")
-
-        assert result is None
+    assert result is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.api.features.store.embeddings.OpenAI")
-async def test_generate_embedding_text_truncation(mock_openai_class):
+@patch("backend.util.clients.get_openai_client")
+async def test_generate_embedding_text_truncation(mock_get_client):
     """Test that long text is properly truncated."""
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_response.data = [MagicMock()]
     mock_response.data[0].embedding = [0.1] * 1536
     mock_client.embeddings.create.return_value = mock_response
-    mock_openai_class.return_value = mock_client
+    mock_get_client.return_value = mock_client
 
     # Create text longer than 32k chars
     long_text = "a" * 35000
 
-    with patch("backend.api.features.store.embeddings.Settings") as mock_settings:
-        mock_settings.return_value.secrets.openai_internal_api_key = "test-key"
+    await embeddings.generate_embedding(long_text)
 
-        await embeddings.generate_embedding(long_text)
-
-        # Verify truncated text was sent to API
-        call_args = mock_client.embeddings.create.call_args
-        assert len(call_args.kwargs["input"]) == 32000
+    # Verify truncated text was sent to API
+    call_args = mock_client.embeddings.create.call_args
+    assert len(call_args.kwargs["input"]) == 32000
 
 
 @pytest.mark.asyncio(loop_scope="session")
