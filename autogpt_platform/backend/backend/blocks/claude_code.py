@@ -30,7 +30,7 @@ TEST_E2B_CREDENTIALS_INPUT = {
     "provider": TEST_E2B_CREDENTIALS.provider,
     "id": TEST_E2B_CREDENTIALS.id,
     "type": TEST_E2B_CREDENTIALS.type,
-    "title": TEST_E2B_CREDENTIALS.type,
+    "title": TEST_E2B_CREDENTIALS.title,
 }
 
 # Test credentials for Anthropic
@@ -45,7 +45,7 @@ TEST_ANTHROPIC_CREDENTIALS_INPUT = {
     "provider": TEST_ANTHROPIC_CREDENTIALS.provider,
     "id": TEST_ANTHROPIC_CREDENTIALS.id,
     "type": TEST_ANTHROPIC_CREDENTIALS.type,
-    "title": TEST_ANTHROPIC_CREDENTIALS.type,
+    "title": TEST_ANTHROPIC_CREDENTIALS.title,
 }
 
 
@@ -282,6 +282,15 @@ class ClaudeCodeBlock(Block):
         import json
         import uuid
 
+        # Validate that sandbox_id is provided when resuming a session
+        if session_id and not existing_sandbox_id:
+            raise ValueError(
+                "sandbox_id is required when resuming a session with session_id. "
+                "The session state is stored in the original sandbox. "
+                "If the sandbox has timed out, use conversation_history instead "
+                "to restore context on a fresh sandbox."
+            )
+
         sandbox = None
 
         try:
@@ -313,7 +322,14 @@ class ClaudeCodeBlock(Block):
 
                 # Run any user-provided setup commands
                 for cmd in setup_commands:
-                    await sandbox.commands.run(cmd)
+                    setup_result = await sandbox.commands.run(cmd)
+                    if setup_result.exit_code != 0:
+                        raise Exception(
+                            f"Setup command failed: {cmd}\n"
+                            f"Exit code: {setup_result.exit_code}\n"
+                            f"Stdout: {setup_result.stdout}\n"
+                            f"Stderr: {setup_result.stderr}"
+                        )
 
             # Generate or use provided session ID
             current_session_id = session_id if session_id else str(uuid.uuid4())
