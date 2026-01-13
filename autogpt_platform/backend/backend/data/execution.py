@@ -153,10 +153,8 @@ class GraphExecutionMeta(BaseDbModel):
     nodes_input_masks: Optional[dict[str, BlockInput]]
     preset_id: Optional[str]
     status: ExecutionStatus
-    created_at: datetime
-    updated_at: Optional[datetime]
-    started_at: datetime
-    ended_at: datetime
+    started_at: Optional[datetime]
+    ended_at: Optional[datetime]
     is_shared: bool = False
     share_token: Optional[str] = None
 
@@ -231,10 +229,8 @@ class GraphExecutionMeta(BaseDbModel):
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
-        now = datetime.now(timezone.utc)
-        # TODO: make started_at and ended_at optional
-        start_time = _graph_exec.startedAt or _graph_exec.createdAt
-        end_time = _graph_exec.updatedAt or now
+        start_time = _graph_exec.startedAt
+        end_time = _graph_exec.updatedAt
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -265,8 +261,6 @@ class GraphExecutionMeta(BaseDbModel):
             ),
             preset_id=_graph_exec.agentPresetId,
             status=ExecutionStatus(_graph_exec.executionStatus),
-            created_at=_graph_exec.createdAt,
-            updated_at=_graph_exec.updatedAt,
             started_at=start_time,
             ended_at=end_time,
             stats=(

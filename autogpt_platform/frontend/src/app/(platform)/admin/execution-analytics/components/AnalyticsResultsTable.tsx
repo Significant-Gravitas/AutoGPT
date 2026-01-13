@@ -51,8 +51,6 @@ export function AnalyticsResultsTable({ results }: Props) {
       "Execution ID",
       "Status",
       "Score",
-      "Created At",
-      "Updated At",
       "Started At",
       "Ended At",
       "Summary Text",
@@ -66,15 +64,7 @@ export function AnalyticsResultsTable({ results }: Props) {
       result.exec_id,
       result.status,
       result.score?.toString() || "",
-      result.created_at
-        ? new Date(result.created_at).toLocaleString()
-        : "",
-      result.updated_at
-        ? new Date(result.updated_at).toLocaleString()
-        : "",
-      result.started_at
-        ? new Date(result.started_at).toLocaleString()
-        : "",
+      result.started_at ? new Date(result.started_at).toLocaleString() : "",
       result.ended_at ? new Date(result.ended_at).toLocaleString() : "",
       `"${(result.summary_text || "").replace(/"/g, '""')}"`, // Escape quotes in summary
       `"${(result.error_message || "").replace(/"/g, '""')}"`, // Escape quotes in error
@@ -277,33 +267,7 @@ export function AnalyticsResultsTable({ results }: Props) {
                         <td colSpan={7} className="bg-gray-50 px-4 py-3">
                           <div className="space-y-3">
                             {/* Timestamps section */}
-                            <div className="grid grid-cols-2 gap-4 border-b border-gray-200 pb-3 md:grid-cols-4">
-                              <div>
-                                <Text
-                                  variant="body"
-                                  className="text-xs font-medium text-gray-600"
-                                >
-                                  Created At:
-                                </Text>
-                                <Text variant="body" className="text-sm text-gray-700">
-                                  {result.created_at
-                                    ? new Date(result.created_at).toLocaleString()
-                                    : "—"}
-                                </Text>
-                              </div>
-                              <div>
-                                <Text
-                                  variant="body"
-                                  className="text-xs font-medium text-gray-600"
-                                >
-                                  Updated At:
-                                </Text>
-                                <Text variant="body" className="text-sm text-gray-700">
-                                  {result.updated_at
-                                    ? new Date(result.updated_at).toLocaleString()
-                                    : "—"}
-                                </Text>
-                              </div>
+                            <div className="grid grid-cols-2 gap-4 border-b border-gray-200 pb-3">
                               <div>
                                 <Text
                                   variant="body"
@@ -311,9 +275,14 @@ export function AnalyticsResultsTable({ results }: Props) {
                                 >
                                   Started At:
                                 </Text>
-                                <Text variant="body" className="text-sm text-gray-700">
+                                <Text
+                                  variant="body"
+                                  className="text-sm text-gray-700"
+                                >
                                   {result.started_at
-                                    ? new Date(result.started_at).toLocaleString()
+                                    ? new Date(
+                                        result.started_at,
+                                      ).toLocaleString()
                                     : "—"}
                                 </Text>
                               </div>
@@ -324,7 +293,10 @@ export function AnalyticsResultsTable({ results }: Props) {
                                 >
                                   Ended At:
                                 </Text>
-                                <Text variant="body" className="text-sm text-gray-700">
+                                <Text
+                                  variant="body"
+                                  className="text-sm text-gray-700"
+                                >
                                   {result.ended_at
                                     ? new Date(result.ended_at).toLocaleString()
                                     : "—"}

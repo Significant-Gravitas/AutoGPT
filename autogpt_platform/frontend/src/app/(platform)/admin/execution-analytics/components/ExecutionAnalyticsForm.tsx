@@ -92,11 +92,6 @@ export function ExecutionAnalyticsForm() {
 
     const data = accuracyApiResponse?.data;
     if (data && "latest_data" in data) {
-      console.log("[Accuracy Trends] Received data:", {
-        latest_data: data.latest_data,
-        historical_count: data.historical_data?.length || 0,
-        alert: data.alert ? "Yes" : "No",
-      });
       setTrendsData(data);
 
       // Check for alerts
@@ -170,15 +165,13 @@ export function ExecutionAnalyticsForm() {
   const fetchAccuracyTrends = (graphId: string, userId?: string) => {
     if (!graphId.trim()) return;
 
-    const params = {
+    setAccuracyParams({
       graph_id: graphId.trim(),
       user_id: userId?.trim() || undefined,
       days_back: 30,
       drop_threshold: 10.0,
       include_historical: showAccuracyChart, // Include historical data when chart is enabled
-    };
-    console.log("[Accuracy Trends] Fetching with params:", params);
-    setAccuracyParams(params);
+    });
   };
 
   // Fetch configuration from API
@@ -551,13 +544,13 @@ export function ExecutionAnalyticsForm() {
           <div className="flex items-start justify-between">
             <h3 className="text-lg font-semibold">Execution Accuracy Trends</h3>
             <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
-              <p className="font-medium">Chart Filters (matches monitoring system):</p>
+              <p className="font-medium">
+                Chart Filters (matches monitoring system):
+              </p>
               <ul className="mt-1 list-inside list-disc space-y-1">
                 <li>Only days with ≥1 execution with correctness score</li>
                 <li>Last 30 days</li>
-                <li>
-                  Averages calculated from scored executions only
-                </li>
+                <li>Averages calculated from scored executions only</li>
               </ul>
             </div>
           </div>
