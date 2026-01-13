@@ -620,13 +620,22 @@ class ClaudeCodeBlock(Block):
             advanced=True,
         )
 
+    class FileOutput(BaseModel):
+        """A file extracted from the sandbox."""
+
+        path: str
+        name: str
+        content: str
+
     class Output(BlockSchemaOutput):
-        response: str = SchemaField(description="The output from Claude Code execution")
-        stdout_logs: str = SchemaField(
-            description="Standard output logs from the sandbox"
+        response: str = SchemaField(
+            description="The output/response from Claude Code execution"
         )
-        stderr_logs: str = SchemaField(
-            description="Standard error logs from the sandbox"
+        files: list["ClaudeCodeBlock.FileOutput"] = SchemaField(
+            description=(
+                "List of files created/modified by Claude Code. "
+                "Each file has 'path', 'name', and 'content' fields."
+            )
         )
         sandbox_id: str = SchemaField(
             description="ID of the sandbox instance (if not disposed)"
@@ -658,15 +667,28 @@ class ClaudeCodeBlock(Block):
             },
             test_output=[
                 ("response", "Created index.html with hello world content"),
-                ("stdout_logs", ""),
-                ("stderr_logs", ""),
+                (
+                    "files",
+                    [
+                        {
+                            "path": "/home/user/index.html",
+                            "name": "index.html",
+                            "content": "<html>Hello World</html>",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "execute_claude_code": lambda *args, **kwargs: (
-                    "Created index.html with hello world content",
-                    "",
-                    "",
-                    "sandbox_id",
+                    "Created index.html with hello world content",  # response
+                    [
+                        ClaudeCodeBlock.FileOutput(
+                            path="/home/user/index.html",
+                            name="index.html",
+                            content="<html>Hello World</html>",
+                        )
+                    ],  # files
+                    "sandbox_id",  # sandbox_id
                 ),
             },
         )
@@ -680,12 +702,12 @@ class ClaudeCodeBlock(Block):
         setup_commands: list[str],
         working_directory: str,
         dispose_sandbox: bool,
-    ) -> tuple[str, str, str, str]:
+    ) -> tuple[str, list["ClaudeCodeBlock.FileOutput"], str]:
         """
         Execute Claude Code in an E2B sandbox.
 
         Returns:
-            Tuple of (response, stdout_logs, stderr_logs, sandbox_id)
+            Tuple of (response, files, sandbox_id)
         """
         sandbox = None
         try:
@@ -725,16 +747,84 @@ class ClaudeCodeBlock(Block):
                 timeout=0,  # No command timeout - let sandbox timeout handle it
             )
 
-            stdout = result.stdout or ""
-            stderr = result.stderr or ""
+            response = result.stdout or ""
             sandbox_id = sandbox.sandbox_id
 
-            # The response is the stdout from Claude Code
-            return stdout, stdout, stderr, sandbox_id
+            # Extract files from the working directory
+            files = await self._extract_files(sandbox, working_directory)
+
+            return response, files, sandbox_id
 
         finally:
             if dispose_sandbox and sandbox:
                 await sandbox.kill()
+
+    async def _extract_files(
+        self,
+        sandbox: BaseAsyncSandbox,
+        working_directory: str,
+    ) -> list["ClaudeCodeBlock.FileOutput"]:
+        """
+        Extract files from the sandbox working directory.
+
+        Returns:
+            List of FileOutput objects with path, name, and content
+        """
+        files: list[ClaudeCodeBlock.FileOutput] = []
+
+        # Text file extensions we can safely read
+        text_extensions = {
+            ".txt", ".md", ".html", ".htm", ".css", ".js", ".ts", ".jsx", ".tsx",
+            ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+            ".py", ".rb", ".php", ".java", ".c", ".cpp", ".h", ".hpp", ".cs",
+            ".go", ".rs", ".swift", ".kt", ".scala", ".sh", ".bash", ".zsh",
+            ".sql", ".graphql", ".env", ".gitignore", ".dockerfile", "Dockerfile",
+            ".vue", ".svelte", ".astro", ".mdx", ".rst", ".tex", ".csv", ".log",
+        }
+
+        try:
+            # List files recursively using find command
+            find_result = await sandbox.commands.run(
+                f"find {working_directory} -type f -not -path '*/node_modules/*' "
+                f"-not -path '*/.git/*' -not -path '*/.*' 2>/dev/null | head -100"
+            )
+
+            if find_result.stdout:
+                for file_path in find_result.stdout.strip().split("\n"):
+                    if not file_path:
+                        continue
+
+                    # Check if it's a text file we can read
+                    is_text = any(
+                        file_path.endswith(ext) for ext in text_extensions
+                    ) or file_path.endswith("Dockerfile")
+
+                    if is_text:
+                        try:
+                            content = await sandbox.files.read(file_path)
+                            # Handle bytes or string
+                            if isinstance(content, bytes):
+                                content = content.decode("utf-8", errors="replace")
+
+                            # Extract filename from path
+                            file_name = file_path.split("/")[-1]
+
+                            files.append(
+                                ClaudeCodeBlock.FileOutput(
+                                    path=file_path,
+                                    name=file_name,
+                                    content=content,
+                                )
+                            )
+                        except Exception:
+                            # Skip files that can't be read
+                            pass
+
+        except Exception:
+            # If file extraction fails, return empty results
+            pass
+
+        return files
 
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""
@@ -751,7 +841,7 @@ class ClaudeCodeBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            response, stdout, stderr, sandbox_id = await self.execute_claude_code(
+            response, files, sandbox_id = await self.execute_claude_code(
                 e2b_api_key=e2b_credentials.api_key.get_secret_value(),
                 anthropic_api_key=anthropic_credentials.api_key.get_secret_value(),
                 prompt=input_data.prompt,
@@ -762,10 +852,9 @@ class ClaudeCodeBlock(Block):
             )
 
             yield "response", response
-            if stdout:
-                yield "stdout_logs", stdout
-            if stderr:
-                yield "stderr_logs", stderr
+            if files:
+                # Convert FileOutput objects to dicts for serialization
+                yield "files", [f.model_dump() for f in files]
             if not input_data.dispose_sandbox and sandbox_id:
                 yield "sandbox_id", sandbox_id
 
