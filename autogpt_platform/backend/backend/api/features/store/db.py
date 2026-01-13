@@ -1551,7 +1551,7 @@ async def review_store_submission(
                 )
             except Exception as e:
                 # Don't fail approval if embedding generation fails
-                logger.warning(
+                logger.error(
                     f"Failed to generate embedding for approved listing "
                     f"{store_listing_version_id}: {e}"
                 )
