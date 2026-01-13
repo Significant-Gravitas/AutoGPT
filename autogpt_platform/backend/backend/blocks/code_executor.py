@@ -593,7 +593,7 @@ class ClaudeCodeBlock(Block):
                 "a while, so set this appropriately for your task complexity."
             ),
             default=300,  # 5 minutes default
-            advanced=False,
+            advanced=True,
         )
 
         setup_commands: list[str] = SchemaField(
@@ -602,7 +602,7 @@ class ClaudeCodeBlock(Block):
                 "Useful for installing dependencies or setting up the environment."
             ),
             default_factory=list,
-            advanced=False,
+            advanced=True,
         )
 
         working_directory: str = SchemaField(
@@ -619,7 +619,7 @@ class ClaudeCodeBlock(Block):
                 "Use the session_id from a previous run to continue that conversation."
             ),
             default="",
-            advanced=False,
+            advanced=True,
         )
 
         sandbox_id: str = SchemaField(
@@ -629,7 +629,17 @@ class ClaudeCodeBlock(Block):
                 "Use the sandbox_id from a previous run where dispose_sandbox was False."
             ),
             default="",
-            advanced=False,
+            advanced=True,
+        )
+
+        conversation_history: str = SchemaField(
+            description=(
+                "Previous conversation history to continue from. "
+                "Use this to restore context on a fresh sandbox if the previous one timed out. "
+                "Pass the conversation_history output from a previous run."
+            ),
+            default="",
+            advanced=True,
         )
 
         dispose_sandbox: bool = SchemaField(
@@ -639,7 +649,7 @@ class ClaudeCodeBlock(Block):
                 "(you'll need both sandbox_id and session_id from the output)."
             ),
             default=True,
-            advanced=False,
+            advanced=True,
         )
 
     class FileOutput(BaseModel):
@@ -657,6 +667,13 @@ class ClaudeCodeBlock(Block):
             description=(
                 "List of files created/modified by Claude Code. "
                 "Each file has 'path', 'name', and 'content' fields."
+            )
+        )
+        conversation_history: str = SchemaField(
+            description=(
+                "Full conversation history including this turn. "
+                "Pass this to conversation_history input to continue on a fresh sandbox "
+                "if the previous sandbox timed out."
             )
         )
         session_id: str = SchemaField(
@@ -697,6 +714,7 @@ class ClaudeCodeBlock(Block):
                 "working_directory": "/home/user",
                 "session_id": "",
                 "sandbox_id": "",
+                "conversation_history": "",
                 "dispose_sandbox": True,
             },
             test_output=[
@@ -711,6 +729,11 @@ class ClaudeCodeBlock(Block):
                         }
                     ],
                 ),
+                (
+                    "conversation_history",
+                    "User: Create a hello world HTML file\n"
+                    "Claude: Created index.html with hello world content",
+                ),
                 ("session_id", str),
             ],
             test_mock={
@@ -723,6 +746,8 @@ class ClaudeCodeBlock(Block):
                             content="<html>Hello World</html>",
                         )
                     ],  # files
+                    "User: Create a hello world HTML file\n"
+                    "Claude: Created index.html with hello world content",  # conversation_history
                     "test-session-id",  # session_id
                     "sandbox_id",  # sandbox_id
                 ),
@@ -739,14 +764,16 @@ class ClaudeCodeBlock(Block):
         working_directory: str,
         session_id: str,
         existing_sandbox_id: str,
+        conversation_history: str,
         dispose_sandbox: bool,
-    ) -> tuple[str, list["ClaudeCodeBlock.FileOutput"], str, str]:
+    ) -> tuple[str, list["ClaudeCodeBlock.FileOutput"], str, str, str]:
         """
         Execute Claude Code in an E2B sandbox.
 
         Returns:
-            Tuple of (response, files, session_id, sandbox_id)
+            Tuple of (response, files, conversation_history, session_id, sandbox_id)
         """
+        import json
         import uuid
 
         sandbox = None
@@ -785,20 +812,31 @@ class ClaudeCodeBlock(Block):
             # Generate or use provided session ID
             current_session_id = session_id if session_id else str(uuid.uuid4())
 
+            # Build base Claude flags
+            base_flags = "-p --dangerously-skip-permissions --output-format json"
+
+            # Add conversation history context if provided (for fresh sandbox continuation)
+            history_flag = ""
+            if conversation_history and not session_id:
+                # Inject previous conversation as context via system prompt
+                # Escape the history for shell
+                escaped_history = conversation_history.replace("'", "'\"'\"'")
+                history_flag = f" --append-system-prompt 'Previous conversation context: {escaped_history}'"
+
             # Build Claude command based on whether we're resuming or starting new
             if session_id:
-                # Resuming existing session
+                # Resuming existing session (sandbox still alive)
                 claude_command = (
                     f"cd {working_directory} && "
                     f"echo {self._escape_prompt(prompt)} | "
-                    f"claude --resume {session_id} -p --dangerously-skip-permissions"
+                    f"claude --resume {session_id} {base_flags}"
                 )
             else:
                 # New session with specific ID
                 claude_command = (
                     f"cd {working_directory} && "
                     f"echo {self._escape_prompt(prompt)} | "
-                    f"claude --session-id {current_session_id} -p --dangerously-skip-permissions"
+                    f"claude --session-id {current_session_id} {base_flags}{history_flag}"
                 )
 
             result = await sandbox.commands.run(
@@ -806,13 +844,48 @@ class ClaudeCodeBlock(Block):
                 timeout=0,  # No command timeout - let sandbox timeout handle it
             )
 
-            response = result.stdout or ""
+            raw_output = result.stdout or ""
             sandbox_id = sandbox.sandbox_id
+
+            # Parse JSON output to extract response and build conversation history
+            response = ""
+            new_conversation_history = conversation_history or ""
+
+            try:
+                # The JSON output contains the result
+                output_data = json.loads(raw_output)
+                response = output_data.get("result", raw_output)
+
+                # Build conversation history entry
+                turn_entry = f"User: {prompt}\nClaude: {response}"
+                if new_conversation_history:
+                    new_conversation_history = (
+                        f"{new_conversation_history}\n\n{turn_entry}"
+                    )
+                else:
+                    new_conversation_history = turn_entry
+
+            except json.JSONDecodeError:
+                # If not valid JSON, use raw output
+                response = raw_output
+                turn_entry = f"User: {prompt}\nClaude: {response}"
+                if new_conversation_history:
+                    new_conversation_history = (
+                        f"{new_conversation_history}\n\n{turn_entry}"
+                    )
+                else:
+                    new_conversation_history = turn_entry
 
             # Extract files from the working directory
             files = await self._extract_files(sandbox, working_directory)
 
-            return response, files, current_session_id, sandbox_id
+            return (
+                response,
+                files,
+                new_conversation_history,
+                current_session_id,
+                sandbox_id,
+            )
 
         finally:
             if dispose_sandbox and sandbox:
@@ -833,12 +906,54 @@ class ClaudeCodeBlock(Block):
 
         # Text file extensions we can safely read
         text_extensions = {
-            ".txt", ".md", ".html", ".htm", ".css", ".js", ".ts", ".jsx", ".tsx",
-            ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
-            ".py", ".rb", ".php", ".java", ".c", ".cpp", ".h", ".hpp", ".cs",
-            ".go", ".rs", ".swift", ".kt", ".scala", ".sh", ".bash", ".zsh",
-            ".sql", ".graphql", ".env", ".gitignore", ".dockerfile", "Dockerfile",
-            ".vue", ".svelte", ".astro", ".mdx", ".rst", ".tex", ".csv", ".log",
+            ".txt",
+            ".md",
+            ".html",
+            ".htm",
+            ".css",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".json",
+            ".xml",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".py",
+            ".rb",
+            ".php",
+            ".java",
+            ".c",
+            ".cpp",
+            ".h",
+            ".hpp",
+            ".cs",
+            ".go",
+            ".rs",
+            ".swift",
+            ".kt",
+            ".scala",
+            ".sh",
+            ".bash",
+            ".zsh",
+            ".sql",
+            ".graphql",
+            ".env",
+            ".gitignore",
+            ".dockerfile",
+            "Dockerfile",
+            ".vue",
+            ".svelte",
+            ".astro",
+            ".mdx",
+            ".rst",
+            ".tex",
+            ".csv",
+            ".log",
         }
 
         try:
@@ -900,7 +1015,13 @@ class ClaudeCodeBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            response, files, session_id, sandbox_id = await self.execute_claude_code(
+            (
+                response,
+                files,
+                conversation_history,
+                session_id,
+                sandbox_id,
+            ) = await self.execute_claude_code(
                 e2b_api_key=e2b_credentials.api_key.get_secret_value(),
                 anthropic_api_key=anthropic_credentials.api_key.get_secret_value(),
                 prompt=input_data.prompt,
@@ -909,6 +1030,7 @@ class ClaudeCodeBlock(Block):
                 working_directory=input_data.working_directory,
                 session_id=input_data.session_id,
                 existing_sandbox_id=input_data.sandbox_id,
+                conversation_history=input_data.conversation_history,
                 dispose_sandbox=input_data.dispose_sandbox,
             )
 
@@ -916,6 +1038,8 @@ class ClaudeCodeBlock(Block):
             if files:
                 # Convert FileOutput objects to dicts for serialization
                 yield "files", [f.model_dump() for f in files]
+            # Always yield conversation_history so user can restore context on fresh sandbox
+            yield "conversation_history", conversation_history
             # Always yield session_id so user can continue conversation
             yield "session_id", session_id
             if not input_data.dispose_sandbox and sandbox_id:
