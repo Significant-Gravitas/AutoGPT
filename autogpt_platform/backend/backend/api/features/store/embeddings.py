@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIM = 1536
 
 
 def build_searchable_text(
