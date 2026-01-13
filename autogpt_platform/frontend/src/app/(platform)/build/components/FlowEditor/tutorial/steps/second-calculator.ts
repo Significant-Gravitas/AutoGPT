@@ -1,7 +1,3 @@
-/**
- * Second Calculator steps - adding and configuring the second Calculator block
- */
-
 import { StepOptions } from "shepherd.js";
 import {
   waitForNodesCount,
@@ -14,7 +10,6 @@ import {
 import { ICONS } from "../icons";
 import { banner } from "../styles";
 
-// Helper function to get the second calculator's form container selector
 const getSecondCalculatorFormSelector = (): string | HTMLElement => {
   const secondNode = getSecondCalculatorNode();
   if (secondNode) {
@@ -25,7 +20,6 @@ const getSecondCalculatorFormSelector = (): string | HTMLElement => {
     }
     return selector;
   }
-  // Fallback - get the second form container
   const formContainers = document.querySelectorAll(
     '[data-id^="form-creator-container-"]',
   );
@@ -35,7 +29,6 @@ const getSecondCalculatorFormSelector = (): string | HTMLElement => {
   return '[data-id^="form-creator-container-"]';
 };
 
-// Helper to generate the requirements HTML for second calculator
 const getSecondCalcRequirementsHtml = () => `
   <div id="second-calc-requirements-box" class="mt-3 p-3 bg-amber-50 ring-1 ring-amber-200 rounded-2xl">
     <p id="second-calc-requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
@@ -51,7 +44,6 @@ const getSecondCalcRequirementsHtml = () => `
   </div>
 `;
 
-// Helper to update requirements box to success state
 const updateSecondCalcToSuccessState = () => {
   const reqBox = document.querySelector("#second-calc-requirements-box");
   const reqTitle = document.querySelector("#second-calc-requirements-title");
@@ -69,7 +61,6 @@ const updateSecondCalcToSuccessState = () => {
   }
 };
 
-// Helper to update requirements box back to warning state
 const updateSecondCalcToWarningState = () => {
   const reqBox = document.querySelector("#second-calc-requirements-box");
   const reqTitle = document.querySelector("#second-calc-requirements-title");
@@ -87,11 +78,7 @@ const updateSecondCalcToWarningState = () => {
   }
 };
 
-/**
- * Creates the second calculator steps
- */
 export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
-  // Adding Second Calculator Block
   {
     id: "adding-second-calculator",
     title: "Adding Second Calculator",
@@ -120,7 +107,6 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     ],
   },
 
-  // Second Calculator Added
   {
     id: "second-calculator-added",
     title: "Second Calculator Added! ✅",
@@ -148,7 +134,6 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     ],
   },
 
-  // Configure Second Calculator
   {
     id: "configure-second-calculator",
     title: "Configure Second Calculator",
@@ -161,7 +146,6 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
     `,
     beforeShowPromise: async () => {
       fitViewToScreen();
-      // Wait for the second node to be available and its form container to render
       await new Promise<void>((resolve) => {
         const checkNode = () => {
           const secondNode = getSecondCalculatorNode();
@@ -194,7 +178,6 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
 
         let wasComplete = false;
 
-        // Start polling to update requirements UI
         const checkInterval = setInterval(() => {
           const secondNode = getSecondCalculatorNode();
           if (!secondNode) return;
@@ -211,14 +194,12 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
 
           const allComplete = hasB && hasOp;
 
-          // Update requirement icons
           const reqB = document.querySelector("#req2-b .req-icon");
           const reqOp = document.querySelector("#req2-op .req-icon");
 
           if (reqB) reqB.textContent = hasB ? "✓" : "○";
           if (reqOp) reqOp.textContent = hasOp ? "✓" : "○";
 
-          // Update styling for completed items
           const reqBEl = document.querySelector("#req2-b");
           const reqOpEl = document.querySelector("#req2-op");
 
@@ -231,7 +212,6 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
             reqOpEl.classList.toggle("text-amber-600", !hasOp);
           }
 
-          // Update box to success state when all complete
           if (allComplete && !wasComplete) {
             updateSecondCalcToSuccessState();
             wasComplete = true;
@@ -240,7 +220,6 @@ export const createSecondCalculatorSteps = (tour: any): StepOptions[] => [
             wasComplete = false;
           }
 
-          // Show/hide the next button based on completion
           const nextBtn = document.querySelector(
             ".shepherd-button-primary",
           ) as HTMLButtonElement;

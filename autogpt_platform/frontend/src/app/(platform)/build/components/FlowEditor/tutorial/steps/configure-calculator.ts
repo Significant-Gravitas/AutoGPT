@@ -1,8 +1,3 @@
-/**
- * Configure calculator step - Step 9
- * Enter values in calculator block
- */
-
 import { StepOptions } from "shepherd.js";
 import { TUTORIAL_SELECTORS } from "../constants";
 import {
@@ -14,7 +9,6 @@ import {
 import { ICONS } from "../icons";
 import { banner } from "../styles";
 
-// Helper to generate the requirements HTML
 const getRequirementsHtml = () => `
   <div id="requirements-box" class="mt-3 p-3 bg-amber-50 ring-1 ring-amber-200 rounded-2xl">
     <p id="requirements-title" class="text-sm font-medium text-amber-600 m-0 mb-2">⚠️ Required to continue:</p>
@@ -32,7 +26,6 @@ const getRequirementsHtml = () => `
   </div>
 `;
 
-// Helper to update requirements box to success state
 const updateToSuccessState = () => {
   const reqBox = document.querySelector("#requirements-box");
   const reqTitle = document.querySelector("#requirements-title");
@@ -50,7 +43,6 @@ const updateToSuccessState = () => {
   }
 };
 
-// Helper to update requirements box back to warning state
 const updateToWarningState = () => {
   const reqBox = document.querySelector("#requirements-box");
   const reqTitle = document.querySelector("#requirements-title");
@@ -68,11 +60,7 @@ const updateToWarningState = () => {
   }
 };
 
-/**
- * Creates the configure calculator step
- */
 export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
-  // STEP 9: Enter Values (Required)
   {
     id: "enter-values",
     title: "Enter Values",
@@ -100,7 +88,6 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
 
         let wasComplete = false;
 
-        // Start polling to update requirements UI and button visibility
         const checkInterval = setInterval(() => {
           const node = getFirstNode();
           if (!node) return;
@@ -121,7 +108,6 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
 
           const allComplete = hasA && hasB && hasOp;
 
-          // Update requirement icons
           const reqA = document.querySelector("#req-a .req-icon");
           const reqB = document.querySelector("#req-b .req-icon");
           const reqOp = document.querySelector("#req-op .req-icon");
@@ -130,7 +116,6 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
           if (reqB) reqB.textContent = hasB ? "✓" : "○";
           if (reqOp) reqOp.textContent = hasOp ? "✓" : "○";
 
-          // Update styling for completed items
           const reqAEl = document.querySelector("#req-a");
           const reqBEl = document.querySelector("#req-b");
           const reqOpEl = document.querySelector("#req-op");
@@ -148,7 +133,6 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
             reqOpEl.classList.toggle("text-amber-600", !hasOp);
           }
 
-          // Update box to success state when all complete
           if (allComplete && !wasComplete) {
             updateToSuccessState();
             wasComplete = true;
@@ -157,7 +141,6 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
             wasComplete = false;
           }
 
-          // Show/hide the next button based on completion
           const nextBtn = document.querySelector(
             ".shepherd-button-primary",
           ) as HTMLButtonElement;
@@ -167,7 +150,6 @@ export const createConfigureCalculatorSteps = (tour: any): StepOptions[] => [
           }
         }, 300);
 
-        // Store interval ID for cleanup
         (window as any).__tutorialCheckInterval = checkInterval;
       },
       hide: () => {

@@ -1,8 +1,3 @@
-/**
- * Block menu steps - Steps 2-5
- * Opening menu, overview, search, and select calculator
- */
-
 import { StepOptions } from "shepherd.js";
 import { TUTORIAL_CONFIG, TUTORIAL_SELECTORS, BLOCK_IDS } from "../constants";
 import {
@@ -20,11 +15,7 @@ import { ICONS } from "../icons";
 import { banner } from "../styles";
 import { useNodeStore } from "../../../../stores/nodeStore";
 
-/**
- * Creates the block menu steps
- */
 export const createBlockMenuSteps = (tour: any): StepOptions[] => [
-  // STEP 2: Open Block Menu
   {
     id: "open-block-menu",
     title: "Open the Block Menu",
@@ -53,7 +44,6 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     },
   },
 
-  // STEP 3: Block Menu Overview
   {
     id: "block-menu-overview",
     title: "The Block Menu",
@@ -87,7 +77,6 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     ],
   },
 
-  // STEP 4: Search for Calculator Block
   {
     id: "search-calculator",
     title: "Search for a Block",
@@ -118,7 +107,6 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
           if (calcBlock) {
             clearInterval(checkForCalculator);
 
-            // Blur the search input to prevent further typing
             const searchInput = document.querySelector(
               TUTORIAL_SELECTORS.BLOCKS_SEARCH_INPUT,
             ) as HTMLInputElement;
@@ -150,7 +138,6 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     buttons: [],
   },
 
-  // STEP 5: Select Calculator Block
   {
     id: "select-calculator",
     title: "Add the Calculator Block",
@@ -176,37 +163,27 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
     },
     when: {
       show: () => {
-        // Highlight any visible calculator block or the first block
         const calcBlock = document.querySelector(
           TUTORIAL_SELECTORS.BLOCK_CARD_CALCULATOR,
         );
         if (calcBlock) {
           disableOtherBlocks(TUTORIAL_SELECTORS.BLOCK_CARD_CALCULATOR);
         } else {
-          // Highlight first available block
           highlightFirstBlockInSearch();
         }
 
-        // Calculator block_id from constants
         const CALCULATOR_BLOCK_ID = BLOCK_IDS.CALCULATOR;
 
-        // Store initial node count to detect additions
         const initialNodeCount = useNodeStore.getState().nodes.length;
 
-        // Subscribe to node store changes
         const unsubscribe = useNodeStore.subscribe((state) => {
-          // Check if a new node was added
           if (state.nodes.length > initialNodeCount) {
-            // Find if a Calculator node was added
             const calculatorNode = state.nodes.find(
               (node) => node.data?.block_id === CALCULATOR_BLOCK_ID,
             );
 
             if (calculatorNode) {
-              // Unsubscribe to prevent multiple triggers
               unsubscribe();
-
-              // Clean up and close block menu
               enableAllBlocks();
               forceBlockMenuOpen(false);
               tour.next();
@@ -214,7 +191,6 @@ export const createBlockMenuSteps = (tour: any): StepOptions[] => [
           }
         });
 
-        // Store unsubscribe function on the step for cleanup in hide
         (tour.getCurrentStep() as any)._nodeUnsubscribe = unsubscribe;
       },
     },

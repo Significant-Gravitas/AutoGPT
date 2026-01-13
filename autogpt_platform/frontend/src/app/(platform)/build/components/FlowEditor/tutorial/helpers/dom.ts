@@ -1,12 +1,5 @@
-/**
- * DOM manipulation helpers for the tutorial
- */
-
 import { TUTORIAL_CONFIG, TUTORIAL_SELECTORS } from "../constants";
 
-/**
- * Waits for an element to appear in the DOM
- */
 export const waitForElement = (
   selector: string,
   timeout = 10000,
@@ -28,9 +21,6 @@ export const waitForElement = (
   });
 };
 
-/**
- * Waits for an input to contain a specific value (case-insensitive, partial match)
- */
 export const waitForInputValue = (
   selector: string,
   targetValue: string,
@@ -46,7 +36,6 @@ export const waitForInputValue = (
         const target = targetValue.toLowerCase().trim();
 
         if (currentValue.includes(target) || target.includes(currentValue)) {
-          // Check if user has typed enough characters (at least 4 chars or the full string)
           if (currentValue.length >= 4 || currentValue === target) {
             resolve();
             return;
@@ -55,7 +44,7 @@ export const waitForInputValue = (
       }
 
       if (Date.now() - startTime > timeout) {
-        resolve(); // Don't reject, just continue after timeout
+        resolve();
       } else {
         setTimeout(checkInput, TUTORIAL_CONFIG.INPUT_CHECK_INTERVAL);
       }
@@ -64,9 +53,6 @@ export const waitForInputValue = (
   });
 };
 
-/**
- * Waits for a specific element to appear in the search results
- */
 export const waitForSearchResult = (
   selector: string,
   timeout = 15000,
@@ -79,7 +65,7 @@ export const waitForSearchResult = (
       if (element) {
         resolve(element);
       } else if (Date.now() - startTime > timeout) {
-        resolve(null); // Don't reject, just return null
+        resolve(null);
       } else {
         setTimeout(checkResult, TUTORIAL_CONFIG.ELEMENT_CHECK_INTERVAL);
       }
@@ -88,9 +74,6 @@ export const waitForSearchResult = (
   });
 };
 
-/**
- * Waits for any block card to appear in the block menu
- */
 export const waitForAnyBlockCard = (
   timeout = 10000,
 ): Promise<Element | null> => {
@@ -113,9 +96,6 @@ export const waitForAnyBlockCard = (
   });
 };
 
-/**
- * Sets focus on an input element
- */
 export const focusElement = (selector: string): void => {
   const element = document.querySelector(selector) as HTMLElement;
   if (element) {
@@ -123,9 +103,6 @@ export const focusElement = (selector: string): void => {
   }
 };
 
-/**
- * Scrolls an element into view smoothly
- */
 export const scrollIntoView = (selector: string): void => {
   const element = document.querySelector(selector);
   if (element) {
@@ -136,9 +113,6 @@ export const scrollIntoView = (selector: string): void => {
   }
 };
 
-/**
- * Types text into an input element with event dispatch
- */
 export const typeIntoInput = (selector: string, text: string) => {
   const input = document.querySelector(selector) as HTMLInputElement;
   if (input) {
@@ -149,9 +123,6 @@ export const typeIntoInput = (selector: string, text: string) => {
   }
 };
 
-/**
- * Creates a mutation observer to watch for element appearance
- */
 export const observeElement = (
   selector: string,
   callback: (element: Element) => void,
@@ -169,7 +140,6 @@ export const observeElement = (
     subtree: true,
   });
 
-  // Also check immediately
   const element = document.querySelector(selector);
   if (element) {
     callback(element);
@@ -179,9 +149,6 @@ export const observeElement = (
   return observer;
 };
 
-/**
- * Watches for search input changes and calls callback when target is typed
- */
 export const watchSearchInput = (
   targetValue: string,
   onMatch: () => void,
@@ -199,7 +166,6 @@ export const watchSearchInput = (
     const currentValue = input.value.toLowerCase().trim();
     const target = targetValue.toLowerCase().trim();
 
-    // Match when user types at least 4 characters that match
     if (currentValue.length >= 4 && target.startsWith(currentValue)) {
       hasMatched = true;
       onMatch();

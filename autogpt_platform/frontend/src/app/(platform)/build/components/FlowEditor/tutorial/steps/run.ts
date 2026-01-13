@@ -1,7 +1,3 @@
-/**
- * Run steps - run the agent and show status transitions
- */
-
 import { StepOptions } from "shepherd.js";
 import { TUTORIAL_SELECTORS } from "../constants";
 import {
@@ -13,11 +9,7 @@ import {
 import { ICONS } from "../icons";
 import { banner } from "../styles";
 
-/**
- * Creates the run steps
- */
 export const createRunSteps = (tour: any): StepOptions[] => [
-  // Press Run
   {
     id: "press-run",
     title: "Run Your Agent",
@@ -51,7 +43,6 @@ export const createRunSteps = (tour: any): StepOptions[] => [
     buttons: [],
   },
 
-  // Show Output Location
   {
     id: "show-output",
     title: "View the Output",

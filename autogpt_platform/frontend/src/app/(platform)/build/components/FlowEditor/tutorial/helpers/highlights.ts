@@ -1,12 +1,5 @@
-/**
- * Highlight and animation helpers for the tutorial
- */
-
 import { CSS_CLASSES, TUTORIAL_SELECTORS } from "../constants";
 
-/**
- * Disables all blocks except the target block
- */
 export const disableOtherBlocks = (targetBlockSelector: string) => {
   document
     .querySelectorAll(TUTORIAL_SELECTORS.BLOCK_CARD_PREFIX)
@@ -17,9 +10,6 @@ export const disableOtherBlocks = (targetBlockSelector: string) => {
     });
 };
 
-/**
- * Enables all blocks (removes disable and highlight classes)
- */
 export const enableAllBlocks = () => {
   document
     .querySelectorAll(TUTORIAL_SELECTORS.BLOCK_CARD_PREFIX)
@@ -32,9 +22,6 @@ export const enableAllBlocks = () => {
     });
 };
 
-/**
- * Adds highlight class to an element
- */
 export const highlightElement = (selector: string) => {
   const element = document.querySelector(selector);
   if (element) {
@@ -42,9 +29,6 @@ export const highlightElement = (selector: string) => {
   }
 };
 
-/**
- * Removes highlight from all elements
- */
 export const removeAllHighlights = () => {
   document.querySelectorAll(`.${CSS_CLASSES.HIGHLIGHT}`).forEach((el) => {
     el.classList.remove(CSS_CLASSES.HIGHLIGHT);
@@ -54,9 +38,6 @@ export const removeAllHighlights = () => {
   });
 };
 
-/**
- * Adds pulse animation to an element
- */
 export const pulseElement = (selector: string) => {
   const element = document.querySelector(selector);
   if (element) {
@@ -64,16 +45,12 @@ export const pulseElement = (selector: string) => {
   }
 };
 
-/**
- * Highlights the first matching block in search results
- */
 export const highlightFirstBlockInSearch = () => {
   const firstBlock = document.querySelector(
     TUTORIAL_SELECTORS.BLOCK_CARD_PREFIX,
   );
   if (firstBlock) {
     firstBlock.classList.add(CSS_CLASSES.PULSE);
-    // Scroll it into view
     firstBlock.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 };

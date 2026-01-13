@@ -1,8 +1,3 @@
-/**
- * Tutorial helpers - re-exports all helper modules
- */
-
-// DOM helpers
 export {
   waitForElement,
   waitForInputValue,
@@ -15,7 +10,6 @@ export {
   watchSearchInput,
 } from "./dom";
 
-// Highlight helpers
 export {
   disableOtherBlocks,
   enableAllBlocks,
@@ -25,7 +19,6 @@ export {
   highlightFirstBlockInSearch,
 } from "./highlights";
 
-// Block helpers
 export {
   prefetchTutorialBlocks,
   getPrefetchedBlock,
@@ -39,7 +32,6 @@ export {
   getFormContainerElement,
 } from "./blocks";
 
-// Canvas helpers
 export {
   waitForNodeOnCanvas,
   waitForNodesCount,
@@ -50,10 +42,8 @@ export {
   fitViewToScreen,
 } from "./canvas";
 
-// Connection helpers
 export { isConnectionMade } from "./connections";
 
-// Menu helpers
 export {
   forceBlockMenuOpen,
   openBlockMenu,
@@ -61,7 +51,6 @@ export {
   clearBlockMenuSearch,
 } from "./menu";
 
-// Save helpers
 export {
   openSaveControl,
   closeSaveControl,
@@ -70,7 +59,6 @@ export {
   isAgentSaved,
 } from "./save";
 
-// State helpers
 export {
   handleTutorialCancel,
   handleTutorialSkip,

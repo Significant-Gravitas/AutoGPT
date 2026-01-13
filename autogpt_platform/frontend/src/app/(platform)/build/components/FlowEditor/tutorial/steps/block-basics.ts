@@ -1,8 +1,3 @@
-/**
- * Block basics steps - Steps 6-8
- * Understanding blocks, input handles, output handles
- */
-
 import { StepOptions } from "shepherd.js";
 import { TUTORIAL_SELECTORS } from "../constants";
 import {
@@ -16,11 +11,7 @@ import {
 import { ICONS } from "../icons";
 import { banner } from "../styles";
 
-/**
- * Creates the block basics steps
- */
 export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
-  // STEP 6: Focus on New Block
   {
     id: "focus-new-block",
     title: "Your First Block!",
@@ -59,7 +50,6 @@ export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
     ],
   },
 
-  // STEP 7: Input Handles
   {
     id: "input-handles",
     title: "Input Handles",
@@ -91,7 +81,6 @@ export const createBlockBasicsSteps = (tour: any): StepOptions[] => [
     ],
   },
 
-  // STEP 8: Output Handles
   {
     id: "output-handles",
     title: "Output Handles",

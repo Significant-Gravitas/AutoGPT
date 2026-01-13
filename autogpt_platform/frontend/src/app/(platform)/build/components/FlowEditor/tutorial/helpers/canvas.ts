@@ -1,13 +1,6 @@
-/**
- * Canvas-related helpers for the tutorial
- */
-
 import { TUTORIAL_CONFIG, TUTORIAL_SELECTORS } from "../constants";
 import { useNodeStore } from "../../../../stores/nodeStore";
 
-/**
- * Waits for a node to appear on the canvas using nodeStore
- */
 export const waitForNodeOnCanvas = (
   timeout = 10000,
 ): Promise<Element | null> => {
@@ -15,10 +8,8 @@ export const waitForNodeOnCanvas = (
     const startTime = Date.now();
 
     const checkNode = () => {
-      // First check nodeStore
       const storeNodes = useNodeStore.getState().nodes;
       if (storeNodes.length > 0) {
-        // Node exists in store, now wait for DOM element
         const domNode = document.querySelector(
           TUTORIAL_SELECTORS.REACT_FLOW_NODE,
         );
@@ -38,9 +29,6 @@ export const waitForNodeOnCanvas = (
   });
 };
 
-/**
- * Waits for a specific number of nodes on canvas
- */
 export const waitForNodesCount = (
   count: number,
   timeout = 10000,
@@ -62,32 +50,20 @@ export const waitForNodesCount = (
   });
 };
 
-/**
- * Gets the count of nodes on canvas from nodeStore
- */
 export const getNodesCount = (): number => {
   return useNodeStore.getState().nodes.length;
 };
 
-/**
- * Gets the first node from nodeStore
- */
 export const getFirstNode = () => {
   const nodes = useNodeStore.getState().nodes;
   return nodes.length > 0 ? nodes[0] : null;
 };
 
-/**
- * Gets a node by ID from nodeStore
- */
 export const getNodeById = (nodeId: string) => {
   const nodes = useNodeStore.getState().nodes;
   return nodes.find((n) => n.id === nodeId);
 };
 
-/**
- * Checks if a node has hardcoded values set
- */
 export const nodeHasValues = (nodeId: string): boolean => {
   const node = getNodeById(nodeId);
   if (!node) return false;
@@ -97,9 +73,6 @@ export const nodeHasValues = (nodeId: string): boolean => {
   );
 };
 
-/**
- * Triggers the fit view button to center the canvas
- */
 export const fitViewToScreen = () => {
   const fitViewButton = document.querySelector(
     TUTORIAL_SELECTORS.FIT_VIEW_BUTTON,

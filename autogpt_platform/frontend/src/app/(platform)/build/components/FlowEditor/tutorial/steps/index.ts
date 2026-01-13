@@ -16,7 +16,7 @@ export const createTutorialSteps = (tour: any): StepOptions[] => [
   ...createConfigureCalculatorSteps(tour),
   ...createSecondCalculatorSteps(tour),
   ...createConnectionSteps(tour),
-  ...createSaveSteps(tour),
+  ...createSaveSteps(),
   ...createRunSteps(tour),
   ...createCompletionSteps(tour),
 ];

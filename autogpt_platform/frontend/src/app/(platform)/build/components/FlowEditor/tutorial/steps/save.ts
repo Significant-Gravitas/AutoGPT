@@ -8,7 +8,7 @@ import {
 } from "../helpers";
 import { ICONS } from "../icons";
 import { banner } from "../styles";
-export const createSaveSteps = (tour: any): StepOptions[] => [
+export const createSaveSteps = (): StepOptions[] => [
   {
     id: "open-save",
     title: "Save Your Agent",

@@ -1,13 +1,6 @@
-/**
- * Welcome step - Step 1
- */
-
 import { StepOptions } from "shepherd.js";
 import { handleTutorialSkip } from "../helpers";
 
-/**
- * Creates the welcome step
- */
 export const createWelcomeSteps = (tour: any): StepOptions[] => [
   {
     id: "welcome",

@@ -1,13 +1,6 @@
-/**
- * Connection-related helpers for the tutorial
- */
-
 import { useNodeStore } from "../../../../stores/nodeStore";
 import { useEdgeStore } from "../../../../stores/edgeStore";
 
-/**
- * Checks if a specific connection exists between two nodes
- */
 export const isConnectionMade = (
   sourceBlockId: string,
   targetBlockId: string,
