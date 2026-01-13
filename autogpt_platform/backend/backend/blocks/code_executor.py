@@ -611,13 +611,35 @@ class ClaudeCodeBlock(Block):
             advanced=True,
         )
 
+        # Session/continuation support
+        session_id: str = SchemaField(
+            description=(
+                "Session ID to resume a previous conversation. "
+                "Leave empty for a new conversation. "
+                "Use the session_id from a previous run to continue that conversation."
+            ),
+            default="",
+            advanced=False,
+        )
+
+        sandbox_id: str = SchemaField(
+            description=(
+                "Sandbox ID to reconnect to an existing sandbox. "
+                "Required when resuming a session (along with session_id). "
+                "Use the sandbox_id from a previous run where dispose_sandbox was False."
+            ),
+            default="",
+            advanced=False,
+        )
+
         dispose_sandbox: bool = SchemaField(
             description=(
                 "Whether to dispose of the sandbox immediately after execution. "
-                "If disabled, the sandbox will run until its timeout expires."
+                "Set to False if you want to continue the conversation later "
+                "(you'll need both sandbox_id and session_id from the output)."
             ),
             default=True,
-            advanced=True,
+            advanced=False,
         )
 
     class FileOutput(BaseModel):
@@ -637,8 +659,18 @@ class ClaudeCodeBlock(Block):
                 "Each file has 'path', 'name', and 'content' fields."
             )
         )
+        session_id: str = SchemaField(
+            description=(
+                "Session ID for this conversation. "
+                "Pass this back along with sandbox_id to continue the conversation."
+            )
+        )
         sandbox_id: str = SchemaField(
-            description="ID of the sandbox instance (if not disposed)"
+            description=(
+                "ID of the sandbox instance. "
+                "Pass this back along with session_id to continue the conversation "
+                "(only available if dispose_sandbox was False)."
+            )
         )
 
     def __init__(self):
@@ -663,6 +695,8 @@ class ClaudeCodeBlock(Block):
                 "timeout": 300,
                 "setup_commands": [],
                 "working_directory": "/home/user",
+                "session_id": "",
+                "sandbox_id": "",
                 "dispose_sandbox": True,
             },
             test_output=[
@@ -677,6 +711,7 @@ class ClaudeCodeBlock(Block):
                         }
                     ],
                 ),
+                ("session_id", str),
             ],
             test_mock={
                 "execute_claude_code": lambda *args, **kwargs: (
@@ -688,6 +723,7 @@ class ClaudeCodeBlock(Block):
                             content="<html>Hello World</html>",
                         )
                     ],  # files
+                    "test-session-id",  # session_id
                     "sandbox_id",  # sandbox_id
                 ),
             },
@@ -701,46 +737,69 @@ class ClaudeCodeBlock(Block):
         timeout: int,
         setup_commands: list[str],
         working_directory: str,
+        session_id: str,
+        existing_sandbox_id: str,
         dispose_sandbox: bool,
-    ) -> tuple[str, list["ClaudeCodeBlock.FileOutput"], str]:
+    ) -> tuple[str, list["ClaudeCodeBlock.FileOutput"], str, str]:
         """
         Execute Claude Code in an E2B sandbox.
 
         Returns:
-            Tuple of (response, files, sandbox_id)
+            Tuple of (response, files, session_id, sandbox_id)
         """
-        sandbox = None
-        try:
-            # Create sandbox with base template
-            sandbox = await BaseAsyncSandbox.create(
-                template=self.DEFAULT_TEMPLATE,
-                api_key=e2b_api_key,
-                timeout=timeout,
-                envs={"ANTHROPIC_API_KEY": anthropic_api_key},
-            )
+        import uuid
 
-            # Install Claude Code from npm (ensures we get the latest version)
-            install_result = await sandbox.commands.run(
-                "npm install -g @anthropic-ai/claude-code@latest",
-                timeout=120,  # 2 min timeout for install
-            )
-            if install_result.exit_code != 0:
-                raise Exception(
-                    f"Failed to install Claude Code: {install_result.stderr}"
+        sandbox = None
+
+        try:
+            # Either reconnect to existing sandbox or create a new one
+            if existing_sandbox_id:
+                # Reconnect to existing sandbox for conversation continuation
+                sandbox = await BaseAsyncSandbox.connect(
+                    sandbox_id=existing_sandbox_id,
+                    api_key=e2b_api_key,
+                )
+            else:
+                # Create new sandbox
+                sandbox = await BaseAsyncSandbox.create(
+                    template=self.DEFAULT_TEMPLATE,
+                    api_key=e2b_api_key,
+                    timeout=timeout,
+                    envs={"ANTHROPIC_API_KEY": anthropic_api_key},
                 )
 
-            # Run any user-provided setup commands
-            for cmd in setup_commands:
-                await sandbox.commands.run(cmd)
+                # Install Claude Code from npm (ensures we get the latest version)
+                install_result = await sandbox.commands.run(
+                    "npm install -g @anthropic-ai/claude-code@latest",
+                    timeout=120,  # 2 min timeout for install
+                )
+                if install_result.exit_code != 0:
+                    raise Exception(
+                        f"Failed to install Claude Code: {install_result.stderr}"
+                    )
 
-            # Change to working directory and execute Claude Code
-            # Using -p flag for print mode (non-interactive)
-            # Using --dangerously-skip-permissions to skip permission prompts
-            claude_command = (
-                f"cd {working_directory} && "
-                f"echo {self._escape_prompt(prompt)} | "
-                f"claude -p --dangerously-skip-permissions"
-            )
+                # Run any user-provided setup commands
+                for cmd in setup_commands:
+                    await sandbox.commands.run(cmd)
+
+            # Generate or use provided session ID
+            current_session_id = session_id if session_id else str(uuid.uuid4())
+
+            # Build Claude command based on whether we're resuming or starting new
+            if session_id:
+                # Resuming existing session
+                claude_command = (
+                    f"cd {working_directory} && "
+                    f"echo {self._escape_prompt(prompt)} | "
+                    f"claude --resume {session_id} -p --dangerously-skip-permissions"
+                )
+            else:
+                # New session with specific ID
+                claude_command = (
+                    f"cd {working_directory} && "
+                    f"echo {self._escape_prompt(prompt)} | "
+                    f"claude --session-id {current_session_id} -p --dangerously-skip-permissions"
+                )
 
             result = await sandbox.commands.run(
                 claude_command,
@@ -753,7 +812,7 @@ class ClaudeCodeBlock(Block):
             # Extract files from the working directory
             files = await self._extract_files(sandbox, working_directory)
 
-            return response, files, sandbox_id
+            return response, files, current_session_id, sandbox_id
 
         finally:
             if dispose_sandbox and sandbox:
@@ -841,13 +900,15 @@ class ClaudeCodeBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            response, files, sandbox_id = await self.execute_claude_code(
+            response, files, session_id, sandbox_id = await self.execute_claude_code(
                 e2b_api_key=e2b_credentials.api_key.get_secret_value(),
                 anthropic_api_key=anthropic_credentials.api_key.get_secret_value(),
                 prompt=input_data.prompt,
                 timeout=input_data.timeout,
                 setup_commands=input_data.setup_commands,
                 working_directory=input_data.working_directory,
+                session_id=input_data.session_id,
+                existing_sandbox_id=input_data.sandbox_id,
                 dispose_sandbox=input_data.dispose_sandbox,
             )
 
@@ -855,6 +916,8 @@ class ClaudeCodeBlock(Block):
             if files:
                 # Convert FileOutput objects to dicts for serialization
                 yield "files", [f.model_dump() for f in files]
+            # Always yield session_id so user can continue conversation
+            yield "session_id", session_id
             if not input_data.dispose_sandbox and sandbox_id:
                 yield "sandbox_id", sandbox_id
 
