@@ -245,6 +245,13 @@ DEFAULT_CREDENTIALS = [
     webshare_proxy_credentials,
 ]
 
+SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
+
+
+def is_system_credential(credential_id: str) -> bool:
+    """Check if a credential ID belongs to a system-managed credential."""
+    return credential_id in SYSTEM_CREDENTIAL_IDS
+
 
 class IntegrationCredentialsStore:
     def __init__(self):

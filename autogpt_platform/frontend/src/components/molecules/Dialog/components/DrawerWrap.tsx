@@ -49,7 +49,12 @@ export function DrawerWrap({
         >
           {title ? (
             <Drawer.Title className={drawerStyles.title}>{title}</Drawer.Title>
-          ) : null}
+          ) : (
+            <span className="sr-only">
+              {/* Title is required for a11y compliance even if not displayed so screen readers can announce it */}
+              <Drawer.Title>{title}</Drawer.Title>
+            </span>
+          )}
 
           {!isForceOpen ? (
             title ? (

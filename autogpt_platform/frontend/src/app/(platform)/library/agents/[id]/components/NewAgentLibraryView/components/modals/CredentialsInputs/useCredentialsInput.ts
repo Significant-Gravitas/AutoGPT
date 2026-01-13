@@ -8,6 +8,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
+  filterSystemCredentials,
   getActionButtonText,
   OAUTH_TIMEOUT_MS,
   OAuthPopupResultMessage,
@@ -82,9 +83,10 @@ export function useCredentialsInput({
   useEffect(() => {
     if (readOnly) return;
     if (!credentials || !("savedCredentials" in credentials)) return;
+    const filtered = filterSystemCredentials(credentials.savedCredentials);
     if (
       selectedCredential &&
-      !credentials.savedCredentials.some((c) => c.id === selectedCredential.id)
+      !filtered.some((c) => c.id === selectedCredential.id)
     ) {
       onSelectCredential(undefined);
     }
@@ -96,9 +98,8 @@ export function useCredentialsInput({
       return null;
     }
 
-    return credentials.savedCredentials.length === 1
-      ? credentials.savedCredentials[0]
-      : null;
+    const filtered = filterSystemCredentials(credentials.savedCredentials);
+    return filtered.length === 1 ? filtered[0] : null;
   }, [credentials]);
 
   // Auto-select the one available credential (only if not optional)
@@ -136,6 +137,8 @@ export function useCredentialsInput({
     savedCredentials,
     oAuthCallback,
   } = credentials;
+
+  const filteredCredentials = filterSystemCredentials(savedCredentials);
 
   async function handleOAuthLogin() {
     setOAuthError(null);
@@ -291,7 +294,7 @@ export function useCredentialsInput({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
-    credentialsToShow: savedCredentials,
+    credentialsToShow: filteredCredentials,
     selectedCredential,
     oAuthError,
     isAPICredentialsModalOpen,
@@ -306,7 +309,7 @@ export function useCredentialsInput({
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
-      savedCredentials.length > 0,
+      filteredCredentials.length > 0,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,

@@ -108,6 +108,9 @@ class CredentialsMetaResponse(BaseModel):
     host: str | None = Field(
         default=None, description="Host pattern for host-scoped credentials"
     )
+    is_system: bool = Field(
+        default=False, description="Whether this is a system-managed credential"
+    )
 
 
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
@@ -175,6 +178,8 @@ async def callback(
         f"Successfully processed OAuth callback for user {user_id} "
         f"and provider {provider.value}"
     )
+    from backend.integrations.credentials_store import is_system_credential
+
     return CredentialsMetaResponse(
         id=credentials.id,
         provider=credentials.provider,
@@ -185,6 +190,7 @@ async def callback(
         host=(
             credentials.host if isinstance(credentials, HostScopedCredentials) else None
         ),
+        is_system=is_system_credential(credentials.id),
     )
 
 
@@ -192,6 +198,8 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    from backend.integrations.credentials_store import is_system_credential
+
     credentials = await creds_manager.store.get_all_creds(user_id)
     return [
         CredentialsMetaResponse(
@@ -202,6 +210,7 @@ async def list_credentials(
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
             host=cred.host if isinstance(cred, HostScopedCredentials) else None,
+            is_system=is_system_credential(cred.id),
         )
         for cred in credentials
     ]
@@ -214,6 +223,8 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    from backend.integrations.credentials_store import is_system_credential
+
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
     return [
         CredentialsMetaResponse(
@@ -224,6 +235,7 @@ async def list_credentials_by_provider(
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
             host=cred.host if isinstance(cred, HostScopedCredentials) else None,
+            is_system=is_system_credential(cred.id),
         )
         for cred in credentials
     ]
