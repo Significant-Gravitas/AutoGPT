@@ -59,8 +59,6 @@ export const AnyOfFieldTitle = (props: customFieldProps) => {
     state.getInputTypeMismatch(nodeId, cleanUpHandleId(uiOptions.handleId)),
   );
 
-  console.log("inputMismatch", inputMismatch);
-
   return (
     <div className="flex items-center gap-2">
       <TitleFieldTemplate

@@ -82,7 +82,6 @@ export const RunInputDialog = ({
                   </Text>
                 </div>
                 <FormRenderer
-                  className="mt-4 px-2"
                   jsonSchema={inputSchema as RJSFSchema}
                   handleChange={(v) => handleInputChange(v.formData)}
                   uiSchema={uiSchema}

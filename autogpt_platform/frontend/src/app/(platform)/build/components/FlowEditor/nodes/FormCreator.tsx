@@ -45,7 +45,6 @@ export const FormCreator: React.FC<FormCreatorProps> = React.memo(
 
     return (
       <FormRenderer
-        className={className}
         jsonSchema={jsonSchema}
         handleChange={handleChange}
         uiSchema={uiSchema}
