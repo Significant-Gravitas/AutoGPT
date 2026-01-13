@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 import uuid
 from enum import Enum
 from typing import Optional
@@ -23,10 +24,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
-from backend.api.features.store.embeddings import (
-    backfill_missing_embeddings,
-    get_embedding_stats,
-)
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.block import BlockInput
 from backend.data.execution import GraphExecutionWithNodes
@@ -41,7 +38,7 @@ from backend.monitoring import (
     report_execution_accuracy_alerts,
     report_late_executions,
 )
-from backend.util.clients import get_scheduler_client
+from backend.util.clients import get_database_manager_client, get_scheduler_client
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
     GraphNotFoundError,
@@ -270,58 +267,53 @@ def ensure_embeddings_coverage():
     - Batch size 10: gradual processing to avoid rate limits
     - Manual trigger available via execute_ensure_embeddings_coverage endpoint
     """
+    db_client = get_database_manager_client()
+    stats = db_client.get_embedding_stats()
 
-    async def _ensure():
-        import asyncio
-
-        stats = await get_embedding_stats()
-
-        # Check for error from get_embedding_stats() first
-        if "error" in stats:
-            logger.error(
-                f"Failed to get embedding stats: {stats['error']} - skipping backfill"
-            )
-            return {"processed": 0, "success": 0, "failed": 0, "error": stats["error"]}
-
-        if stats["without_embeddings"] == 0:
-            logger.info("All approved agents have embeddings, skipping backfill")
-            return {"processed": 0, "success": 0, "failed": 0}
-
-        logger.info(
-            f"Found {stats['without_embeddings']} agents without embeddings "
-            f"({stats['coverage_percent']}% coverage) - processing all"
+    # Check for error from get_embedding_stats() first
+    if "error" in stats:
+        logger.error(
+            f"Failed to get embedding stats: {stats['error']} - skipping backfill"
         )
+        return {"processed": 0, "success": 0, "failed": 0, "error": stats["error"]}
 
-        total_processed = 0
-        total_success = 0
-        total_failed = 0
+    if stats["without_embeddings"] == 0:
+        logger.info("All approved agents have embeddings, skipping backfill")
+        return {"processed": 0, "success": 0, "failed": 0}
 
-        # Process in batches until no more missing embeddings
-        while True:
-            result = await backfill_missing_embeddings(batch_size=10)
+    logger.info(
+        f"Found {stats['without_embeddings']} agents without embeddings "
+        f"({stats['coverage_percent']}% coverage) - processing all"
+    )
 
-            total_processed += result["processed"]
-            total_success += result["success"]
-            total_failed += result["failed"]
+    total_processed = 0
+    total_success = 0
+    total_failed = 0
 
-            if result["processed"] == 0:
-                # No more missing embeddings
-                break
+    # Process in batches until no more missing embeddings
+    while True:
+        result = db_client.backfill_missing_embeddings(batch_size=10)
 
-            # Small delay between batches to avoid rate limits
-            await asyncio.sleep(1)
+        total_processed += result["processed"]
+        total_success += result["success"]
+        total_failed += result["failed"]
 
-        logger.info(
-            f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
-            f"{total_failed} failed"
-        )
-        return {
-            "processed": total_processed,
-            "success": total_success,
-            "failed": total_failed,
-        }
+        if result["processed"] == 0:
+            # No more missing embeddings
+            break
 
-    return run_async(_ensure())
+        # Small delay between batches to avoid rate limits
+        time.sleep(1)
+
+    logger.info(
+        f"Embedding backfill completed: {total_success}/{total_processed} succeeded, "
+        f"{total_failed} failed"
+    )
+    return {
+        "processed": total_processed,
+        "success": total_success,
+        "failed": total_failed,
+    }
 
 
 # Monitoring functions are now imported from monitoring module
