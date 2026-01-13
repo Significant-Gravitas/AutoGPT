@@ -39,9 +39,13 @@ if POOL_TIMEOUT:
     DATABASE_URL = add_param(DATABASE_URL, "pool_timeout", POOL_TIMEOUT)
 
 # Add public schema to search_path for pgvector type access
-# The vector extension is in public schema, but search_path is set to platform only via schema parameter
+# The vector extension is in public schema, but search_path is determined by schema parameter
+# Extract the schema from DATABASE_URL or default to 'platform'
+parsed_url = urlparse(DATABASE_URL)
+url_params = dict(parse_qsl(parsed_url.query))
+db_schema = url_params.get("schema", "platform")
 # This allows using ::vector without schema qualification
-DATABASE_URL = add_param(DATABASE_URL, "options", "-c search_path=platform,public")
+DATABASE_URL = add_param(DATABASE_URL, "options", f"-c search_path={db_schema},public")
 
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
