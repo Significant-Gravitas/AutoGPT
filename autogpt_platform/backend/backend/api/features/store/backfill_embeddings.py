@@ -11,21 +11,18 @@ import asyncio
 import logging
 import sys
 
-import prisma
-
 from backend.api.features.store.embeddings import (
     backfill_missing_embeddings,
     get_embedding_stats,
 )
+from backend.data import db
 
 logger = logging.getLogger(__name__)
 
 
 async def main(batch_size: int = 100) -> int:
     """Run the backfill process - processes ALL missing embeddings in batches."""
-    client = prisma.Prisma()
-    await client.connect()
-    prisma.register(client)
+    await db.connect()
 
     try:
         stats = await get_embedding_stats()
@@ -82,7 +79,7 @@ async def main(batch_size: int = 100) -> int:
         return 0 if total_failed == 0 else 1
 
     finally:
-        await client.disconnect()
+        await db.disconnect()
 
 
 if __name__ == "__main__":
