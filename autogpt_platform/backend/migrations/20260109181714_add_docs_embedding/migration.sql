@@ -1,7 +1,7 @@
--- CreateExtension in platform schema (avoids search_path issues with Prisma)
--- Note: Platform schema is configured via DATABASE_URL schema parameter
-CREATE SCHEMA IF NOT EXISTS "platform";
-CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "platform";
+-- CreateExtension
+-- Create pgvector extension in the current schema (determined by DATABASE_URL schema parameter)
+-- This works with both "public" (CI/default) and "platform" (production) schemas
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- CreateEnum
 CREATE TYPE "ContentType" AS ENUM ('STORE_AGENT', 'BLOCK', 'INTEGRATION', 'DOCUMENTATION', 'LIBRARY_AGENT');

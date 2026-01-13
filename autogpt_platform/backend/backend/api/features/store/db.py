@@ -63,64 +63,44 @@ async def get_store_agents(
     total_pages = 0
 
     try:
-        # If search_query is provided, try hybrid search (embeddings + tsvector)
+        # If search_query is provided, use hybrid search (embeddings + tsvector)
         if search_query:
-            try:
-                # Use hybrid search combining semantic and lexical signals
-                agents, total = await hybrid_search(
-                    query=search_query,
-                    featured=featured,
-                    creators=creators,
-                    category=category,
-                    sorted_by="relevance",  # Use hybrid scoring for relevance
-                    page=page,
-                    page_size=page_size,
-                )
-                search_used_hybrid = True
+            # Use hybrid search combining semantic and lexical signals
+            agents, total = await hybrid_search(
+                query=search_query,
+                featured=featured,
+                creators=creators,
+                category=category,
+                sorted_by="relevance",  # Use hybrid scoring for relevance
+                page=page,
+                page_size=page_size,
+            )
+            search_used_hybrid = True
 
-                # Convert hybrid search results (dict format)
-                total_pages = (total + page_size - 1) // page_size
-                store_agents: list[store_model.StoreAgent] = []
-                for agent in agents:
-                    try:
-                        store_agent = store_model.StoreAgent(
-                            slug=agent["slug"],
-                            agent_name=agent["agent_name"],
-                            agent_image=(
-                                agent["agent_image"][0] if agent["agent_image"] else ""
-                            ),
-                            creator=agent["creator_username"] or "Needs Profile",
-                            creator_avatar=agent["creator_avatar"] or "",
-                            sub_heading=agent["sub_heading"],
-                            description=agent["description"],
-                            runs=agent["runs"],
-                            rating=agent["rating"],
-                        )
-                        store_agents.append(store_agent)
-                    except Exception as e:
-                        logger.error(
-                            f"Error parsing Store agent from hybrid search results: {e}"
-                        )
-                        continue
-
-            except Exception as hybrid_error:
-                # Hybrid search failure is critical - embeddings should always be available
-                logger.error(
-                    f"Hybrid search failed unexpectedly: {hybrid_error}",
-                    exc_info=True,
-                    extra={
-                        "query": search_query,
-                        "featured": featured,
-                        "creators": creators,
-                        "category": category,
-                    },
-                )
-                # Re-raise the error instead of silent fallback
-                # This ensures we catch issues in production rather than degrading silently
-                raise fastapi.HTTPException(
-                    status_code=500,
-                    detail="Search service temporarily unavailable. Please try again.",
-                ) from hybrid_error
+            # Convert hybrid search results (dict format)
+            total_pages = (total + page_size - 1) // page_size
+            store_agents: list[store_model.StoreAgent] = []
+            for agent in agents:
+                try:
+                    store_agent = store_model.StoreAgent(
+                        slug=agent["slug"],
+                        agent_name=agent["agent_name"],
+                        agent_image=(
+                            agent["agent_image"][0] if agent["agent_image"] else ""
+                        ),
+                        creator=agent["creator_username"] or "Needs Profile",
+                        creator_avatar=agent["creator_avatar"] or "",
+                        sub_heading=agent["sub_heading"],
+                        description=agent["description"],
+                        runs=agent["runs"],
+                        rating=agent["rating"],
+                    )
+                    store_agents.append(store_agent)
+                except Exception as e:
+                    logger.error(
+                        f"Error parsing Store agent from hybrid search results: {e}"
+                    )
+                    continue
 
         if not search_used_hybrid:
             # Fallback path - use basic search or no search
