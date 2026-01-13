@@ -1,7 +1,7 @@
 -- CreateExtension
--- Create pgvector extension in the current schema (determined by DATABASE_URL schema parameter)
--- This works with both "public" (CI/default) and "platform" (production) schemas
-CREATE EXTENSION IF NOT EXISTS "vector";
+-- Create pgvector extension in public schema (required for Supabase)
+-- The vector type will be accessible from all schemas including platform
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 
 -- CreateEnum
 CREATE TYPE "ContentType" AS ENUM ('STORE_AGENT', 'BLOCK', 'INTEGRATION', 'DOCUMENTATION', 'LIBRARY_AGENT');
@@ -14,7 +14,7 @@ CREATE TABLE "UnifiedContentEmbedding" (
     "contentType" "ContentType" NOT NULL,
     "contentId" TEXT NOT NULL,
     "userId" TEXT,
-    "embedding" vector(1536) NOT NULL,
+    "embedding" public.vector(1536) NOT NULL,
     "searchableText" TEXT NOT NULL,
     "metadata" JSONB NOT NULL DEFAULT '{}',
 
@@ -38,4 +38,4 @@ CREATE UNIQUE INDEX "UnifiedContentEmbedding_contentType_contentId_userId_key" O
 -- CreateIndex
 -- HNSW index for fast vector similarity search on embeddings
 -- Uses cosine distance operator (<=>), which matches the query in hybrid_search.py
-CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" vector_cosine_ops);
+CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" public.vector_cosine_ops);
