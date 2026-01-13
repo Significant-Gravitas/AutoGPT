@@ -8,16 +8,14 @@ Handles generation and storage of OpenAI embeddings for all content types
 import asyncio
 import logging
 import time
-from functools import cache
 from typing import Any
 
 import prisma
-from openai import AsyncOpenAI
 from prisma.enums import ContentType
 
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
+from backend.util.clients import get_openai_client
 from backend.util.json import dumps
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +23,6 @@ logger = logging.getLogger(__name__)
 # OpenAI embedding model configuration
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM = 1536
-
-
-@cache
-def get_openai_client() -> AsyncOpenAI | None:
-    """
-    Get or create a singleton async OpenAI client for connection reuse.
-
-    Returns None if API key is not configured.
-    """
-    settings = Settings()
-    api_key = settings.secrets.openai_internal_api_key
-    if not api_key:
-        return None
-    return AsyncOpenAI(api_key=api_key)
 
 
 def build_searchable_text(
