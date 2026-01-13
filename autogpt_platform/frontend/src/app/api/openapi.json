@@ -7092,14 +7092,16 @@
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Started At"
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Ended At"
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7133,8 +7135,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs"
         ],
@@ -7237,14 +7237,16 @@
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Started At"
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Ended At"
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7273,8 +7275,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats"
         ],
         "title": "GraphExecutionMeta"
@@ -7325,14 +7325,16 @@
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Started At"
+            "title": "Started At",
+            "description": "When execution started running. Null if not yet started (QUEUED)."
           },
           "ended_at": {
             "anyOf": [
               { "type": "string", "format": "date-time" },
               { "type": "null" }
             ],
-            "title": "Ended At"
+            "title": "Ended At",
+            "description": "When execution finished. Null if not yet completed (QUEUED, RUNNING, INCOMPLETE, REVIEW)."
           },
           "is_shared": {
             "type": "boolean",
@@ -7371,8 +7373,6 @@
           "nodes_input_masks",
           "preset_id",
           "status",
-          "started_at",
-          "ended_at",
           "stats",
           "outputs",
           "node_executions"
