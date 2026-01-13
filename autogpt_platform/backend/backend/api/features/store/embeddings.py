@@ -12,7 +12,7 @@ from functools import cache
 from typing import Any
 
 import prisma
-from openai import OpenAI
+from openai import AsyncOpenAI
 from prisma.enums import ContentType
 
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
@@ -28,9 +28,9 @@ EMBEDDING_DIM = 1536
 
 
 @cache
-def get_openai_client() -> OpenAI | None:
+def get_openai_client() -> AsyncOpenAI | None:
     """
-    Get or create a singleton OpenAI client for connection reuse.
+    Get or create a singleton async OpenAI client for connection reuse.
 
     Returns None if API key is not configured.
     """
@@ -38,7 +38,7 @@ def get_openai_client() -> OpenAI | None:
     api_key = settings.secrets.openai_internal_api_key
     if not api_key:
         return None
-    return OpenAI(api_key=api_key)
+    return AsyncOpenAI(api_key=api_key)
 
 
 def build_searchable_text(
@@ -90,7 +90,7 @@ async def generate_embedding(text: str) -> list[float] | None:
         truncated_text = text[:32000]
 
         start_time = time.time()
-        response = client.embeddings.create(
+        response = await client.embeddings.create(
             model=EMBEDDING_MODEL,
             input=truncated_text,
         )
