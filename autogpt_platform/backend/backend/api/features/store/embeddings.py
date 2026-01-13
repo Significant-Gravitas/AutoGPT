@@ -7,6 +7,7 @@ Handles generation and storage of OpenAI embeddings for all content types
 
 import asyncio
 import logging
+import time
 from functools import cache
 from typing import Any
 
@@ -77,7 +78,7 @@ async def generate_embedding(text: str) -> list[float] | None:
     Generate embedding for text using OpenAI API.
 
     Returns None if embedding generation fails.
-    Uses singleton client for connection reuse and better performance.
+    Fail-fast: no retries to maintain consistency with approval flow.
     """
     try:
         client = get_openai_client()
@@ -88,13 +89,18 @@ async def generate_embedding(text: str) -> list[float] | None:
         # Truncate text to avoid token limits (~32k chars for safety)
         truncated_text = text[:32000]
 
+        start_time = time.time()
         response = client.embeddings.create(
             model=EMBEDDING_MODEL,
             input=truncated_text,
         )
+        latency_ms = (time.time() - start_time) * 1000
 
         embedding = response.data[0].embedding
-        logger.debug(f"Generated embedding with {len(embedding)} dimensions")
+        logger.info(
+            f"Generated embedding: {len(embedding)} dims, "
+            f"{len(truncated_text)} chars, {latency_ms:.0f}ms"
+        )
         return embedding
 
     except Exception as e:
@@ -111,13 +117,13 @@ async def store_embedding(
     Store embedding in the database.
 
     BACKWARD COMPATIBILITY: Maintained for existing store listing usage.
-    Uses raw SQL since Prisma doesn't natively support pgvector.
+    DEPRECATED: Use ensure_embedding() instead (includes searchable_text).
     """
     return await store_content_embedding(
         content_type=ContentType.STORE_AGENT,
         content_id=version_id,
         embedding=embedding,
-        searchable_text="",  # Will be populated from existing data
+        searchable_text="",  # Empty for backward compat; ensure_embedding() populates this
         metadata=None,
         user_id=None,  # Store agents are public
         tx=tx,

@@ -262,8 +262,13 @@ def ensure_embeddings_coverage():
     """
     Ensure approved store agents have embeddings for hybrid search.
 
-    Processes ALL missing embeddings in batches until 100% coverage.
-    Critical: missing embeddings = agents invisible in hybrid search.
+    Processes ALL missing embeddings in batches of 10 until 100% coverage.
+    Missing embeddings = agents invisible in hybrid search.
+
+    Schedule: Runs every 6 hours (balanced between coverage and API costs).
+    - Catches agents approved between scheduled runs
+    - Batch size 10: gradual processing to avoid rate limits
+    - Manual trigger available via execute_ensure_embeddings_coverage endpoint
     """
 
     async def _ensure():

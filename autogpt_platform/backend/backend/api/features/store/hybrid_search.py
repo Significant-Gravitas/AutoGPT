@@ -29,6 +29,31 @@ class HybridSearchWeights:
     recency: float = 0.10  # Newer agents ranked higher
     popularity: float = 0.10  # Agent usage/runs (PageRank-like)
 
+    def __post_init__(self):
+        """Validate weights are non-negative and sum to approximately 1.0."""
+        total = (
+            self.semantic
+            + self.lexical
+            + self.category
+            + self.recency
+            + self.popularity
+        )
+
+        if any(
+            w < 0
+            for w in [
+                self.semantic,
+                self.lexical,
+                self.category,
+                self.recency,
+                self.popularity,
+            ]
+        ):
+            raise ValueError("All weights must be non-negative")
+
+        if not (0.99 <= total <= 1.01):
+            raise ValueError(f"Weights must sum to ~1.0, got {total:.3f}")
+
 
 DEFAULT_WEIGHTS = HybridSearchWeights()
 
