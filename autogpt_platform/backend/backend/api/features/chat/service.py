@@ -339,14 +339,12 @@ async def stream_chat_completion(
     system_prompt, langfuse_prompt = await _build_system_prompt(user_id)
 
     # Create Langfuse trace for this LLM call (each call gets its own trace, grouped by session_id)
+    # Using v3 SDK: start_observation creates a root span, update_trace sets trace-level attributes
     try:
         langfuse = _get_langfuse_client()
         env = _get_environment()
-        trace = langfuse.trace(  # type: ignore[attr-defined]
+        trace = langfuse.start_observation(
             name="chat_completion",
-            session_id=session_id,
-            user_id=user_id,
-            tags=[env, "copilot"],
             input={"messages": [m.model_dump() for m in session.messages]},
             metadata={
                 "environment": env,
@@ -355,6 +353,12 @@ async def stream_chat_completion(
                 "prompt_name": langfuse_prompt.name if langfuse_prompt else None,
                 "prompt_version": langfuse_prompt.version if langfuse_prompt else None,
             },
+        )
+        # Set trace-level attributes (session_id, user_id, tags)
+        trace.update_trace(
+            session_id=session_id,
+            user_id=user_id,
+            tags=[env, "copilot"],
         )
     except Exception as e:
         logger.warning(f"Failed to create Langfuse trace: {e}")
@@ -374,8 +378,10 @@ async def stream_chat_completion(
     should_retry = False
 
     # Create Langfuse generation for each LLM call, linked to the prompt
+    # Using v3 SDK: start_observation with as_type="generation"
     generation = (
-        trace.generation(
+        trace.start_observation(
+            as_type="generation",
             name="llm_call",
             model=config.model,
             input={"messages": [m.model_dump() for m in session.messages]},
@@ -559,14 +565,15 @@ async def stream_chat_completion(
             yield chunk
 
     # End Langfuse generation with output and usage
+    # Using v3 SDK: update() then end()
     if generation:
         latest_usage = session.usage[-1] if session.usage else None
-        generation.end(
+        generation.update(
             output={
                 "content": assistant_response.content,
                 "tool_calls": accumulated_tool_calls or None,
             },
-            usage=(
+            usage_details=(
                 {
                     "input": latest_usage.prompt_tokens,
                     "output": latest_usage.completion_tokens,
@@ -574,15 +581,18 @@ async def stream_chat_completion(
                 }
                 if latest_usage
                 else None
-            ),  # type: ignore[arg-type]
+            ),
         )
+        generation.end()
 
-    # Update trace with output
+    # Update trace with output and end the span
+    # Using v3 SDK: update_trace() for trace-level output, then end()
     if trace:
         if accumulated_tool_calls:
-            trace.update(output={"tool_calls": accumulated_tool_calls})
+            trace.update_trace(output={"tool_calls": accumulated_tool_calls})
         else:
-            trace.update(output={"response": assistant_response.content})
+            trace.update_trace(output={"response": assistant_response.content})
+        trace.end()
 
 
 async def _stream_chat_chunks(
