@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma
 import pytest
@@ -51,7 +51,9 @@ async def test_generate_embedding_success(mock_get_client):
     mock_response = MagicMock()
     mock_response.data = [MagicMock()]
     mock_response.data[0].embedding = [0.1, 0.2, 0.3] * 512  # 1536 dimensions
-    mock_client.embeddings.create.return_value = mock_response
+
+    # Use AsyncMock for async embeddings.create method
+    mock_client.embeddings.create = AsyncMock(return_value=mock_response)
     mock_get_client.return_value = mock_client
 
     result = await embeddings.generate_embedding("test text")
@@ -97,7 +99,9 @@ async def test_generate_embedding_text_truncation(mock_get_client):
     mock_response = MagicMock()
     mock_response.data = [MagicMock()]
     mock_response.data[0].embedding = [0.1] * 1536
-    mock_client.embeddings.create.return_value = mock_response
+
+    # Use AsyncMock for async embeddings.create method
+    mock_client.embeddings.create = AsyncMock(return_value=mock_response)
     mock_get_client.return_value = mock_client
 
     # Create text longer than 32k chars

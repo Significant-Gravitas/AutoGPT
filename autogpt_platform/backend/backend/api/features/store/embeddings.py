@@ -136,6 +136,7 @@ async def store_content_embedding(
         metadata_json = dumps(metadata or {})
 
         # Upsert the embedding
+        # WHERE clause in DO UPDATE prevents PostgreSQL 15 bug with NULLS NOT DISTINCT
         await execute_raw_with_schema(
             """
             INSERT INTO {schema_prefix}"UnifiedContentEmbedding" (
@@ -148,6 +149,9 @@ async def store_content_embedding(
                 "searchableText" = $5,
                 "metadata" = $6::jsonb,
                 "updatedAt" = NOW()
+            WHERE {schema_prefix}"UnifiedContentEmbedding"."contentType" = $1::{schema_prefix}"ContentType"
+                AND {schema_prefix}"UnifiedContentEmbedding"."contentId" = $2
+                AND ({schema_prefix}"UnifiedContentEmbedding"."userId" = $3 OR ($3 IS NULL AND {schema_prefix}"UnifiedContentEmbedding"."userId" IS NULL))
             """,
             content_type,
             content_id,
