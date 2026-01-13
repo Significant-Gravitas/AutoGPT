@@ -521,6 +521,7 @@ def test_get_submissions_success(
     mocked_value = store_model.StoreSubmissionsResponse(
         submissions=[
             store_model.StoreSubmission(
+                listing_id="test-listing-id",
                 name="Test Agent",
                 description="Test agent description",
                 image_urls=["test.jpg"],

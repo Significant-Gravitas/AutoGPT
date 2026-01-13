@@ -264,7 +264,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     reddit_user_agent: str = Field(
-        default="AutoGPT:1.0 (by /u/autogpt)",
+        default="web:AutoGPT:v0.6.0 (by /u/autogpt)",
         description="The user agent for the Reddit API",
     )
 

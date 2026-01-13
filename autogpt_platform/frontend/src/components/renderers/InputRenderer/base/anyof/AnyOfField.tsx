@@ -5,19 +5,14 @@ import { useAnyOfField } from "./useAnyOfField";
 import { getHandleId, updateUiOption } from "../../helpers";
 import { useEdgeStore } from "@/app/(platform)/build/stores/edgeStore";
 import { ANY_OF_FLAG } from "../../constants";
+import { findCustomFieldId } from "../../registry";
 
 export const AnyOfField = (props: FieldProps) => {
   const { registry, schema } = props;
   const { fields } = registry;
   const { SchemaField: _SchemaField } = fields;
   const { nodeId } = registry.formContext;
-
   const { isInputConnected } = useEdgeStore();
-
-  const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
-
-  const Widget = getWidget({ type: "string" }, "select", registry.widgets);
-
   const {
     handleOptionChange,
     enumOptions,
@@ -25,6 +20,15 @@ export const AnyOfField = (props: FieldProps) => {
     optionSchema,
     field_id,
   } = useAnyOfField(props);
+
+  const parentCustomFieldId = findCustomFieldId(schema);
+  if (parentCustomFieldId) {
+    return null;
+  }
+
+  const uiOptions = getUiOptions(props.uiSchema, props.globalUiOptions);
+
+  const Widget = getWidget({ type: "string" }, "select", registry.widgets);
 
   const handleId = getHandleId({
     uiOptions,
@@ -40,12 +44,21 @@ export const AnyOfField = (props: FieldProps) => {
 
   const isHandleConnected = isInputConnected(nodeId, handleId);
 
+  // Now anyOf can render - custom fields if the option schema matches a custom field
+  const optionCustomFieldId = optionSchema
+    ? findCustomFieldId(optionSchema)
+    : null;
+
+  const optionUiSchema = optionCustomFieldId
+    ? { ...updatedUiSchema, "ui:field": optionCustomFieldId }
+    : updatedUiSchema;
+
   const optionsSchemaField =
     (optionSchema && optionSchema.type !== "null" && (
       <_SchemaField
         {...props}
         schema={optionSchema}
-        uiSchema={updatedUiSchema}
+        uiSchema={optionUiSchema}
       />
     )) ||
     null;

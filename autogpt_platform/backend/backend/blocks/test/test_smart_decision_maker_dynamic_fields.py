@@ -44,6 +44,7 @@ async def test_create_block_function_signature_with_dict_fields():
     mock_node.block = CreateDictionaryBlock()
     mock_node.block_id = CreateDictionaryBlock().id
     mock_node.input_default = {}
+    mock_node.metadata = {}
 
     # Create mock links with dynamic dictionary fields (source sanitized, sink original)
     mock_links = [
@@ -106,6 +107,7 @@ async def test_create_block_function_signature_with_list_fields():
     mock_node.block = AddToListBlock()
     mock_node.block_id = AddToListBlock().id
     mock_node.input_default = {}
+    mock_node.metadata = {}
 
     # Create mock links with dynamic list fields
     mock_links = [
@@ -159,6 +161,7 @@ async def test_create_block_function_signature_with_object_fields():
     mock_node.block = MatchTextPatternBlock()
     mock_node.block_id = MatchTextPatternBlock().id
     mock_node.input_default = {}
+    mock_node.metadata = {}
 
     # Create mock links with dynamic object fields
     mock_links = [
@@ -208,11 +211,13 @@ async def test_create_tool_node_signatures():
         mock_dict_node.block = CreateDictionaryBlock()
         mock_dict_node.block_id = CreateDictionaryBlock().id
         mock_dict_node.input_default = {}
+        mock_dict_node.metadata = {}
 
         mock_list_node = Mock()
         mock_list_node.block = AddToListBlock()
         mock_list_node.block_id = AddToListBlock().id
         mock_list_node.input_default = {}
+        mock_list_node.metadata = {}
 
         # Mock links with dynamic fields
         dict_link1 = Mock(
@@ -423,6 +428,7 @@ async def test_mixed_regular_and_dynamic_fields():
     mock_node.block.name = "TestBlock"
     mock_node.block.description = "A test block"
     mock_node.block.input_schema = Mock()
+    mock_node.metadata = {}
 
     # Mock the get_field_schema to return a proper schema for regular fields
     def get_field_schema(field_name):

@@ -2,6 +2,7 @@
   {
     "credentials_input_schema": {
       "properties": {},
+      "required": [],
       "title": "TestGraphCredentialsInputSchema",
       "type": "object"
     },

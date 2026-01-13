@@ -1,25 +1,24 @@
-import { Text } from "@/components/atoms/Text/Text";
-import { beautifyString, cn } from "@/lib/utils";
-import { NodeCost } from "./NodeCost";
-import { NodeBadges } from "./NodeBadges";
-import { NodeContextMenu } from "./NodeContextMenu";
-import { CustomNodeData } from "../CustomNode";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
-import { useState } from "react";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { beautifyString, cn } from "@/lib/utils";
+import { useState } from "react";
+import { CustomNodeData } from "../CustomNode";
+import { NodeBadges } from "./NodeBadges";
+import { NodeContextMenu } from "./NodeContextMenu";
+import { NodeCost } from "./NodeCost";
 
-export const NodeHeader = ({
-  data,
-  nodeId,
-}: {
+type Props = {
   data: CustomNodeData;
   nodeId: string;
-}) => {
+};
+
+export const NodeHeader = ({ data, nodeId }: Props) => {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
   const title = (data.metadata?.customized_name as string) || data.title;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -69,7 +68,10 @@ export const NodeHeader = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div>
-                      <Text variant="large-semibold" className="line-clamp-1">
+                      <Text
+                        variant="large-semibold"
+                        className="line-clamp-1 hover:cursor-text"
+                      >
                         {beautifyString(title).replace("Block", "").trim()}
                       </Text>
                     </div>

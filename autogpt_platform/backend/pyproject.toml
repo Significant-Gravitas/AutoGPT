@@ -117,6 +117,7 @@ lint = "linter:lint"
 test = "run_tests:test"
 load-store-agents = "test.load_store_agents:run"
 export-api-schema = "backend.cli.generate_openapi_json:main"
+gen-prisma-stub = "gen_prisma_types_stub:main"
 oauth-tool = "backend.cli.oauth_tool:cli"
 
 [tool.isort]
@@ -134,6 +135,9 @@ ignore_patterns = []
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+# Disable syrupy plugin to avoid conflict with pytest-snapshot
+# Both provide --snapshot-update argument causing ArgumentError
+addopts = "-p no:syrupy"
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
     "ignore:invalid escape sequence:DeprecationWarning:tweepy.api",

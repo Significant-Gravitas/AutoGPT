@@ -34,7 +34,9 @@ type Props = {
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
   onLoaded?: (loaded: boolean) => void;
   readOnly?: boolean;
+  isOptional?: boolean;
   showTitle?: boolean;
+  variant?: "default" | "node";
 };
 
 export function CredentialsInput({
@@ -45,7 +47,9 @@ export function CredentialsInput({
   siblingInputs,
   onLoaded,
   readOnly = false,
+  isOptional = false,
   showTitle = true,
+  variant = "default",
 }: Props) {
   const hookData = useCredentialsInput({
     schema,
@@ -54,6 +58,7 @@ export function CredentialsInput({
     siblingInputs,
     onLoaded,
     readOnly,
+    isOptional,
   });
 
   if (!isLoaded(hookData)) {
@@ -94,7 +99,14 @@ export function CredentialsInput({
     <div className={cn("mb-6", className)}>
       {showTitle && (
         <div className="mb-2 flex items-center gap-2">
-          <Text variant="large-medium">{displayName} credentials</Text>
+          <Text variant="large-medium">
+            {displayName} credentials
+            {isOptional && (
+              <span className="ml-1 text-sm font-normal text-gray-500">
+                (optional)
+              </span>
+            )}
+          </Text>
           {schema.description && (
             <InformationTooltip description={schema.description} />
           )}
@@ -103,14 +115,17 @@ export function CredentialsInput({
 
       {hasCredentialsToShow ? (
         <>
-          {credentialsToShow.length > 1 && !readOnly ? (
+          {(credentialsToShow.length > 1 || isOptional) && !readOnly ? (
             <CredentialsSelect
               credentials={credentialsToShow}
               provider={provider}
               displayName={displayName}
               selectedCredentials={selectedCredential}
               onSelectCredential={handleCredentialSelect}
+              onClearCredential={() => onSelectCredential(undefined)}
               readOnly={readOnly}
+              allowNone={isOptional}
+              variant={variant}
             />
           ) : (
             <div className="mb-4 space-y-2">

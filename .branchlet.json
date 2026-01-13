@@ -1,0 +1,37 @@
+{
+  "worktreeCopyPatterns": [
+    ".env*",
+    ".vscode/**",
+    ".auth/**",
+    ".claude/**",
+    "autogpt_platform/.env*",
+    "autogpt_platform/backend/.env*",
+    "autogpt_platform/frontend/.env*",
+    "autogpt_platform/frontend/.auth/**",
+    "autogpt_platform/db/docker/.env*"
+  ],
+  "worktreeCopyIgnores": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.git/**",
+    "**/Thumbs.db",
+    "**/.DS_Store",
+    "**/.next/**",
+    "**/__pycache__/**",
+    "**/.ruff_cache/**",
+    "**/.pytest_cache/**",
+    "**/*.pyc",
+    "**/playwright-report/**",
+    "**/logs/**",
+    "**/site/**"
+  ],
+  "worktreePathTemplate": "$BASE_PATH.worktree",
+  "postCreateCmd": [
+    "cd autogpt_platform/autogpt_libs && poetry install",
+    "cd autogpt_platform/backend && poetry install && poetry run prisma generate",
+    "cd autogpt_platform/frontend && pnpm install",
+    "cd docs && pip install -r requirements.txt"
+  ],
+  "terminalCommand": "code .",
+  "deleteBranchWithWorktree": false
+}
