@@ -29,6 +29,12 @@ async def main(batch_size: int = 100) -> int:
 
     try:
         stats = await get_embedding_stats()
+
+        # Check for error from get_embedding_stats() first
+        if "error" in stats:
+            logger.error(f"Failed to get embedding stats: {stats['error']}")
+            return 1
+
         logger.info(
             f"Current coverage: {stats['with_embeddings']}/{stats['total_approved']} "
             f"({stats['coverage_percent']}%)"
@@ -68,7 +74,10 @@ async def main(batch_size: int = 100) -> int:
             f"Backfill complete: {total_success}/{total_processed} succeeded, "
             f"{total_failed} failed"
         )
-        logger.info(f"Final coverage: {stats['coverage_percent']}%")
+        if "error" not in stats:
+            logger.info(f"Final coverage: {stats['coverage_percent']}%")
+        else:
+            logger.warning("Could not retrieve final coverage stats")
 
         return 0 if total_failed == 0 else 1
 

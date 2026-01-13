@@ -270,6 +270,14 @@ def ensure_embeddings_coverage():
         import asyncio
 
         stats = await get_embedding_stats()
+
+        # Check for error from get_embedding_stats() first
+        if "error" in stats:
+            logger.error(
+                f"Failed to get embedding stats: {stats['error']} - skipping backfill"
+            )
+            return {"processed": 0, "success": 0, "failed": 0, "error": stats["error"]}
+
         if stats["without_embeddings"] == 0:
             logger.info("All approved agents have embeddings, skipping backfill")
             return {"processed": 0, "success": 0, "failed": 0}
@@ -541,6 +549,7 @@ class Scheduler(AppService):
                 trigger="interval",
                 hours=6,
                 replace_existing=True,
+                max_instances=1,  # Prevent overlapping runs
                 jobstore=Jobstores.EXECUTION.value,
             )
 
