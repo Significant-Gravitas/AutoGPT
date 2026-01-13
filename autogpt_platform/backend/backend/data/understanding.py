@@ -134,7 +134,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
             user_id=db_record.userId,
             created_at=db_record.createdAt,
             updated_at=db_record.updatedAt,
-            user_name=db_record.userName,
+            user_name=db_record.usersName,
             job_title=db_record.jobTitle,
             business_name=db_record.businessName,
             industry=db_record.industry,

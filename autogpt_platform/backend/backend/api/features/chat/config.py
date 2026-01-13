@@ -1,7 +1,6 @@
 """Configuration management for chat system."""
 
 import os
-from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings

@@ -44,10 +44,13 @@ _langfuse_client: Langfuse | None = None
 
 
 def _get_langfuse_client() -> Langfuse:
-    """Get or create the Langfuse client for prompt management."""
+    """Get or create the Langfuse client for prompt management and tracing."""
     global _langfuse_client
     if _langfuse_client is None:
-        if not settings.secrets.langfuse_public_key or not settings.secrets.langfuse_secret_key:
+        if (
+            not settings.secrets.langfuse_public_key
+            or not settings.secrets.langfuse_secret_key
+        ):
             raise ValueError(
                 "Langfuse credentials not configured. "
                 "Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
@@ -58,6 +61,11 @@ def _get_langfuse_client() -> Langfuse:
             host=settings.secrets.langfuse_host or "https://cloud.langfuse.com",
         )
     return _langfuse_client
+
+
+def _get_environment() -> str:
+    """Get the current environment name for Langfuse tagging."""
+    return settings.config.app_env.value
 
 
 def _get_langfuse_prompt() -> str:
@@ -97,9 +105,7 @@ async def _is_first_session(user_id: str) -> bool:
         return False  # Default to non-onboarding if we can't check
 
 
-async def _build_system_prompt(
-    user_id: str | None
-) -> str:
+async def _build_system_prompt(user_id: str | None) -> tuple[str, Any]:
     """Build the full system prompt including business understanding if available.
 
     Args:
@@ -107,16 +113,13 @@ async def _build_system_prompt(
                      If "default" and this is the user's first session, will use "onboarding" instead.
 
     Returns:
-        The full system prompt with business understanding context if available
+        Tuple of (compiled prompt string, Langfuse prompt object for tracing)
     """
-
 
     langfuse = _get_langfuse_client()
 
     # cache_ttl_seconds=0 disables SDK caching to always get the latest prompt
     prompt = langfuse.get_prompt(config.langfuse_prompt_name, cache_ttl_seconds=0)
-    compiled = prompt.compile()
-    # Auto-detect: if using default prompt and this is user's first session, use onboarding
 
     # If user is authenticated, try to fetch their business understanding
     understanding = None
@@ -128,11 +131,11 @@ async def _build_system_prompt(
             understanding = None
     if understanding:
         context = format_understanding_for_prompt(understanding)
-    else: 
+    else:
         context = "This is the first time you are meeting the user. Geet them and introduce them to the platform"
 
     compiled = prompt.compile(users_information=context)
-    return compiled
+    return compiled, prompt
 
 
 async def _generate_session_title(message: str) -> str | None:
@@ -158,7 +161,7 @@ async def _generate_session_title(message: str) -> str | None:
                 },
                 {"role": "user", "content": message[:500]},  # Limit input length
             ],
-            max_tokens=20
+            max_tokens=20,
         )
         title = response.choices[0].message.content
         if title:
@@ -252,6 +255,9 @@ async def stream_chat_completion(
         f"Streaming chat completion for session {session_id} for message {message} and user id {user_id}. Message is user message: {is_user_message}"
     )
 
+    # Langfuse trace will be created after session is loaded (need messages for input)
+    trace = None
+
     # Only fetch from Redis if session not provided (initial call)
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -324,7 +330,28 @@ async def stream_chat_completion(
             asyncio.create_task(_update_title())
 
     # Build system prompt with business understanding
-    system_prompt = await _build_system_prompt(user_id)
+    system_prompt, langfuse_prompt = await _build_system_prompt(user_id)
+
+    # Create Langfuse trace for this LLM call (each call gets its own trace, grouped by session_id)
+    try:
+        langfuse = _get_langfuse_client()
+        env = _get_environment()
+        trace = langfuse.trace(
+            name="chat_completion",
+            session_id=session_id,
+            user_id=user_id,
+            tags=[env, "copilot"],
+            input={"messages": [m.model_dump() for m in session.messages]},
+            metadata={
+                "environment": env,
+                "model": config.model,
+                "message_count": len(session.messages),
+                "prompt_name": langfuse_prompt.name if langfuse_prompt else None,
+                "prompt_version": langfuse_prompt.version if langfuse_prompt else None,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to create Langfuse trace: {e}")
 
     assistant_response = ChatMessage(
         role="assistant",
@@ -339,6 +366,18 @@ async def stream_chat_completion(
     tool_response_messages: list[ChatMessage] = []
     accumulated_tool_calls: list[dict[str, Any]] = []
     should_retry = False
+
+    # Create Langfuse generation for each LLM call, linked to the prompt
+    generation = (
+        trace.generation(
+            name="llm_call",
+            model=config.model,
+            input={"messages": [m.model_dump() for m in session.messages]},
+            prompt=langfuse_prompt,
+        )
+        if trace
+        else None
+    )
 
     try:
         async for chunk in _stream_chat_chunks(
@@ -513,6 +552,32 @@ async def stream_chat_completion(
         ):
             yield chunk
 
+    # End Langfuse generation with output and usage
+    if generation:
+        latest_usage = session.usage[-1] if session.usage else None
+        generation.end(
+            output={
+                "content": assistant_response.content,
+                "tool_calls": accumulated_tool_calls or None,
+            },
+            usage=(
+                {
+                    "input": latest_usage.prompt_tokens,
+                    "output": latest_usage.completion_tokens,
+                    "total": latest_usage.total_tokens,
+                }
+                if latest_usage
+                else None
+            ),  # type: ignore[arg-type]
+        )
+
+    # Update trace with output
+    if trace:
+        if accumulated_tool_calls:
+            trace.update(output={"tool_calls": accumulated_tool_calls})
+        else:
+            trace.update(output={"response": assistant_response.content})
+
 
 async def _stream_chat_chunks(
     session: ChatSession,
@@ -560,6 +625,7 @@ async def _stream_chat_chunks(
                 tools=tools,
                 tool_choice="auto",
                 stream=True,
+                stream_options={"include_usage": True},
             )
 
             # Variables to accumulate tool calls
@@ -698,6 +764,7 @@ async def _yield_tool_call(
         KeyError: If expected tool call fields are missing
         TypeError: If tool call structure is invalid
     """
+    tool_name = tool_calls[yield_idx]["function"]["name"]
     logger.info(f"Yielding tool call: {tool_calls[yield_idx]}")
 
     # Parse tool call arguments - handle empty arguments gracefully
@@ -709,18 +776,19 @@ async def _yield_tool_call(
 
     yield StreamToolCall(
         tool_id=tool_calls[yield_idx]["id"],
-        tool_name=tool_calls[yield_idx]["function"]["name"],
+        tool_name=tool_name,
         arguments=arguments,
         timestamp=datetime.now(UTC).isoformat(),
     )
 
     tool_execution_response: StreamToolExecutionResult = await execute_tool(
-        tool_name=tool_calls[yield_idx]["function"]["name"],
+        tool_name=tool_name,
         parameters=arguments,
         tool_call_id=tool_calls[yield_idx]["id"],
         user_id=session.user_id,
         session=session,
     )
+
     logger.info(f"Yielding Tool execution response: {tool_execution_response}")
     yield tool_execution_response
 
