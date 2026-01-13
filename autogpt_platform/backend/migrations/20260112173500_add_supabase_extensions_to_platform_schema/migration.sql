@@ -65,3 +65,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'supabase_vault extension not available, skipping';
 END $$;
+
+
+-- Return to platform
+CREATE SCHEMA IF NOT EXISTS "platform";
