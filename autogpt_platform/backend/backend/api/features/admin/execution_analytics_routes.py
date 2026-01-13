@@ -63,6 +63,10 @@ class ExecutionAnalyticsResult(BaseModel):
     score: Optional[float]
     status: str  # "success", "failed", "skipped"
     error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
 
 
 class ExecutionAnalyticsResponse(BaseModel):
@@ -320,6 +324,10 @@ async def generate_execution_analytics(
                     ),
                     status="skipped",
                     error_message=None,  # Not an error - just already processed
+                    created_at=execution.created_at,
+                    updated_at=execution.updated_at,
+                    started_at=execution.started_at,
+                    ended_at=execution.ended_at,
                 )
             )
 
@@ -387,6 +395,10 @@ async def _process_batch(
                     score=None,
                     status="skipped",
                     error_message="Activity generation returned None",
+                    created_at=execution.created_at,
+                    updated_at=execution.updated_at,
+                    started_at=execution.started_at,
+                    ended_at=execution.ended_at,
                 )
 
             # Update the execution stats
@@ -416,6 +428,10 @@ async def _process_batch(
                 summary_text=activity_response["activity_status"],
                 score=activity_response["correctness_score"],
                 status="success",
+                created_at=getattr(execution, "created_at", None),
+                updated_at=getattr(execution, "updated_at", None),
+                started_at=execution.started_at,
+                ended_at=execution.ended_at,
             )
 
         except Exception as e:
@@ -429,6 +445,10 @@ async def _process_batch(
                 score=None,
                 status="failed",
                 error_message=str(e),
+                created_at=getattr(execution, "created_at", None),
+                updated_at=getattr(execution, "updated_at", None),
+                started_at=execution.started_at,
+                ended_at=execution.ended_at,
             )
 
     # Process all executions in the batch concurrently

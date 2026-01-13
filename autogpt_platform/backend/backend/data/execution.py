@@ -153,6 +153,8 @@ class GraphExecutionMeta(BaseDbModel):
     nodes_input_masks: Optional[dict[str, BlockInput]]
     preset_id: Optional[str]
     status: ExecutionStatus
+    created_at: datetime
+    updated_at: Optional[datetime]
     started_at: datetime
     ended_at: datetime
     is_shared: bool = False
@@ -263,6 +265,8 @@ class GraphExecutionMeta(BaseDbModel):
             ),
             preset_id=_graph_exec.agentPresetId,
             status=ExecutionStatus(_graph_exec.executionStatus),
+            created_at=_graph_exec.createdAt,
+            updated_at=_graph_exec.updatedAt,
             started_at=start_time,
             ended_at=end_time,
             stats=(

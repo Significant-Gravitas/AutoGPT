@@ -6968,6 +6968,34 @@
           "error_message": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Message"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Ended At"
           }
         },
         "type": "object",
@@ -7073,6 +7101,18 @@
             "title": "Preset Id"
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
           "started_at": {
             "type": "string",
             "format": "date-time",
@@ -7115,6 +7155,8 @@
           "nodes_input_masks",
           "preset_id",
           "status",
+          "created_at",
+          "updated_at",
           "started_at",
           "ended_at",
           "stats",
@@ -7214,6 +7256,18 @@
             "title": "Preset Id"
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
           "started_at": {
             "type": "string",
             "format": "date-time",
@@ -7251,6 +7305,8 @@
           "nodes_input_masks",
           "preset_id",
           "status",
+          "created_at",
+          "updated_at",
           "started_at",
           "ended_at",
           "stats"
@@ -7298,6 +7354,18 @@
             "title": "Preset Id"
           },
           "status": { "$ref": "#/components/schemas/AgentExecutionStatus" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
           "started_at": {
             "type": "string",
             "format": "date-time",
@@ -7345,6 +7413,8 @@
           "nodes_input_masks",
           "preset_id",
           "status",
+          "created_at",
+          "updated_at",
           "started_at",
           "ended_at",
           "stats",
