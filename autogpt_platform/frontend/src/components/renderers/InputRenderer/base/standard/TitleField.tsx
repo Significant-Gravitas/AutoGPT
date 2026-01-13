@@ -31,7 +31,6 @@ export default function TitleField(props: TitleFieldProps) {
   const isInputBroken = useNodeStore((state) =>
     state.isInputBroken(nodeId, cleanUpHandleId(uiOptions.handleId)),
   );
-  console.log("isInputBroken", isInputBroken, nodeId, uiOptions.handleId);
 
   return (
     <div className="flex items-center">

@@ -51,9 +51,6 @@ export const useCustomNode = ({
     return currentOutputSchema;
   }, [isAgent, isInResolutionMode, resolutionData, currentOutputSchema]);
 
-  console.log("inputSchema", inputSchema);
-  console.log("outputSchema", outputSchema);
-
   return {
     inputSchema,
     outputSchema,
