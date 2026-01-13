@@ -1,5 +1,6 @@
 -- CreateExtension in platform schema (avoids search_path issues with Prisma)
 -- Note: Platform schema is configured via DATABASE_URL schema parameter
+CREATE SCHEMA IF NOT EXISTS "platform";
 CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "platform";
 
 -- CreateEnum
