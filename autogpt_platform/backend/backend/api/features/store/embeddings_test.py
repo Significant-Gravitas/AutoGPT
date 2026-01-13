@@ -43,8 +43,7 @@ async def test_build_searchable_text_empty_fields():
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.util.clients.get_openai_client")
-async def test_generate_embedding_success(mock_get_client):
+async def test_generate_embedding_success():
     """Test successful embedding generation."""
     # Mock OpenAI response
     mock_client = MagicMock()
@@ -54,17 +53,22 @@ async def test_generate_embedding_success(mock_get_client):
 
     # Use AsyncMock for async embeddings.create method
     mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-    mock_get_client.return_value = mock_client
 
-    result = await embeddings.generate_embedding("test text")
+    # Patch at the point of use in embeddings.py
+    with patch(
+        "backend.api.features.store.embeddings.get_openai_client"
+    ) as mock_get_client:
+        mock_get_client.return_value = mock_client
 
-    assert result is not None
-    assert len(result) == 1536
-    assert result[0] == 0.1
+        result = await embeddings.generate_embedding("test text")
 
-    mock_client.embeddings.create.assert_called_once_with(
-        model="text-embedding-3-small", input="test text"
-    )
+        assert result is not None
+        assert len(result) == 1536
+        assert result[0] == 0.1
+
+        mock_client.embeddings.create.assert_called_once_with(
+            model="text-embedding-3-small", input="test text"
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -92,8 +96,7 @@ async def test_generate_embedding_api_error(mock_get_client):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@patch("backend.util.clients.get_openai_client")
-async def test_generate_embedding_text_truncation(mock_get_client):
+async def test_generate_embedding_text_truncation():
     """Test that long text is properly truncated."""
     mock_client = MagicMock()
     mock_response = MagicMock()
@@ -102,16 +105,21 @@ async def test_generate_embedding_text_truncation(mock_get_client):
 
     # Use AsyncMock for async embeddings.create method
     mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-    mock_get_client.return_value = mock_client
 
-    # Create text longer than 32k chars
-    long_text = "a" * 35000
+    # Patch at the point of use in embeddings.py
+    with patch(
+        "backend.api.features.store.embeddings.get_openai_client"
+    ) as mock_get_client:
+        mock_get_client.return_value = mock_client
 
-    await embeddings.generate_embedding(long_text)
+        # Create text longer than 32k chars
+        long_text = "a" * 35000
 
-    # Verify truncated text was sent to API
-    call_args = mock_client.embeddings.create.call_args
-    assert len(call_args.kwargs["input"]) == 32000
+        await embeddings.generate_embedding(long_text)
+
+        # Verify truncated text was sent to API
+        call_args = mock_client.embeddings.create.call_args
+        assert len(call_args.kwargs["input"]) == 32000
 
 
 @pytest.mark.asyncio(loop_scope="session")

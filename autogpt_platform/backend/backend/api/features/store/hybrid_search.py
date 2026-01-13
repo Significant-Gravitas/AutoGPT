@@ -179,7 +179,7 @@ async def hybrid_search(
     where_clause = " AND ".join(where_parts)
 
     # Embedding is required for hybrid search - fail fast if unavailable
-    if query_embedding is None:
+    if query_embedding is None or not query_embedding:
         # Log detailed error server-side
         logger.error(
             "Failed to generate query embedding. "
