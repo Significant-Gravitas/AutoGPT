@@ -31,4 +31,11 @@ CREATE INDEX "UnifiedContentEmbedding_userId_idx" ON "UnifiedContentEmbedding"("
 CREATE INDEX "UnifiedContentEmbedding_contentType_userId_idx" ON "UnifiedContentEmbedding"("contentType", "userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "UnifiedContentEmbedding_contentType_contentId_userId_key" ON "UnifiedContentEmbedding"("contentType", "contentId", "userId");
+-- NULLS NOT DISTINCT ensures only one public (NULL userId) embedding per contentType+contentId
+-- Requires PostgreSQL 15+. Supabase uses PostgreSQL 15+.
+CREATE UNIQUE INDEX "UnifiedContentEmbedding_contentType_contentId_userId_key" ON "UnifiedContentEmbedding"("contentType", "contentId", "userId") NULLS NOT DISTINCT;
+
+-- CreateIndex
+-- HNSW index for fast vector similarity search on embeddings
+-- Uses cosine distance operator (<=>), which matches the query in hybrid_search.py
+CREATE INDEX "UnifiedContentEmbedding_embedding_idx" ON "UnifiedContentEmbedding" USING hnsw ("embedding" vector_cosine_ops);

@@ -130,7 +130,7 @@ async def store_content_embedding(
         client = tx if tx else prisma.get_client()
 
         # Convert embedding to PostgreSQL vector format
-        embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
+        embedding_str = embedding_to_vector_string(embedding)
         metadata_json = dumps(metadata or {})
 
         # Upsert the embedding

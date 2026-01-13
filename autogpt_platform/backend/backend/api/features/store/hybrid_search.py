@@ -157,15 +157,15 @@ async def hybrid_search(
         sql_query = f"""
             WITH candidates AS (
                 -- Lexical matches (uses GIN index on search column)
-                SELECT DISTINCT sa."storeListingVersionId"
+                SELECT sa."storeListingVersionId"
                 FROM {{schema_prefix}}"StoreAgent" sa
                 WHERE {where_clause}
                 AND sa.search @@ plainto_tsquery('english', {query_param})
 
-                UNION ALL
+                UNION
 
                 -- Semantic matches (uses HNSW index on embedding)
-                SELECT DISTINCT sa."storeListingVersionId"
+                SELECT sa."storeListingVersionId"
                 FROM {{schema_prefix}}"StoreAgent" sa
                 INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
                     ON sa."storeListingVersionId" = uce."contentId" AND uce."contentType" = 'STORE_AGENT'
@@ -291,7 +291,8 @@ async def hybrid_search(
                         THEN 1.0
                         ELSE 0.0
                     END as category_score,
-                    EXP(-EXTRACT(EPOCH FROM (NOW() - updated_at)) / (90 * 24 * 3600)) as recency_score
+                    -- Recency score: linear decay over 90 days (matches hybrid search)
+                    GREATEST(0, 1 - EXTRACT(EPOCH FROM (NOW() - updated_at)) / (90 * 24 * 3600)) as recency_score
                 FROM {{schema_prefix}}"StoreAgent" sa
                 WHERE {where_clause}
                 AND search @@ plainto_tsquery('english', {query_param})

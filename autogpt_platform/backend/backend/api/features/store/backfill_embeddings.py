@@ -3,7 +3,7 @@
 CLI script to backfill embeddings for store agents.
 
 Usage:
-    poetry run python -m backend.server.v2.store.backfill_embeddings [--batch-size N]
+    poetry run python -m backend.api.features.store.backfill_embeddings [--batch-size N]
 """
 
 import argparse
